@@ -196,11 +196,11 @@ const pingEnvironment = (env, alias) => ({
 });
 
 export const pingRequest = (route) => {
-    const workerId = `providers-ping-${route.provider}`;
+    const sessionId = `providers-ping-${route.provider}`;
     return {
         messages: [{ role: "user", content: "Reply with OK." }],
-        workerId,
-        primaryWorkerId: workerId,
+        sessionId,
+        primarySessionId: sessionId,
         signal: AbortSignal.timeout(PING_TIMEOUT_MS),
         maxOutputTokens: PING_MAX_TOKENS,
     };

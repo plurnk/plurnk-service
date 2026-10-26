@@ -29,7 +29,7 @@ export const liveTimeoutMs = (): number => {
     return value;
 };
 
-// The specimen whose body is running on this async path; the harness names it in the worker's census.
+// The specimen whose body is running on this async path; the harness names it in the session's census.
 export const currentSpecimen = (): LiveSpecimen | undefined => running.getStore();
 
 // The active route's facts, instantiated once per test process and only when a specimen asks. The

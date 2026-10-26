@@ -8,7 +8,7 @@ import type { MockResponse } from "@plurnk/plurnk-providers";
 const editStmt = (target: string, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: { kind: "url", raw: `worker:///${target}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
+    target: { kind: "url", raw: `workspace:///${target}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${target}`, query: null, fragment: null },
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
@@ -111,7 +111,7 @@ test("{§mock-provider-mock-fixture} Mock.provider: multi-op response (the typic
         editStmt("b", "2"),
         noteStmt("continuing"),
     ];
-    const content = "````EDIT (worker:///a)\n1\n````\n\n````EDIT (worker:///b)\n2\n````\n\n````NOTE\ncontinuing\n````";
+    const content = "````EDIT (workspace:///a)\n1\n````\n\n````EDIT (workspace:///b)\n2\n````\n\n````NOTE\ncontinuing\n````";
     const mock = new Mock({ contextWindow: 10_000, responses: [response(content, ops)] });
     const result = await mock.generate({ messages: [] });
     assert.equal(result.assistant.ops?.length, 3);

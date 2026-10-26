@@ -1,5 +1,5 @@
 import test from "node:test";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import assert from "node:assert/strict";
 import type { FindStatement, ParsedPath, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { executionAddress, testExecutors } from "./_execs.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { matchLocations } from "./_find.ts";
 import { clientRead } from "./_client-read.ts";
@@ -29,7 +29,7 @@ const readStmt = (target: ParsedPath | null): ReadStatement => ({
 const editStmt = (pathname: string, body: string): ResolvedEditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: urlPath("worker", pathname),
+    target: urlPath("workspace", pathname),
     lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
@@ -37,22 +37,22 @@ const editStmt = (pathname: string, body: string): ResolvedEditStatement => ({
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "test prompt");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "test prompt");
     const turnId = await insertTurn(db, loopId, 1, 200);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    return { db, engine, workspaceId, workerId, loopId, turnId };
+    return { db, engine, workspaceId, sessionId, loopId, turnId };
 };
 
 const insertActionless = async (
     db: Awaited<ReturnType<typeof openMigrated>>,
-    envelope: { workerId: number; loopId: number; turnId: number },
+    envelope: { sessionId: number; loopId: number; turnId: number },
     sequence: number,
     kind: "emissionAttempt",
     content: string,
 ): Promise<void> => {
     await db.engine_insert_log_entry.get({
-        worker_id: envelope.workerId,
+        session_id: envelope.sessionId,
         loop_id: envelope.loopId,
         turn_id: envelope.turnId,
         sequence,
@@ -86,13 +86,13 @@ const insertActionless = async (
 // dispatcher would have recorded on an execution row.
 const insertExecutionRow = async (
     db: Awaited<ReturnType<typeof openMigrated>>,
-    envelope: { workerId: number; loopId: number; turnId: number },
+    envelope: { sessionId: number; loopId: number; turnId: number },
     sequence: number,
     attrs: Record<string, unknown>,
     body: string | null,
 ): Promise<void> => {
     await db.engine_insert_log_entry.get({
-        worker_id: envelope.workerId,
+        session_id: envelope.sessionId,
         loop_id: envelope.loopId,
         turn_id: envelope.turnId,
         sequence,
@@ -122,14 +122,14 @@ const insertExecutionRow = async (
 };
 
 test("{§log-range-miss-names-stream} Log.read: EDIT op log entry returns its canonical effect receipt", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/france", "Paris"),
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, sessionId, loopId, turnId,
             sequence: 1, origin: "model",
         });
-        const result = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(result.status, 200);
         assert.equal(result.mimetype, "text/plain");
         assert.match(String(result.content), /^1<@[0-9A-Za-z]{5}>Paris$/, "storage envelope fields do not replace the model-facing edit result");
@@ -137,26 +137,26 @@ test("{§log-range-miss-names-stream} Log.read: EDIT op log entry returns its ca
 });
 
 test("{§log-range-miss-names-stream} Log.read: an exact /OP delimiter must agree with the addressed row", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/france", "Paris"),
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, sessionId, loopId, turnId,
             sequence: 1, origin: "model",
         });
-        const correct = await readLog(readStmt(urlPath("log", "/1/1/1/EDIT")), makeSchemeCtx({ db, workspaceId, workerId }));
-        const wrong = await readLog(readStmt(urlPath("log", "/1/1/1/READ")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const correct = await readLog(readStmt(urlPath("log", "/1/1/1/EDIT")), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const wrong = await readLog(readStmt(urlPath("log", "/1/1/1/READ")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(correct.status, 200);
         assert.equal(wrong.status, 404);
     } finally { db.close(); }
 });
 
 test("{§log-coordinate-hierarchy}: rejected attempts retain exact canonical leaves and shorthand addressing", async () => {
-    const { db, workerId, loopId, turnId, workspaceId } = await setup();
+    const { db, sessionId, loopId, turnId, workspaceId } = await setup();
     try {
-        await insertActionless(db, { workerId, loopId, turnId }, 1, "emissionAttempt", "````NOTE\nContinue the task.\n````");
-        await insertActionless(db, { workerId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        await insertActionless(db, { sessionId, loopId, turnId }, 1, "emissionAttempt", "````NOTE\nContinue the task.\n````");
+        await insertActionless(db, { sessionId, loopId, turnId }, 2, "emissionAttempt", "malformed response");
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
 
         const ops = await readLog(readStmt(urlPath("log", "/1/1/1/attempt")), ctx);
         const attempt = await readLog(readStmt(urlPath("log", "/1/1/2/attempt")), ctx);
@@ -181,15 +181,15 @@ test("{§log-coordinate-hierarchy}: rejected attempts retain exact canonical lea
 });
 
 test("{§log-range-miss-names-stream} Log.read: each coordinate addresses its own canonical body", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/a", "1"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: editStmt("/b", "2"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
-        await engine.dispatch({ statement: editStmt("/c", "3"), workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/a", "1"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/b", "2"), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/c", "3"), workspaceId, sessionId, loopId, turnId, sequence: 3, origin: "model" });
 
-        const r1 = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r2 = await readLog(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r3 = await readLog(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r1 = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r2 = await readLog(readStmt(urlPath("log", "/1/1/2")), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r3 = await readLog(readStmt(urlPath("log", "/1/1/3")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.deepEqual(
             [r1.content, r2.content, r3.content].map((content) => String(content).replace(/^ *(\d+)<@[0-9A-Za-z]{5}>/, "$1:")),
             ["1:1", "1:2", "1:3"],
@@ -198,48 +198,48 @@ test("{§log-range-miss-names-stream} Log.read: each coordinate addresses its ow
     } finally { db.close(); }
 });
 
-test("{§log-range-miss-names-stream} Log.read: cross-loop coordinates within a worker resolve correctly", async () => {
-    const { db, engine, workspaceId, workerId, loopId: loop1, turnId: turn1 } = await setup();
+test("{§log-range-miss-names-stream} Log.read: cross-loop coordinates within a session resolve correctly", async () => {
+    const { db, engine, workspaceId, sessionId, loopId: loop1, turnId: turn1 } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), workspaceId, workerId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/from-loop-1", "x"), workspaceId, sessionId, loopId: loop1, turnId: turn1, sequence: 1, origin: "model" });
 
-        const loop2 = await insertLoop(db, workerId, 2, "second");
+        const loop2 = await insertLoop(db, sessionId, 2, "second");
         const turn2 = await insertTurn(db, loop2, 1, 200);
-        await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), workspaceId, workerId, loopId: loop2, turnId: turn2, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/from-loop-2", "y"), workspaceId, sessionId, loopId: loop2, turnId: turn2, sequence: 1, origin: "model" });
 
-        const r1 = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r2 = await readLog(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r1 = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r2 = await readLog(readStmt(urlPath("log", "/2/1/1")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.match(String(r1.content), /^1<@[0-9A-Za-z]{5}>x$/);
         assert.match(String(r2.content), /^1<@[0-9A-Za-z]{5}>y$/);
     } finally { db.close(); }
 });
 
 test("{§log-range-miss-names-stream} Log.read: 404 on missing coordinates", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        const result = await readLog(readStmt(urlPath("log", "/99/99/99")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readLog(readStmt(urlPath("log", "/99/99/99")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(result.status, 404);
         assert.equal(result.content, null);
     } finally { db.close(); }
 });
 
 test("{§log-range-miss-names-stream} Log.read: 400 on malformed coordinates", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         for (const bad of ["abc", "1/2", "1/2/3/READ/4", "x/y/z"]) {
-            const result = await readLog(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, workspaceId, workerId }));
+            const result = await readLog(readStmt(urlPath("log", bad)), makeSchemeCtx({ db, workspaceId, sessionId }));
             assert.equal(result.status, 400, `path '${bad}' should return 400`);
         }
     } finally { db.close(); }
 });
 
 test("{§log-range-miss-names-stream} Log.read: core rejects a channel fragment before projecting an atomic log row", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/fact", "value"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -250,31 +250,31 @@ test("{§log-range-miss-names-stream} Log.read: core rejects a channel fragment 
             ...target,
             raw: `${target.raw}#body`,
             fragment: "body",
-        }), makeSchemeCtx({ db, workspaceId, workerId }));
+        }), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/log/channel-not-found");
     } finally { db.close(); }
 });
 
 test("{§log-range-miss-names-stream} Log.read: 400 on null path", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        const result = await readLog(readStmt(null), makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readLog(readStmt(null), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(result.status, 400);
     } finally { db.close(); }
 });
 
 test("{§log-range-miss-names-stream} Log.read: lineMarker <1> on a JSON result selects its first physical line", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("workspace", "/data.json")), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         const whole = await readLog(
             readStmt(urlPath("log", "/1/1/2")),
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/2")), lineMarker: { marks: [1] } };
-        const r = await readLog(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readLog(stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "text/markdown");
         assert.equal(r.startLine, 1);
@@ -283,12 +283,12 @@ test("{§log-range-miss-names-stream} Log.read: lineMarker <1> on a JSON result 
 });
 
 test("{§log-range-miss-names-stream} Log.read: a range miss carries the exact textual line extent", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("workspace", "/data.json")), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/2")), lineMarker: { marks: [99] } };
-        const r = await readLog(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readLog(stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 416);
         assert.equal(r.content, null);
         const range = r.problem?.range as {
@@ -303,16 +303,16 @@ test("{§log-range-miss-names-stream} Log.read: a range miss carries the exact t
 });
 
 test("{§log-range-miss-names-stream} Log.find: an exact matcher returns flat locations and complete path/location counts", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("workspace", "/data.json")), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         const stmt: FindStatement = {
             metadata: null,
             op: "FIND", aside: null, target: urlPath("log", "/1/1/2"), lineMarker: null,
             matcher: { dialect: "regex", raw: "/\"status\"/", pattern: "\"status\"", flags: "" }, body: null, position: { line: 1, column: 1 },
         };
-        const r = await new Log().find(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Log().find(stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         assert.equal(r.results.length, 1);
@@ -329,21 +329,21 @@ test("{§log-range-miss-names-stream} Log.find: an exact matcher returns flat lo
 });
 
 test("{§edit-receipt-anchored-context} Log.read: a READ signal does not filter the addressed log resource", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/z", "v"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         const stmt: ReadStatement = { ...readStmt(urlPath("log", "/1/1/1")), };
-        const result = await readLog(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
+        const result = await readLog(stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(result.status, 200);
         assert.match(String(result.content), /^1<@[0-9A-Za-z]{5}>v$/, "{§edit-receipt-anchored-context} an EDIT row's body is its anchored landed context");
     } finally { db.close(); }
 });
 
 test("{§log-range-miss-names-stream} Log.find: body matcher selects the full projection before <L> projects text", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: readStmt(urlPath("worker", "/data.json")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt("/data.json", '{"status":201,"entryId":7,"channel":"body"}'), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: readStmt(urlPath("workspace", "/data.json")), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         // The matcher qualifies the complete JSON result. Because the target is
         // exact, <1> selects the first match location.
         const stmt: FindStatement = {
@@ -352,7 +352,7 @@ test("{§log-range-miss-names-stream} Log.find: body matcher selects the full pr
             lineMarker: { marks: [1, 1] },
             matcher: { dialect: "regex", raw: "/\\d+/", pattern: "\\d+", flags: "" }, body: null, position: { line: 1, column: 1 },
         };
-        const r = await new Log().find(stmt, makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await new Log().find(stmt, makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 1);
         assert.equal(r.matchingPathCount, 1);
@@ -362,25 +362,25 @@ test("{§log-range-miss-names-stream} Log.find: body matcher selects the full pr
 });
 
 test("{§log-range-miss-names-stream} Log.find: a matcher FIND writes flat surgical coordinates", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await new Worker().edit(
-            { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null } },
-            makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId }),
+        await new Workspace().edit(
+            { ...editStmt("/notes", "alpha\nbeta\ngamma"), target: { kind: "url", raw: "workspace:///notes", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null } },
+            makeSchemeCtx({ db, workspaceId, sessionId, loopId, turnId }),
         );
         const result = await engine.dispatch({
             statement: {
                 metadata: null,
                 op: "FIND", aside: null,
-                target: { kind: "url", raw: "worker:///notes", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
+                target: { kind: "url", raw: "workspace:///notes", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/notes", query: null, fragment: null },
                 lineMarker: null,
                 matcher: { dialect: "regex", raw: "/\\w+/g", pattern: "\\w+", flags: "g" }, body: null,
                 position: { line: 1, column: 1 },
             },
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.rowsWritten ?? 1, 1);
-        const r = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readLog(readStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200);
         assert.equal(r.mimetype, "application/json");
         const locations = JSON.parse(r.content ?? "[]") as Array<{ region?: unknown }>;
@@ -390,17 +390,17 @@ test("{§log-range-miss-names-stream} Log.find: a matcher FIND writes flat surgi
 });
 
 test("{§edit-receipt-anchored-context} Log.read: dispatches correctly via Engine.dispatch routing to log scheme", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/known-fact", "knowledge"),
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, sessionId, loopId, turnId,
             sequence: 1, origin: "model",
         });
 
         const result = await engine.dispatch({
             statement: readStmt(urlPath("log", "/1/1/1")),
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, sessionId, loopId, turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
@@ -412,7 +412,7 @@ test("{§edit-receipt-anchored-context} Log.read: dispatches correctly via Engin
 // {§log-channel-miss-names-stream} (#502) — a channel READ on a log execution item is a miss the
 // receipt can resolve: the stream shares the coordinate and lives at <runtime>:///…/sh#channel.
 test("{§log-range-miss-names-stream} Log.read: #channel on an execution log item names the command's stream address in its 404", async () => {
-    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         const schemes = new SchemeRegistry();
         const executors = await testExecutors();
@@ -426,7 +426,7 @@ test("{§log-range-miss-names-stream} Log.read: #channel on an execution log ite
                     metadata: null, runtime: "sh", aside: null,
                     target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
                 },
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => { logEntryId = id; settle(id); },
             }).then((result) => assert.equal(result.status, 200, "the command started"));
         });
@@ -438,7 +438,7 @@ test("{§log-range-miss-names-stream} Log.read: #channel on an execution log ite
         const address = await executionAddress(db, turnId);
         const miss = await readLog(
             readStmt({ ...urlPath("log", "/1/1/1/sh"), raw: "log:///1/1/1/sh#stdout", fragment: "stdout" }),
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
         assert.equal(miss.status, 404);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/scheme/log/channel-not-found");
@@ -450,7 +450,7 @@ test("{§log-range-miss-names-stream} Log.read: #channel on an execution log ite
         // The named address is real: the same READ against it returns the output.
         const stream = await clientRead(engine, db, {
             statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
-            workspaceId, workerId,
+            workspaceId, sessionId,
         });
         assert.equal(stream.status, 200);
         assert.match(String((stream as { content?: unknown }).content), /hello/);
@@ -460,7 +460,7 @@ test("{§log-range-miss-names-stream} Log.read: #channel on an execution log ite
 // {§log-range-miss-names-stream} — the range twin of the channel miss above: an empty-extent
 // 416 on a log execution item names the recorded stream address, and that address reads.
 test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execution log item carries the command's stream address", async () => {
-    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         const schemes = new SchemeRegistry();
         const executors = await testExecutors();
@@ -474,7 +474,7 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
                     metadata: null, runtime: "sh", aside: null,
                     target: null, lineMarker: null, body: "echo hello", position: { line: 1, column: 1 },
                 },
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => { logEntryId = id; settle(id); },
             }).then((result) => assert.equal(result.status, 200, "the command started"));
         });
@@ -486,11 +486,11 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
         // The bodiless sibling shares the real execution's stream link, the way a drained or
         // bodiless call receipt does while its output stays readable at the stream address.
         const address = await executionAddress(db, turnId, 1);
-        await insertExecutionRow(db, { workerId, loopId, turnId }, 2, { stream: address }, null);
+        await insertExecutionRow(db, { sessionId, loopId, turnId }, 2, { stream: address }, null);
 
         const miss = await readLog(
             { ...readStmt(urlPath("log", "/1/1/2/sh")), lineMarker: { marks: [2, 3] } },
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
         assert.equal(miss.status, 416);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
@@ -503,7 +503,7 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
         // The named address is real: the same READ against it returns the output.
         const stream = await clientRead(engine, db, {
             statement: readStmt({ ...urlPath("sh", new URL(address).pathname), raw: `${address}#stdout`, fragment: "stdout" }),
-            workspaceId, workerId,
+            workspaceId, sessionId,
         });
         assert.equal(stream.status, 200);
         assert.match(String((stream as { content?: unknown }).content), /hello/);
@@ -513,12 +513,12 @@ test("{§log-range-miss-names-stream} Log.read: an empty-extent 416 on an execut
 // {§log-range-miss-names-stream} — no recorded stream, no naming: the generic slicer problem
 // is byte-identical, the condition the augmentation must not disturb.
 test("{§problems-schemes} Log.read: an empty-extent 416 without a recorded stream keeps the generic slicer problem", async () => {
-    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await insertExecutionRow(db, { workerId, loopId, turnId }, 1, {}, null);
+        await insertExecutionRow(db, { sessionId, loopId, turnId }, 1, {}, null);
         const miss = await readLog(
             { ...readStmt(urlPath("log", "/1/1/1/sh")), lineMarker: { marks: [2, 3] } },
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
         assert.equal(miss.status, 416);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
@@ -533,12 +533,12 @@ test("{§problems-schemes} Log.read: an empty-extent 416 without a recorded stre
 // {§log-range-miss-names-stream} — an ordinary out-of-range miss against a real extent keeps
 // the generic problem even when the row records a stream.
 test("{§log-range-miss-names-stream} Log.read: an out-of-range 416 against a command row's invocation carries the stream (#759)", async () => {
-    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
-        await insertExecutionRow(db, { workerId, loopId, turnId }, 1, { stream: "sh:///0badcafe" }, "one\ntwo");
+        await insertExecutionRow(db, { sessionId, loopId, turnId }, 1, { stream: "sh:///0badcafe" }, "one\ntwo");
         const miss = await readLog(
             { ...readStmt(urlPath("log", "/1/1/1/sh")), lineMarker: { marks: [9] } },
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
         assert.equal(miss.status, 416);
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");

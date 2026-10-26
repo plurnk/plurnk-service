@@ -53,8 +53,8 @@ test("{§executor-js-spelling}: a nested alias example remains a literal message
 // {§canonical-statement}
 test("{§section-boundary} independent fenced operations retain exact bodies and typed fields", () => {
     const input = [
-        frame("EDIT (worker:///note.md) <1,-1>", "alpha\nbeta"),
-        frame("READ (worker:///note.md)", null),
+        frame("EDIT (workspace:///note.md) <1,-1>", "alpha\nbeta"),
+        frame("READ (workspace:///note.md)", null),
         task("Waiting for the read result."),
     ].join("\n");
     const parsed = PlurnkParser.parse(input);
@@ -137,7 +137,7 @@ test("{§fence-boundary} operations after a disposition are admitted in authored
                 task("Answer.", op),
                 frame("KILL (log:///3/3/1/READ)", null),
                 frame("READ (notes.md)", null),
-                frame("SEND (worker://reviewer)", "Check this."),
+                frame("SEND (session://reviewer)", "Check this."),
             ].join("\n");
             const parsed = PlurnkParser.parse(input);
             assert.equal(parsed.unparsedTail, undefined);

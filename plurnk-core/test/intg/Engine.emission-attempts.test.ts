@@ -12,7 +12,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { ProviderAccountingIntegrityError } from "../../src/core/ModelCall.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection, digestStems } from "./_packet.ts";
 import { testProviderCapacity } from "./_provider.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
@@ -81,19 +81,19 @@ class AttemptWitness extends Mock {
 const setup = async (dbPath?: string) => {
     const db = await openMigrated(dbPath);
     const workspaceId = await insertWorkspace(db, `emissions-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "subject");
-    const loopId = await insertLoop(db, workerId, 1, "do the task");
-    const packetNotifications: Array<{ workspaceId: number; workerId: number; loopId: number; packetCount: number }> = [];
+    const sessionId = await insertSession(db, workspaceId, null, "subject");
+    const loopId = await insertLoop(db, sessionId, 1, "do the task");
+    const packetNotifications: Array<{ workspaceId: number; sessionId: number; loopId: number; packetCount: number }> = [];
     const engine = new Engine({
         db,
         schemes: new SchemeRegistry(),
         loopPacketNotify: (notifiedWorkspaceId, packet) => packetNotifications.push({ workspaceId: notifiedWorkspaceId, ...packet }),
     });
-    return { db, workspaceId, workerId, loopId, engine, packetNotifications };
+    return { db, workspaceId, sessionId, loopId, engine, packetNotifications };
 };
 
 test("{§emission-admission} provider I/O begins only after its pending attempt row is durable", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -120,7 +120,7 @@ test("{§emission-admission} provider I/O begins only after its pending attempt 
         await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -130,7 +130,7 @@ test("{§emission-admission} provider I/O begins only after its pending attempt 
 });
 
 test("{§provider-connectivity}: one model call durably settles a transient request and its successful retry", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         let calls = 0;
         const provider = new AiSdkProvider({
@@ -187,7 +187,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -220,7 +220,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
 });
 
 test("{§empty-turn} separator-free provider preamble does not reject a complete model turn", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const content = "harmless status.````SEND\ndone\n````";
         const provider = new AttemptWitness({
@@ -231,7 +231,7 @@ test("{§empty-turn} separator-free provider preamble does not reject a complete
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -252,18 +252,18 @@ test("{§empty-turn} separator-free provider preamble does not reject a complete
 });
 
 test("{§outside-text}: interstitial text is one outside source, never a row, and survives exactly in turnOps", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const source = [
             "Prelude: preparing the edit.",
-            PlurnkParser.frame("EDIT (worker:///proof.md)", "Actual body."),
+            PlurnkParser.frame("EDIT (workspace:///proof.md)", "Actual body."),
             "3 — invented result, not a receipt.",
             PlurnkParser.frame("SEND", "Only this message is sent."),
             "Postscript: not a second message.",
         ].join("\n");
         const result = await engine.runTurn({
             provider: new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source)] }),
-            workspaceId, workerId, loopId,
+            workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "Create the proof." }],
         });
         assert.equal(result.emissionAttempts, 1);
@@ -277,11 +277,11 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         assert.deepEqual(modelRows.map(({ op, tx }) => op === "NOTE" ? JSON.parse(tx).body : op),
             ["Prelude: preparing the edit.", "EDIT", "3 — invented result, not a receipt.", "SEND", "Postscript: not a second message."],
             "each span is the turn's NOTE at its position; only the authored SEND delivers ({§outside-text})");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "ops")?.content, source,
             "the complete submitted emission is retained verbatim");
-        const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/proof.md", scheme: "worker", name: "body" });
+        const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/proof.md", scheme: "workspace", name: "body" });
         assert.equal(landed?.content, "Actual body.");
         const turn = await db.test_get_turn.get<{ sequence: number }>({ id: result.turnId });
         const readSource = [
@@ -290,7 +290,7 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
         ].join("\n");
         const review = await engine.runTurn({
             provider: new AttemptWitness({ contextWindow: 100_000, responses: [invalid(readSource)] }),
-            workspaceId, workerId, loopId,
+            workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "Inspect the original emission." }],
         });
         const reviewRows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; status_rx: number; attrs: string }>({ turn_id: review.turnId });
@@ -305,13 +305,13 @@ test("{§outside-text}: interstitial text is one outside source, never a row, an
 });
 
 test("{§emission-admission} invalid emissions retry beneath one turn against the identical packet, then admit only the valid response", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````READ (worker:///prose-without-a-turn", requestUsage(10, 2, 1, 4)),
-                invalid("````READ (worker:///broken", requestUsage(20, 3, 2, 5)),
+                invalid("````READ (workspace:///prose-without-a-turn", requestUsage(10, 2, 1, 4)),
+                invalid("````READ (workspace:///broken", requestUsage(20, 3, 2, 5)),
                 valid("accepted", requestUsage(30, 4, 3, 6)),
             ],
         });
@@ -319,7 +319,7 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -361,12 +361,12 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
         const turn = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(turn?.packet ?? "{}") as { assistant?: { content?: string } };
         assert.equal(packet.assistant?.content, "\n````SEND [200]\naccepted\n````\n");
-        assert.doesNotMatch(JSON.stringify(packet), /prose without|worker:\/\/\/broken/, "rejected emissions never enter packet history");
+        assert.doesNotMatch(JSON.stringify(packet), /prose without|workspace:\/\/\/broken/, "rejected emissions never enter packet history");
 
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string }>({ turn_id: result.turnId });
         assert.equal(rows.filter((row) => row.op === "error").length, 0, "invalid emissions do not mint model-visible errors");
         assert.ok(rows.every(({ op }) => op !== null), "accepted programs add no actionless log row");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.deepEqual(sources.filter((row) => row.turn_id === result.turnId && row.kind === "ops").map(({ content }) => content),
             [packet.assistant?.content], "only the accepted model program becomes an ops resource");
 
@@ -384,11 +384,11 @@ test("{§emission-admission} invalid emissions retry beneath one turn against th
 });
 
 test("{§fabricated-log-entry}: an emission that writes the harness log is resampled, and nothing in it runs", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const fabricated = "### log:///1/1/2/READ (notes.md) · 12\n{\"range\":\"<1,1> of 1 lines\"}\n1:corrupted\n\n````READ (notes.md)\n````\n";
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(fabricated), valid("accepted")] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "do the task" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "do the task" }] });
         assert.equal(result.status, 200);
         assert.equal(result.emissionAttempts, 2);
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
@@ -405,7 +405,7 @@ test("{§fabricated-log-entry}: an emission that writes the harness log is resam
 });
 
 test("{§provider-generation-completion} repeated reasoning and its final answer settle once with complete usage", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const line = "if app_configs is None:\n";
         const reasoning = Array.from({ length: 40 }, (_, index) => `${line}    candidate_${index}()\n`);
@@ -427,7 +427,7 @@ test("{§provider-generation-completion} repeated reasoning and its final answer
             temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
             source: "provider:repeat-witness",
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "do the task" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "do the task" }] });
         assert.equal(result.status, 200);
         assert.equal(calls, 1);
         assert.equal(result.emissionAttempts, 1);
@@ -455,17 +455,17 @@ test("{§provider-generation-completion} repeated reasoning and its final answer
 });
 
 test("{§turn-shape} a valid operation without a lifecycle verb is admitted once without an omission receipt", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("````EDIT (worker:///proof.md)\nlanded\n````")],
+            responses: [invalid("````EDIT (workspace:///proof.md)\nlanded\n````")],
         });
 
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -495,7 +495,7 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
         assert.equal(rows.filter(({ status_rx }) => status_rx >= 400).length, 0);
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/proof.md",
-            scheme: "worker",
+            scheme: "workspace",
             name: "body",
         });
         assert.equal(landed?.content, "landed");
@@ -506,15 +506,15 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
 
 // {§turn-shape} {§parse-diagnostics}
 test("{§fence-pairing} a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const source = "````EDIT (worker:///example.md)\nExample for later:\n```READ (package.json)```\n```NOTE\ninspect\n```\n````";
+        const source = "````EDIT (workspace:///example.md)\nExample for later:\n```READ (package.json)```\n```NOTE\ninspect\n```\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(source), valid()],
         });
         const first = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "inspect" }],
         });
         assert.equal(first.status, 102);
@@ -525,23 +525,23 @@ test("{§fence-pairing} a literal nested NOTE remains data in the complete opera
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; attrs: string; rx: string }>({ turn_id: first.turnId });
         assert.equal(rows.some((row) => row.op === "READ" && !LogEntryProjection.isEmission(row)), false, "shorter nested fences remain literal data");
         assert.equal(rows.some(({ op }) => op === "NOTE"), false, "no nested NOTE was dispatched");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find(({ turn_id, kind }) => turn_id === first.turnId && kind === "ops")?.content, source);
         const second = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "inspect" }],
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: second.turnId });
         const log = packetSection(JSON.parse(row!.packet), "log");
         assert.match(log, /### log:\/\/\/1\/2\/\d+\/EDIT/u, "the next model turn receives the EDIT receipt");
-        assert.match(packetSection(JSON.parse(row!.packet), "emission-history"), /EDIT \(worker:\/\/\/example\.md\)/u, "the operation supplies its addressed path");
+        assert.match(packetSection(JSON.parse(row!.packet), "emission-history"), /EDIT \(workspace:\/\/\/example\.md\)/u, "the operation supplies its addressed path");
     } finally {
         await db.close();
     }
 });
 
 test("{§tokenomics-provider-usage} a provider-authoritative charge is the settled turn and loop cost", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 8_192,
@@ -557,7 +557,7 @@ test("{§tokenomics-provider-usage} a provider-authoritative charge is the settl
         });
         const result = await engine.runTurn({
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "settle the call" }],
             provider,
@@ -588,12 +588,12 @@ test("{§tokenomics-provider-usage} a provider-authoritative charge is the settl
 });
 
 test("{§emission-admission} finish=length is forensic evidence: a frame that lost its boundary after a statement is admitted with the loss as its diagnostic", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const lostPrefix = [
             "",
-            "````READ (worker:///missing)````",
-            "````EDIT (worker:///notes.md",
+            "````READ (workspace:///missing)````",
+            "````EDIT (workspace:///notes.md",
         ].join("\n");
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -603,7 +603,7 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -637,9 +637,9 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
 });
 
 test("{§lifecycle-slots}: a malformed continuation heading preserves siblings without authorizing completion", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const rejected = "````EDIT (worker:///proof.md)\nthe valid sibling is written\n````\n````NOTE [{\"content\":\"keep\nthis\",\"status\":\"pending\"}]\n````";
+        const rejected = "````EDIT (workspace:///proof.md)\nthe valid sibling is written\n````\n````NOTE [{\"content\":\"keep\nthis\",\"status\":\"pending\"}]\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [invalid(rejected)],
@@ -648,7 +648,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -671,7 +671,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
         assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "EDIT"), true);
         const landed = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/proof.md",
-            scheme: "worker",
+            scheme: "workspace",
             name: "body",
         });
         assert.equal(landed?.content, "the valid sibling is written");
@@ -681,9 +681,9 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
 });
 
 test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        const malformed = "\n````FIND (worker:///x) $fC````\n\n````NOTE\ninspect the results next\n````";
+        const malformed = "\n````FIND (workspace:///x) $fC````\n\n````NOTE\ninspect the results next\n````";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
@@ -695,7 +695,7 @@ test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically l
         const failed = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "inspect the code" }],
         });
@@ -744,7 +744,7 @@ test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically l
         const recovery = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "inspect the code" }],
         });
@@ -762,7 +762,7 @@ test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically l
 });
 
 test("{§retrieval-annotation}: a READ carrying pasted lines keeps them as a NOTE without treating them as selection", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const renderedRead = [
             "2286<@et6xE>\t// Set debug flag from environment if not already set",
@@ -785,7 +785,7 @@ ${renderedRead}
         const failed = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "inspect the code" }],
         });
@@ -805,7 +805,7 @@ ${renderedRead}
         );
         assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "error"), false);
         assert.equal(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE").length, 2, "the annotation and explicit NOTE are separate memories");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const turnOps = sources.find((row) => row.turn_id === failed.turnId && row.kind === "ops");
         assert.ok(turnOps, "the admitted source remains durable independently of result rows");
         assert.match(
@@ -817,7 +817,7 @@ ${renderedRead}
         const recovery = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "inspect the code" }],
         });
@@ -837,7 +837,7 @@ ${renderedRead}
 });
 
 test("{§matcher-refusal} a bounded malformed operation defers same-turn completion until the model observes it", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -849,7 +849,7 @@ test("{§matcher-refusal} a bounded malformed operation defers same-turn complet
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "search" }],
         });
@@ -885,20 +885,20 @@ test("{§matcher-refusal} a bounded malformed operation defers same-turn complet
 });
 
 test("{§extra-path-slot}: a third COPY operand preserves siblings, source evidence, and the actual parser diagnostic", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, {
-            workspaceId, scheme: "worker", pathname: "/src.md",
+            workspaceId, scheme: "workspace", pathname: "/src.md",
             content: "one\ntwo\nthree", mimetype: "text/markdown",
         });
         const source = [
             "Unexecuted interstitial text.",
-            PlurnkParser.frame("READ (worker:///src.md) <1>", null),
-            PlurnkParser.frame("COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)", null),
-            PlurnkParser.frame("READ (worker:///src.md) <3>", null),
+            PlurnkParser.frame("READ (workspace:///src.md) <1>", null),
+            PlurnkParser.frame("COPY (workspace:///src.md) <2,3> (to) (workspace:///slice.md)", null),
+            PlurnkParser.frame("READ (workspace:///src.md) <3>", null),
         ].join("\n\n");
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source), valid()] });
-        const context = { workspaceId, workerId, loopId };
+        const context = { workspaceId, sessionId, loopId };
         const first = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(first.status, 102);
         assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["NOTE", 200], ["READ", 200], ["READ", 200], [null, 400]], "the interstitial text is the turn's NOTE beside the operations ({§outside-text})");
@@ -906,8 +906,8 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
         assert.ok(readSource.kind === "statement");
         // Source identity never depends on the reader ({§turn-source-resources}); the subject's next packet is under test.
-        const observer = await insertWorker(db, workspaceId, null, "observer");
-        const retained = await clientRead(engine, db, { workspaceId, workerId: observer, statement: readSource.statement });
+        const observer = await insertSession(db, workspaceId, null, "observer");
+        const retained = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: readSource.statement });
         assert.equal(retained.status, 200);
         assert.ok("content" in retained);
         assert.equal(retained.content, source, "recovery never rewrites the original submitted program");
@@ -924,28 +924,28 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
             "unexpected `(` (`(path)` slot opener); expected operation fence header, operation-heading line ending, or closing fence");
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 6);
-        assert.equal(problem.column, 38);
+        assert.equal(problem.column, 41);
         // {§parse-attempt} The row records the statement the parser refused, as written; the packet shows the model nothing new.
-        const [refused] = await db.test_log_entries_by_worker_op_full.all<{ attrs: string }>({ worker_id: workerId, op: "error" });
+        const [refused] = await db.test_log_entries_by_session_op_full.all<{ attrs: string }>({ session_id: sessionId, op: "error" });
         const attempt = (JSON.parse(refused.attrs) as { attempt?: { verb: string; text: string } }).attempt;
         assert.equal(attempt?.verb, "COPY");
-        assert.ok(attempt?.text.startsWith(PlurnkParser.frame("COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)", null).split("\n")[0]), attempt?.text);
+        assert.ok(attempt?.text.startsWith(PlurnkParser.frame("COPY (workspace:///src.md) <2,3> (to) (workspace:///slice.md)", null).split("\n")[0]), attempt?.text);
         assert.equal(Object.hasOwn(problem, "attempt"), false);
         assert.equal(JSON.stringify(failures[0]).includes("attempt"), false, "the attempt never reaches the model's packet");
     } finally { await db.close(); }
 });
 
-for (const heading of ["KILL <1> (worker:///trim.md)", "KILL → worker:///trim.md <1>"]) {
+for (const heading of ["KILL <1> (workspace:///trim.md)", "KILL → workspace:///trim.md <1>"]) {
     test(`{§fence-pairing}: ${heading} missing its closer preserves the following READ and its result`, async () => {
-        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
         try {
             await seedEntryWithChannel(db, {
-                workspaceId, scheme: "worker", pathname: "/trim.md",
+                workspaceId, scheme: "workspace", pathname: "/trim.md",
                 content: "one\ntwo\nthree", mimetype: "text/markdown",
             });
-            const source = [`\`\`\`${heading}`, "```READ (worker:///trim.md) <1,-1>", "```"].join("\n");
+            const source = [`\`\`\`${heading}`, "```READ (workspace:///trim.md) <1,-1>", "```"].join("\n");
             const provider = new AttemptWitness({ contextWindow: 100_000, responses: [invalid(source), valid()] });
-            const context = { workspaceId, workerId, loopId };
+            const context = { workspaceId, sessionId, loopId };
             const first = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(first.status, 102, "the addressed KILL is a mutation, not completion");
             assert.deepEqual(first.outcomes.map(({ op, status }) => [op, status]), [["KILL", 200], ["READ", 200]]);
@@ -954,8 +954,8 @@ for (const heading of ["KILL <1> (worker:///trim.md)", "KILL → worker:///trim.
             const [readSource] = PlurnkParser.parseStatements(PlurnkParser.frame(`READ (ops://subject/1/${sequence}) <1,-1>`, null)).items;
             assert.ok(readSource.kind === "statement");
             // Source identity never depends on the reader ({§turn-source-resources}); the subject's next packet is under test.
-            const observer = await insertWorker(db, workspaceId, null, "observer");
-            const retained = await clientRead(engine, db, { workspaceId, workerId: observer, statement: readSource.statement });
+            const observer = await insertSession(db, workspaceId, null, "observer");
+            const retained = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: readSource.statement });
             assert.equal(retained.status, 200);
             assert.ok("content" in retained);
             assert.equal(retained.content, source, "recovery preserves the original emission");
@@ -970,24 +970,24 @@ for (const heading of ["KILL <1> (worker:///trim.md)", "KILL → worker:///trim.
 }
 
 test("{§transfer-resource-selections} a malformed COPY destination cannot dispatch or materialize", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, {
             workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             pathname: "/src.md",
             content: "one\ntwo\nthree",
             mimetype: "text/markdown",
         });
         const provider = new AttemptWitness({
             contextWindow: 100_000,
-            responses: [invalid("````COPY (worker:///src.md) <2,3> (worker:///slice.md) <0>:````\n````NOTE\ninspect the copy result\n````")],
+            responses: [invalid("````COPY (workspace:///src.md) <2,3> (workspace:///slice.md) <0>:````\n````NOTE\ninspect the copy result\n````")],
         });
 
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "copy lines two and three" }],
         });
@@ -1013,7 +1013,7 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
         assert.equal(entries.some(({ pathname }) => pathname === "/slice.md%3C0%3E:"), false);
         const source = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/src.md",
-            scheme: "worker",
+            scheme: "workspace",
             name: "body",
         });
         assert.equal(source?.content, "one\ntwo\nthree", "admission fails before any source or destination mutation");
@@ -1023,19 +1023,19 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
 });
 
 test("{§turn-disposition} two WAITs keep the single-turn boundary: the program is admitted whole", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````WAIT\nWait.\n````\n````WAIT\nContinue the task.\n````\n\n````EDIT (worker:///two-waits.md)\nvalue\n````"),
+                invalid("````WAIT\nWait.\n````\n````WAIT\nContinue the task.\n````\n\n````EDIT (workspace:///two-waits.md)\nvalue\n````"),
             ],
         });
 
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -1055,14 +1055,14 @@ test("{§turn-disposition} two WAITs keep the single-turn boundary: the program 
 });
 
 test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statement is a row, not a resample: the prefix runs and the next packet carries the lexer's reason", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const body = "The example:\n```ts\nconst value = 42;\n```\nVerified.";
         // An unfinished target slot at the end of the input is the one boundary loss left; a missing
         // or mismatched closer never is ({§closer-fallback}).
         const lost = [
-            PlurnkParser.frame("EDIT (worker:///before-loss.md)", "kept"),
-            "````SEND (worker://reviewer",
+            PlurnkParser.frame("EDIT (workspace:///before-loss.md)", "kept"),
+            "````SEND (session://reviewer",
         ].join("\n");
         const corrected = PlurnkParser.frame("SEND [200]", body);
         const provider = new AttemptWitness({
@@ -1070,7 +1070,7 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
             responses: [invalid(lost), invalid(corrected)],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "Report the result with its code example." }],
         });
         assert.equal(result.result.status, 200);
@@ -1085,7 +1085,7 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
         assert.ok(provider.packets[1]?.includes(message), "the next packet carries the parser-owned boundary diagnosis");
         const replyAttempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: replyTurn });
         assert.deepEqual(replyAttempts.map(({ accepted }) => accepted), [1]);
-        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ worker_id: workerId });
+        const rows = await db.engine_render_log.all<{ op: string; origin: string; tx: string; rx: string }>({ session_id: sessionId });
         assert.equal(rows.filter(({ op, origin }) => op === "EDIT" && origin === "model").length, 1, "the statement that closed before the loss ran");
         assert.equal(rows.filter(({ op, origin }) => op === "SEND" && origin === "model").length, 1);
         const loss = rows.find(({ op, origin }) => op === "error" && origin === "model");
@@ -1099,14 +1099,14 @@ test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statem
 });
 
 test("{§invalid-emission-attempts} exhausted private attempts expose the latest response and the parser's diagnostic on one recovery turn", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     const latestRejected = "\n````READ (file:///main.go";
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````READ (worker:///first-private-invalid"),
-                invalid("````READ (worker:///second-private-invalid"),
+                invalid("````READ (workspace:///first-private-invalid"),
+                invalid("````READ (workspace:///second-private-invalid"),
                 invalid(latestRejected),
                 continuing("recovered"),
                 valid("finished"),
@@ -1117,7 +1117,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         provider.generate = async (args) => {
             providerCalls++;
             if (providerCalls === 4) {
-                const rows = await db.engine_render_log.all<{ initial_folded: string; folded: string; attrs: string }>({ worker_id: workerId });
+                const rows = await db.engine_render_log.all<{ initial_folded: string; folded: string; attrs: string }>({ session_id: sessionId });
                 const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
                 assert.equal(rejectedMirror?.initial_folded, "[[1,-1]]", "the recovery packet does not require durably visible malformed content");
                 assert.equal(rejectedMirror?.folded, "[]", "initial suppression does not trim the rejected program");
@@ -1128,7 +1128,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
         const result = await engine.runLoop({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
@@ -1169,7 +1169,7 @@ test("{§invalid-emission-attempts} exhausted private attempts expose the latest
             initial_folded: string;
             folded: string;
             attrs: string;
-        }>({ worker_id: workerId });
+        }>({ session_id: sessionId });
         const rejectedMirror = rows.find((row) => JSON.parse(row.attrs).kind === "emissionAttempt");
         assert.ok(rejectedMirror !== undefined);
         assert.equal(rejectedMirror.turn_seq, 2, "the rejected emission belongs to the first packet-bearing turn");
@@ -1208,7 +1208,7 @@ class GarbageProvider extends AttemptWitness {
 }
 
 test("{§provider-generation-failed} {§engine-rails} a provider-declared generation error strikes like an invalid response and is never re-issued; the loop continues", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     // A recovery wait here would last a minute, past the runner's bound: a loop that ends in seconds took none.
     const priorBackoff = process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
     process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF = "60000";
@@ -1218,14 +1218,14 @@ test("{§provider-generation-failed} {§engine-rails} a provider-declared genera
         ], "generation_failed");
         const started = Date.now();
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
         assert.equal(result.result.status, 200, "one generation error is one strike, never a loop death");
         assert.equal(result.reason, "external");
         assert.ok(Date.now() - started < 20_000, "no provider recovery wait: the next turn asks again at once");
-        const problems = await db.test_log_entries_by_worker_op_full.all<{ rx: string }>({ worker_id: workerId, op: "error" });
+        const problems = await db.test_log_entries_by_session_op_full.all<{ rx: string }>({ session_id: sessionId, op: "error" });
         assert.ok(problems.some(({ rx }) => rx.includes("generation-failed") && rx.includes("MALFORMED_FUNCTION_CALL")), "the failed attempt is durable with its raw finish reason");
     } finally {
         if (priorBackoff === undefined) delete process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
@@ -1235,13 +1235,13 @@ test("{§provider-generation-failed} {§engine-rails} a provider-declared genera
 });
 
 test("{§provider-generation-failed} {§engine-rails} three consecutive generation errors strike out through the rail", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
             { assistant: { content: "\n````SEND [200]\nnever reached\n````", reasoning: null } },
         ], "generation_failed");
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -1252,13 +1252,13 @@ test("{§provider-generation-failed} {§engine-rails} three consecutive generati
 });
 
 test("{§engine-rails} Contract Strikes: one invalid provider response strikes; the loop continues", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(1, [
             { assistant: { content: "\n````SEND [200]\ndone\n````", reasoning: null } },
         ]);
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -1268,13 +1268,13 @@ test("{§engine-rails} Contract Strikes: one invalid provider response strikes; 
 });
 
 test("{§engine-rails} Contract Strikes: three consecutive invalid provider responses strike out", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
             { assistant: { content: "\n````SEND [200]\nnever reached\n````", reasoning: null } },
         ]);
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -1285,10 +1285,10 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
 });
 
 test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike out at three; a clean turn clears", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         // {§unparsed-tail-boundary} — an unfinished target at the end of the input is the exhaustion shape.
-        const cut = { assistant: { content: "````READ (worker:///no-ops-here", reasoning: null } };
+        const cut = { assistant: { content: "````READ (workspace:///no-ops-here", reasoning: null } };
         const good = (body: string) => ({ assistant: { content: `
 \`\`\`\`FIND (log:///**) <1,1>\`\`\`\`
 \`\`\`\`NOTE
@@ -1310,7 +1310,7 @@ ${body}
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -1320,22 +1320,22 @@ ${body}
     } finally { await db.close(); }
 });
 test("{§invalid-emission-attempts} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         // {§unparsed-tail-boundary} — only an unfinished heading slot at the end of the input rejects.
-        const rejected = "````READ (worker:///unfinished";
+        const rejected = "````READ (workspace:///unfinished";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
                 // Two admitted turns each struck by a bounded heading failure, a third COPY operand
                 // ({§extra-path-slot}); a fumbled matcher would not strike ({§matcher-refusal}).
-                invalid("````READ (worker:///absent)````\n````COPY (worker:///a) (worker:///b) (worker:///c)````"),
-                invalid("````READ (worker:///absent)````\n````COPY (worker:///a) (worker:///b) (worker:///c)````"),
+                invalid("````READ (workspace:///absent)````\n````COPY (workspace:///a) (workspace:///b) (workspace:///c)````"),
+                invalid("````READ (workspace:///absent)````\n````COPY (workspace:///a) (workspace:///b) (workspace:///c)````"),
                 invalid(rejected), invalid(rejected), invalid(rejected),
                 valid("Not requested."),
             ],
         });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxStrikes: 3, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxStrikes: 3, messages: [] });
         assert.equal(result.result.status, 500);
         assert.equal(result.reason, "strike_threshold");
         assert.equal(provider.packets.length, 5, "two admitted struck turns plus three private attempts; no fourth engine turn");
@@ -1358,10 +1358,10 @@ test("{§rejected-emission-entry} digest preserves rejected emissions as forensi
         const dir = await mkdtemp(join(tmpdir(), "plurnk-emission-digest-"));
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
-        const { db, workspaceId, workerId, loopId, engine } = await setup(dbPath);
+        const { db, workspaceId, sessionId, loopId, engine } = await setup(dbPath);
         // A workspace entry, so the workspace survey selects something and the initialization program exists.
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-        const rejected = "````READ (worker:///😀rejected bytes";
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
+        const rejected = "````READ (workspace:///😀rejected bytes";
         try {
             const provider = new AttemptWitness({
                 contextWindow: 100_000,
@@ -1373,7 +1373,7 @@ test("{§rejected-emission-entry} digest preserves rejected emissions as forensi
             await engine.runTurn({
                 provider,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "user", content: "do the task" }],
             });
@@ -1425,12 +1425,12 @@ test("{§rejected-emission-entry} digest preserves rejected emissions as forensi
 });
 
 test("{§provider-recovery} a provider outage after a rejected emission is absorbed inside the turn and every issued call stays durable", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
-                invalid("````READ (worker:///rejected-before-outage", requestUsage(10, 2)),
+                invalid("````READ (workspace:///rejected-before-outage", requestUsage(10, 2)),
                 valid("done", requestUsage(10, 2)),
             ],
         });
@@ -1456,7 +1456,7 @@ test("{§provider-recovery} a provider outage after a rejected emission is absor
         const turn0 = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -1508,7 +1508,7 @@ test("{§provider-recovery} a provider outage after a rejected emission is absor
 });
 
 test("{§turn-never-blank} a classified provider error retains billed usage and authoritative charge without a fabricated response", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
         provider.generate = async (args) => {
@@ -1542,7 +1542,7 @@ test("{§turn-never-blank} a classified provider error retains billed usage and 
             () => engine.runTurn({
                 provider,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "user", content: "do the task" }],
             }),
@@ -1591,7 +1591,7 @@ test("{§turn-never-blank} a classified provider error retains billed usage and 
 });
 
 test("{§provider-guarantees-request-observer} Core rejects a ProviderError whose accounting differs from its observed physical requests", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({ contextWindow: 100_000, responses: [] });
         const requestAccounting: ProviderRequestAccounting = {
@@ -1617,7 +1617,7 @@ test("{§provider-guarantees-request-observer} Core rejects a ProviderError whos
             () => engine.runTurn({
                 provider,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "user", content: "do the task" }],
             }),
@@ -1635,7 +1635,7 @@ test("{§provider-guarantees-request-observer} Core rejects a ProviderError whos
 });
 
 test("{§provider-recovery} a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const content = "\n````SEND\nmust never dispatch\n````";
         const requestAccounting: ProviderRequestAccounting = {
@@ -1699,7 +1699,7 @@ test("{§provider-recovery} a complete-looking resource-interrupted attempt is p
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "do the task" }],
         });
@@ -1760,7 +1760,7 @@ test("{§provider-recovery} a complete-looking resource-interrupted attempt is p
 });
 
 test("{§turn-exception-outcome} an internal attempt-processing failure is not mislabeled as a provider failure", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const root = new Error("attempt classification failed");
         const classify = db.engine_classify_turn_attempt_response;
@@ -1777,7 +1777,7 @@ test("{§turn-exception-outcome} an internal attempt-processing failure is not m
             () => engine.runTurn({
                 provider,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "user", content: "do the task" }],
             }),
@@ -1803,7 +1803,7 @@ test("{§turn-exception-outcome} an internal attempt-processing failure is not m
 });
 
 test("{§turn-never-blank} a valid turn with a failed operation remains recoverable and model-visible", async () => {
-    const { db, workspaceId, workerId, loopId } = await setup();
+    const { db, workspaceId, sessionId, loopId } = await setup();
     try {
         class Sealed {
             static manifest = {
@@ -1837,7 +1837,7 @@ test("{§turn-never-blank} a valid turn with a failed operation remains recovera
             ],
         });
 
-        const failed = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const failed = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(failed.emissionAttempts, 1);
         assert.equal(failed.emissionExhausted, false);
         assert.ok(
@@ -1845,7 +1845,7 @@ test("{§turn-never-blank} a valid turn with a failed operation remains recovera
             "the valid turn dispatches its failing operation",
         );
 
-        const recovery = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const recovery = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: recovery.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.match(packetSection(packet, "errors"), /"status":403,"path":"log:\/\//, "the operation failure reaches the recovery turn");
@@ -1857,7 +1857,7 @@ test("{§turn-never-blank} a valid turn with a failed operation remains recovera
 });
 
 test("{§output-allowance-notice} a length finish surfaces the output allowance on the next packet, never grammar blame", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
             contextWindow: 100_000,
@@ -1866,8 +1866,8 @@ test("{§output-allowance-notice} a length finish surfaces the output allowance 
                 { assistant: { content: "\n````SEND [200]\ndone\n````", reasoning: null, finishReason: "stop" } },
             ],
         });
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "go" }] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "go" }] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.ok(t1.turnId < t2.turnId);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
@@ -1881,7 +1881,7 @@ test("{§output-allowance-notice} a length finish surfaces the output allowance 
 });
 
 test("{§empty-turn} (#478) a cut too deep to parse names the truncation, never the parser", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const cut = { assistant: { content: "I will now write the module cache implementa", reasoning: null, finishReason: "length" as const } };
         const provider = new AttemptWitness({
@@ -1889,7 +1889,7 @@ test("{§empty-turn} (#478) a cut too deep to parse names the truncation, never 
             responses: [cut, continuing("split the write"), valid("finished")],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             maxStrikes: 3,
             messages: [{ role: "user", content: "do the task" }],
         });

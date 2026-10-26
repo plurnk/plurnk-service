@@ -154,7 +154,7 @@ export default class ToolInputSchema {
         const note = [
             ...(options.aside === undefined ? [] : [ToolInputSchema.asideText(options.aside)]),
             ...(schemaNote === undefined ? [] : [schemaNote]),
-            ...(options.schemaPath === undefined ? [] : [`Schema: worker://${options.schemaPath}`]),
+            ...(options.schemaPath === undefined ? [] : [`Schema: workspace://${options.schemaPath}`]),
         ].join(" ");
         return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
     }

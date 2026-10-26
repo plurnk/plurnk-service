@@ -23,7 +23,7 @@ const target: ParsedPath = {
 const context: PlurnkSchemeContext = {
     db: {} as Db,
     workspaceId: 11,
-    workerId: 22,
+    sessionId: 22,
     loopId: 33,
     turnId: 44,
     writer: "model",
@@ -61,7 +61,7 @@ test("{§entry-address-resolution} address resolution receives identity but no s
         },
     };
     await new EntryAddressBinding().resolve({ target, routedScheme: "test", handler, manifest, ctx: context });
-    assert.deepEqual(Object.keys(received ?? {}).toSorted(), ["loopId", "signal", "turnId", "workerId", "workspaceId", "writer"]);
+    assert.deepEqual(Object.keys(received ?? {}).toSorted(), ["loopId", "sessionId", "signal", "turnId", "workspaceId", "writer"]);
 });
 
 test("{§entry-address-resolution} intrinsic read-only resources reject writes before storage binding", async () => {
@@ -81,14 +81,14 @@ test("{§entry-address-resolution} intrinsic read-only resources reject writes b
 });
 
 test("{§entry-address-resolution} default resolution preserves literal authority for every caller", async () => {
-    for (const workerId of [22, 99]) {
+    for (const sessionId of [22, 99]) {
         assert.deepEqual(await new EntryAddressBinding().resolve({
-            target, routedScheme: "test", handler: {}, manifest, ctx: { ...context, workerId },
+            target, routedScheme: "test", handler: {}, manifest, ctx: { ...context, sessionId },
         }), { address: { scheme: "test", authority: "origin.example", pathname: "/item" }, result: null });
     }
 });
 
-for (const invalid of [{ authority: "", pathname: "/item", owner: "worker" }, { authority: "", pathname: "/item", extra: 99 }]) {
+for (const invalid of [{ authority: "", pathname: "/item", owner: "session" }, { authority: "", pathname: "/item", extra: 99 }]) {
     test(`{§entry-address-resolution} rejects non-coordinate fields: ${JSON.stringify(invalid)}`, async () => {
         await assert.rejects(new EntryAddressBinding().resolve({
             target, routedScheme: "test", handler: { async resolveEntryAddress() { return invalid; } }, manifest, ctx: context,

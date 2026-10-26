@@ -1,16 +1,16 @@
 import type { Db } from "./Db.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import ErrorDetail from "./ErrorDetail.ts";
-import WorkerOwners from "./WorkerOwners.ts";
+import SessionOwners from "./SessionOwners.ts";
 
 interface CancelledLoop {
     loopId: number;
-    workerId: number;
+    sessionId: number;
     result: SchemeResult;
 }
 
 export interface CancelledTree {
-    workerIds: number[];
+    sessionIds: number[];
     loops: CancelledLoop[];
 }
 
@@ -22,7 +22,7 @@ export interface ParkedLoop {
 
 export default class LoopLifecycle {
     #db: Db;
-    #executions = new Map<number, { workerId: number; stop: () => number }>();
+    #executions = new Map<number, { sessionId: number; stop: () => number }>();
 
     constructor(db: Db) {
         this.#db = db;
@@ -48,7 +48,7 @@ export default class LoopLifecycle {
             throw new TypeError("loop execution allowance must be positive safe integer milliseconds");
         }
         const budget = await this.#db.lifecycle_execution_budget.get<{
-            worker_id: number; execution_budget_ms: number; execution_elapsed_ms: number;
+            session_id: number; execution_budget_ms: number; execution_elapsed_ms: number;
         }>({ loop_id: loopId, budget_ms: budgetMs });
         if (budget === undefined) return false;
         const started = performance.now();
@@ -60,7 +60,7 @@ export default class LoopLifecycle {
             else timer = setTimeout(arm, Math.min(2_147_483_647, Math.ceil(remaining))).unref();
         };
         this.#executions.set(loopId, {
-            workerId: budget.worker_id,
+            sessionId: budget.session_id,
             stop: () => {
                 clearTimeout(timer);
                 return elapsed();
@@ -84,9 +84,9 @@ export default class LoopLifecycle {
         }
     }
 
-    // {§worker-ownership} A provider park without another waker requires an interactive owner.
+    // {§session-ownership} A provider park without another waker requires an interactive owner.
     async park(loopId: number, { wakenBy, pollAt }: { wakenBy: string | null; pollAt?: number }): Promise<boolean> {
-        if (wakenBy === null && !await WorkerOwners.interactive(this.#db, loopId)) {
+        if (wakenBy === null && !await SessionOwners.interactive(this.#db, loopId)) {
             throw new Error(`loop ${loopId} cannot park without a waker or an interactive owner; conclude instead`);
         }
         return (await this.#db.lifecycle_park_loop.get<{ id: number }>({
@@ -105,8 +105,8 @@ export default class LoopLifecycle {
         })) !== undefined;
     }
 
-    parked(workerId: number): Promise<ParkedLoop[]> {
-        return this.#db.lifecycle_parked_loops.all<ParkedLoop>({ worker_id: workerId });
+    parked(sessionId: number): Promise<ParkedLoop[]> {
+        return this.#db.lifecycle_parked_loops.all<ParkedLoop>({ session_id: sessionId });
     }
 
     async finish(
@@ -156,7 +156,7 @@ export default class LoopLifecycle {
             : Results.fromRow(row.terminal_result);
     }
 
-    // {§worker-cancel-trigger} Whether the loop's terminal is a cancellation's.
+    // {§session-cancel-trigger} Whether the loop's terminal is a cancellation's.
     async cancelled(loopId: number): Promise<boolean> {
         const row = await this.#db.lifecycle_loop_status.get<{ terminated_by: string | null }>({
             loop_id: loopId,
@@ -205,21 +205,21 @@ export default class LoopLifecycle {
         return { rootLoopId: row.root_loop_id, maxTurns: row.max_turns, count: row.count };
     }
 
-    async cancelTree(workerId: number, reason: string, includeRoot: boolean): Promise<CancelledTree> {
+    async cancelTree(sessionId: number, reason: string, includeRoot: boolean): Promise<CancelledTree> {
         const boundedReason = ErrorDetail.preview(reason) || "no reason was supplied";
         const params = {
-            worker_id: workerId,
+            session_id: sessionId,
             include_root: includeRoot ? 1 : 0,
         };
-        const workers = await this.#db.lifecycle_worker_tree.all<{ worker_id: number; cancelled_through_sequence: number }>({
-            worker_id: params.worker_id,
+        const sessions = await this.#db.lifecycle_session_tree.all<{ session_id: number; cancelled_through_sequence: number }>({
+            session_id: params.session_id,
             include_root: params.include_root,
         });
         const cancellation = Results.failure(
             "lifecycle:cancel",
             "scope-cancelled",
             499,
-            `The worker scope was cancelled: ${boundedReason}.`,
+            `The session scope was cancelled: ${boundedReason}.`,
             {},
             {
                 reason: boundedReason,
@@ -227,25 +227,25 @@ export default class LoopLifecycle {
                 retryable: false,
             },
         );
-        const workerIds = new Set(workers.map(({ worker_id }) => worker_id));
-        const worker_ids = JSON.stringify([...workerIds]);
+        const sessionIds = new Set(sessions.map(({ session_id }) => session_id));
+        const session_ids = JSON.stringify([...sessionIds]);
         const executions = [...this.#executions].flatMap(([loopId, execution]) =>
-            workerIds.has(execution.workerId)
+            sessionIds.has(execution.sessionId)
                 ? [{ loop_id: loopId, elapsed_ms: this.#stopExecution(loopId) }]
                 : []);
         if (executions.length > 0) await this.#db.lifecycle_checkpoint_executions.run({ executions: JSON.stringify(executions) });
-        // {§worker-cancel-trigger} — one bound statement; the trigger retires the live loops inside it.
-        await this.#db.lifecycle_cancel_workers.run({ worker_ids, result: JSON.stringify(cancellation) });
+        // {§session-cancel-trigger} — one bound statement; the trigger retires the live loops inside it.
+        await this.#db.lifecycle_cancel_sessions.run({ session_ids, result: JSON.stringify(cancellation) });
         const loops = await this.#db.lifecycle_cancelled_loops.all<{
             loop_id: number;
-            worker_id: number;
+            session_id: number;
             terminal_result: string;
-        }>({ worker_cutoffs: JSON.stringify(workers) });
+        }>({ session_cutoffs: JSON.stringify(sessions) });
         return {
-            workerIds: workers.map(({ worker_id }) => worker_id),
-            loops: loops.map(({ loop_id, worker_id, terminal_result }) => ({
+            sessionIds: sessions.map(({ session_id }) => session_id),
+            loops: loops.map(({ loop_id, session_id, terminal_result }) => ({
                 loopId: loop_id,
-                workerId: worker_id,
+                sessionId: session_id,
                 result: Results.fromRow(terminal_result),
             })),
         };

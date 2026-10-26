@@ -2,7 +2,7 @@ import StoredPacket, { type RequestPacket, type PacketAssistant } from "./Stored
 import NativeContent from "./NativeContent.ts";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION, Validator } from "@plurnk/plurnk-contracts";
-import WorkerOwners from "./WorkerOwners.ts";
+import SessionOwners from "./SessionOwners.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import {
     aggregateProviderAccounting, ProviderError, scopeEnvToAlias,
@@ -15,7 +15,7 @@ import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, 
 // before being pushed to the loop's notices buffer.
 export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string; attempt?: ParseAttempt };
 // {§emission-row} {§reasoning-row}: source text and its durable turn coordinates.
-export type AdmittedTextSource = { readonly content: string; readonly workerName: string; readonly loopSeq: number; readonly turnSeq: number };
+export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
 const comparePosition = (
     a: { line: number; column: number },
     b: { line: number; column: number },
@@ -67,7 +67,7 @@ import { observed, observedSync } from "../observe/spans.ts";
 import { genAiRequestName, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
-import WorkerName from "./WorkerName.ts";
+import SessionName from "./SessionName.ts";
 import TurnOps from "./TurnOps.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
 
@@ -75,14 +75,14 @@ export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
 
 const regexLiteral = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
-const workerCatalogTarget = (
+const workspaceCatalogTarget = (
     namespace: "plurnk" | "tools",
 ): UrlPath => {
     const pathname = generatedPathname(`/${namespace}/*.md`);
     return {
         kind: "url",
-        raw: `worker://${pathname}`,
-        scheme: "worker",
+        raw: `workspace://${pathname}`,
+        scheme: "workspace",
         username: null,
         password: null,
         hostname: null,
@@ -239,8 +239,8 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§context-over-budget-row} — the row is the mandate; the gauge is the one home for the numbers
 // ({§context-gauge}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
-// {§worker-initialization-entry} — the two NOTEs that open and close the initialization surveys, both
-// labelled as the card's own plan example is: the worker's plan in steps, then its next step.
+// {§session-initialization-entry} — the two NOTEs that open and close the initialization surveys, both
+// labelled as the card's own plan example is: the session's plan in steps, then its next step.
 const INITIALIZATION_NOTE: NoteStatement = {
     op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
     body: ["1. Survey the environment.", "2. Evaluate and react to the Open Message."].join("\n"),
@@ -299,7 +299,7 @@ type TurnArgs = {
     readonly messages: ChatMessage[];
     readonly recap: string;
     readonly workspaceId: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly signal: AbortSignal | undefined;
     readonly onDispatch: ((logEntryId: number) => void) | undefined;
@@ -309,10 +309,10 @@ type TurnArgs = {
 };
 
 // Phase 1 — the producer-neutral turn container: the turns opened for this cycle
-// and the initialization plan the worker's first turn executes. The model turn is
+// and the initialization plan the session's first turn executes. The model turn is
 // opened here only when no initialization turn precedes it.
 type TurnContainer = {
-    readonly workerName: string;
+    readonly sessionName: string;
     readonly transientOpenLogEntryId: number | null;
     readonly loopSequence: number;
     readonly createdTurnIds: number[];
@@ -338,7 +338,7 @@ type TurnRequest = PacketFacts & {
     // {§context-fit} — the measure every row this turn lands is tested against.
     readonly fit: ContextFit;
     readonly createdTurnIds: number[];
-    readonly workerName: string;
+    readonly sessionName: string;
     readonly loopSeq: number;
     readonly systemCtx: PlurnkSchemeContext;
     nextActionIndex: number;
@@ -371,7 +371,7 @@ type ProviderAttempts = {
     readonly recoveryBudget: number;
     readonly recoveryBackoff: number;
     readonly signal: AbortSignal | undefined;
-    readonly providerWorkerId: string;
+    readonly providerSessionId: string;
     // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
     // for, successes and failed calls alike, so the completion notice carries
     // the exact settled wire spend.
@@ -435,7 +435,7 @@ export default class TurnRunner {
     readonly #interactions: ClientInteractions;
     readonly #warmWorkspace: WarmWorkspace;
     readonly #dispatch: TurnDispatch;
-    readonly #resolveWorkerProviderIdentity: (workerId: number) => Promise<{ workerId: string }>;
+    readonly #resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
     readonly #loopGauge: (loopId: number) => Promise<ApplicationGauge>;
     // {§operator-grammar} — one read per path per daemon; the file is the operator's and static.
     #grammarCache = new Map<string, string>();
@@ -459,7 +459,7 @@ export default class TurnRunner {
         interactions,
         warmWorkspace,
         dispatch,
-        resolveWorkerProviderIdentity,
+        resolveSessionProviderIdentity,
         loopGauge,
     }: {
         db: Db;
@@ -477,7 +477,7 @@ export default class TurnRunner {
         interactions: ClientInteractions;
         warmWorkspace: WarmWorkspace;
         dispatch: TurnDispatch;
-        resolveWorkerProviderIdentity: (workerId: number) => Promise<{ workerId: string }>;
+        resolveSessionProviderIdentity: (sessionId: number) => Promise<{ sessionId: string }>;
         loopGauge: (loopId: number) => Promise<ApplicationGauge>;
     }) {
         this.#db = db;
@@ -496,7 +496,7 @@ export default class TurnRunner {
         this.#interactions = interactions;
         this.#warmWorkspace = warmWorkspace;
         this.#dispatch = dispatch;
-        this.#resolveWorkerProviderIdentity = resolveWorkerProviderIdentity;
+        this.#resolveSessionProviderIdentity = resolveSessionProviderIdentity;
         this.#loopGauge = loopGauge;
         this.#materialization = new TurnMaterialization({ db: this.#db, weighContent: this.#weighContent, mimetypes: this.#mimetypes });
         this.#bareBatch = new BareBatchRunner({ db: this.#db, providerAttributions: this.#providerAttributions.bind(this), providerFailure: TurnRunner.#providerFailure });
@@ -505,7 +505,7 @@ export default class TurnRunner {
 
     async #recordInference(args: {
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
         loopId: number;
         turnId: number;
         evidence: InferenceEvidence;
@@ -519,7 +519,7 @@ export default class TurnRunner {
         // {§tokenomics-client-gauge} The turn's inference is recorded: its packet and its call are the gauge now.
         const gauge = await this.#loopGauge(args.loopId);
         this.#notify.loopPacketNotify(args.workspaceId, {
-            workerId: args.workerId,
+            sessionId: args.sessionId,
             loopId: args.loopId,
             loopSeq: packetCount.sequence,
             packetCount: packetCount.count,
@@ -646,7 +646,7 @@ export default class TurnRunner {
     // completes the turn and returns; anything else that throws fails every turn
     // this cycle opened.
     async runTurn({
-        provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId, signal, onDispatch, onSettled,
+        provider, childProvider = provider, messages, recap = "", workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
         turnNumber = 1, invalidEmissionRecoveryEntryId,
     }: {
         provider: Provider;
@@ -654,7 +654,7 @@ export default class TurnRunner {
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
         recap?: string;
-        workspaceId: number; workerId: number; loopId: number;
+        workspaceId: number; sessionId: number; loopId: number;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;
         onSettled?: (logEntryId: number) => void | Promise<void>;
@@ -666,7 +666,7 @@ export default class TurnRunner {
         invalidEmissionRecoveryEntryId?: number | null;
     }): Promise<EngineTurnResult> {
         const args: TurnArgs = {
-            provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal, onDispatch, onSettled,
+            provider, childProvider, messages, recap, workspaceId, sessionId, loopId, signal, onDispatch, onSettled,
             turnNumber, invalidEmissionRecoveryEntryId,
         };
         const createdTurnIds: number[] = [];
@@ -714,14 +714,14 @@ export default class TurnRunner {
     // durable turn and completes it only after its ordered operations settle; model
     // packets and provider metadata are optional inference evidence, not turn identity.
     async #openTurnContainer(args: TurnArgs, createdTurnIds: number[]): Promise<TurnContainer> {
-        const { workspaceId, workerId, loopId, invalidEmissionRecoveryEntryId } = args;
-        const workerName = await WorkerName.forId(this.#db, workerId);
+        const { workspaceId, sessionId, loopId, invalidEmissionRecoveryEntryId } = args;
+        const sessionName = await SessionName.forId(this.#db, sessionId);
         const transientOpenLogEntryId = typeof invalidEmissionRecoveryEntryId === "number"
             ? invalidEmissionRecoveryEntryId
             : null;
         const initialSequence = await this.#db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         if (initialSequence === undefined) throw new Error("Engine.runTurn: next turn sequence is unavailable");
-        // Turn-0 foists that belong to the Worker (catalog preview, AGENTS) gate
+        // Turn-0 foists that belong to the Session (catalog preview, AGENTS) gate
         // on its first inference history, not on loop sequence: honest client or
         // runtime administrative turns may precede the first provider exchange.
         // Per-loop foists such as the initial message's publication
@@ -729,49 +729,49 @@ export default class TurnRunner {
         // rather than the model-turn ordinal, prevents an overflow diversion from
         // replaying a message and its automatic path READs.
         const loopSequence = (await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId }))?.sequence ?? loopId;
-        const priorInference = await this.#db.engine_worker_has_inference_history.get<{ present: number }>({
-            worker_id: workerId,
+        const priorInference = await this.#db.engine_session_has_inference_history.get<{ present: number }>({
+            session_id: sessionId,
         });
-        const workerFirstInference = priorInference?.present === 0;
-        // {§worker-initialization-entry} — turn zero is an ordinary `_plurnk`
+        const sessionFirstInference = priorInference?.present === 0;
+        // {§session-initialization-entry} — turn zero is an ordinary `_plurnk`
         // operation turn. Its model-facing zero is a phase label; durable turn
         // coordinates remain one-based.
-        const initializationTurn = initialSequence.next === 1 && workerFirstInference
+        const initializationTurn = initialSequence.next === 1 && sessionFirstInference
             ? await Turn.open(this.#db, { loopId, producer: "_plurnk", kind: "initialization" })
             : null;
         if (initializationTurn !== null) createdTurnIds.push(initializationTurn.id);
         const initializationPolicies = initializationTurn === null
             ? []
-            : (await this.#capabilities.layers(workspaceId, workerId)).map((layer) => layer.policy);
+            : (await this.#capabilities.layers(workspaceId, sessionId)).map((layer) => layer.policy);
         const modelTurn = initializationTurn === null
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;
         if (modelTurn !== null) createdTurnIds.push(modelTurn.id);
-        // {§env-delta-log-pull} — creation atomically owns the ordinary worker
+        // {§env-delta-log-pull} — creation atomically owns the ordinary session
         // baseline or fork snapshot. Packet assembly consumes, never invents,
         // that durable observation boundary.
         const ambientCursor = await this.#db.engine_initialize_ambient_cursor.get<{
             ambient_event_cursor: number | null;
-        }>({ workspace_id: workspaceId, worker_id: workerId });
+        }>({ workspace_id: workspaceId, session_id: sessionId });
         if (ambientCursor?.ambient_event_cursor === null || ambientCursor === undefined) {
-            throw new Error(`worker ${workerId} has no durable ambient observation boundary`);
+            throw new Error(`session ${sessionId} has no durable ambient observation boundary`);
         }
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
         const initializationStatements: Array<FindStatement | ReadStatement> = [];
-        // {§worker-initialization-entry} — the worker's first turn is the worked
+        // {§session-initialization-entry} — the session's first turn is the worked
         // example itself: the actual orienting operations.
         // {§turn0-agents-stunt} {§turn0-local-instructions} — the project AGENTS.md, then its AGENTS.local.md (materialized
-        // by LoopDocs under worker:///_plurnk/), each get one foisted READ on the worker's first loop, so local repo
+        // by LoopDocs under workspace:///_plurnk/), each get one foisted READ on the session's first loop, so local repo
         // guidance is visible turn-0 content. Global policy stays in the system prompt; nothing else is force-read.
         if (initializationTurn !== null) {
             for (const name of ["/AGENTS.md", "/AGENTS.local.md"]) {
                 const pathname = generatedPathname(name);
                 const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
-                    workspace_id: workspaceId, scheme: "worker", authority: "", pathname,
+                    workspace_id: workspaceId, scheme: "workspace", authority: "", pathname,
                 });
                 if (entry === undefined) continue;
                 const target: UrlPath = {
-                    kind: "url", raw: `worker://${pathname}`, scheme: "worker",
+                    kind: "url", raw: `workspace://${pathname}`, scheme: "workspace",
                     username: null, password: null, hostname: null, port: null,
                     pathname, query: null, fragment: null,
                 };
@@ -782,7 +782,7 @@ export default class TurnRunner {
             }
         }
         return {
-            workerName, transientOpenLogEntryId, loopSequence, createdTurnIds,
+            sessionName, transientOpenLogEntryId, loopSequence, createdTurnIds,
             initializationTurn, initializationPolicies, initializationStatements,
             modelTurn, systemCtx,
         };
@@ -791,20 +791,20 @@ export default class TurnRunner {
     // The `_plurnk` scheme context for one turn. Threaded per turn, never engine
     // state, so concurrent loops on different providers each read their own honest
     // tokenizer values.
-    #schemeContext({ workspaceId, workerId, loopId }: TurnArgs, turnId: number): PlurnkSchemeContext {
+    #schemeContext({ workspaceId, sessionId, loopId }: TurnArgs, turnId: number): PlurnkSchemeContext {
         return {
-            db: this.#db, workspaceId, workerId, loopId, turnId,
+            db: this.#db, workspaceId, sessionId, loopId, turnId,
             writer: "_plurnk",
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#notify.streamEventNotify,
-            wakeWorkerNotify: this.#notify.wakeWorkerNotify,
+            wakeSessionNotify: this.#notify.wakeSessionNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s, workspaceId),
-            pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+            pushNotice: (notice) => this.#notices.push(workspaceId, sessionId, loopId, notice),
             requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                 request,
-                { workspaceId, workerId, loopId, turnId },
+                { workspaceId, sessionId, loopId, turnId },
                 signal,
             ),
         };
@@ -844,18 +844,18 @@ export default class TurnRunner {
         return gitStatus;
     }
 
-    // {§worker-initialization-entry}: execute the initialization program before the model boundary.
+    // {§session-initialization-entry}: execute the initialization program before the model boundary.
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow, gitStatus: GitStatusSnapshot | null): Promise<void> {
-        const { workspaceId, workerId, loopId, onDispatch, onSettled } = args;
+        const { workspaceId, sessionId, loopId, onDispatch, onSettled } = args;
         const { initializationStatements, initializationPolicies } = container;
         // {§actor-boundary-catalog-preview}: `init` lets the model curate the opening surveys as one set.
         // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
         const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
         const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
-        if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per worker
+        if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per session
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
-        // {§worker-initialization-entry} — the survey is an ordinary operation program: recorded as the
+        // {§session-initialization-entry} — the survey is an ordinary operation program: recorded as the
         // turn's ops source and executed through the same path as a model's program; it authors no reasoning.
         // {§emission-row} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
@@ -865,7 +865,7 @@ export default class TurnRunner {
             if (!this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
             // {§actor-boundary-catalog-preview} — a survey that would select nothing is left out of the program.
             if (statement.op === "FIND" && !await this.#dispatcher.selects(statement, {
-                workspaceId, workerId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
+                workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
             })) continue;
             admittedInitializationStatements.push(statement);
         }
@@ -874,7 +874,7 @@ export default class TurnRunner {
             await Turn.complete(this.#db, initializationTurn.id, 200);
             return;
         }
-        // {§worker-initialization-entry} — the example turn shows the NOTE practice the card teaches:
+        // {§session-initialization-entry} — the example turn shows the NOTE practice the card teaches:
         // when the surveys run, one NOTE opens them and one closes them.
         const programStatements: Array<NoteStatement | FindStatement | ReadStatement> =
             admittedInitializationStatements.some((statement) => statement.op === "FIND")
@@ -892,7 +892,7 @@ export default class TurnRunner {
             emission: null,
             origin: "_plurnk",
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId: initializationTurn.id,
             fromSequence: 1,
@@ -910,7 +910,7 @@ export default class TurnRunner {
     // {§actor-boundary-catalog-preview} — the opening surveys, each admitted only when
     // its scheme is registered for the workspace. A positive filesItems caps the
     // project rows.
-    async #catalogSurveys({ workspaceId }: TurnArgs, { workerName, initializationPolicies }: TurnContainer, filesItems: number): Promise<FindStatement[]> {
+    async #catalogSurveys({ workspaceId }: TurnArgs, { sessionName, initializationPolicies }: TurnContainer, filesItems: number): Promise<FindStatement[]> {
         const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
         const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
@@ -923,7 +923,7 @@ export default class TurnRunner {
             },
             {
                 op: "FIND", aside: null,
-                target: workerCatalogTarget("plurnk"),
+                target: workspaceCatalogTarget("plurnk"),
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
@@ -935,7 +935,7 @@ export default class TurnRunner {
                 // PLURNK_MCP_EXPANDED add a second survey of their complete
                 // tool tree.
                 op: "FIND", aside: null,
-                target: workerCatalogTarget("tools"),
+                target: workspaceCatalogTarget("tools"),
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
@@ -944,7 +944,7 @@ export default class TurnRunner {
                 // {§members-projection} — enabled members definitions survey at alias
                 // level; each row's summary is what its glob resolved to.
                 op: "FIND", aside: null,
-                target: { kind: "url", raw: "worker:///_plurnk/members/*.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
+                target: { kind: "url", raw: "workspace:///_plurnk/members/*.md", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
             },
@@ -959,13 +959,13 @@ export default class TurnRunner {
             },
             {
                 op: "FIND", aside: "workspace knowledgebase entries",
-                target: { kind: "url", raw: "worker:///*", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
+                target: { kind: "url", raw: "workspace:///*", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
             {
-                op: "FIND", aside: "worker knowledgebase entries",
-                target: { kind: "url", raw: `worker://${workerName}/*`, scheme: "worker", username: null, password: null, hostname: workerName, port: null, pathname: "/*", query: null, fragment: null },
+                op: "FIND", aside: "session knowledgebase entries",
+                target: { kind: "url", raw: `session://${sessionName}/*`, scheme: "session", username: null, password: null, hostname: sessionName, port: null, pathname: "/*", query: null, fragment: null },
                 metadata: null,
                 matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
             },
@@ -993,7 +993,7 @@ export default class TurnRunner {
             const pattern = "^(\x60{3,})" + regexLiteral(tag) + targetFilter + "[^\\n]*?(?:\\1|\\n[\\s\\S]*?\\n\\1)$";
             expansions.push({
                 op: "FIND", aside: null,
-                target: { kind: "url", raw: `worker:///_plurnk/tools/${tag}.md`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
+                target: { kind: "url", raw: `workspace:///_plurnk/tools/${tag}.md`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
                 metadata: null,
                 matcher: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
                 body: null, lineMarker: null, position: UNKNOWN_POSITION,
@@ -1006,7 +1006,7 @@ export default class TurnRunner {
     // seen, their open-path READs, the ambient and stream deltas, then the packet
     // ({§packet-stored-shape}).
     async #composeRequest(args: TurnArgs, container: TurnContainer, gitStatus: GitStatusSnapshot | null): Promise<TurnRequest> {
-        const { workspaceId, workerId, loopId } = args;
+        const { workspaceId, sessionId, loopId } = args;
         // Initialization is a complete preceding turn, not a set of rows
         // interleaved with the model boundary. The engine may now acquire the
         // inference turn inside the same warmed workspace cycle.
@@ -1022,14 +1022,14 @@ export default class TurnRunner {
         let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
         // {§env-delta-log-pull} — materialize ambient observations before packet
         // composition and reserve their action indices. {§exec-stream} owns the
-        // distinct byte-cursor path for this worker's streams.
-        // {§exec-lifetime} — a `"turn"` lifetime: reap the worker's open turn-scoped streams (necessarily
+        // distinct byte-cursor path for this session's streams.
+        // {§exec-lifetime} — a `"turn"` lifetime: reap the session's open turn-scoped streams (necessarily
         // from a prior turn — this runs before the turn's own spawns) so a `<0>` never survives into
         // the subsequent turn. The terminal output then surfaces initially visible via the stream-delta path.
-        await this.#reapTurnScopedStreams(workerId);
-        const ambientEntries = await this.#materialization.materializeEnvironmentDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex });
+        await this.#reapTurnScopedStreams(sessionId);
+        const ambientEntries = await this.#materialization.materializeEnvironmentDeltas({ workspaceId, sessionId, loopId, turnId, fromSequence: nextActionIndex });
         nextActionIndex += ambientEntries.length;
-        const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, workerId, loopId, turnId, fromSequence: nextActionIndex, fit });
+        const streamEntries = await this.#materialization.materializeStreamDeltas({ workspaceId, sessionId, loopId, turnId, fromSequence: nextActionIndex, fit });
         nextActionIndex += streamEntries.length;
         await Turn.observeCompletions(this.#db, turnId);
         // {§notifications-log-entry-notify}: materialized observations are
@@ -1045,10 +1045,10 @@ export default class TurnRunner {
         facts.notices.push(...this.#notices.drain(loopId)
             .filter((event) => (event as { level?: string }).level !== "info"));
         // Build the model request packet ({§packet-stored-shape}). The log build
-        // queries log_entries scoped to the worker, including this turn's newly
+        // queries log_entries scoped to the session, including this turn's newly
         // published message arrivals.
         const packet = await this.#buildPacket(args, facts);
-        return { ...facts, fit, createdTurnIds: container.createdTurnIds, workerName: container.workerName, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
+        return { ...facts, fit, createdTurnIds: container.createdTurnIds, sessionName: container.sessionName, loopSeq: container.loopSequence, systemCtx, nextActionIndex, packet };
     }
 
     // Pre-model writes. Each message the model has not seen yet becomes an inbound `SEND`
@@ -1058,7 +1058,7 @@ export default class TurnRunner {
     // boundary. Publish each unpublished inbox row oldest-first, exactly once, as an inbound
     // SEND row ({§message-arrival}); its selected paths ride along for the READs that follow.
     async #publishMessages(
-        { workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs,
+        { workspaceId, sessionId, loopId, onDispatch, onSettled }: TurnArgs,
         turnId: number,
         fit: ContextFit,
     ): Promise<{ nextActionIndex: number; openPaths: string[] }> {
@@ -1072,7 +1072,7 @@ export default class TurnRunner {
         for (const [index, message] of unpublished.entries()) {
             openPaths.push(...selected[index]);
             const logEntryId = await this.#materialization.writeArrivalLog({
-                workspaceId, workerId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
+                workspaceId, sessionId, loopId, turnId, sequence: nextActionIndex++, body: message.body, source: message.source, resource: message.path,
                 selfAddressed: message.source !== null && message.source === message.durable_path,
                 fit: reserved(fit, unpublished.length - index - 1 + pendingPaths),
             });
@@ -1087,7 +1087,7 @@ export default class TurnRunner {
     // {§methods-loop-run-open-paths}: selected resources belong to the message.
     // Publish it, then dispatch ordinary core READs in that same turn;
     // missing/non-member paths retain their normal 4xx. Returns the next action index.
-    async #readOpenPaths({ workspaceId, workerId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number, fit: ContextFit): Promise<number> {
+    async #readOpenPaths({ workspaceId, sessionId, loopId, onDispatch, onSettled }: TurnArgs, turnId: number, openPaths: string[], fromSequence: number, fit: ContextFit): Promise<number> {
         let nextActionIndex = fromSequence;
         for (const [index, raw] of openPaths.entries()) {
             const resourceRead: ReadStatement = {
@@ -1097,7 +1097,7 @@ export default class TurnRunner {
                 body: null, position: UNKNOWN_POSITION,
             };
             await this.#dispatch({
-                statement: resourceRead, workspaceId, workerId, loopId, turnId,
+                statement: resourceRead, workspaceId, sessionId, loopId, turnId,
                 sequence: nextActionIndex, origin: "_plurnk", onDispatch, onSettled,
                 fit: reserved(fit, openPaths.length - index - 1),
             });
@@ -1107,12 +1107,12 @@ export default class TurnRunner {
     }
 
     async #buildPacket(args: TurnArgs, facts: PacketFacts): Promise<RequestPacket> {
-        const { messages, recap, workspaceId, workerId, loopId, provider } = args;
+        const { messages, recap, workspaceId, sessionId, loopId, provider } = args;
         return this.#packets.buildRequestPacket({
             initialMessages: messages,
             recap,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             currentTurnSeq: facts.seq,
             provider,
@@ -1139,9 +1139,9 @@ export default class TurnRunner {
     // packet as it renders with it. The row is shown in this packet alone and retired from later ones
     // by the packet query (#1097); a later packet that is over mints its own.
     async #noteOverBudget(args: TurnArgs, request: TurnRequest): Promise<TurnRequest> {
-        const { workerId, loopId, onDispatch, onSettled } = args;
+        const { sessionId, loopId, onDispatch, onSettled } = args;
         const minted = await this.#problems.record({
-            workerId, loopId, turnId: request.turnId, sequence: request.nextActionIndex, origin: "_plurnk", source: "context",
+            sessionId, loopId, turnId: request.turnId, sequence: request.nextActionIndex, origin: "_plurnk", source: "context",
             result: overBudgetFailure(),
         });
         onDispatch?.(minted.id);
@@ -1180,14 +1180,14 @@ export default class TurnRunner {
     }
 
     // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
-    // provider sees, the client id and the worker's provider identity.
-    async #prepareProviderAttempts({ workerId, loopId, signal }: TurnArgs, request: TurnRequest, wire: MaterializedModelRequest): Promise<ProviderAttempts> {
+    // provider sees, the client id and the session's provider identity.
+    async #prepareProviderAttempts({ sessionId, loopId, signal }: TurnArgs, request: TurnRequest, wire: MaterializedModelRequest): Promise<ProviderAttempts> {
         // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
         const recoveryBudget = ProviderRecovery.budget();
         const recoveryBackoff = ProviderRecovery.backoff();
         const providerSignal = this.#loopSignal(loopId) ?? signal;
-        const { workerId: providerWorkerId } = await this.#resolveWorkerProviderIdentity(workerId);
+        const { sessionId: providerSessionId } = await this.#resolveSessionProviderIdentity(sessionId);
         return {
             wire,
             response: undefined,
@@ -1208,7 +1208,7 @@ export default class TurnRunner {
             recoveryBudget,
             recoveryBackoff,
             signal: providerSignal,
-            providerWorkerId,
+            providerSessionId,
             turnWireAccounting: [],
         };
     }
@@ -1217,9 +1217,9 @@ export default class TurnRunner {
     // recoverable failure re-issues the same emission attempt, an invalid emission
     // spends one, and a valid emission ends the loop ({§invalid-emission-attempts}).
     async #attemptProvider(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<ProviderEmission> {
-        const { provider, workspaceId, workerId, loopId, signal } = args;
+        const { provider, workspaceId, sessionId, loopId, signal } = args;
         // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
-        if (!signal?.aborted) this.#notices.push(workspaceId, workerId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
+        if (!signal?.aborted) this.#notices.push(workspaceId, sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
         attempts.railGrammar = await this.#operatorGrammar(provider);
         attempts.wellFormed = await this.#bodyChecks(workspaceId);
         const attemptLimit = readEmissionAttempts();
@@ -1230,7 +1230,7 @@ export default class TurnRunner {
         }
         if (!signal?.aborted) {
             const wire = aggregateProviderAccounting(attempts.turnWireAccounting);
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn",
                 kind: "turn_generated",
                 level: "info",
@@ -1277,14 +1277,14 @@ export default class TurnRunner {
     async #issueProviderCall(
         args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts, attempt: number,
     ): Promise<"admitted" | "rejected" | "reissued"> {
-        const { provider, workspaceId, workerId, loopId } = args;
+        const { provider, workspaceId, sessionId, loopId } = args;
         // A recovery re-issue does not consume a grammar-emission attempt. Every
         // logical provider call still receives its own durable sequence and accounting.
         attempts.currentEmissionAttempt = attempt;
         attempts.modelCallSequence++;
         const attributionContext: ExtensionAttributionContext = Object.freeze({
             workspaceId: String(workspaceId),
-            workerId: attempts.providerWorkerId,
+            sessionId: attempts.providerSessionId,
             loop: request.loopSeq,
             turn: request.seq,
             attempt: attempts.modelCallSequence,
@@ -1324,7 +1324,7 @@ export default class TurnRunner {
             reasoning.end();
         }
         if (attempts.recoveryFailures > 0) {
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:provider",
                 kind: "provider_recovered",
                 level: "info",
@@ -1346,13 +1346,13 @@ export default class TurnRunner {
     // {§notifications-reasoning-event} — only the parent emission is observed;
     // BARE has no observer on its isolated calls. Reasoning deltas cite the physical
     // request they stream in; a new request or the call's end closes the open span.
-    #reasoningObserver({ workspaceId, workerId, loopId }: TurnArgs, { turnId, loopSeq, seq: turnSeq }: TurnRequest, modelCall: ModelCall): ReasoningObserver {
+    #reasoningObserver({ workspaceId, sessionId, loopId }: TurnArgs, { turnId, loopSeq, seq: turnSeq }: TurnRequest, modelCall: ModelCall): ReasoningObserver {
         let reasoningStarted = false;
         let reasoningRequestSequence = 0;
         const end = (): void => {
             if (!reasoningStarted) return;
             this.#notify.reasoningEventNotify!(workspaceId, {
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 loopSeq,
@@ -1378,7 +1378,7 @@ export default class TurnRunner {
                 if (!reasoningStarted) {
                     reasoningStarted = true;
                     this.#notify.reasoningEventNotify!(workspaceId, {
-                        workerId,
+                        sessionId,
                         loopId,
                         turnId,
                         loopSeq,
@@ -1389,7 +1389,7 @@ export default class TurnRunner {
                     });
                 }
                 this.#notify.reasoningEventNotify!(workspaceId, {
-                    workerId,
+                    sessionId,
                     loopId,
                     turnId,
                     loopSeq,
@@ -1418,7 +1418,7 @@ export default class TurnRunner {
                     await this.#packets.recordObservations(request.packet);
                     const generated = await provider.generate({
                         messages: attempts.wire.messages,
-                        workerId: attempts.providerWorkerId,
+                        sessionId: attempts.providerSessionId,
                         workspaceId: String(workspaceId),
                         signal: attempts.signal,
                         grammar: attempts.railGrammar,
@@ -1455,7 +1455,7 @@ export default class TurnRunner {
     // it, wait, and re-issue the same turn; once the budget is spent the failure
     // handler parks the loop instead of failing it.
     async #recoverProviderFailure(
-        { workspaceId, workerId, loopId }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
+        { workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, attempts: ProviderAttempts,
         modelCall: ModelCall, attemptId: number, error: ProviderError,
     ): Promise<void> {
         attempts.recoveryStartedAt ??= Date.now();
@@ -1476,7 +1476,7 @@ export default class TurnRunner {
         }
         attempts.callInFlight = false;
         await this.#problems.record({
-            workerId,
+            sessionId,
             loopId,
             turnId: request.turnId,
             sequence: request.nextActionIndex++,
@@ -1485,7 +1485,7 @@ export default class TurnRunner {
             result: failure,
         });
         const wait = ProviderRecovery.wait(attempts.recoveryBackoff, attempts.recoveryFailures);
-        this.#notices.push(workspaceId, workerId, loopId, {
+        this.#notices.push(workspaceId, sessionId, loopId, {
             source: "engine:provider",
             kind: "provider_unavailable",
             level: "warn",
@@ -1522,7 +1522,7 @@ export default class TurnRunner {
         if (attempts.attemptId === null || attempts.modelCall === null) {
             throw new Error("provider call failed without durable model-call and attempt identities", { cause: err });
         }
-        const { provider, workspaceId, workerId, loopId } = args;
+        const { provider, workspaceId, sessionId, loopId } = args;
         const { turnId } = request;
         const failure = TurnRunner.#providerFailure(err, attempts.signal);
         const capacityFailure = err instanceof ProviderError && err.kind === "capacity_exceeded";
@@ -1550,12 +1550,12 @@ export default class TurnRunner {
         // runLoop/Daemon settle the exact 504/499 loop result.
         if (attempts.signal?.aborted) {
             const status = attempts.signal.reason === LOOP_TIMEOUT_REASON ? 504 : 499;
-            await this.#recordInference({ workspaceId, workerId, loopId, turnId, evidence });
+            await this.#recordInference({ workspaceId, sessionId, loopId, turnId, evidence });
             await Turn.complete(this.#db, turnId, status);
             throw err;
         }
         const recorded = await this.#problems.record({
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: request.nextActionIndex,
@@ -1566,18 +1566,18 @@ export default class TurnRunner {
         // The provider call was attempted, but no completed exchange exists.
         // Persist the exact request half and failure status; omitting assistant
         // is materially different from fabricating an empty model turn.
-        await this.#recordInference({ workspaceId, workerId, loopId, turnId, evidence });
+        await this.#recordInference({ workspaceId, sessionId, loopId, turnId, evidence });
         await Turn.complete(this.#db, turnId, attempts.parked ? 202 : recorded.result.status);
         const { emissionAttempts } = attempts;
         if (attempts.parked) {
             // {§provider-recovery} — the recovery budget is spent: the loop parks exactly like a
             // [202] wait and resumes on the next prompt or wake; the failure stays durable.
-            const recoverable = await WorkerOwners.interactive(this.#db, loopId);
-            this.#notices.push(workspaceId, workerId, loopId, {
+            const recoverable = await SessionOwners.interactive(this.#db, loopId);
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:provider",
                 kind: "provider_unavailable",
                 level: "error",
-                message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget is spent; ${recoverable ? "the loop is parked and resumes on the next prompt or wake" : "nobody attends the worker's owner, so the loop ends here"}.`,
+                message: `${recorded.result.problem?.title ?? "Provider failure"}: the ${Math.round(attempts.recoveryBudget / 1000)}s recovery budget is spent; ${recoverable ? "the loop is parked and resumes on the next prompt or wake" : "nobody attends the session's owner, so the loop ends here"}.`,
             });
             return turnResult(request, 202, { providerParked: true, providerFailure: recorded.result, emissionAttempts });
         }
@@ -1615,12 +1615,12 @@ export default class TurnRunner {
     // Phase 5, refused — {§invalid-emission-attempts}: every exhaustion publishes the
     // raw final response and its recovery fact; {§engine-rails} Contract Strikes rule
     // how many consecutive frame-contract violations the loop survives.
-    async #rejectExhaustedEmission({ provider, workspaceId, workerId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
+    async #rejectExhaustedEmission({ provider, workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
         const { split, response } = emission;
         const { turnId } = request;
         const rejectedModelEntryId = await this.#dispatcher.writeEmissionAttempt({
             verbatim: split.packetAssistant.content,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: request.nextActionIndex,
@@ -1631,7 +1631,7 @@ export default class TurnRunner {
         const diagnostic = split.parseErrors[0];
         const cut = outputCut(emission, provider);
         if (cut !== null) {
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",
                 level: "error",
@@ -1639,7 +1639,7 @@ export default class TurnRunner {
                 message: `Emission truncated at ${outputAllowance(cut)}; no operations were performed.`,
             });
         } else {
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:grammar",
                 kind: "invalid_emission",
                 level: "error",
@@ -1652,7 +1652,7 @@ export default class TurnRunner {
                     : {}),
             });
         }
-        await this.#recordInference({ workspaceId, workerId, loopId, turnId, evidence: this.#requestEvidence(provider, request.packet, split, response) });
+        await this.#recordInference({ workspaceId, sessionId, loopId, turnId, evidence: this.#requestEvidence(provider, request.packet, split, response) });
         await Turn.complete(this.#db, turnId, TURN_STATUS_IMPLICIT_CONTINUE);
         return turnResult(request, TURN_STATUS_IMPLICIT_CONTINUE, {
             outcomes: [{ op: null, status: 500, problemType: "https://problems.plurnk.xyz/engine/invalid-emission-exhausted" }],
@@ -1667,17 +1667,17 @@ export default class TurnRunner {
     // Phase 5, admitted — the emission's notices, then {§packet-stored-shape}: admitted
     // emission data extends the packet while provider-call metadata remains on the
     // Turn row.
-    async #recordAdmittedEmission({ provider, workspaceId, workerId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<void> {
+    async #recordAdmittedEmission({ provider, workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<void> {
         const { split, response } = emission;
         const { packetAssistant, callMetadata, parseNotices } = split; // raw assistant content is opaque — split, never interpreted — {§provider-guarantees-assistantraw-opaque}
         for (const notice of parseNotices) {
-            this.#notices.push(workspaceId, workerId, loopId, notice);
+            this.#notices.push(workspaceId, sessionId, loopId, notice);
         }
         const cut = outputCut(emission, provider);
         // {§empty-turn} — a response cut at the output allowance with nothing admitted names the
         // cut, so the model reads the ceiling, never a parser symptom (#478).
         if (split.emptyTurn && cut !== null) {
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn",
                 kind: "output_truncated",
                 level: "warn",
@@ -1687,13 +1687,13 @@ export default class TurnRunner {
         }
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
-        // the model resolves it against its own emission — READ ops://<worker>/<loop>/<turn> at the
+        // the model resolves it against its own emission — READ ops://<session>/<loop>/<turn> at the
         // cited lines ({§turn-ops-entry}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, notice.position)
                 : null;
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: notice.source,
                 kind: notice.kind,
                 ...(notice.directive === undefined ? {} : { directive: notice.directive }),
@@ -1705,7 +1705,7 @@ export default class TurnRunner {
             });
         }
         if (cut !== null) {
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:capacity",
                 kind: "output_truncated",
                 directive: DIRECTIVE.output,
@@ -1718,8 +1718,8 @@ export default class TurnRunner {
         if (split.outside !== null) {
             await Turn.recordSource(this.#db, request.turnId, "outside", split.outside, { modelCallId: emission.modelCallId });
             this.#notify.outsideEventNotify?.(workspaceId, {
-                workerId, loopId, turnId: request.turnId,
-                coordinate: `${request.workerName}-${request.loopSeq}-${request.seq}`,
+                sessionId, loopId, turnId: request.turnId,
+                coordinate: `${request.sessionName}-${request.loopSeq}-${request.seq}`,
                 text: split.outside, tokens: contentWeight(split.outside),
             });
         }
@@ -1734,7 +1734,7 @@ export default class TurnRunner {
         // and its exact source artifact.
         const packet = StoredPacket.admit(request.packet, packetAssistant, response.assistantRaw);
         await this.#recordInference({
-            workspaceId, workerId, loopId, turnId: request.turnId,
+            workspaceId, sessionId, loopId, turnId: request.turnId,
             evidence: {
                 packet: StoredPacket.stringify(packet),
                 sections: StoredPacket.sections(packet),
@@ -1751,9 +1751,9 @@ export default class TurnRunner {
     // Phase 6 — the admitted program runs under the workspace's command ceiling and
     // the turn settles on the executor's verdict.
     async #settleAdmittedTurn(args: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<EngineTurnResult> {
-        const { provider, childProvider, workspaceId, workerId, loopId, onDispatch, onSettled } = args;
+        const { provider, childProvider, workspaceId, sessionId, loopId, onDispatch, onSettled } = args;
         const { split } = emission;
-        const coordinates = { workerName: request.workerName, loopSeq: request.loopSeq, turnSeq: request.seq };
+        const coordinates = { sessionName: request.sessionName, loopSeq: request.loopSeq, turnSeq: request.seq };
         // {§operator-config-workspace-max-commands} — workspace maxCommands
         // narrows the operator ceiling before the admitted program reaches the
         // shared executor.
@@ -1770,7 +1770,7 @@ export default class TurnRunner {
             sourceModelCallId: emission.modelCallId,
             origin: "model",
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId: request.turnId,
             fromSequence: request.nextActionIndex,
@@ -1795,7 +1795,7 @@ export default class TurnRunner {
         const ops = split.packetAssistant.ops;
         if ((executed.status === 102 || executed.status === 202) && ops.length > 0
             && !ops.some((statement) => "op" in statement && statement.op === "NOTE")) {
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "engine:turn", kind: "continued_without_note", level: "warn", directive: DIRECTIVE.note, message: CONTINUED_WITHOUT_NOTE,
             });
         }
@@ -2010,15 +2010,15 @@ export default class TurnRunner {
     }
 
     // #note12 — extension reference docs are materialized beneath
-    // worker:///_plurnk/plurnk/ by LoopDocs.
+    // workspace:///_plurnk/plurnk/ by LoopDocs.
 
-    // {§exec-lifetime} — a `"turn"` lifetime: abort the worker's open turn-scoped streams via their
+    // {§exec-lifetime} — a `"turn"` lifetime: abort the session's open turn-scoped streams via their
     // owning scheme (the same registry-routed abort the total reap uses). Called at each pre-turn
     // before the turn's own spawns, so every open turn-scoped sub here is from a prior turn — it
     // never survives into the subsequent turn. Fire-and-forget: the spawn finalizes async and its
     // terminal output surfaces initially visible through the stream-delta path ({§exec-stream}).
-    async #reapTurnScopedStreams(workerId: number): Promise<void> {
-        const open = await this.#db.find_open_turn_scoped_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
+    async #reapTurnScopedStreams(sessionId: number): Promise<void> {
+        const open = await this.#db.find_open_turn_scoped_subscriptions_for_session.all<{ id: number }>({ session_id: sessionId });
         await Promise.all(open.map(({ id }) => this.#liveSubscriptions.cancel(id)));
     }
 

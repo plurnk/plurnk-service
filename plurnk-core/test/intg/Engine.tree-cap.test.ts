@@ -1,15 +1,15 @@
 import { serverProposals } from "./_approval.ts";
-// {§turn-cap-counts-the-tree} — the ceiling is the worker tree's budget of model calls: BARE
+// {§turn-cap-counts-the-tree} — the ceiling is the session tree's budget of model calls: BARE
 // calls and a child's turns spend it, and a batch stops opening calls at the ceiling.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock, type ProviderAlias } from "@plurnk/plurnk-providers";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import AdministrativeLoop from "../../src/core/AdministrativeLoop.ts";
-import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import Envelope from "../../src/server/envelope.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { insertWorker } from "./_db.ts";
+import { insertSession } from "./_db.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -30,17 +30,17 @@ const declaredProvider = (name: string, model: string): ProviderAlias => {
 };
 
 const modelUnderRuntime = async (db: Db, workspaceId: number): Promise<number> => {
-    const runtimeId = await RuntimeWorker.ensure(db, workspaceId);
+    const runtimeId = await RuntimeSession.ensure(db, workspaceId);
     const bookkeeping = await AdministrativeLoop.open(db, runtimeId);
     await Envelope.closeClientLoop(db, bookkeeping.id, { status: 200 });
-    return insertWorker(db, workspaceId, runtimeId, "model-tree", "model");
+    return insertSession(db, workspaceId, runtimeId, "model-tree", "model");
 };
 
 test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared child/grandchild ceiling", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32_768, responses: [
-        makeMockResponse("````WORK (worker://child)\nDelegate to a grandchild.\n````\n\n````WAIT\n````"),
-        makeMockResponse("````WORK (worker://grandchild)\nDo the leaf work.\n````\n\n````WAIT\n````"),
+        makeMockResponse("````WORK (session://child)\nDelegate to a grandchild.\n````\n\n````WAIT\n````"),
+        makeMockResponse("````WORK (session://grandchild)\nDo the leaf work.\n````\n\n````WAIT\n````"),
         makeMockResponse("````NOTE\nLeaf work is in progress.\n````"),
         makeMockResponse("````SEND [200]\nLeaf work is complete.\n````"),
         makeMockResponse("````SEND [200]\nThis fifth call exceeds the explicit ceiling.\n````"),
@@ -50,9 +50,9 @@ test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: `runtime-tree-${crypto.randomUUID()}` });
             const { id: workspaceId } = created.result as { id: number };
-            const workerId = await modelUnderRuntime(db, workspaceId);
+            const sessionId = await modelUnderRuntime(db, workspaceId);
             const result = await runLoopToTerminal(ws, 2, {
-                workerId, prompt: "delegate twice", maxTurns: 4,
+                sessionId, prompt: "delegate twice", maxTurns: 4,
             }, { timeoutMs: 20_000 });
             assert.equal(result.finalStatus, 429);
             assert.equal(result.hitMaxTurns, true);
@@ -63,11 +63,11 @@ test("{§turn-cap-counts-the-tree}: runtime ancestry does not replace the shared
             );
             assert.equal(mock.received.length, 4, "the runtime ancestor cannot make the model tree uncapped");
             assert.equal(mock.remaining, 1);
-            const workers = await db.test_workers_with_parent.all<{ id: number; name: string; parent_worker_id: number | null }>({});
-            const child = workers.find(({ name }) => name === "child");
-            const grandchild = workers.find(({ name }) => name === "grandchild");
-            assert.equal(child?.parent_worker_id, workerId);
-            assert.equal(grandchild?.parent_worker_id, child?.id);
+            const sessions = await db.test_sessions_with_parent.all<{ id: number; name: string; parent_session_id: number | null }>({});
+            const child = sessions.find(({ name }) => name === "child");
+            const grandchild = sessions.find(({ name }) => name === "grandchild");
+            assert.equal(child?.parent_session_id, sessionId);
+            assert.equal(grandchild?.parent_session_id, child?.id);
         } finally { ws.close(); }
     });
 });
@@ -89,9 +89,9 @@ test("{§turn-cap-counts-the-tree}: BARE under the runtime actor still respects 
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: `runtime-bare-${crypto.randomUUID()}` });
             const { id: workspaceId } = created.result as { id: number };
-            const workerId = await modelUnderRuntime(db, workspaceId);
+            const sessionId = await modelUnderRuntime(db, workspaceId);
             const result = await runLoopToTerminal(ws, 2, {
-                workerId, prompt: "answer twice", childSelector: childSpec.alias,
+                sessionId, prompt: "answer twice", childSelector: childSpec.alias,
                 maxTurns: 2,
             });
             assert.equal(result.finalStatus, 429);
@@ -149,7 +149,7 @@ test("{§turn-cap-counts-the-tree}: BARE calls spend the loop's budget, and a ba
 test("{§turn-cap-counts-the-tree}: a child's turns spend the parent's budget", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16_384, responses: [
-        makeMockResponse("````WORK (worker://helper)\nDo one small thing.\n````\n\n````WAIT\ndelegated\n````", 10),
+        makeMockResponse("````WORK (session://helper)\nDo one small thing.\n````\n\n````WAIT\ndelegated\n````", 10),
         makeMockResponse("````NOTE\nchild working\n````", 10),
         makeMockResponse("````SEND [200]\nchild done\n````", 10),
         makeMockResponse("````NOTE\nparent continues\n````", 10),

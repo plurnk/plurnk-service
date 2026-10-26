@@ -40,15 +40,15 @@ test("{§members-configuration} an ignored or excluded AGENTS.md is never projec
                 const workspaceId = ((await rpcCall(ws, 1, "workspace.create", { name: "instructions", projectRoot: dir })).result as { id: number }).id;
                 const { loopId, finalStatus } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number; finalStatus: number };
                 assert.equal(finalStatus, 200);
-                const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))!.worker_id;
+                const sessionId = (await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId }))!.session_id;
                 const entry = (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
-                    workspace_id: workspaceId, scheme: "worker", authority: "", pathname,
+                    workspace_id: workspaceId, scheme: "workspace", authority: "", pathname,
                 });
                 assert.equal(await entry("/_plurnk/AGENTS.md"), undefined, "a gitignored root AGENTS.md is not projected");
                 assert.equal(await entry("/_plurnk/instructions/packages/secret/AGENTS.md"), undefined, "a gitignored nested AGENTS.md is not projected");
                 assert.equal(await entry("/_plurnk/instructions/packages/hidden/AGENTS.md"), undefined, "an excluded nested AGENTS.md is not projected");
                 assert.ok(await entry("/_plurnk/instructions/packages/web/AGENTS.md"), "an admitted nested AGENTS.md still is");
-                const rows = await db.test_log_entries_by_worker.all<{ op: string | null; pathname: string; status_rx: number }>({ worker_id: workerId });
+                const rows = await db.test_log_entries_by_session.all<{ op: string | null; pathname: string; status_rx: number }>({ session_id: sessionId });
                 assert.equal(rows.some((r) => r.pathname === "/_plurnk/AGENTS.md" && r.status_rx >= 400), false, "no turn-0 stunt fires for an excluded root AGENTS.md — nothing 404s");
             } finally { ws.close(); }
         });

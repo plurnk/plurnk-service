@@ -9,7 +9,7 @@ import TokenCalibration from "../../src/core/TokenCalibration.ts";
 import StoredPacket, { type RequestPacket } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { completeStmt, editStmt, findStmt, killStmt, readStmt, urlPath } from "./_dsl.ts";
 
@@ -29,16 +29,16 @@ const fixture = async (t: TestContext, prompt = "review") => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, `packet-units-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, prompt);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, prompt);
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     const packets = new PacketBuilder({ db, schemes, executors: () => undefined });
     const build = (provider = providerAt(100_000)) => packets.buildRequestPacket({
-        workspaceId, workerId, loopId, provider,
+        workspaceId, sessionId, loopId, provider,
         initialMessages: messages, currentTurnSeq: 10, gitStatus: null,
     });
-    return { db, workspaceId, workerId, loopId, engine, packets, build };
+    return { db, workspaceId, sessionId, loopId, engine, packets, build };
 };
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 
@@ -46,12 +46,12 @@ type Fixture = Awaited<ReturnType<typeof fixture>>;
 // direction is an enlarging conversion whatever turn zero carries.
 const recordSamples = async ({ db, engine }: Fixture, counts = [100, 100, 100], model = "mock") => {
     const workspaceId = await insertWorkspace(db, `sample-source-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "sample");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "sample");
     const provider = providerAt(100_000, counts.map(response), model);
     const recorded: Array<{ turnId: number; packet: string }> = [];
     for (let sample = 0; sample < counts.length; sample++) {
-        const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages });
+        const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(row);
         recorded.push({ turnId: result.turnId, packet: row.packet });
@@ -59,10 +59,10 @@ const recordSamples = async ({ db, engine }: Fixture, counts = [100, 100, 100], 
     return { loopId, recorded };
 };
 
-const prepareLog = async ({ db, workspaceId, workerId, loopId, engine }: Fixture) => {
+const prepareLog = async ({ db, workspaceId, sessionId, loopId, engine }: Fixture) => {
     const turnId = await insertTurn(db, loopId, 1);
-    const args = { workspaceId, workerId, loopId, turnId, origin: "model" as const };
-    const target = urlPath("worker", "/notes.txt");
+    const args = { workspaceId, sessionId, loopId, turnId, origin: "model" as const };
+    const target = urlPath("workspace", "/notes.txt");
     const content = "alpha beta gamma ".repeat(2_000);
     const created = await engine.dispatch({ ...args, sequence: 1, statement: editStmt(target, content) });
     assert.equal(created.status, 201);
@@ -149,7 +149,7 @@ test("{§tokenomics-calibrated-readout} a loop's latest sample updates its offse
     await recordSamples(f, [0, 0, 0]);
     await recordSamples(f, [10_000, 10_000, 10_000], "other-model");
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), offset, "zero counts and other models fix nothing for this model");
-    assert.equal(budgetOf(await f.build()).budget, TokenCalibration.capacity(100_000, offset), "a different worker consumes the same model evidence");
+    assert.equal(budgetOf(await f.build()).budget, TokenCalibration.capacity(100_000, offset), "a different session consumes the same model evidence");
     const later = await recordSamples(f, [50, 900]);
     const latestLater = StoredPacket.parse(later.recorded.at(-1)!.packet)!.weight - 900;
     assert.equal(await TokenCalibration.forLoop(f.db, "mock", f.loopId), latestLater, "the latest model offset seeds a loop that has none");
@@ -204,7 +204,7 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
             await recordSamples(f);
             const offset = await TokenCalibration.forLoop(f.db, "mock", f.loopId);
             const rejected: MockResponse = {
-                assistant: { content: "````READ (worker:///not-an-operation", reasoning: null },
+                assistant: { content: "````READ (workspace:///not-an-operation", reasoning: null },
                 usage: { inputTokens: 17_000, totalTokens: 17_000 },
             };
             const responses = scenario === "invalid emissions"
@@ -264,7 +264,7 @@ test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs wit
         assert.equal(budgetOf(packet).budget, budgetOf(before).budget);
     }
     assert.deepEqual(await f.db.tok_log_weight.get({ id: readId }), raw, "curation cannot alter the immutable READ result or its write-time weight");
-    const source = await f.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.txt", scheme: "worker", name: "body" });
+    const source = await f.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.txt", scheme: "workspace", name: "body" });
     assert.equal(source?.content, content, "log curation does not delete source content");
 });
 

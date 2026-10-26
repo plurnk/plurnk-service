@@ -9,7 +9,7 @@ import type { Discovery, HandlerInfo } from "./types.ts";
 
 const context = (attempt: number): ExtensionAttributionContext => ({
     workspaceId: "workspace",
-    workerId: "worker",
+    sessionId: "session",
     loop: 1,
     turn: 2,
     attempt,

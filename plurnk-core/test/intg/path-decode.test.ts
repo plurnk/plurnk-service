@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import type { ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { PathSyntax } from "@plurnk/plurnk-contracts";
-import Worker from "../../src/schemes/Worker.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
 
 test("{§path-parentheses} decodePathParens decodes only %28/%29 — other percent-sequences + literal % pass through", () => {
@@ -22,7 +22,7 @@ test("{§path-parentheses} encodePathParens produces the model-facing inverse wi
 });
 
 const enc = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
@@ -33,20 +33,20 @@ test("{§path-parentheses} a percent-encoded pathname alias resolves to literal 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `paren-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
 
-        const w = await new Worker().edit(editStmt(enc("doc%28v1%29.md"), "paren body"), ctx);
+        const w = await new Workspace().edit(editStmt(enc("doc%28v1%29.md"), "paren body"), ctx);
         assert.ok(w.status === 200 || w.status === 201, "the encoded-paren EDIT lands");
 
         // READ of the encoded form resolves the entry the EDIT created.
-        const r = await readThroughScheme("worker", null, readStmt(enc("doc%28v1%29.md")), ctx);
+        const r = await readThroughScheme("workspace", null, readStmt(enc("doc%28v1%29.md")), ctx);
         assert.equal(r.status, 200, "READ of the encoded form resolves the entry");
         assert.match(r.content ?? "", /paren body/, "and returns its content");
 
         // The decisive check: the EDIT stored at the DECODED path, so the LITERAL-paren form
         // addresses the same entry. Without decode-at-resolve it would 404 here.
-        const literal = await readThroughScheme("worker", null, readStmt(enc("doc(v1).md")), ctx);
+        const literal = await readThroughScheme("workspace", null, readStmt(enc("doc(v1).md")), ctx);
         assert.equal(literal.status, 200, "the literal-paren form hits the same entry — proof the EDIT resolved decoded");
     } finally { await db.close(); }
 });

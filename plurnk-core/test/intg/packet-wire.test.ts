@@ -15,7 +15,7 @@ const tok = (s: string): number => Math.ceil(s.length / 4);
 // The exact names a parsed log record carries: its heading's identity and charge, then its facts.
 const facts = (record: Record<string, unknown>): string[] => Object.keys(record).toSorted();
 
-test("{§worker-wait-timing}: WAIT receipts expose their effective maximum, not elapsed time or a re-read default", () => {
+test("{§session-wait-timing}: WAIT receipts expose their effective maximum, not elapsed time or a re-read default", () => {
     for (const seconds of [300, 600, 0.25]) {
         const out = PacketWire.renderLog([{
             coordinate: "1/2/3", op: "WAIT", status: 202, tx: { body: "" }, attrs: { waiting: seconds },
@@ -123,15 +123,15 @@ test("{§log-wire-format}: COPY selections retain their separate patterns, scope
     const entry = {
         coordinate: "1/2/6", op: "COPY", status: 200,
         tx: {
-            source: { target: { scheme: "worker", pathname: "/notes" }, lineMarker: { marks: [2, 4] }, matcher: { raw: "/keep/" }, metadata: ['{"channel":"text"}'] },
-            destination: { target: { scheme: "worker", pathname: "/summary" }, lineMarker: { marks: [0] }, metadata: ['{"append":true}'] },
+            source: { target: { scheme: "workspace", pathname: "/notes" }, lineMarker: { marks: [2, 4] }, matcher: { raw: "/keep/" }, metadata: ['{"channel":"text"}'] },
+            destination: { target: { scheme: "workspace", pathname: "/summary" }, lineMarker: { marks: [0] }, metadata: ['{"append":true}'] },
             aside: "publish\nfindings",
         },
     };
     const before = structuredClone(entry);
     const out = PacketWire.renderLog([entry], tok);
     const [heading, factsLine] = out.split("\n");
-    assert.equal(heading, `### log:///1/2/6/COPY (worker:///notes) /keep/ (worker:///summary) · ${tok(out)}`);
+    assert.equal(heading, `### log:///1/2/6/COPY (workspace:///notes) /keep/ (workspace:///summary) · ${tok(out)}`);
     assert.deepEqual(JSON.parse(factsLine), {
         aside: "publish\nfindings",
         metadata: { from: ['{"channel":"text"}'], to: ['{"append":true}'] },
@@ -145,12 +145,12 @@ test("{§log-wire-format}: rejected inputs stay in JSON and multiline patterns c
     const pattern = "alpha\nbeta";
     const out = PacketWire.renderLog([{
         coordinate: "1/2/7", op: "READ", status: 400,
-        target: { scheme: "worker", pathname: "/notes" },
+        target: { scheme: "workspace", pathname: "/notes" },
         tx: { lineMarker: { marks: [1, 2, 3, 4, 5] }, metadata: ["not JSON"], matcher: { raw: pattern } },
         rx: { problem: { type: "about:blank", status: 400, title: "Invalid scope", detail: "Unsupported scope arity." } },
     }], tok);
     const [heading, factsLine] = out.split("\n");
-    assert.equal(heading, `### log:///1/2/7/READ (worker:///notes) ${JSON.stringify(pattern)} · ${tok(out)}`);
+    assert.equal(heading, `### log:///1/2/7/READ (workspace:///notes) ${JSON.stringify(pattern)} · ${tok(out)}`);
     const meta = JSON.parse(factsLine);
     assert.equal(meta.scope, "<1,2,3,4,5>");
     assert.deepEqual(meta.metadata, ["not JSON"]);
@@ -161,11 +161,11 @@ test("{§log-wire-format}: rejected inputs stay in JSON and multiline patterns c
 test("{§log-address-metadata}: addressed operands and record identities remain distinct across operation families", async (t) => {
     for (const op of ["READ", "FIND", "EDIT", "KILL", "SEND", "WORK", "FORK", "BARE", "WAIT", "gitea"]) {
         await t.test(op, () => {
-            const address = op === "gitea" ? "list_issues" : "worker://reviewer/notes.md";
+            const address = op === "gitea" ? "list_issues" : "session://reviewer/notes.md";
             const out = PacketWire.renderLog([{
                 coordinate: "1/2/3", op, status: 200,
                 target: op === "gitea" ? { scheme: null, pathname: address }
-                    : { scheme: "worker", hostname: "reviewer", pathname: "/notes.md" },
+                    : { scheme: "session", hostname: "reviewer", pathname: "/notes.md" },
                 tx: { aside: "addressed operand", runtime: op, body: null },
             }], tok);
             const [heading] = out.split("\n");
@@ -189,26 +189,26 @@ test("{§log-address-metadata}: addressed operands and record identities remain 
 test("{§log-address-metadata}: COPY and MOVE operands do not overwrite the observed actor", () => {
     for (const op of ["COPY", "MOVE"]) {
         const metadata = parseLogRecords(PacketWire.renderLog([{
-            coordinate: "1/2/3", op, status: 200, origin: "_plurnk", source: "worker://child",
+            coordinate: "1/2/3", op, status: 200, origin: "_plurnk", source: "session://child",
             tx: {
-                source: { target: { scheme: "worker", hostname: "child", pathname: "/notes.md" }, lineMarker: { marks: [2, 3] } },
-                destination: { target: { scheme: "worker", pathname: "/summary.md" }, lineMarker: { marks: [0] } },
+                source: { target: { scheme: "session", hostname: "child", pathname: "/notes.md" }, lineMarker: { marks: [2, 3] } },
+                destination: { target: { scheme: "workspace", pathname: "/summary.md" }, lineMarker: { marks: [0] } },
                 aside: "publish findings",
             },
         }], tok))[0];
-        assert.equal(metadata.modifiers, "(worker://child/notes.md) (worker:///summary.md)");
-        assert.equal(metadata.from, "worker://child/notes.md");
-        assert.equal(metadata.to, "worker:///summary.md");
+        assert.equal(metadata.modifiers, "(session://child/notes.md) (workspace:///summary.md)");
+        assert.equal(metadata.from, "session://child/notes.md");
+        assert.equal(metadata.to, "workspace:///summary.md");
         assert.deepEqual(metadata.scope, { from: "<2,3>", to: "<0>" });
         assert.equal(metadata.aside, "publish findings");
-        assert.equal(metadata.source, "worker://child");
+        assert.equal(metadata.source, "session://child");
         assert.equal(metadata.path, undefined, "two operands are not collapsed into one path");
         assert.equal(metadata.destination, undefined);
     }
 });
 
 test("{§operation-resource-receipt}: returned resource addresses remain distinct from authored targets without duplicate stream links", () => {
-    const target = { scheme: "worker", hostname: "peer", pathname: "" };
+    const target = { scheme: "session", hostname: "peer", pathname: "" };
     const resource = "message://peer/1";
     const row = {
         coordinate: "1/2/3", op: "SEND", status: 200,
@@ -216,10 +216,10 @@ test("{§operation-resource-receipt}: returned resource addresses remain distinc
     };
     const projected = parseLogRecords(PacketWire.renderLog([row], tok))[0];
     assert.equal(projected.resource, resource);
-    assert.equal(projected.path, "worker://peer");
+    assert.equal(projected.path, "session://peer");
     assert.equal(typeof projected.body, "string");
     assert.match(String(projected.body), /Please inspect this\./u);
-    for (const absent of [undefined, "", "worker://peer"]) {
+    for (const absent of [undefined, "", "session://peer"]) {
         assert.equal(parseLogRecords(PacketWire.renderLog([{ ...row, rx: { resource: absent } }], tok))[0].resource, undefined);
     }
     const stream = "sh:///abcdef12";
@@ -248,15 +248,15 @@ test("{§log-address-metadata}: explicit and automatic READs share one resource-
 });
 
 test("{§log-address-metadata}: delivered attachments keep their resource paths without rewriting delivery evidence", () => {
-    const attachments = [{ name: "report.pdf", mediaType: "application/pdf", target: "worker://peer/artifacts/report.pdf" }];
+    const attachments = [{ name: "report.pdf", mediaType: "application/pdf", target: "session://peer/artifacts/report.pdf" }];
     const before = structuredClone(attachments);
     const output = PacketWire.renderLog([{
         coordinate: "1/2/3", op: "SEND", status: 200,
-        target: { scheme: "worker", hostname: "peer", pathname: "" },
+        target: { scheme: "session", hostname: "peer", pathname: "" },
         tx: { body: "Here is the report." }, rx: { attachments },
     }], tok);
     const metadata = parseLogRecords(output)[0];
-    assert.equal(metadata.path, "worker://peer");
+    assert.equal(metadata.path, "session://peer");
     assert.deepEqual(metadata.attachments, [{ name: "report.pdf", mediaType: "application/pdf", path: attachments[0].target }]);
     assert.deepEqual(attachments, before, "the durable/exterior attachment descriptor keeps its owning contract");
 });
@@ -396,11 +396,11 @@ test("{§log-wire-format}: all operations omit routine status 200 and preserve o
     for (const op of ["NOTE", "READ", "FIND", "EDIT", "COPY", "MOVE", "KILL", "SEND", "WORK", "FORK", "WAIT", "BARE", "sh", "gitea"]) {
         for (const status of [102, 200, 201, 202, 204, 206, 304, 400, 409, 499, 500]) {
             await t.test(`${op} ${status}`, () => {
-                const target = { scheme: "worker", pathname: "/subject.md" };
+                const target = { scheme: "workspace", pathname: "/subject.md" };
                 const entry = {
                     coordinate: "1/2/3", origin: "model", op, status, target,
                     tx: op === "COPY" || op === "MOVE" ? {
-                        source: { target }, destination: { target: { scheme: "worker", pathname: "/destination.md" } },
+                        source: { target }, destination: { target: { scheme: "workspace", pathname: "/destination.md" } },
                     } : { body: "" },
                     rx: { status, ...(status < 400 ? {} : {
                         problem: { type: "about:blank", status, title: "Operation failed", detail: "The operation was refused." },
@@ -463,7 +463,7 @@ test("{§log-wire-format}: heading addresses precede the facts, and the facts ke
         {
             name: "harness reasoning READ with an aside",
             entry: {
-                ...read, origin: "_plurnk", source: "worker://child",
+                ...read, origin: "_plurnk", source: "session://child",
                 target: { scheme: "reasoning", hostname: "alice", pathname: "/1/4" },
                 tx: { aside: "Prior reasoning", body: null },
             },
@@ -659,15 +659,15 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
         origin: "model",
         op: "COPY",
         status: 200,
-        target: { scheme: "worker", pathname: "/source" },
+        target: { scheme: "workspace", pathname: "/source" },
         tx: {
             source: {
-                target: { scheme: "worker", pathname: "/source" },
+                target: { scheme: "workspace", pathname: "/source" },
                 metadata: null,
                 lineMarker: { marks: [2, 3] },
             },
             destination: {
-                target: { scheme: "worker", pathname: "/draft" },
+                target: { scheme: "workspace", pathname: "/draft" },
                 metadata: null,
                 lineMarker: { marks: [0] },
             },
@@ -675,7 +675,7 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
         rx: {
             status: 200,
             effects: [{
-                target: "worker:///draft",
+                target: "workspace:///draft",
                 action: "update",
                 receipt: {
                     ...receipt("1:before\n2:copied content"),
@@ -684,12 +684,12 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
             }],
         },
     }], tok);
-    assert.match(out, /^### log:\/\/\/1\/2\/5\/COPY \(worker:\/\/\/source\) \(worker:\/\/\/draft\) · \d+$/m);
+    assert.match(out, /^### log:\/\/\/1\/2\/5\/COPY \(workspace:\/\/\/source\) \(workspace:\/\/\/draft\) · \d+$/m);
     assert.deepEqual(parseLogRecords(out)[0].scope, { from: "<2,3>", to: "<0>" });
-    assert.doesNotMatch(out, /"path":"worker:\/\/\/source"/);
+    assert.doesNotMatch(out, /"path":"workspace:\/\/\/source"/);
     assert.match(
         out,
-        /"effects":\[\{"path":"worker:\/\/\/draft","action":"update","extent":"lines 4->5","parseIssues":"0->3","change":"lines -1 \+2","effect":"<2> -> <2,3>"\}\]/,
+        /"effects":\[\{"path":"workspace:\/\/\/draft","action":"update","extent":"lines 4->5","parseIssues":"0->3","change":"lines -1 \+2","effect":"<2> -> <2,3>"\}\]/,
     );
     assert.match(
         out,
@@ -702,15 +702,15 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
         origin: "model",
         op: "MOVE",
         status: 200,
-        target: { scheme: "worker", pathname: "/source" },
+        target: { scheme: "workspace", pathname: "/source" },
         tx: {
             source: {
-                target: { scheme: "worker", pathname: "/source" },
+                target: { scheme: "workspace", pathname: "/source" },
                 metadata: null,
                 lineMarker: { marks: [1, -1] },
             },
             destination: {
-                target: { scheme: "worker", pathname: "/destination" },
+                target: { scheme: "workspace", pathname: "/destination" },
                 metadata: null,
                 lineMarker: null,
             },
@@ -718,16 +718,16 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
         rx: {
             status: 200,
             effects: [
-                { target: "worker:///destination", action: "create" },
-                { target: "worker:///source", action: "delete" },
+                { target: "workspace:///destination", action: "create" },
+                { target: "workspace:///source", action: "delete" },
             ],
         },
     }], tok);
     assert.match(
         whole,
-        /"effects":\[\{"path":"worker:\/\/\/destination","action":"create"\},\{"path":"worker:\/\/\/source","action":"delete"\}\]/,
+        /"effects":\[\{"path":"workspace:\/\/\/destination","action":"create"\},\{"path":"workspace:\/\/\/source","action":"delete"\}\]/,
     );
-    assert.match(whole, /^### log:\/\/\/\S+\/MOVE \(worker:\/\/\/source\) \(worker:\/\/\/destination\) · \d+$/m, "both operands are written without scope syntax");
+    assert.match(whole, /^### log:\/\/\/\S+\/MOVE \(workspace:\/\/\/source\) \(workspace:\/\/\/destination\) · \d+$/m, "both operands are written without scope syntax");
     assert.deepEqual(parseLogRecords(whole)[0].scope, { from: "<1,-1>" });
     assert.doesNotMatch(whole, /"body":/, "whole-channel effects invent no text receipt — none-state is body absence (#338)");
 
@@ -736,15 +736,15 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
         origin: "model",
         op: "COPY",
         status: 201,
-        target: { scheme: "worker", pathname: "/source" },
+        target: { scheme: "workspace", pathname: "/source" },
         tx: {
             source: {
-                target: { scheme: "worker", pathname: "/source" },
+                target: { scheme: "workspace", pathname: "/source" },
                 metadata: null,
                 lineMarker: { marks: [2, 3] },
             },
             destination: {
-                target: { scheme: "worker", pathname: "/created" },
+                target: { scheme: "workspace", pathname: "/created" },
                 metadata: null,
                 lineMarker: null,
             },
@@ -752,13 +752,13 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
         rx: {
             status: 201,
             effects: [{
-                target: "worker:///created",
+                target: "workspace:///created",
                 action: "create",
                 receipt: creationReceipt("1:two\n2:three"),
             }],
         },
     }], tok);
-    assert.match(created, /\(worker:\/\/\/source\) \(worker:\/\/\/created\) ·/);
+    assert.match(created, /\(workspace:\/\/\/source\) \(workspace:\/\/\/created\) ·/);
     assert.deepEqual(parseLogRecords(created)[0].scope, { from: "<2,3>" });
     assert.match(created, /"action":"create"[^}]*"effect":"<1,1,1,1> -> <1,2>"/);
     assert.match(created, /1:two\n2:three/);
@@ -768,22 +768,22 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE render operand selections and scop
         origin: "model",
         op: "COPY",
         status: 304,
-        target: { scheme: "worker", pathname: "/source" },
+        target: { scheme: "workspace", pathname: "/source" },
         tx: {
             source: {
-                target: { scheme: "worker", pathname: "/source" },
+                target: { scheme: "workspace", pathname: "/source" },
                 metadata: null,
                 lineMarker: { marks: [2, 3] },
             },
             destination: {
-                target: { scheme: "worker", pathname: "/created" },
+                target: { scheme: "workspace", pathname: "/created" },
                 metadata: null,
                 lineMarker: null,
             },
         },
         rx: { status: 304 },
     }], tok);
-    assert.match(unchanged, /\(worker:\/\/\/source\) \(worker:\/\/\/created\) ·/);
+    assert.match(unchanged, /\(workspace:\/\/\/source\) \(workspace:\/\/\/created\) ·/);
     assert.deepEqual(parseLogRecords(unchanged)[0].scope, { from: "<2,3>" });
     assert.doesNotMatch(unchanged, /"effects"/);
     assert.doesNotMatch(unchanged, /"body":/, "none-state is body absence (#338)");
@@ -795,15 +795,15 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE retain authored line anchors in du
         origin: "model",
         op: "COPY",
         status: 200,
-        target: { scheme: "worker", pathname: "/source" },
+        target: { scheme: "workspace", pathname: "/source" },
         tx: {
             source: {
-                target: { scheme: "worker", pathname: "/source" },
+                target: { scheme: "workspace", pathname: "/source" },
                 metadata: null,
                 lineMarker: { marks: ["@aZ09b", "@0Aa9Z"] },
             },
             destination: {
-                target: { scheme: "worker", pathname: "/destination" },
+                target: { scheme: "workspace", pathname: "/destination" },
                 metadata: null,
                 lineMarker: { marks: ["@10Zyx", 4, "@zY01A", 4] },
             },
@@ -811,14 +811,14 @@ test("{§tokenomics-agnostic-ruler} COPY/MOVE retain authored line anchors in du
         rx: {
             status: 200,
             effects: [{
-                target: "worker:///destination",
+                target: "workspace:///destination",
                 action: "update",
                 receipt: receipt("1:copied content"),
             }],
         },
     }], tok);
 
-    assert.match(out, /\(worker:\/\/\/source\) \(worker:\/\/\/destination\) ·/);
+    assert.match(out, /\(workspace:\/\/\/source\) \(workspace:\/\/\/destination\) ·/);
     assert.deepEqual(parseLogRecords(out)[0].scope, { from: "<@aZ09b,@0Aa9Z>", to: "<@10Zyx,4,@zY01A,4>" });
 });
 
@@ -828,15 +828,15 @@ test("{§tokenomics-agnostic-ruler} a reviewer-rewritten same-resource MOVE rend
         origin: "model",
         op: "MOVE",
         status: 200,
-        target: { scheme: "worker", pathname: "/document" },
+        target: { scheme: "workspace", pathname: "/document" },
         tx: {
             source: {
-                target: { scheme: "worker", pathname: "/document" },
+                target: { scheme: "workspace", pathname: "/document" },
                 metadata: null,
                 lineMarker: { marks: [1, 2, 1, 4] },
             },
             destination: {
-                target: { scheme: "worker", pathname: "/document" },
+                target: { scheme: "workspace", pathname: "/document" },
                 metadata: null,
                 lineMarker: { marks: [1, 7, 1, 7] },
             },
@@ -844,7 +844,7 @@ test("{§tokenomics-agnostic-ruler} a reviewer-rewritten same-resource MOVE rend
         rx: {
             status: 200,
             effects: [{
-                target: "worker:///document",
+                target: "workspace:///document",
                 action: "update",
                 receipt: {
                     revision,
@@ -866,28 +866,28 @@ test("{§tokenomics-agnostic-ruler} a reviewer-rewritten same-resource MOVE rend
         },
     }], tok);
 
-    assert.match(out, /\(worker:\/\/\/document\) \(worker:\/\/\/document\) ·/);
+    assert.match(out, /\(workspace:\/\/\/document\) \(workspace:\/\/\/document\) ·/);
     assert.deepEqual(parseLogRecords(out)[0].scope, { from: "<1,2,1,4>", to: "<1,7,1,7>" });
     assert.match(
         out,
-        /"effects":\[\{"path":"worker:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"lines -1 \+2","replacement":"<1> -> <1,2>"\}\]/,
+        /"effects":\[\{"path":"workspace:\/\/\/document","action":"update","extent":"lines 1->2","disposition":"superseded","requested":"<1,7,1,7>","change":"lines -1 \+2","replacement":"<1> -> <1,2>"\}\]/,
     );
     assert.equal(out.match(/1:reviewer/g)?.length, 1);
     assert.equal(out.match(/2:replacement/g)?.length, 1);
 });
 
-test("{§tokenomics-agnostic-ruler} log entry: a worker:// spawn renders the worker NAME in the addressed operand", () => {
-    // The spawn-blindness root cause: the worker name lives in the URI authority (worker://<name>),
-    // not the path. Rendering scheme+path alone collapsed every spawn to a bare `worker://`, so the
-    // model could not tell worker_db from worker_pool in its own log and re-spawned. The authority
+test("{§tokenomics-agnostic-ruler} log entry: a session:// spawn renders the session NAME in the addressed operand", () => {
+    // The spawn-blindness root cause: the session name lives in the URI authority (session://<name>),
+    // not the path. Rendering scheme+path alone collapsed every spawn to a bare `session://`, so the
+    // model could not tell session_db from session_pool in its own log and re-spawned. The authority
     // must reach the rendered target.
     const out = PacketWire.renderLog([
-        { coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", hostname: "worker_db", pathname: "" } },
-        { coordinate: "1/1/10", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", hostname: "worker_pool", pathname: "" } },
+        { coordinate: "1/1/9", origin: "model", op: "EDIT", status: 200, target: { scheme: "session", hostname: "session_db", pathname: "" } },
+        { coordinate: "1/1/10", origin: "model", op: "EDIT", status: 200, target: { scheme: "session", hostname: "session_pool", pathname: "" } },
     ], tok);
-    assert.match(out, /^### log:\/\/\/1\/1\/9\/EDIT \(worker:\/\/worker_db\) · \d+$/m, "the spawned worker name reaches the model's log");
-    assert.match(out, /^### log:\/\/\/1\/1\/10\/EDIT \(worker:\/\/worker_pool\) · \d+$/m, "distinct workers render distinctly — no bare worker://");
-    assert.doesNotMatch(out, /\(worker:\/\/\)/, "no nameless worker:// rows (the blindness)");
+    assert.match(out, /^### log:\/\/\/1\/1\/9\/EDIT \(session:\/\/session_db\) · \d+$/m, "the spawned session name reaches the model's log");
+    assert.match(out, /^### log:\/\/\/1\/1\/10\/EDIT \(session:\/\/session_pool\) · \d+$/m, "distinct sessions render distinctly — no bare session://");
+    assert.doesNotMatch(out, /\(session:\/\/\)/, "no nameless session:// rows (the blindness)");
 });
 
 test("{§tokenomics-agnostic-ruler} log entry: a web host survives into the target — http://host/path, not http:///path", () => {
@@ -961,7 +961,7 @@ test("{§tokenomics-agnostic-ruler} log render: a scoped READ preserves its comp
         origin: "model",
         op: "READ",
         status: 200,
-        target: { scheme: "worker", pathname: "/unicode" },
+        target: { scheme: "workspace", pathname: "/unicode" },
         rx: {
             status: 200,
             content: "😀",
@@ -996,7 +996,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
                 title: "Terminated by signal",
                 status: 500,
                 detail: "'sh' was terminated by SIGKILL.",
-                instance: "ops://worker/2",
+                instance: "ops://session/2",
                 stage: "execution",
                 recovery: "Inspect the stdout and stderr channels.",
                 retryable: false,
@@ -1035,8 +1035,8 @@ test("{§retrieval-packet-metadata} log render: a READ row carries its sibling c
         origin: "model",
         op: "READ",
         status: 200,
-        target: { scheme: "worker", pathname: "/page.html" },
-        tx: { target: { scheme: "worker", pathname: "/page.html" }, lineMarker: null, matcher: null, body: null },
+        target: { scheme: "workspace", pathname: "/page.html" },
+        tx: { target: { scheme: "workspace", pathname: "/page.html" }, lineMarker: null, matcher: null, body: null },
         rx: { content: "<html></html>", mimetype: "text/html", startLine: 1, channels: { "#readable": 812 }, range: { unit: "line", total: 1, requested: [1, 16], returned: [1, 1] } },
     }], tok);
     assert.match(out, /"channels":\{"#readable":812\}/);
@@ -1049,11 +1049,11 @@ test("{§tokenomics-agnostic-ruler} log render: a pattern EDIT carries its match
         origin: "model",
         op: "EDIT",
         status: 200,
-        target: { scheme: "worker", pathname: "/notes.md" },
-        tx: { target: { scheme: "worker", pathname: "/notes.md" }, matcher: { dialect: "glob", raw: "foo" }, lineMarker: null, body: "baz" },
+        target: { scheme: "workspace", pathname: "/notes.md" },
+        tx: { target: { scheme: "workspace", pathname: "/notes.md" }, matcher: { dialect: "glob", raw: "foo" }, lineMarker: null, body: "baz" },
         rx: { status: 200, matched: 3, receipt: receipt("1:alpha baz\n2:baz bar", "<1,7,1,10>") },
     }], tok);
-    assert.match(out, /^### log:\/\/\/\S+\/EDIT \(worker:\/\/\/notes\.md\) foo · \d+$/m, "a literal pattern is descriptive text, not an OP modifier");
+    assert.match(out, /^### log:\/\/\/\S+\/EDIT \(workspace:\/\/\/notes\.md\) foo · \d+$/m, "a literal pattern is descriptive text, not an OP modifier");
     assert.match(out, /"matched":3/);
     assert.deepEqual(parseLogRecords(out).map(facts), [["body", "change", "effect", "extent", "lines", "logPath", "matched", "matcher", "modifiers", "path", "tokens"]]);
 });
@@ -1098,10 +1098,10 @@ test("{§render-rule-line-navigable-prefix}: FIND ordinals retain page coordinat
         origin: "model",
         op: "FIND",
         status: 200,
-        target: { scheme: "worker", pathname: "/**" },
+        target: { scheme: "workspace", pathname: "/**" },
         tx: { body: null },
         rx: {
-            content: '[{"path":"worker:///q.md"},\n{"path":"worker:///r.md"}]',
+            content: '[{"path":"workspace:///q.md"},\n{"path":"workspace:///r.md"}]',
             mimetype: "application/json",
             range: {
                 unit: "resource",
@@ -1114,7 +1114,7 @@ test("{§render-rule-line-navigable-prefix}: FIND ordinals retain page coordinat
 
     assert.equal(
         parseLogRecords(out)[0]?.body,
-        ' 17:[{"path":"worker:///q.md"},\n 18:{"path":"worker:///r.md"}]\n',
+        ' 17:[{"path":"workspace:///q.md"},\n 18:{"path":"workspace:///r.md"}]\n',
     );
     assert.doesNotMatch(out, /\n1:\[\{/,
         "a later page never invents page-local result ordinals");
@@ -1139,9 +1139,9 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
         },
         {
             coordinate: "1/1/3", origin: "model", op: "FIND", status: 200, initial_folded: [[1, -1]],
-            target: { scheme: "worker", pathname: "/**" }, tx: { body: null },
+            target: { scheme: "workspace", pathname: "/**" }, tx: { body: null },
             rx: {
-                content: '[{"path":"worker:///a"}]', mimetype: "application/json",
+                content: '[{"path":"workspace:///a"}]', mimetype: "application/json",
                 itemsWeightTotal: 80, returnedItemsWeightTotal: 80,
                 matchingPathCount: 1, matchLocationCount: 0,
                 range: { unit: "resource", total: 1, requested: [1, 16], returned: [1, 1] },
@@ -1149,9 +1149,9 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
         },
         {
             coordinate: "1/1/4", origin: "model", op: "FIND", status: 200, initial_folded: [[1, -1]],
-            target: { scheme: "worker", pathname: "/**" }, tx: { matcher: { raw: "/target/" } },
+            target: { scheme: "workspace", pathname: "/**" }, tx: { matcher: { raw: "/target/" } },
             rx: {
-                content: '[{"path":"worker:///a","matchLocationCount":2}]', mimetype: "application/json",
+                content: '[{"path":"workspace:///a","matchLocationCount":2}]', mimetype: "application/json",
                 itemsWeightTotal: 1_000, returnedItemsWeightTotal: 400,
                 matchingPathCount: 20, matchLocationCount: 42,
                 range: { unit: "resource", total: 20, requested: [1, 16], returned: [1, 16] },
@@ -1169,7 +1169,7 @@ test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metada
         },
         {
             coordinate: "1/1/6", origin: "_plurnk", op: "FIND", status: 200, initial_folded: [[1, -1]],
-            target: { scheme: "worker", pathname: "/missing/**" }, tx: { body: null },
+            target: { scheme: "workspace", pathname: "/missing/**" }, tx: { body: null },
             rx: {
                 content: "[]", mimetype: "application/json",
                 itemsWeightTotal: 0, returnedItemsWeightTotal: 0,
@@ -1287,7 +1287,7 @@ test("{§tokenomics-agnostic-ruler} log render: EDIT@200 with rx.span → wraps 
         origin: "model",
         op: "EDIT",
         status: 200,
-        target: { scheme: "worker", pathname: "/plan.md" },
+        target: { scheme: "workspace", pathname: "/plan.md" },
         rx: { status: 200, span: "3:- [x] ship the fix" },  // editedSpan emits N: with the changed region's REAL offset
     }], tok);
     // The model sees the edited area as it looks NOW at its TRUE line numbers — editedSpan already
@@ -1304,7 +1304,7 @@ test("{§tokenomics-agnostic-ruler} log render: model EDIT receipt renders its e
         coordinate: "1/1/3",
         origin: "model",
         op: "EDIT", status: 200,
-        target: { scheme: "worker", pathname: "/draft" },
+        target: { scheme: "workspace", pathname: "/draft" },
         rx: { status: 200, receipt: exactReceipt },
     }], tok);
     assert.deepEqual(parseLogRecords(out).map(facts), [["body", "change", "effect", "extent", "lines", "logPath", "modifiers", "path", "tokens"]]);
@@ -1337,7 +1337,7 @@ test("{§tokenomics-agnostic-ruler} reviewer-replaced EDIT rows render authored 
             origin: "model",
             op: "EDIT",
             status: 200,
-            target: { scheme: "worker", pathname: "/draft" },
+            target: { scheme: "workspace", pathname: "/draft" },
             rx: {
                 status: 200,
                 receipt: { ...head, requested: "<2>", replacement },
@@ -1348,7 +1348,7 @@ test("{§tokenomics-agnostic-ruler} reviewer-replaced EDIT rows render authored 
             origin: "model",
             op: "EDIT",
             status: 200,
-            target: { scheme: "worker", pathname: "/draft" },
+            target: { scheme: "workspace", pathname: "/draft" },
             rx: {
                 status: 200,
                 receipt: { ...head, requested: "<4>" },
@@ -1372,7 +1372,7 @@ test("{§tokenomics-agnostic-ruler} render guard: every content-emitting op appl
     // execution-body, the foisted exec-stream delta (incl. its cross-turn startLine), and NOTE/SEND bodies.
     // Log rows mirror the model's work as numbered content; they do not reserialize operation headings.
     // No future content branch can silently diverge.
-    const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "worker", pathname: "/a" } };
+    const base = { coordinate: "1/1/1", origin: "model", status: 200, target: { scheme: "workspace", pathname: "/a" } };
     const execTx = (body: string) => ({ runtime: "sh", target: { kind: "url", raw: "sh:///1/1/1/sh", scheme: "sh", pathname: "/1/1/1/sh", fragment: null }, body, lineMarker: null });
     const cases: Array<{ label: string; entry: LogEntryView; want: RegExp; anti?: RegExp }> = [
         { label: "READ text → numbered", entry: { ...base, op: "READ", rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta" } }, want: /1:alpha\n2:beta/ },
@@ -1414,7 +1414,7 @@ test("{§tokenomics-agnostic-ruler} READ bodies render copyable Base62 line anch
         origin: "model",
         op: "READ",
         status: 200,
-        target: { scheme: "worker", pathname: "/notes.md" },
+        target: { scheme: "workspace", pathname: "/notes.md" },
         rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
         folded: [],
         lineAnchors: ["@aZ09b", "@Q1w2E"],
@@ -1428,7 +1428,7 @@ test("{§tokenomics-agnostic-ruler} READ bodies render copyable Base62 line anch
         origin: "model",
         op: "FIND",
         status: 200,
-        target: { scheme: "worker", pathname: "/notes.md" },
+        target: { scheme: "workspace", pathname: "/notes.md" },
         rx: { status: 200, mimetype: "application/json", content: '["one"]', startLine: 1 },
         folded: [],
     }], tok);
@@ -1442,7 +1442,7 @@ test("{§tokenomics-agnostic-ruler} partially suppressed log bodies preserve sou
         origin: "model",
         op: "READ",
         status: 200,
-        target: { scheme: "worker", pathname: "/notes.md" },
+        target: { scheme: "workspace", pathname: "/notes.md" },
         rx: { status: 200, mimetype: "text/markdown", content: "one\ntwo\nthree\nfour", startLine: 17 },
         folded: [[2, 3]],
         lineAnchors: ["@00001", "@00002", "@00003", "@00004"],
@@ -1462,7 +1462,7 @@ test("{§tokenomics-agnostic-ruler} READ rendering fails hard when persisted anc
             origin: "model",
             op: "READ",
             status: 200,
-            target: { scheme: "worker", pathname: "/notes.md" },
+            target: { scheme: "workspace", pathname: "/notes.md" },
             rx: { status: 200, mimetype: "text/markdown", content: "alpha\nbeta", startLine: 7 },
             folded: [],
             lineAnchors: ["@aZ09b"],
@@ -1481,7 +1481,7 @@ test("{§tokenomics-agnostic-ruler} log render: EDIT@200 with no tx → meta lin
             origin: "model",
             op: "EDIT",
             status: 200,
-            target: { scheme: "worker", pathname: "/x" },
+            target: { scheme: "workspace", pathname: "/x" },
             rx: { status: 200, entryId: 5, channel: "body" },
         }],
     };
@@ -1527,20 +1527,20 @@ test("{§tokenomics-agnostic-ruler} heterogeneous failures render as uniform dur
 });
 
 test("{§tokenomics-agnostic-ruler} log render: FIND@200 renders its result catalog, not just the echoed query", () => {
-    // The turn-0 foisted FIND catalog map is how a worker's opening catalog reaches
+    // The turn-0 foisted FIND catalog map is how a session's opening catalog reaches
     // the packet. If the renderer only re-emits the query statement (the regression),
     // the model is shown its own question and zero entries.
-    const catalog = '[\n  {\n    "path": "worker:///1/1",\n    "channels": {\n      "worker:///1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';
+    const catalog = '[\n  {\n    "path": "workspace:///1/1",\n    "channels": {\n      "workspace:///1/1": { "mimetype": "text/markdown", "tokens": 20, "lines": 1 }\n    }\n  }\n]';
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "_plurnk",
         op: "FIND",
         status: 200,
-        target: { scheme: "worker", pathname: "/**" },
-        tx: { op: "FIND", target: { kind: "url", raw: "worker:///**", scheme: "worker", pathname: "/**", fragment: null }, body: null, lineMarker: null },
+        target: { scheme: "workspace", pathname: "/**" },
+        tx: { op: "FIND", target: { kind: "url", raw: "workspace:///**", scheme: "workspace", pathname: "/**", fragment: null }, body: null, lineMarker: null },
         rx: { content: catalog, mimetype: "application/json" },
     }], tok);
-    assert.match(out, /"path": "worker:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
+    assert.match(out, /"path": "workspace:\/\/\/1\/1"/, "FIND@200 renders its result body - the model sees what the FIND returned");
     assert.match(out, /\n1:\[/);
 });
 
@@ -1655,7 +1655,7 @@ Address the message.
 
 test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-line JSON metadata", () => {
     const out = PacketWire.renderLog([
-        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
+        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "workspace", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } }, // none: empty FIND, no body
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/a.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } }, // suppressed: body hidden
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/b.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } }, // visible: coordinate lines
     ], tok);
@@ -1674,7 +1674,7 @@ test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-
 
 test("{§packet-token-accounting}: each row exposes one exact current-context charge", () => {
     const entries = [
-        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "worker", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } },
+        { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "workspace", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } },
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } },
         { coordinate: "1/1/3", origin: "model", op: "READ", status: 200, folded: [], target: { scheme: null, pathname: "/open.md" }, rx: { content: "gamma", mimetype: "text/markdown", startLine: 1 } },
         { coordinate: "1/1/4", origin: "model", op: "READ", status: 200, folded: [[2, 2]], target: { scheme: null, pathname: "/partial.md" }, rx: { content: "one\ntwo\nthree", mimetype: "text/markdown", startLine: 1 } },
@@ -1765,7 +1765,7 @@ test("{§body-projection}: every body renders whole — NOTE, EDIT span, READ, F
 
     const numberedSpan = Array.from({ length: 30 }, (_, i) => `${i + 1}:span line ${i + 1}`).join("\n");
     const editOut = PacketWire.renderLog([
-        { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "worker", pathname: "/x" }, rx: { span: numberedSpan } },
+        { coordinate: "1/1/2", origin: "model", op: "EDIT", status: 200, target: { scheme: "workspace", pathname: "/x" }, rx: { span: numberedSpan } },
     ], tok);
     assert.match(editOut, /span line 30/, "an environment-delta EDIT span renders whole");
     assert.equal(parseLogRecords(editOut)[0]?.preview, undefined);
@@ -1805,10 +1805,10 @@ test("{§body-projection}: every body producer renders whole", () => {
     const entries = [
         { op: null, origin: "model", target: null, attrs: { kind: "emissionAttempt" }, rx: { content: long, mimetype: "text/vnd.plurnk" } },
         { op: "SEND", origin: "model", target: null, tx: { body: { raw: long } } },
-        { op: "WORK", origin: "model", target: { scheme: "worker", pathname: "/reviewer" }, tx: { body: long } },
+        { op: "WORK", origin: "model", target: { scheme: "session", pathname: "/reviewer" }, tx: { body: long } },
         { op: "FORK", origin: "model", target: null, tx: { body: long } },
         { op: "sh", origin: "model", target: { scheme: "sh", pathname: "/1/1/1/sh" }, tx: { op: "sh", body: long } },
-        { op: "EDIT", origin: "model", target: { scheme: "worker", pathname: "/a" }, rx: { span: numbered } },
+        { op: "EDIT", origin: "model", target: { scheme: "workspace", pathname: "/a" }, rx: { span: numbered } },
         { op: "extension", origin: "_plurnk", target: { scheme: "custom", pathname: "/result" }, rx: { content: long, mimetype: "text/plain" } },
     ];
 
@@ -1861,44 +1861,44 @@ test("{§tokenomics-agnostic-ruler} structured mutation receipts bypass a second
         {
             op: "EDIT",
             origin: "model",
-            target: { scheme: "worker", pathname: "/a" },
+            target: { scheme: "workspace", pathname: "/a" },
             rx: { receipt: editReceipt },
         },
         {
             op: "COPY",
             origin: "model",
-            target: { scheme: "worker", pathname: "/b-source" },
+            target: { scheme: "workspace", pathname: "/b-source" },
             tx: {
                 source: {
-                    target: { scheme: "worker", pathname: "/b-source" },
+                    target: { scheme: "workspace", pathname: "/b-source" },
                     metadata: null,
                     lineMarker: { marks: [2] },
                 },
                 destination: {
-                    target: { scheme: "worker", pathname: "/b" },
+                    target: { scheme: "workspace", pathname: "/b" },
                     metadata: null,
                     lineMarker: { marks: [2] },
                 },
             },
-            rx: { effects: [{ target: "worker:///b", action: "update", receipt: editReceipt }] },
+            rx: { effects: [{ target: "workspace:///b", action: "update", receipt: editReceipt }] },
         },
         {
             op: "MOVE",
             origin: "model",
-            target: { scheme: "worker", pathname: "/c-source" },
+            target: { scheme: "workspace", pathname: "/c-source" },
             tx: {
                 source: {
-                    target: { scheme: "worker", pathname: "/c-source" },
+                    target: { scheme: "workspace", pathname: "/c-source" },
                     metadata: null,
                     lineMarker: { marks: [2] },
                 },
                 destination: {
-                    target: { scheme: "worker", pathname: "/c" },
+                    target: { scheme: "workspace", pathname: "/c" },
                     metadata: null,
                     lineMarker: { marks: [2] },
                 },
             },
-            rx: { effects: [{ target: "worker:///c", action: "update", receipt: editReceipt }] },
+            rx: { effects: [{ target: "workspace:///c", action: "update", receipt: editReceipt }] },
         },
     ];
 

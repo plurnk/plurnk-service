@@ -32,7 +32,7 @@ const DISCOVERY: Readonly<Record<string, { readonly inputs: readonly string[]; r
     "workspace.schedule.discover": { inputs: ["source"] },
     "workspace.mcp.discover": { inputs: ["query"] },
     "workspace.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
-    "worker.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
+    "session.env.discover": { inputs: ["query", "source"], emptyListsAll: true },
     "workspace.members.discover": { inputs: ["query"] },
 };
 const INPUTS = ["query", "source", "configuration"];

@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { providerWithCapacity, statement, type Read, type Resource } from "./reasoning-fixture.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
@@ -19,16 +19,16 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-budget-${mode}`);
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the reasoning across successive turns.");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the reasoning across successive turns.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const context = { workspaceId, workerId, loopId, messages: [] };
+        const context = { workspaceId, sessionId, loopId, messages: [] };
         const reasoning = Array.from({ length: 120 }, (_, index) => `Finding ${index + 1}: ${"evidence ".repeat(mode === "receipt" ? 100 : 2)}`).join("\n");
         const capacity = mode === "fits" ? 999_000 : 20_000;
         const first = await engine.runTurn({ ...context, provider: providerWithCapacity(capacity, [
             { assistant: { content: `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1> <!-- retain reasoning -->", null)}\n\n${task}`, reasoning } },
         ]) });
-        const initial = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).find(({ pathname }) => pathname === "/1/2")!;
+        const initial = (await db.test_reasoning_reads.all<Read>({ session_id: sessionId })).find(({ pathname }) => pathname === "/1/2")!;
         assert.equal(initial.turn_seq, 2);
         assert.deepEqual(JSON.parse(initial.lineMarker), { marks: [1, -1] }, "an explicit READ never substitutes a smaller scope");
         const rx = JSON.parse(initial.rx) as { status: number; content: string | null; problem?: { type: string; lines: number; tokens: number; remaining: number } };
@@ -63,12 +63,12 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
             assert.equal(record.status, 413, "the receipt rides the next packet");
             assert.doesNotMatch((record.body ?? ""), /120:Finding 120:/, "the whole never arrives; at most the prefix that fit");
             // Source identity never depends on the reader ({§turn-source-resources}); alice's READs and packets are counted below.
-            const observer = await insertWorker(db, workspaceId, null, "observer");
-            const range = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });
+            const observer = await insertSession(db, workspaceId, null, "observer");
+            const range = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });
             assert.equal(range.status, 200, "a range READ of the source still works ({§context-verbs})");
             assert.ok("content" in range);
             assert.equal(range.content, reasoning.split("\n").slice(0, 10).join("\n"));
-            const source = (await db.test_model_reasoning_resources.all<Resource>({ worker_id: workerId }))[0];
+            const source = (await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId }))[0];
             assert.equal(source.content, reasoning, "the source stays whole");
         }
         const later = await engine.runTurn({ ...context, provider });
@@ -76,7 +76,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§reasoning-history} {§
         const laterPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: later.turnId }))!.packet);
         const laterRecord = logEntries(laterPacket).find(({ logPath }) => logPath === record.logPath)!;
         assert.equal(laterRecord.body, record.body, "no automatic re-READ or restoration follows a receipt");
-        const reads = (await db.test_reasoning_reads.all<Read>({ worker_id: workerId })).filter(({ pathname }) => pathname === "/1/2");
+        const reads = (await db.test_reasoning_reads.all<Read>({ session_id: sessionId })).filter(({ pathname }) => pathname === "/1/2");
         assert.equal(reads.length, 1);
         assert.equal(reads[0].id, initial.id);
         assert.equal(reads[0].active, 1);

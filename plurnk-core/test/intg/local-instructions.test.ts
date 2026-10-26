@@ -44,7 +44,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                         const { loopId, finalStatus } = (await runLoopToTerminal(ws, 2, { prompt: "go" })) as { loopId: number; finalStatus: number };
                         assert.equal(finalStatus, 200);
                         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
-                            workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/_plurnk/AGENTS.local.md",
+                            workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/_plurnk/AGENTS.local.md",
                         });
                         assert.equal(entry !== undefined, projected, projected ? "the local file is projected" : "nothing is projected");
                         if (entry !== undefined) {
@@ -52,12 +52,12 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
                             assert.equal(body?.content, LOCAL, "the projection mirrors the file");
                         }
                         const rows = await db.test_log_entries_by_loop.all<{ op: string; scheme: string; hostname: string | null; pathname: string; status_rx: number }>({ loop_id: loopId });
-                        const reads = rows.filter((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === null && /^\/_plurnk\/AGENTS(\.local)?\.md$/u.test(row.pathname));
+                        const reads = rows.filter((row) => row.op === "READ" && row.scheme === "workspace" && row.hostname === null && /^\/_plurnk\/AGENTS(\.local)?\.md$/u.test(row.pathname));
                         assert.deepEqual(reads.map(({ pathname, status_rx }) => [pathname, status_rx]),
                             [...withAgents ? [["/_plurnk/AGENTS.md", 200]] : [], ...projected ? [["/_plurnk/AGENTS.local.md", 200]] : []],
                             "turn 0 reads AGENTS.md, then its local override, each found");
                         const nested = await db.crud_find_workspace_entry.get<{ id: number }>({
-                            workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/_plurnk/instructions/packages/web/AGENTS.local.md",
+                            workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/_plurnk/instructions/packages/web/AGENTS.local.md",
                         });
                         assert.equal(nested, undefined, "a nested AGENTS.local.md is never projected");
                     } finally { ws.close(); }

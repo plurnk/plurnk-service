@@ -17,12 +17,12 @@ import type { ComputedClientChannel } from "../core/Dispatcher.ts";
 const entryReadResult = (result: unknown): EntryReadResult =>
     Validator.assertEntryReadResult(result);
 
-// {§methods-worker-streams} One channel of one open subscription, as `worker_open_streams` selects it: a row whose entry
+// {§methods-session-streams} One channel of one open subscription, as `session_open_streams` selects it: a row whose entry
 // has no channel carries none, and a channel's state is one its column's constraint admits.
 interface OpenStreamRow {
     readonly id: number;
     readonly entry_id: number;
-    readonly worker_id: number;
+    readonly session_id: number;
     readonly scheme: string;
     readonly authority: string;
     readonly pathname: string;
@@ -56,13 +56,13 @@ export default class ClientReads {
     // then project one workspace entry without exposing persistence columns.
     async readEntry(args: {
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
         target: string;
         channel?: string;
         offset?: number;
     }): Promise<EntryReadResult> {
         const workspaceId = ClientInput.assertId("entry.read", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("entry.read", "workerId", args.workerId);
+        const sessionId = ClientInput.assertId("entry.read", "sessionId", args.sessionId);
         if (typeof args.target !== "string" || args.target.length === 0) {
             throw daemonFailure(
                 "daemon:input",
@@ -78,33 +78,33 @@ export default class ClientReads {
             );
         }
         const channel = ClientInput.assertOptionalChannel("entry.read", args.channel);
-        const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-        if (worker === undefined) {
+        const session = await this.#db.envelope_get_session_by_id.get<{ workspace_id: number }>({ id: sessionId });
+        if (session === undefined) {
             throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
+                "daemon:session",
+                "session-not-found",
                 404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
+                `Session ${sessionId} does not exist.`,
+                { sessionId },
             );
         }
-        if (worker.workspace_id !== workspaceId) {
+        if (session.workspace_id !== workspaceId) {
             throw daemonFailure(
-                "daemon:worker",
+                "daemon:session",
                 "workspace-mismatch",
                 409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                `Session ${sessionId} does not belong to workspace ${workspaceId}.`,
                 {
-                    workerId,
+                    sessionId,
                     workspaceId,
-                    actualWorkspaceId: worker.workspace_id,
+                    actualWorkspaceId: session.workspace_id,
                     retryable: false },
             );
         }
         const releaseCapabilities = await this.#residency.acquire(workspaceId);
         let releaseWorkspace: (() => void) | undefined;
         try {
-            releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, workerId);
+            releaseWorkspace = await this.#workspaceGate.acquireTurn(workspaceId, sessionId);
             await this.#residency.reconcile(workspaceId);
             let parsed;
             try {
@@ -169,7 +169,7 @@ export default class ClientReads {
             }
             const acquired = await this.#engine.readClientEntry({
                 workspaceId,
-                workerId,
+                sessionId,
                 target: parsed });
             if (acquired === null) {
                 return entryReadResult(Results.failure(
@@ -251,7 +251,7 @@ export default class ClientReads {
 
     // {§methods-entry-channel-read} The channel `target` selects, its fragment's or else its scheme's default, read as
     // `readEntry` reads it, complete: the HTTP form of an address answers with it.
-    async readEntryChannel(args: { workspaceId: number; workerId: number; target: string }): Promise<EntryReadResult> {
+    async readEntryChannel(args: { workspaceId: number; sessionId: number; target: string }): Promise<EntryReadResult> {
         let parsed;
         try {
             parsed = typeof args.target === "string" ? parsePath(args.target) : null;
@@ -308,17 +308,17 @@ export default class ClientReads {
     }
 
 
-    // {§methods-log-read} — a workspace's journal, the module's primary render input. The worker is
-    // ownership-verified against the workspace (a workspace reads only its own workers — the model worker included,
+    // {§methods-log-read} — a workspace's journal, the module's primary render input. The session is
+    // ownership-verified against the workspace (a workspace reads only its own sessions — the model session included,
     // {§methods-log-coordinate}); entries filter by loop/turn/since-id or the full L/T/S display coordinate, newest first,
     // and `beforeId` pages back through older rows ({§methods-log-read}). Core owns the
     // journal + the invariant; the module shapes the entries into ACP messages at its edge.
     async readLog(args: {
-        workspaceId: number; workerId: number;
+        workspaceId: number; sessionId: number;
         loopId?: number; turnId?: number; sinceId?: number; beforeId?: number; limit?: number;
         loopSeq?: number; turnSeq?: number; sequence?: number;
     }): Promise<LogEntryWire[]> {
-        const workerId = await this.#ownedWorker("log.read", args);
+        const sessionId = await this.#ownedSession("log.read", args);
         const coordinateFields = {
             loopId: args.loopId,
             turnId: args.turnId,
@@ -358,7 +358,7 @@ export default class ClientReads {
             );
         }
         const rows = await this.#db.log_entries_recent.all<LogEntryRow>({
-            worker_id: workerId,
+            session_id: sessionId,
             loop_id: args.loopId ?? null, turn_id: args.turnId ?? null, since_id: args.sinceId ?? null, before_id: args.beforeId ?? null,
             loop_seq: args.loopSeq ?? null, turn_seq: args.turnSeq ?? null, sequence: args.sequence ?? null,
             // A caller asks for as many as it likes; the panel's ceiling is what it gets at most.
@@ -366,10 +366,10 @@ export default class ClientReads {
         return rows.map((row) => LogEntry.wire(row));
     }
 
-    // {§methods-worker-streams} The streams the worker holds open, in opening order, each with every channel of its entry.
-    async readStreams(args: { workspaceId: number; workerId: number }): Promise<ApplicationStream[]> {
-        const workerId = await this.#ownedWorker("streams.read", args);
-        const rows = await this.#db.worker_open_streams.all<OpenStreamRow>({ worker_id: workerId });
+    // {§methods-session-streams} The streams the session holds open, in opening order, each with every channel of its entry.
+    async readStreams(args: { workspaceId: number; sessionId: number }): Promise<ApplicationStream[]> {
+        const sessionId = await this.#ownedSession("streams.read", args);
+        const rows = await this.#db.session_open_streams.all<OpenStreamRow>({ session_id: sessionId });
         const opened = new Map<number, { readonly row: OpenStreamRow; readonly channels: ApplicationStreamChannel[] }>();
         for (const row of rows) {
             const stream = opened.get(row.id) ?? { row, channels: [] };
@@ -380,7 +380,7 @@ export default class ClientReads {
         }
         return [...opened.values()].map(({ row, channels }) => ({
             entryId: row.entry_id,
-            workerId: row.worker_id,
+            sessionId: row.session_id,
             target: renderAddress({ scheme: row.scheme, authority: row.authority, pathname: row.pathname }),
             lifetime: row.detached === 1 ? "detached" : row.turn_scoped === 1 ? "turn" : "loop",
             ...ClientReads.#openedAt(row.source),
@@ -397,35 +397,35 @@ export default class ClientReads {
         return { loop_seq: loopSeq, turn_seq: turnSeq, sequence };
     }
 
-    // A read names a worker of the workspace it reads (a workspace reads only its own workers — the model worker
-    // included, {§methods-log-coordinate}): the worker's id, or the Problem that refuses it.
-    async #ownedWorker(context: string, args: { workspaceId: number; workerId: number }): Promise<number> {
+    // A read names a session of the workspace it reads (a workspace reads only its own sessions — the model session
+    // included, {§methods-log-coordinate}): the session's id, or the Problem that refuses it.
+    async #ownedSession(context: string, args: { workspaceId: number; sessionId: number }): Promise<number> {
         const workspaceId = ClientInput.assertId(context, "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId(context, "workerId", args.workerId);
-        const target = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+        const sessionId = ClientInput.assertId(context, "sessionId", args.sessionId);
+        const target = await this.#db.envelope_get_session_by_id.get<{ workspace_id: number }>({ id: sessionId });
         if (target === undefined) {
             throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
+                "daemon:session",
+                "session-not-found",
                 404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
+                `Session ${sessionId} does not exist.`,
+                { sessionId },
             );
         }
         if (target.workspace_id !== workspaceId) {
             throw daemonFailure(
-                "daemon:worker",
+                "daemon:session",
                 "workspace-mismatch",
                 409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
+                `Session ${sessionId} does not belong to workspace ${workspaceId}.`,
                 {
-                    workerId,
+                    sessionId,
                     workspaceId,
                     actualWorkspaceId: target.workspace_id,
                     retryable: false },
             );
         }
-        return workerId;
+        return sessionId;
     }
 
 }

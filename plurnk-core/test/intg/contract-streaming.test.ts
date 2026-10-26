@@ -23,11 +23,11 @@ import {
     type SchemeCtx,
     type StreamSubscription,
 } from "@plurnk/plurnk-schemes";
-import { openMigrated, seedEnvelope, seedEntryWithChannel, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, seedEnvelope, seedEntryWithChannel, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { rpcCall, subscribeNotifications, connect, withDaemon } from "./_rpc.ts";
 import { urlPath, killStmt, execStmt } from "./_dsl.ts";
-import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
@@ -45,7 +45,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 test("{§pinned-wording-core} KILL resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(
+        const { workspaceId, sessionId, loopId, turnId } = await seedEnvelope(
             db,
             `sub-route-${crypto.randomUUID()}`,
             { producer: "client" },
@@ -100,7 +100,7 @@ test("{§pinned-wording-core} KILL resolves the registry to the owning scheme + 
                 op: "READ", aside: null, target: urlPath("fakestream", "/feed/x"),
                 lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
             },
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(opened.status, 102, "the public extension opened its subscription");
         const entry = await db.test_get_entry_by_path.get<{ id: number }>({
@@ -114,7 +114,7 @@ test("{§pinned-wording-core} KILL resolves the registry to the owning scheme + 
 
         const result = await engine.dispatch({
             statement: killStmt(urlPath("fakestream", "/feed/x")),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "client",
         });
 
         assert.equal(result.status, 200, "owning scheme accepted the cancel");
@@ -145,7 +145,7 @@ test("{§pinned-wording-core} KILL resolves the registry to the owning scheme + 
 test("{§no-chunk-rows} a public streaming READ returns its 102 row before detached subscription work settles", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(
+        const { workspaceId, sessionId, loopId, turnId } = await seedEnvelope(
             db,
             `detached-sub-${crypto.randomUUID()}`,
             { producer: "client" },
@@ -180,7 +180,7 @@ test("{§no-chunk-rows} a public streaming READ returns its 102 row before detac
                 op: "READ", aside: null, target: urlPath("detached", "/feed"),
                 lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
             },
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(opened.status, 102);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turnId });
@@ -228,14 +228,14 @@ test("{§stream-constraints} multi-chunk exec writes ONE lifecycle log row, not 
         });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `log-lifecycle-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "lifecycle-only");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "lifecycle-only");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idD = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(null, "for i in 5 4 3 2 1; do echo $i; sleep 0.2; done"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idD.resolve(id),
         });
         const logEntryId = await idD.promise;
@@ -269,7 +269,7 @@ test("{§live-updates} 100 MiB channel-body CHECK rejects over-cap; engine caps 
     try {
         const workspaceId = await insertWorkspace(db, `cap-${crypto.randomUUID()}`);
         const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/cap",
+            workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/cap",
         });
         const entryId = entry!.id;
 
@@ -291,8 +291,8 @@ test("{§live-updates} 100 MiB channel-body CHECK rejects over-cap; engine caps 
         await db.test_seed_channel.run({
             entry_id: entryId, name: "under", content: "", mimetype: "text/plain", state: "active",
         });
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "under", chunk: oneMiB });
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "under", chunk: oneMiB });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "under", chunk: oneMiB });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "under", chunk: oneMiB });
         const stored = await db.test_get_channel.get<{ content: string }>({ entry_id: entryId, name: "under" });
         assert.equal(stored?.content.length, 2 * 1024 * 1024, "2 MiB stored verbatim — no engine cap below 100 MiB");
     } finally { await db.close(); }
@@ -314,9 +314,9 @@ test("{§stream} daemon fires stream/event per chunk with growing contentLength"
             const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
             // Three separate chunks → three separate events, fired AS content grows.
-            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "aa", notify });
-            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "bbb", notify });
-            await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "c", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "body", chunk: "aa", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "body", chunk: "bbb", notify });
+            await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "body", chunk: "c", notify });
 
             const events = captured() as Array<{ entryId: number; channel: string; state: string; contentLength: number }>;
             assert.equal(events.length, 3, "one stream/event per chunk (not just at close)");
@@ -355,8 +355,8 @@ test("{§sql-ts-boundary} engine has no connection/transaction surface; channel 
         // the loop, there is no transaction to open/commit.
         const { workspaceId } = await seedEnvelope(db, `no-tx-${crypto.randomUUID()}`);
         const entryId = await seedEntryWithChannel(db, { workspaceId, content: "", state: "active" });
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "chunk-1" });
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: await RuntimeWorker.ensure(db, workspaceId), channel: "body", chunk: "chunk-2" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "body", chunk: "chunk-1" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: await RuntimeSession.ensure(db, workspaceId), channel: "body", chunk: "chunk-2" });
         const row = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryId, name: "body" });
         assert.equal(row?.content, "chunk-1chunk-2", "content accumulated by scheme-direct appends, no engine transaction");
         assert.equal(row?.state, "active", "engine treats the growing channel as plain static storage");
@@ -379,8 +379,8 @@ test("{§stream} state transition fires metadata-only stream/event with new stat
 
             const notify = (sid: number, ev: StreamEventPayload) =>
                 daemon.notifyStreamEvent(sid, ev);
-            const producerWorkerId = await RuntimeWorker.ensure(db, workspaceId);
-            await ChannelWrite.setChannelState(db, { entryId, producerWorkerId, channel: "body", state: "closed", notify });
+            const producerSessionId = await RuntimeSession.ensure(db, workspaceId);
+            await ChannelWrite.setChannelState(db, { entryId, producerSessionId, channel: "body", state: "closed", notify });
 
             const events = captured() as Array<Record<string, unknown>>;
             assert.equal(events.length, 1, "state transition fires exactly one stream/event");
@@ -389,10 +389,10 @@ test("{§stream} state transition fires metadata-only stream/event with new stat
             assert.equal(evt.channel, "body");
             assert.equal(evt.state, "closed", "carries the NEW state (active → closed)");
             assert.equal(evt.contentLength, "finished".length, "carries the existing content length (8)");
-            assert.equal(evt.target, "worker:///x", "carries the entry's canonical target URI");
-            assert.equal(evt.workerId, producerWorkerId, "carries the causal actor without an entry-owner axis");
+            assert.equal(evt.target, "workspace:///x", "carries the entry's canonical target URI");
+            assert.equal(evt.sessionId, producerSessionId, "carries the causal actor without an entry-owner axis");
             // Metadata only — never the content body.
-            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "state", "target", "workerId", "workspaceId"], "payload is metadata-only; no content field");
+            assert.deepEqual(Object.keys(evt).toSorted(), ["channel", "contentLength", "entryId", "mimetype", "sessionId", "state", "target", "workspaceId"], "payload is metadata-only; no content field");
         } finally { ws.close(); }
     });
 });

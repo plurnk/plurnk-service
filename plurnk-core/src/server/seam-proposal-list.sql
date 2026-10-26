@@ -3,15 +3,15 @@
 -- them with its live resolution owners before projecting a stopped world; neither
 -- Daemon nor an interface module reconstructs authority from this persistence shape.
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
-    le.worker_id AS workerId, r.name AS worker, le.loop_id AS loopId, le.turn_id AS turnId,
+    le.session_id AS sessionId, r.name AS session, le.loop_id AS loopId, le.turn_id AS turnId,
     l.sequence AS loopSeq, t.sequence AS turnSeq, le.sequence,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
     t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings
 FROM log_entries le
-JOIN workers r ON r.id = le.worker_id
+JOIN sessions r ON r.id = le.session_id
 JOIN workspaces w ON w.id = r.workspace_id
-JOIN worker_owners o ON o.workspace_id = r.workspace_id AND o.address = r.owner
+JOIN session_owners o ON o.workspace_id = r.workspace_id AND o.address = r.owner
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
 WHERE r.workspace_id = $workspace_id AND le.state = 'proposed'
@@ -21,15 +21,15 @@ ORDER BY le.id;
 -- Same durable input as proposal_list_pending, selected by proposal identity for
 -- the live path. Both paths enter ProposalLifecycle's one projection function.
 SELECT le.id AS logEntryId, r.workspace_id AS workspaceId,
-    le.worker_id AS workerId, r.name AS worker, le.loop_id AS loopId, le.turn_id AS turnId,
+    le.session_id AS sessionId, r.name AS session, le.loop_id AS loopId, le.turn_id AS turnId,
     l.sequence AS loopSeq, t.sequence AS turnSeq, le.sequence,
     le.op, le.signal, le.scheme, le.hostname, le.port, le.pathname, le.query,
     le.rx, le.attrs, r.owner, o.tools AS owner_tools, o.interactive AS owner_interactive, t.kind AS turn_kind,
     t.producer AS turn_producer, w.project_root AS project_root, w.settings AS workspace_settings
 FROM log_entries le
-JOIN workers r ON r.id = le.worker_id
+JOIN sessions r ON r.id = le.session_id
 JOIN workspaces w ON w.id = r.workspace_id
-JOIN worker_owners o ON o.workspace_id = r.workspace_id AND o.address = r.owner
+JOIN session_owners o ON o.workspace_id = r.workspace_id AND o.address = r.owner
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
 WHERE le.id = $log_entry_id AND le.state = 'proposed';

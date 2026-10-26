@@ -1,7 +1,7 @@
-// {§loop-answer} — one resolution for a loop's address. `ops://<worker>/<loop>` is what the loop
+// {§loop-answer} — one resolution for a loop's address. `ops://<session>/<loop>` is what the loop
 // said: the latest SEND reply to the message that started it. A loop that has
 // not answered yet is 425; one that ended without answering is how it ended, its terminal problem
-// or an empty success. The same resolution serves the model's READ, the `worker://` pull, and the
+// or an empty success. The same resolution serves the model's READ, the `session://` pull, and the
 // termination row a concluded child leaves in its parent's log, so those never disagree (#766).
 import type { Db } from "./Db.ts";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
@@ -13,20 +13,20 @@ export interface LoopOutcome {
     readonly terminatedBy: string | null;
 }
 
-const loopAddress = (worker: string, sequence: number): string => `ops://${worker}/${sequence}`;
+const loopAddress = (session: string, sequence: number): string => `ops://${session}/${sequence}`;
 
 // `null` means no such loop; every other state is a result the caller can publish.
 export const loopOutcome = async (
     db: Db,
     workspaceId: number,
-    worker: string,
+    session: string,
     sequence: number,
 ): Promise<LoopOutcome | null> => {
     const row = await db.turn_source_loop_answer.get<{
         status: number; terminal_result: string | null; terminated_by: string | null; answer: string | null;
-    }>({ workspace_id: workspaceId, worker_name: worker, loop_seq: sequence });
+    }>({ workspace_id: workspaceId, session_name: session, loop_seq: sequence });
     if (row === undefined) return null;
-    const resource = loopAddress(worker, sequence);
+    const resource = loopAddress(session, sequence);
     // {§validation-topology}: chapter 3's loops_terminal_result_contract holds the stored result's shape.
     const terminal = row.terminal_result === null ? null : Results.fromRow(row.terminal_result);
     // A loop that ended badly reports how it ended, even when it answered earlier: the failure is

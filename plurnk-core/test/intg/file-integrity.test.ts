@@ -12,9 +12,9 @@ import GitMembership from "../../src/core/git-membership.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import FileSnapshot from "../../src/core/FileSnapshot.ts";
 import FilePublication from "../../src/core/FilePublication.ts";
-import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, rootWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import { editStmt, copyStmt, moveStmt, readStmt, localPath, fullReplace } from "./_dsl.ts";
 import { clientRead } from "./_client-read.ts";
 
@@ -30,11 +30,11 @@ const fixture = async (t: TestContext) => {
     });
     const workspaceId = await insertWorkspace(db, "integrity");
     await rootWorkspace(db, workspaceId, root);
-    const workerId = await insertWorker(db, workspaceId);
-    await ownWorker(db, workspaceId, workerId);
-    const loopId = await insertLoop(db, workerId, 1, "integrity");
+    const sessionId = await insertSession(db, workspaceId);
+    await ownSession(db, workspaceId, sessionId);
+    const loopId = await insertLoop(db, sessionId, 1, "integrity");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    const ids = { workspaceId, workerId, loopId, turnId };
+    const ids = { workspaceId, sessionId, loopId, turnId };
     const ctx = makeSchemeCtx({ db, ...ids, mimetypes: DEFAULT_MIMETYPES });
     const file = new File();
     const path = join(root, "doc.md");
@@ -45,7 +45,7 @@ const fixture = async (t: TestContext) => {
     return { root, db, ids, ctx, file, path, engine };
 };
 
-for (const scope of ["workers", "workspaces", "aliases"] as const) {
+for (const scope of ["sessions", "workspaces", "aliases"] as const) {
     test(`{§file-commit-serialization}: competing ${scope} cannot both overwrite one baseline`, async (t) => {
         const fx = await fixture(t);
         const workspaceId = scope !== "workspaces" ? fx.ids.workspaceId : await insertWorkspace(fx.db, "second");
@@ -58,8 +58,8 @@ for (const scope of ["workers", "workspaces", "aliases"] as const) {
             await rootWorkspace(fx.db, workspaceId, fx.root);
             await fx.db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "doc.md", membership_origin: "constraint" });
         }
-        const workerId = await insertWorker(fx.db, workspaceId);
-        const secondCtx = makeSchemeCtx({ ...fx.ctx, workspaceId, workerId });
+        const sessionId = await insertSession(fx.db, workspaceId);
+        const secondCtx = makeSchemeCtx({ ...fx.ctx, workspaceId, sessionId });
         await MembershipMaterialization.materializeMember(pathname, fx.root, secondCtx, new Map());
         const first = await fx.file.edit(editStmt(localPath("doc.md"), "first edit!\n", fullReplace), fx.ctx);
         const second = await fx.file.edit(editStmt(localPath(pathname), "second edit\n", fullReplace), secondCtx);
@@ -87,8 +87,8 @@ for (const scope of ["workers", "workspaces", "aliases"] as const) {
 
 test("{§file-snapshot-revision}: source revisions stay internal to ordinary READ receipts", async (t) => {
     const fx = await fixture(t);
-    const { workspaceId, workerId } = fx.ids;
-    const result = await clientRead(fx.engine, fx.db, { workspaceId, workerId, statement: readStmt(localPath("doc.md")) });
+    const { workspaceId, sessionId } = fx.ids;
+    const result = await clientRead(fx.engine, fx.db, { workspaceId, sessionId, statement: readStmt(localPath("doc.md")) });
     assert.equal(result.status, 200);
     assert.match(String((result as { content?: unknown }).content), /old content/);
     assert.doesNotMatch(JSON.stringify(result), /fileRevision|synced_sig|fingerprint/);

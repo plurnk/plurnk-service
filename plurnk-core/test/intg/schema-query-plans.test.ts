@@ -13,7 +13,7 @@ import { sqlFunctionPaths } from "../../src/core/sql-functions.ts";
 
 const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 // Workload-scaled tables; retention does not make a full scan a bounded lookup.
-const GROWING = new Set(["log_entries", "entries", "entry_channel_rows", "contents", "subscriptions", "workers", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "native_contents", "proposal_decisions", "client_interactions", "turn_sources", "packet_items", "turn_sections", "turn_section_items"]);
+const GROWING = new Set(["log_entries", "entries", "entry_channel_rows", "contents", "subscriptions", "sessions", "loops", "turns", "symbol_defs", "symbol_refs", "derivations", "ambient_events", "provider_requests", "inference_calls", "model_calls", "turn_attempts", "log_entry_projections", "native_contents", "proposal_decisions", "client_interactions", "turn_sources", "packet_items", "turn_sections", "turn_section_items"]);
 // Statements that read a whole table on purpose (forensic digest, startup recovery, whole-workspace listings).
 // A retention collector considers every row of its table by definition ({§retention-policy}).
 // A write through the entry_channels view ({§content-store}) plans as a SEARCH of its rows plus a

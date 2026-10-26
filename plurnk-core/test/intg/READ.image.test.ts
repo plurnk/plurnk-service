@@ -189,7 +189,7 @@ test("{§packet-attachment-parts} repeating READ creates a new native delivery f
 test("{§packet-attachment-parts} invalid-emission rerolls reuse the same materialized native request", async () => {
     const requests = await runLoop(["image"], "````READ (logo.png)````", false, [
         mockTurn("````READ (logo.png)````\n````NOTE\nlooking\n````"),
-        { assistant: { content: "````READ (worker:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
+        { assistant: { content: "````READ (workspace:///not-a-plurnk-emission", reasoning: null }, assistantRaw: null },
         mockTurn("````NOTE\nrecovered\n````"),
         mockTurn("````SEND [200]\nseen\n````"),
     ]);
@@ -263,9 +263,9 @@ test("{§packet-attachment-parts} retained and forked READs preserve original by
         mockTurn("````SEND [200]\nImage inspection complete.\n````"),
     ], undefined, async (root, db, loopId) => {
         await assert.rejects(readFile(join(root, "logo.png")), { code: "ENOENT" }, "the source was actually deleted");
-        const loop = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: loopId });
-        const forkId = await Fork.fork(db, loop!.worker_id, "native-fork");
-        const rows = await db.engine_render_log.all<{ op: string; pathname: string; rx: string }>({ worker_id: forkId });
+        const loop = await db.drain_message_source.get<{ session_id: number }>({ loop_id: loopId });
+        const forkId = await Fork.fork(db, loop!.session_id, "native-fork");
+        const rows = await db.engine_render_log.all<{ op: string; pathname: string; rx: string }>({ session_id: forkId });
         const image = rows.find((row) => row.op === "READ" && row.pathname === "logo.png");
         assert.ok(image);
         const hash = JSON.parse(image.rx).nativeContentHash as string;

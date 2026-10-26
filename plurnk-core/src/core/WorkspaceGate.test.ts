@@ -9,20 +9,20 @@ test("{§functionality-model-mutation} concurrent turns yield for publications a
     const entered = Promise.withResolvers<void>();
     const proceed = Promise.withResolvers<void>();
     const events: string[] = [];
-    const run = (worker: number) => gate.withTurn(1, worker, async () => {
-        events.push(`turn:${worker}`);
-        if (worker === 2) entered.resolve();
+    const run = (session: number) => gate.withTurn(1, session, async () => {
+        events.push(`turn:${session}`);
+        if (session === 2) entered.resolve();
         await proceed.promise;
         await gate.atBoundary(1, async () => {
             const exclusive = gate.requestExclusive(1);
             try {
                 await exclusive.acquired;
-                events.push(`publish:${worker}`);
+                events.push(`publish:${session}`);
                 assert.equal(gate.tryExclusive(1), null, "publication retains exclusivity");
             } finally { exclusive.release(); }
         });
         assert.equal(gate.tryExclusive(1), null, "the resumed program has its shared lease back");
-        events.push(`resumed:${worker}`);
+        events.push(`resumed:${session}`);
     });
     const first = run(1);
     const second = run(2);
@@ -70,7 +70,7 @@ test("{§functionality-preparation-cancellation} cancelling a queued publisher n
 });
 
 test("{§module-workspace-quiescence} a queued exclusive request blocks later ordinary turns", async () => {
-    const gate = new WorkspaceGate(async (workerId, rootWorkerId) => workerId === rootWorkerId);
+    const gate = new WorkspaceGate(async (sessionId, rootSessionId) => sessionId === rootSessionId);
     const first = await gate.acquireTurn(1, 1);
     const exclusive = gate.requestExclusive(1);
     let laterAcquired = false;
@@ -90,7 +90,7 @@ test("{§module-workspace-quiescence} a queued exclusive request blocks later or
 
 test("{§module-workspace-quiescence} exclusive mode admits only its selected lineage and serializes those turns", async () => {
     const descendants = new Set(["7:7", "8:7"]);
-    const gate = new WorkspaceGate(async (workerId, rootWorkerId) => descendants.has(`${workerId}:${rootWorkerId}`));
+    const gate = new WorkspaceGate(async (sessionId, rootSessionId) => descendants.has(`${sessionId}:${rootSessionId}`));
     const exclusive = gate.requestExclusive(1);
     await exclusive.acquired;
     exclusive.setRoot(7);
@@ -184,7 +184,7 @@ test("{§loop-execution-allowance} a changed exclusive root invalidates an async
     const checking = Promise.withResolvers<void>();
     const checked = Promise.withResolvers<boolean>();
     const reconsidered = Promise.withResolvers<void>();
-    const gate = new WorkspaceGate(async (_workerId, root) => {
+    const gate = new WorkspaceGate(async (_sessionId, root) => {
         if (root === 1) { checking.resolve(); return checked.promise; }
         reconsidered.resolve();
         return false;

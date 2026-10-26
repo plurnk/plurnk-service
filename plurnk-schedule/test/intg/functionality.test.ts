@@ -59,12 +59,12 @@ const flush = async (): Promise<void> => {
 };
 
 class FakePort implements DeliveryPort {
-    workers: { id: number; name: string }[] = [{ id: 7, name: "bot" }];
+    sessions: { id: number; name: string }[] = [{ id: 7, name: "bot" }];
     readonly deliveries: object[] = [];
     refusal: Error | null = null;
 
-    async listWorkers(): Promise<readonly { id: number; name: string }[]> {
-        return this.workers;
+    async listSessions(): Promise<readonly { id: number; name: string }[]> {
+        return this.sessions;
     }
 
     async runLoop(args: object): Promise<unknown> {
@@ -101,8 +101,8 @@ const problemOf = async (run: () => Promise<unknown>): Promise<{ type: string; s
     assert.fail("expected a Problem");
 };
 
-const HEARTBEAT = { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." };
-const BEAT = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." };
+const HEARTBEAT = { rule: "FREQ=HOURLY", target: "session://bot", prompt: "Check in." };
+const BEAT = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." };
 
 const family = (time: FakeTime, env: Record<string, string> = {}, reports: string[] = []): ScheduleFunctionality =>
     new ScheduleFunctionality({ TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", ...env }, { clock: time.clock, timers: time.api, report: (message) => { reports.push(message); } });
@@ -115,8 +115,8 @@ const attached = (adapter: ScheduleFunctionality, zone = "UTC"): number[] => {
     };
     adapter.attach(handle, {
         readWorkspaceEnvironment: async () => (ambient) => ({ ...ambient, TZ: zone }),
-        // The invoking Worker's own override sits above the workspace layer.
-        readWorkerEnvironment: async () => (ambient) => ({ ...ambient, TZ: "Asia/Tokyo" }),
+        // The invoking Session's own override sits above the workspace layer.
+        readSessionEnvironment: async () => (ambient) => ({ ...ambient, TZ: "Asia/Tokyo" }),
     });
     return refreshed;
 };
@@ -147,7 +147,7 @@ test("{§functionality-replacement} a new schedule target cannot inherit the old
     const time = new FakeTime();
     const adapter = family(time);
     const port = new FakePort();
-    port.workers = [];
+    port.sessions = [];
     adapter.scheduler.start(port);
     t.after(() => adapter.scheduler.close());
     await (await adapter.prepare(preparation(1, { beat: BEAT }))).commit();
@@ -155,8 +155,8 @@ test("{§functionality-replacement} a new schedule target cannot inherit the old
     const held = await adapter.prepare(preparation(1, { beat: BEAT }));
     assert.equal(held.outcomes.get("beat")?.state, "unavailable");
     held.publish(); await held.commit();
-    port.workers = [{ id: 8, name: "repaired" }];
-    const changed = { ...BEAT, target: "worker://repaired" };
+    port.sessions = [{ id: 8, name: "repaired" }];
+    const changed = { ...BEAT, target: "session://repaired" };
     const candidate = await adapter.prepare(preparation(1, { beat: changed }, { previous: held.snapshot }));
     assert.equal(candidate.outcomes.get("beat")?.state, "active");
     await candidate.abort();
@@ -164,14 +164,14 @@ test("{§functionality-replacement} a new schedule target cannot inherit the old
         "an aborted replacement leaves the preceding failure intact");
     await (await adapter.prepare(preparation(1, { beat: changed }))).commit();
     await time.advance(FIRST + HOUR);
-    assert.deepEqual(port.deliveries, [{ workspaceId: 1, workerId: 8, prompt: "Beat.", source: "schedule://beat" }]);
+    assert.deepEqual(port.deliveries, [{ workspaceId: 1, sessionId: 8, prompt: "Beat.", source: "schedule://beat" }]);
 });
 
 test("{§functionality-publication} aborting an enable retry preserves the schedule's delivery failure", async (t) => {
     const time = new FakeTime();
     const adapter = family(time);
     const port = new FakePort();
-    port.workers = [];
+    port.sessions = [];
     adapter.scheduler.start(port);
     t.after(() => adapter.scheduler.close());
     await (await adapter.prepare(preparation(1, { beat: BEAT }))).commit();
@@ -179,7 +179,7 @@ test("{§functionality-publication} aborting an enable retry preserves the sched
     const held = await adapter.prepare(preparation(1, { beat: BEAT }));
     assert.equal(held.outcomes.get("beat")?.state, "unavailable");
     held.publish(); await held.commit();
-    port.workers = [{ id: 7, name: "bot" }];
+    port.sessions = [{ id: 7, name: "bot" }];
     const retry = await adapter.prepare(preparation(1, { beat: BEAT }, { previous: held.snapshot, force: "beat" }));
     assert.equal(retry.outcomes.get("beat")?.state, "active");
     await retry.abort();
@@ -189,7 +189,7 @@ test("{§functionality-publication} aborting an enable retry preserves the sched
     assert.deepEqual(adapter.scheduler.armed(1), []);
     await (await adapter.prepare(preparation(1, { beat: BEAT }, { force: "beat" }))).commit();
     await time.advance(FIRST + HOUR);
-    assert.deepEqual(port.deliveries, [{ workspaceId: 1, workerId: 7, prompt: "Beat.", source: "schedule://beat" }]);
+    assert.deepEqual(port.deliveries, [{ workspaceId: 1, sessionId: 7, prompt: "Beat.", source: "schedule://beat" }]);
 });
 
 test("{§schedule-first-arming} identical replacement cannot replay an occurrence delivered during preparation", async (t) => {
@@ -215,12 +215,12 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
     const time = new FakeTime();
     const adapter = family(time);
     const port = new FakePort();
-    port.workers.push({ id: 8, name: "other" });
+    port.sessions.push({ id: 8, name: "other" });
     adapter.scheduler.start(port);
     t.after(() => adapter.scheduler.close());
     const original = await adapter.prepare(preparation(1, { beat: BEAT }));
     original.publish(); await original.commit();
-    const replacement = { rule: "DTSTART;TZID=UTC:20260916T123017\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://other", prompt: "Changed." };
+    const replacement = { rule: "DTSTART;TZID=UTC:20260916T123017\nRRULE:FREQ=HOURLY;COUNT=2", target: "session://other", prompt: "Changed." };
     const prepare = async () => {
         const admission = await adapter.admit({ alias: "beat", definition: replacement }, { workspaceId: 1 });
         return adapter.prepare(preparation(1, { beat: admission.definition }, { previous: original.snapshot, admissions: [admission] }));
@@ -228,13 +228,13 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
     const aborted = await prepare();
     await aborted.abort();
     await time.advance(FIRST);
-    assert.deepEqual(port.deliveries, [{ workspaceId: 1, workerId: 7, prompt: "Beat.", source: "schedule://beat" }]);
+    assert.deepEqual(port.deliveries, [{ workspaceId: 1, sessionId: 7, prompt: "Beat.", source: "schedule://beat" }]);
     const accepted = await prepare();
     time.now = FIRST + 2 * SECOND;
     accepted.publish(); await accepted.commit();
     assert.deepEqual(time.delays(), [0], "a newly admitted occurrence crossed during publication fires immediately");
     await time.advance(time.now);
-    assert.deepEqual(port.deliveries[1], { workspaceId: 1, workerId: 8, prompt: "Changed.", source: "schedule://beat" });
+    assert.deepEqual(port.deliveries[1], { workspaceId: 1, sessionId: 8, prompt: "Changed.", source: "schedule://beat" });
     await time.advance(FIRST + HOUR);
     assert.equal(port.deliveries.length, 2, "the old rule's next occurrence was withdrawn");
     await time.advance(FIRST + HOUR + SECOND);
@@ -245,12 +245,12 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
 test("{§schedule-environment} environment definitions are the service baseline with PLURNK_SCHEDULE_ENABLED as the newborn default", async () => {
     const adapter = family(new FakeTime(), {
         PLURNK_SCHEDULE_heartbeat: JSON.stringify(HEARTBEAT),
-        PLURNK_SCHEDULE_nightly: JSON.stringify({ rule: "FREQ=DAILY", target: "worker://janitor", prompt: "Tidy." }),
+        PLURNK_SCHEDULE_nightly: JSON.stringify({ rule: "FREQ=DAILY", target: "session://janitor", prompt: "Tidy." }),
         PLURNK_SCHEDULE_nightly_ENABLED: "0",
     });
     assert.deepEqual(await adapter.available(), [
         { alias: "heartbeat", definition: { ...HEARTBEAT, rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY" }, enabled: true, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_heartbeat" } },
-        { alias: "nightly", definition: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=DAILY", target: "worker://janitor", prompt: "Tidy." }, enabled: false, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_nightly" } },
+        { alias: "nightly", definition: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=DAILY", target: "session://janitor", prompt: "Tidy." }, enabled: false, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_nightly" } },
     ]);
     await assert.rejects(family(new FakeTime(), { PLURNK_SCHEDULE_broken: JSON.stringify({ ...HEARTBEAT, rule: "FREQ=DAILY;BOGUS=1" }), PLURNK_SCHEDULE_broken_ENABLED: "0" }).available(), /PLURNK_SCHEDULE_broken: The rule is not a readable RFC 5545 recurrence: RRULE has no part named BOGUS/u);
     await assert.rejects(new ScheduleFunctionality({}).available(), /TZ is unset/u);
@@ -289,27 +289,27 @@ test("{§schedule-clock} discovery tells the time beside the rule it reads, in t
 test("{§schedule-bound} admission canonicalizes the rule in the workspace's zone and refuses an unbounded one", async () => {
     const adapter = family(new FakeTime());
     attached(adapter, "Europe/Paris");
-    assert.deepEqual(await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1 }), {
+    assert.deepEqual(await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." } }, { workspaceId: 1 }), {
         alias: "beat",
-        definition: { rule: "DTSTART;TZID=Europe/Paris:20260916T143016\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." },
+        definition: { rule: "DTSTART;TZID=Europe/Paris:20260916T143016\nRRULE:FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." },
         preparation: NOW,
     });
-    const byWorker = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1, workerId: 7 });
-    assert.equal((byWorker.definition as { rule: string }).rule, "DTSTART;TZID=Asia/Tokyo:20260916T213016\nRRULE:FREQ=HOURLY;COUNT=2", "the invoking Worker's own TZ override wins over the workspace layer");
-    const [preview] = await adapter.discover({ source: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, workerId: 7 });
-    assert.match(preview.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Worker reads the time in its own zone");
-    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-unbounded");
+    const bySession = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." } }, { workspaceId: 1, sessionId: 7 });
+    assert.equal((bySession.definition as { rule: string }).rule, "DTSTART;TZID=Asia/Tokyo:20260916T213016\nRRULE:FREQ=HOURLY;COUNT=2", "the invoking Session's own TZ override wins over the workspace layer");
+    const [preview] = await adapter.discover({ source: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, sessionId: 7 });
+    assert.match(preview.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Session reads the time in its own zone");
+    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY", target: "session://bot", prompt: "Beat." } }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-unbounded");
     assert.equal((await problemOf(() => adapter.admit({ definition: HEARTBEAT }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/alias-required");
     const invalid = await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "agent://bot", prompt: "Beat." } }, { workspaceId: 1 }));
     assert.equal(invalid.type, "https://problems.plurnk.xyz/schedule/functionality/definition-invalid");
     assert.ok(Array.isArray(invalid.errors) && invalid.errors.length > 0, "the schema errors ride along");
-    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "worker://bot", prompt: "Beat.", extra: true } }, { workspaceId: 1 }))).status, 400);
+    assert.equal((await problemOf(() => adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=1", target: "session://bot", prompt: "Beat.", extra: true } }, { workspaceId: 1 }))).status, 400);
 });
 
 test("{§schedule-residency} preparation publishes one outcome per rule, commit arms, teardown leaves the timers armed", async () => {
     const time = new FakeTime();
     const adapter = family(time);
-    const exhausted = { rule: "DTSTART;TZID=UTC:20260101T090000\nRRULE:FREQ=DAILY;COUNT=1", target: "worker://bot", prompt: "Once." };
+    const exhausted = { rule: "DTSTART;TZID=UTC:20260101T090000\nRRULE:FREQ=DAILY;COUNT=1", target: "session://bot", prompt: "Once." };
     const heartbeat = { ...HEARTBEAT, rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY" };
     const prepared = await adapter.prepare(preparation(1, { heartbeat, beat: BEAT, once: exhausted }));
     assert.deepEqual(prepared.documents, []);
@@ -322,16 +322,16 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
             text: "every hour for 2 times",
             next: "2026-09-16T12:30:16+00:00[UTC]",
             exhausted: false,
-            target: "worker://bot",
+            target: "session://bot",
         },
     });
     assert.deepEqual(prepared.outcomes.get("heartbeat"), {
         state: "active",
-        detail: { path: "schedule:///rules/heartbeat", rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY", zone: "UTC", text: "every hour", next: "2026-09-16T12:30:16+00:00[UTC]", exhausted: false, target: "worker://bot" },
+        detail: { path: "schedule:///rules/heartbeat", rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY", zone: "UTC", text: "every hour", next: "2026-09-16T12:30:16+00:00[UTC]", exhausted: false, target: "session://bot" },
     });
     assert.deepEqual(prepared.outcomes.get("once"), {
         state: "active",
-        detail: { path: "schedule:///rules/once", rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time; no future occurrences", next: null, exhausted: true, target: "worker://bot" },
+        detail: { path: "schedule:///rules/once", rule: exhausted.rule, zone: "UTC", text: "every day at 9 AM for 1 time; no future occurrences", next: null, exhausted: true, target: "session://bot" },
     });
     assert.deepEqual(adapter.scheduler.armed(1), [], "nothing arms before commit");
     prepared.publish(); await prepared.commit();
@@ -351,7 +351,7 @@ test("{§schedule-residency} preparation publishes one outcome per rule, commit 
 test("{§schedule-family} an unreadable enabled definition is unavailable with its Problem, and rejects only an add that introduces it", async () => {
     const reports: string[] = [];
     const adapter = family(new FakeTime(), {}, reports);
-    const broken = { rule: "FREQ=DAILY;BOGUS=1", target: "worker://bot", prompt: "x" };
+    const broken = { rule: "FREQ=DAILY;BOGUS=1", target: "session://bot", prompt: "x" };
     const published = await adapter.prepare(preparation(1, { broken, beat: BEAT }));
     const outcome = published.outcomes.get("broken");
     assert.equal(outcome?.state, "unavailable");
@@ -365,7 +365,7 @@ test("{§schedule-family} an unreadable enabled definition is unavailable with i
     assert.equal(reports.length, 1, "a carried failure is not reported again");
 });
 
-test("{§schedule-delivery} an occurrence delivers the message to the target worker as an arrival from schedule://<alias>, then the next one arms", async () => {
+test("{§schedule-delivery} an occurrence delivers the message to the target session as an arrival from schedule://<alias>, then the next one arms", async () => {
     const time = new FakeTime();
     const adapter = family(time);
     const refreshed = attached(adapter);
@@ -373,7 +373,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     adapter.scheduler.start(port);
     await (await adapter.prepare(preparation(3, { beat: BEAT }))).commit();
     await time.advance(FIRST);
-    assert.deepEqual(port.deliveries, [{ workspaceId: 3, workerId: 7, prompt: "Beat.", source: "schedule://beat" }]);
+    assert.deepEqual(port.deliveries, [{ workspaceId: 3, sessionId: 7, prompt: "Beat.", source: "schedule://beat" }]);
     assert.deepEqual(refreshed, [3], "a settled delivery republishes the outcomes");
     assert.deepEqual(time.delays(), [HOUR], "the next occurrence armed from the fire");
     const republished = await adapter.prepare(preparation(3, { beat: BEAT }));
@@ -384,7 +384,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target wor
     assert.deepEqual(adapter.scheduler.armed(3), [], "the rule is exhausted");
     const done = await adapter.prepare(preparation(3, { beat: BEAT }));
     assert.deepEqual((done.outcomes.get("beat") as { detail: { next: null; exhausted: boolean } }).detail, {
-        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times; no future occurrences", next: null, exhausted: true, target: "worker://bot",
+        path: "schedule:///rules/beat", rule: BEAT.rule, zone: "UTC", text: "every hour for 2 times; no future occurrences", next: null, exhausted: true, target: "session://bot",
     });
     await adapter.scheduler.close();
 });
@@ -400,10 +400,10 @@ test("{§schedule-bound} {§schedule-first-arming} an occurrence past before add
         assert.ok(candidate);
         time.now = NOW + 5 * SECOND;
         const { definition: expired } = await adapter.admit({ alias: "expired", definition: {
-            ...candidate.definition, target: "worker://bot", prompt: "Expired.",
+            ...candidate.definition, target: "session://bot", prompt: "Expired.",
         } }, identity);
         const { definition: fresh } = await adapter.admit({ alias: "fresh", definition: {
-            rule: "FREQ=SECONDLY;COUNT=1", target: "worker://bot", prompt: "Fresh.",
+            rule: "FREQ=SECONDLY;COUNT=1", target: "session://bot", prompt: "Fresh.",
         } }, identity);
         const prepared = await adapter.prepare(preparation(5, { expired, fresh }));
         const expiredOutcome = prepared.outcomes.get("expired");
@@ -418,7 +418,7 @@ test("{§schedule-bound} {§schedule-first-arming} an occurrence past before add
         prepared.publish(); await prepared.commit();
         assert.deepEqual(adapter.scheduler.armed(5), ["fresh"], "no implicit replay or re-dating of the expired occurrence");
         await time.advance(FIRST + 5 * SECOND);
-        assert.deepEqual(port.deliveries, [{ workspaceId: 5, workerId: 7, prompt: "Fresh.", source: "schedule://fresh" }]);
+        assert.deepEqual(port.deliveries, [{ workspaceId: 5, sessionId: 7, prompt: "Fresh.", source: "schedule://fresh" }]);
     } finally { await adapter.scheduler.close(); }
 });
 
@@ -428,7 +428,7 @@ test("{§schedule-first-arming} a single occurrence that passes between add and 
     const port = new FakePort();
     adapter.scheduler.start(port);
     // The model asks for a reminder four seconds ahead; preparation and arming run five seconds later.
-    const soon = { rule: "DTSTART;TZID=UTC:20260916T123019\nRRULE:FREQ=MINUTELY;COUNT=1", target: "worker://bot", prompt: "Soon." };
+    const soon = { rule: "DTSTART;TZID=UTC:20260916T123019\nRRULE:FREQ=MINUTELY;COUNT=1", target: "session://bot", prompt: "Soon." };
     const admission = await adapter.admit({ alias: "soon", definition: soon }, { workspaceId: 5 });
     const { definition } = admission;
     time.now = NOW + 5 * SECOND;
@@ -465,12 +465,12 @@ test("{§schedule-delivery} a late fire delivers once and skips what it missed; 
     attached(adapter);
     const port = new FakePort();
     adapter.scheduler.start(port);
-    const hourly = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=10", target: "worker://bot", prompt: "Tick." };
+    const hourly = { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=10", target: "session://bot", prompt: "Tick." };
     await (await adapter.prepare(preparation(1, { hourly }))).commit();
     await time.advance(FIRST + 3 * HOUR + SECOND);
     assert.equal(port.deliveries.length, 1, "no backlog");
     assert.deepEqual(time.delays(), [HOUR - SECOND], "armed for the first occurrence after now");
-    const far = { rule: "DTSTART;TZID=UTC:20270101T000000\nRRULE:FREQ=YEARLY;COUNT=1", target: "worker://bot", prompt: "Happy new year." };
+    const far = { rule: "DTSTART;TZID=UTC:20270101T000000\nRRULE:FREQ=YEARLY;COUNT=1", target: "session://bot", prompt: "Happy new year." };
     await (await adapter.prepare(preparation(2, { far }))).commit();
     assert.deepEqual(time.delays().filter((delay) => delay === MAX_TIMER_MS), [MAX_TIMER_MS], "setTimeout's ceiling is one hop");
     await time.advance(time.now + MAX_TIMER_MS);
@@ -485,7 +485,7 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     const adapter = family(time, {}, reports);
     const refreshed = attached(adapter);
     const port = new FakePort();
-    port.workers = [];
+    port.sessions = [];
     adapter.scheduler.start(port);
     await (await adapter.prepare(preparation(1, { beat: BEAT }))).commit();
     await time.advance(FIRST);
@@ -498,11 +498,11 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     assert.equal(outcome.state, "unavailable");
     assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/schedule/delivery/target-missing");
     assert.equal(outcome.problem.status, 404);
-    assert.equal(outcome.problem.detail, "No worker named 'bot' exists in this workspace."); // {§problems-schedule}
+    assert.equal(outcome.problem.detail, "No session named 'bot' exists in this workspace."); // {§problems-schedule}
     held.publish(); await held.commit();
     assert.deepEqual(adapter.scheduler.armed(1), [], "republishing does not retry on its own");
 
-    port.workers = [{ id: 7, name: "bot" }];
+    port.sessions = [{ id: 7, name: "bot" }];
     const forced = await adapter.prepare(preparation(1, { beat: BEAT }, { previous: held.snapshot, force: "beat" }));
     assert.equal(forced.outcomes.get("beat")?.state, "active", "enable retries");
     forced.publish(); await forced.commit();

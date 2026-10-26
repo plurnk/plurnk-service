@@ -28,7 +28,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
     readonly #sequence: number | undefined;
     readonly #ambientMembers: PlurnkSchemeContext["ambientMembers"];
     readonly workspaceId: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;
@@ -50,7 +50,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         options: SchemeCtxOptions,
     ) {
         this.workspaceId = ctx.workspaceId;
-        this.workerId = ctx.workerId;
+        this.sessionId = ctx.sessionId;
         this.loopId = ctx.loopId;
         this.turnId = ctx.turnId;
         this.writer = ctx.writer;
@@ -114,12 +114,12 @@ export default class SchemeCtxImpl implements SchemeCtx {
         return ctx instanceof SchemeCtxImpl ? ctx.#ambientMembers : "db" in ctx ? ctx.ambientMembers : undefined;
     }
 
-    // {§actor-boundary-client-operations} — a person's operation carries the worker it acts for to core adapters.
+    // {§actor-boundary-client-operations} — a person's operation carries the session it acts for to core adapters.
     static clientOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): PlurnkSchemeContext["client"] {
         return ctx instanceof SchemeCtxImpl ? ctx.#client : "db" in ctx ? ctx.client : undefined;
     }
 
-    // {§worker-obligations} The dispatching operation's sequence, which with the turn names the row it writes.
+    // {§session-obligations} The dispatching operation's sequence, which with the turn names the row it writes.
     static sequenceOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): number | undefined {
         return ctx instanceof SchemeCtxImpl ? ctx.#sequence : "db" in ctx ? ctx.sequence : undefined;
     }

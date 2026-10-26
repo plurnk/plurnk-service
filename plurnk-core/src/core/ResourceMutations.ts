@@ -40,7 +40,7 @@ export default class ResourceMutations {
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
-            workerId: number,
+            sessionId: number,
         ) => Promise<string | null>;
         selection: ResourceSelector;
         resolveDataEntryAddress: EntryAddressBinding["resolve"];
@@ -52,7 +52,7 @@ export default class ResourceMutations {
             channel: string,
             ctx: PlurnkSchemeContext,
         ) => Promise<DeleteEntryResult>;
-        applyProposal: ProposalLifecycle["workerApply"];
+        applyProposal: ProposalLifecycle["sessionApply"];
     }) {
         this.#selection = selection;
         this.#edits = new EditMutations({ schemes, liveSubscriptions, selection, checkWritable, checkCapabilities, editTargetIdentity, resolveDataEntryAddress });

@@ -51,7 +51,7 @@ export default class ResourceTransfers {
         channel: string,
         ctx: PlurnkSchemeContext,
     ) => Promise<DeleteEntryResult>;
-    readonly #applyProposal: ProposalLifecycle["workerApply"];
+    readonly #applyProposal: ProposalLifecycle["sessionApply"];
     readonly #selection: ResourceSelector;
 
     constructor({ schemes, liveSubscriptions, resolveDataEntryAddress, readEntry, writeEntry, deleteChannel, applyProposal, selection }: {
@@ -66,7 +66,7 @@ export default class ResourceTransfers {
         channel: string,
         ctx: PlurnkSchemeContext,
     ) => Promise<DeleteEntryResult>;
-        applyProposal: ProposalLifecycle["workerApply"];
+        applyProposal: ProposalLifecycle["sessionApply"];
         selection: ResourceSelector;
     }) {
         this.#schemes = schemes;

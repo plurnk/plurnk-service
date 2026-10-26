@@ -11,7 +11,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { digestStems } from "./_packet.ts";
 import { urlPath } from "./_dsl.ts";
 
@@ -23,13 +23,13 @@ test("{§digest-forensic-fidelity}: unknown actionless rows remain evidence with
     const source = "````SEND\ndone\n````";
     try {
         const workspaceId = await insertWorkspace(db, "unknown-source");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "inspect history");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "inspect history");
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         await Turn.recordSource(db, turn.id, "ops", source);
         for (const [index, kind] of ["reasoning", "unknown", "emissionAttempt"].entries()) {
             await db.engine_insert_log_entry.get({
-                worker_id: workerId, loop_id: loopId, turn_id: turn.id, sequence: index + 1,
+                session_id: sessionId, loop_id: loopId, turn_id: turn.id, sequence: index + 1,
                 origin: "model", source: null, model_call_id: null,
                 op: null,
                 scheme: null, username: null, password: null, hostname: null, port: null,
@@ -72,14 +72,14 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "killed-turn-artifact");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1, "curate history");
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1, "curate history");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const observeProgram = async (turnId: number, source: string): Promise<number> => {
             await Turn.recordSource(db, turnId, "ops", source);
             const turn = (await db.test_get_turn.get<{ sequence: number }>({ id: turnId }))!;
             const result = await engine.dispatch({
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
                 statement: {
                     op: "READ", aside: null, metadata: null, matcher: null, body: null,
                     target: { ...urlPath("ops", `/1/${turn.sequence}`), hostname: "analyst", raw: `ops://analyst/1/${turn.sequence}` }, lineMarker: { marks: [1, -1] },
@@ -114,13 +114,13 @@ test("{§log-history-projection}: digest retains programs after all source READ 
         };
         const result = await engine.dispatch({
             statement: kill,
-            workspaceId, workerId, loopId, turnId: curationTurn, sequence: 2, origin: "model",
+            workspaceId, sessionId, loopId, turnId: curationTurn, sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
         assert.equal(result.matched, 2, "the real broad KILL retires both prior source READ receipts");
         await Turn.complete(db, curationTurn, 200);
 
-        const active = await db.engine_render_log.all<{ id: number }>({ worker_id: workerId });
+        const active = await db.engine_render_log.all<{ id: number }>({ session_id: sessionId });
         assert.ok(retiredIds.every((id) => !active.some((row) => row.id === id)), "retired READ receipts leave the current packet projection");
     } finally {
         await db.close();
@@ -170,10 +170,10 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
         let initializationSource = "";
         try {
             const workspaceId = await insertWorkspace(db, "turn-artifacts");
-            const workerId = await insertWorker(db, workspaceId, null, "analyst");
+            const sessionId = await insertSession(db, workspaceId, null, "analyst");
             // A workspace entry, so the workspace survey selects something and the initialization program exists.
-            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-            const loopId = await insertLoop(db, workerId, 1, "conclude");
+            await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
+            const loopId = await insertLoop(db, sessionId, 1, "conclude");
             const response = {
                 assistant: { content: inferenceSource, reasoning: null },
                 usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
@@ -182,7 +182,7 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
             await engine.runTurn({
                 provider: new Mock({ contextWindow: 100_000, responses: [response] }),
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "user", content: "Conclude." }],
             });
@@ -201,7 +201,7 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
             const overflow = await engine.runTurn({
                 provider: constrained,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "user", content: "Conclude." }],
                 turnNumber: 2,
@@ -212,9 +212,9 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
             assert.equal(constrained.remaining, 1, "the rejected candidate performs no provider call");
 
             const turns = await db.test_list_turns_in_loop.all<{ id: number }>({ loop_id: loopId });
-            const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             initializationSource = programs.find(({ turn_id, kind }) => turn_id === turns[0].id && kind === "ops")!.content;
-            assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0].id && kind === "reasoning"), "initialization authors no reasoning ({§worker-initialization-entry})");
+            assert.ok(!programs.some(({ turn_id, kind }) => turn_id === turns[0].id && kind === "reasoning"), "initialization authors no reasoning ({§session-initialization-entry})");
             assert.ok(!programs.some(({ turn_id }) => turn_id === overflow.turnId), "no recovery program was executed or fabricated");
         } finally {
             await db.close();
@@ -255,8 +255,8 @@ test("{§digest-turn-artifact-identity} Digest: operation and request-only turns
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "packet-algebra");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "packet states");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "packet states");
         for (const producer of ["client", "_plurnk"] as const) {
             const operation = await Turn.open(db, { loopId, producer, kind: "operation" });
             await Turn.complete(db, operation.id, 200);
@@ -309,8 +309,8 @@ test("{§digest-forensic-fidelity}: native attachment selection remains distinct
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "attachment-digest");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "inspect delivery");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "inspect delivery");
         for (const [index, stored] of [
             StoredPacket.stringify({ ...packet, attachments: [attachment] }),
             StoredPacket.stringify(packet),
@@ -342,8 +342,8 @@ test("{§digest-forensic-fidelity}: one malformed historical packet remains exac
     let malformedTurnId: number | undefined;
     try {
         const workspaceId = await insertWorkspace(db, "malformed-packet");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "retain the complete history");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "retain the complete history");
         malformedTurnId = (await db.test_insert_turn.get<{ id: number }>({ loop_id: loopId, sequence: 1, status: 500, packet: malformedPacket }))!.id;
         await insertPacketTurn(db, loopId, 2, {
             weight: 0,

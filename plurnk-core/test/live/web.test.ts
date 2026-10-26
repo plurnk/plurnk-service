@@ -20,7 +20,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "../intg/_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "../intg/_db.ts";
 import { DEFAULT_MIMETYPES } from "../intg/_scheme.ts";
 import { fixtureExecutors } from "../intg/_mock.ts";
 
@@ -45,11 +45,11 @@ test("live web: a discovered http:// READ atomically materializes a real URL (no
             await schemes.discoverExternal(process.cwd());
             const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
             const workspaceId = await insertWorkspace(db, `web-http-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "web");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "web");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
-            const r = await engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+            const r = await engine.dispatch({ statement, workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
             assert.equal(r.status, 200, "finite HTTP READ settles only after canonical materialization");
             assert.match(String(r.content), /User-agent|Disallow/i, "READ returns the actual robots.txt content");
             // Entries split authority from pathname, and the origin decides its

@@ -10,8 +10,8 @@ import Results, { OperationFailureError } from "./results.ts";
 export default class MessageResources {
     static async publish(body: string, resources: readonly MessageResource[], ctx: PlurnkSchemeContext): Promise<{ body: string; attachments: MessageResourceReceipt[] }> {
         if (resources.length === 0) return { body, attachments: [] };
-        const worker = await ctx.db.worker_get.get<{ name: string }>({ id: ctx.workerId });
-        if (worker === undefined) throw new Error(`Message recipient ${ctx.workerId} is absent.`);
+        const session = await ctx.db.session_get.get<{ name: string }>({ id: ctx.sessionId });
+        if (session === undefined) throw new Error(`Message recipient ${ctx.sessionId} is absent.`);
         const names = new ResourceNames();
         const directory = `/attachments/${randomBytes(4).toString("hex")}`;
         const attachments: MessageResourceReceipt[] = [];
@@ -20,11 +20,11 @@ export default class MessageResources {
             const contentHash = await NativeContent.retain(ctx.db, resource.bytes);
             const name = names.allocate(resource.name, `${contentHash}/${index}`);
             const pathname = `${directory}/${name}`;
-            const written = await EntryCrud.writeEntry({ authority: worker.name, pathname }, {
+            const written = await EntryCrud.writeEntry({ authority: session.name, pathname }, {
                 channels: { body: { content: "", bytes: resource.bytes, mimetype: resource.mediaType } },
-            }, ctx, "worker");
+            }, ctx, "session");
             if (written.status >= 400) throw new OperationFailureError(written);
-            const target = `worker://${worker.name}${pathname}`;
+            const target = `session://${session.name}${pathname}`;
             attachments.push({ name: resource.name || decodeURIComponent(name), mediaType: resource.mediaType, contentHash, target });
             links.push(`<${target}>`);
         }
@@ -49,20 +49,20 @@ export default class MessageResources {
         ));
     }
 
-    // {§methods-worker-inbox} The accepted messages the worker has not yet observed ({§message-arrival}): durable the
+    // {§methods-session-inbox} The accepted messages the session has not yet observed ({§message-arrival}): durable the
     // moment they are accepted, published at the next turn boundary of the loop holding them, which a terminal loop
     // never reaches.
-    static async inbox(db: Db, args: { workspaceId: number; workerId: number }): Promise<ApplicationInboxMessage[]> {
+    static async inbox(db: Db, args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
         const rows = await db.message_inbox.all<{ path: string; source: string | null; body: string; loop_id: number; loop_status: number }>({
-            workspace_id: args.workspaceId, worker_id: args.workerId,
+            workspace_id: args.workspaceId, session_id: args.sessionId,
         });
         return rows.map(({ path, source, body, loop_id, loop_status }) => ({ path, source, body, loopId: loop_id, lifecycle: lifecycleOfLoopStatus(loop_status) }));
     }
 
-    static async read(db: Db, args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {
+    static async read(db: Db, args: { workspaceId: number; sessionId: number; loopId?: number }): Promise<ApplicationMessage[]> {
         const rows = await db.message_history.all<{
             id: number; loop_id: number; direction: "inbound" | "outbound"; source: string | null; body: string; evidence: string; answers: string;
-        }>({ workspace_id: args.workspaceId, worker_id: args.workerId, loop_id: args.loopId ?? null });
+        }>({ workspace_id: args.workspaceId, session_id: args.sessionId, loop_id: args.loopId ?? null });
         return Promise.all(rows.map(async (row) => {
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a message's evidence is read back as the row stored it
             const evidence = JSON.parse(row.evidence) as MessageEvidence;

@@ -45,7 +45,7 @@ test("{§exec-tool-fall-through} {§diagnostic-observation} a bare execution of 
             assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`."); // {§pinned-wording-core}
             assert.equal(
                 receipt.problem?.recovery,
-                "`fail`'s contract: worker:///_plurnk/tools/fixture/fail.json.",
+                "`fail`'s contract: workspace:///_plurnk/tools/fixture/fail.json.",
             );
             assert.deepEqual(receipt.problem?.toolRuntimes, ["fixture"]);
             assert.equal(receipt.problem?.tool, "fail");

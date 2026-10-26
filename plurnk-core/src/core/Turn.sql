@@ -48,7 +48,7 @@ CREATE TRIGGER turns_capture_wake_revision
 AFTER INSERT ON turns
 BEGIN
     UPDATE loops
-    SET observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
+    SET observed_wake_revision = (SELECT wake_revision FROM sessions WHERE id = loops.session_id)
     WHERE id = NEW.loop_id AND status = 102;
 END;
 
@@ -56,12 +56,12 @@ END;
 -- {§loop-wake-identity}: acknowledge only published evidence, atomically with
 -- the revision read. An arrival beyond either observation snapshot stays owed.
 UPDATE loops
-SET observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
+SET observed_wake_revision = (SELECT wake_revision FROM sessions WHERE id = loops.session_id)
 WHERE id = (SELECT loop_id FROM turns WHERE id = $turn_id AND completed_at IS NULL)
   AND status = 102
   AND NOT EXISTS (
-      SELECT 1 FROM unobserved_worker_completions
-      WHERE worker_id = loops.worker_id
+      SELECT 1 FROM unobserved_session_completions
+      WHERE session_id = loops.session_id
   );
 
 -- PREP: engine_loop_turn_seqs

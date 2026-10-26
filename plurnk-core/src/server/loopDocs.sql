@@ -1,4 +1,4 @@
--- Worker generated-document reconciliation: the whole {§worker-generated-subtree}
+-- Session generated-document reconciliation: the whole {§session-generated-subtree}
 -- — scheme and tool references, AGENTS.md, and every Functionality family's
 -- documents ({§schemes-self-doc-materialization}, {§tools-resource-materialization},
 -- {§functionality-documents}).
@@ -10,7 +10,7 @@ FROM entries e
 LEFT JOIN entry_channel_rows ec ON ec.entry_id = e.id AND ec.name = 'body'
 LEFT JOIN contents b ON b.id = ec.content_id
 WHERE e.workspace_id = $workspace_id
-  AND e.scheme = 'worker'
+  AND e.scheme = 'workspace'
   AND e.authority = ''
   AND substr(e.pathname, 1, 9) = '/_plurnk/'
 ORDER BY e.pathname;

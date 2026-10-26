@@ -1,4 +1,4 @@
-// {§worker-owner-resolution} Server disposition and worker owners use one proposal lifecycle.
+// {§session-owner-resolution} Server disposition and session owners use one proposal lifecycle.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -71,7 +71,7 @@ test("{§edit-execution}: each EDIT waits for its own proposal before preparing 
     });
 });
 
-test("{§worker-owner-resolution} server acceptance resolves through Core without a client resolver", async (t) => {
+test("{§session-owner-resolution} server acceptance resolves through Core without a client resolver", async (t) => {
     serverProposals(t, "accept");
     const first = "````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
@@ -140,10 +140,10 @@ test("{§notifications-loop-proposal} proposal notification projects the durable
                 prompt: "trigger",
             });
             const [proposal] = await waitFor(
-                () => proposals() as Array<{ logEntryId: number; workerId?: number; owner?: string; disposition?: unknown }>,
+                () => proposals() as Array<{ logEntryId: number; sessionId?: number; owner?: string; disposition?: unknown }>,
                 (items) => items.length > 0,
             );
-            assert.equal(typeof proposal.workerId, "number");
+            assert.equal(typeof proposal.sessionId, "number");
             assert.equal(proposal.owner, TEST_OWNER);
             assert.deepEqual(proposal.disposition, { decision: "review" });
             await rpcCall(ws, 3, "loop.resolve", { logEntryId: proposal.logEntryId, decision: "accept" });

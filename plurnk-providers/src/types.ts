@@ -234,7 +234,7 @@ export type ProviderAttempt = ProviderResponse<ProviderAttemptFinishReason>;
 
 export interface ProviderGenerateArgs {
     readonly messages: ChatMessage[];
-    readonly workerId: string;
+    readonly sessionId: string;
     readonly signal?: AbortSignal;
     readonly grammar?: string;
     readonly maxOutputTokens?: number;
@@ -261,7 +261,7 @@ export interface Provider {
     // budget for this call. It includes visible output and hidden reasoning;
     // the adapter owns projection into each backend's native wire semantics.
     //
-    // `workerId` is the REQUIRED, opaque, stable identity of the consumer's work
+    // `sessionId` is the REQUIRED, opaque, stable identity of the consumer's work
     // stream (loop/run). Providers MAY key backend affinity on it — e.g.
     // llama-server slot pinning for KV-cache reuse — and MUST NOT interpret
     // its content. The consumer never sees or chooses backend resources

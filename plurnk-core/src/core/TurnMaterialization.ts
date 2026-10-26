@@ -11,10 +11,10 @@ import { authorityParts } from "./plurnk-uri.ts";
 import Results, { type SchemeResult } from "./results.ts";
 import TerminalResult from "./TerminalResult.ts";
 import LoopLifecycle from "./LoopLifecycle.ts";
-import WorkerControlAddress from "./WorkerControlAddress.ts";
+import SessionControlAddress from "./SessionControlAddress.ts";
 import Turn from "./Turn.ts";
 import AdministrativeLoop from "./AdministrativeLoop.ts";
-import RuntimeWorker from "./RuntimeWorker.ts";
+import RuntimeSession from "./RuntimeSession.ts";
 import LogBody from "./LogBody.ts";
 import LogVisibility from "./LogVisibility.ts";
 import { TextCoordinates, type Mimetypes } from "@plurnk/plurnk-mimetypes";
@@ -37,15 +37,15 @@ export default class TurnMaterialization {
     }
 
     async materializeEnvironmentDeltas(args: {
-        workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
+        workspaceId: number; sessionId: number; loopId: number; turnId: number; fromSequence: number;
     }): Promise<number[]> {
-        const { workspaceId, workerId, loopId, turnId, fromSequence } = args;
+        const { workspaceId, sessionId, loopId, turnId, fromSequence } = args;
         const rows = await this.#db.engine_pull_ambient_events.all<{
             cursor: number;
             boundary: number;
             event_id: number | null;
-            producer_worker_id: number | null;
-            producer_worker_name: string | null;
+            producer_session_id: number | null;
+            producer_session_name: string | null;
             kind: "activity" | "loop_termination" | "reply" | null;
             source: string | null;
             at: string | null;
@@ -69,12 +69,12 @@ export default class TurnMaterialization {
             attrs: string | null;
             status_rx: number | null;
             terminated_by: string | null;
-        }>({ workspace_id: workspaceId, worker_id: workerId });
+        }>({ workspace_id: workspaceId, session_id: sessionId });
         const window = rows[0];
-        if (window === undefined) throw new Error(`ambient pull: worker ${workerId} has no observation window`);
+        if (window === undefined) throw new Error(`ambient pull: session ${sessionId} has no observation window`);
         const entryIds: number[] = [];
         for (const r of rows) {
-            if (r.event_id === null || r.producer_worker_id === null || r.producer_worker_name === null || r.kind === null
+            if (r.event_id === null || r.producer_session_id === null || r.producer_session_name === null || r.kind === null
                 || r.at === null || r.op === null || r.tx === null || r.mimetype_tx === null
                 || r.rx === null || r.mimetype_rx === null || r.status_rx === null || r.state === null) continue;
             const termination = r.kind === "loop_termination";
@@ -112,10 +112,10 @@ export default class TurnMaterialization {
                 }));
             }
             const inserted = await this.#db.engine_insert_ambient_delta.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + entryIds.length,
+                session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: fromSequence + entryIds.length,
                 at: r.at,
                 event_id: r.event_id,
-                source: WorkerControlAddress.render(r.producer_worker_name),
+                source: SessionControlAddress.render(r.producer_session_name),
                 op: r.op,
                 signal: r.signal,
                 scheme: r.scheme,
@@ -146,7 +146,7 @@ export default class TurnMaterialization {
                 attrs,
             });
             const materialized = inserted ?? await this.#db.engine_ambient_delta_id.get<{ id: number }>({
-                worker_id: workerId,
+                session_id: sessionId,
                 event_id: r.event_id,
             });
             if (materialized === undefined) throw new Error(`ambient event ${r.event_id} has no observer log row after materialization`);
@@ -154,7 +154,7 @@ export default class TurnMaterialization {
         }
         await this.#db.engine_advance_ambient_cursor.get({
             workspace_id: workspaceId,
-            worker_id: workerId,
+            session_id: sessionId,
             cursor: window.cursor,
             boundary: window.boundary,
         });
@@ -163,17 +163,17 @@ export default class TurnMaterialization {
 
 
     async materializeStreamDeltas(args: {
-        workspaceId: number; workerId: number; loopId: number; turnId: number; fromSequence: number;
+        workspaceId: number; sessionId: number; loopId: number; turnId: number; fromSequence: number;
         // {§context-fit} — a closed stream's result is one the model asked for: whole when it fits, else its size.
         fit?: ContextFit;
     }): Promise<number[]> {
-        const { workspaceId, workerId, loopId, turnId, fromSequence, fit } = args;
-        const channels = await this.#db.engine_worker_stream_channels.all<{
+        const { workspaceId, sessionId, loopId, turnId, fromSequence, fit } = args;
+        const channels = await this.#db.engine_session_stream_channels.all<{
             subscription_id: number; publication_id: number; published_end: number;
             runtime: string; authority: string; coord: string; channel: string; content: string;
             mimetype: string; state: string; producer_result: string | null; published_channel: string | null;
             default_channel: string;
-        }>({ worker_id: workerId });
+        }>({ session_id: sessionId });
         const entryIds: number[] = [];
         // {§exec-stream} — a concluded stream lands one row per channel that has content; an empty
         // sibling channel is a fact on that row (`channels`), never a row of its own, and only a
@@ -274,7 +274,7 @@ export default class TurnMaterialization {
             }
             const rx = JSON.stringify(result);
             const inserted = await this.#db.engine_insert_stream_delta.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+                session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
                 subscription_publication_id: ch.publication_id,
                 scheme: ch.runtime, hostname: targetParts.hostname, port: targetParts.port,
                 pathname: ch.coord, fragment: visibleFragment,
@@ -333,8 +333,8 @@ export default class TurnMaterialization {
     ): Promise<void> {
         if (divergences.length === 0) return;
         const gitByPath = new Map(gitStatus?.files.map(({ path, status }) => [path, status] as const) ?? []);
-        const workerId = await RuntimeWorker.ensure(this.#db, workspaceId);
-        const loop = await AdministrativeLoop.open(this.#db, workerId);
+        const sessionId = await RuntimeSession.ensure(this.#db, workspaceId);
+        const loop = await AdministrativeLoop.open(this.#db, sessionId);
         const turn = await Turn.open(this.#db, { loopId: loop.id, producer: "_plurnk", kind: "operation" });
         let turnOpen = true;
         try {
@@ -346,7 +346,7 @@ export default class TurnMaterialization {
                     ? JSON.stringify({ git: gitByPath.get(d.pathname) })
                     : "{}";
                 await this.#db.engine_insert_log_entry.get({
-                    worker_id: workerId, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
+                    session_id: sessionId, loop_id: loop.id, turn_id: turn.id, sequence: sequence++,
                     origin: "_plurnk", source: "file", model_call_id: null,
                     op: "EDIT", signal: null,
                     // Match Dispatcher.#extractTarget: a bare file address has NULL scheme
@@ -404,7 +404,7 @@ export default class TurnMaterialization {
     // engine's other harness-published SEND rows: observed activity and addressed replies.
     async writeArrivalLog({
         workspaceId,
-        workerId,
+        sessionId,
         loopId,
         turnId,
         sequence,
@@ -415,7 +415,7 @@ export default class TurnMaterialization {
         fit,
     }: {
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
         loopId: number;
         turnId: number;
         sequence: number;
@@ -441,7 +441,7 @@ export default class TurnMaterialization {
         }));
         const attrs = unfit === null ? baseAttrs : { ...baseAttrs, unfit: { lines: unfit.facts.lines, tokens: unfit.tokens } };
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId,
+            session_id: sessionId,
             loop_id: loopId,
             turn_id: turnId,
             sequence,
@@ -483,5 +483,5 @@ export default class TurnMaterialization {
 
     // External API to feed a resolution into a pending proposal — the client-interface
     // seam, core-owned disposition, or the timeout watcher.
-    // {§worker-lifecycle-total-reap}: release every stopped-world waiter before joining drains.
+    // {§session-lifecycle-total-reap}: release every stopped-world waiter before joining drains.
 }

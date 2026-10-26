@@ -13,15 +13,15 @@ import { providerRequestSettlementParams } from "../../src/core/provider-account
 import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
 import ModelCall from "../../src/core/ModelCall.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 
 test("{§inference-ledger} model evidence cannot be orphaned or replaced by a fabricated terminal state", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `model-specialization-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "specialization");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "specialization");
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         const call = await ModelCall.open(db, {
             turnId: turn.id, kind: "emission", attributions: [], model: "fixture/generation-model",
@@ -105,8 +105,8 @@ const fixture = async (): Promise<{
 }> => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `money-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "account");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "account");
     return { db, loopId };
 };
 
@@ -188,7 +188,7 @@ test("{§provider-request-accounting} the baseline has no floating-point or deno
             db.test_provider_accounting_table_info.all({ table });
         for (const table of [
             "workspaces",
-            "workers",
+            "sessions",
             "turns",
             "inference_calls",
             "model_calls",

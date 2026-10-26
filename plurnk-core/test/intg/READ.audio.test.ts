@@ -38,9 +38,9 @@ for (const modalities of [["audio"], []] as InputModality[][]) {
                     const loopId = (run.result as { loopId: number }).loopId;
                     await waitForDb(() => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }), (row) => row?.status === 200, { timeoutMs: 20_000 });
                     await assert.rejects(readFile(join(root, "clip.wav")), { code: "ENOENT" });
-                    const loop = await db.drain_message_source.get<{ worker_id: number }>({ loop_id: loopId });
-                    const fork = await Fork.fork(db, loop!.worker_id, "audio-fork");
-                    const rows = await db.engine_render_log.all<{ op: string; pathname: string; status_rx: number; rx: string }>({ worker_id: fork });
+                    const loop = await db.drain_message_source.get<{ session_id: number }>({ loop_id: loopId });
+                    const fork = await Fork.fork(db, loop!.session_id, "audio-fork");
+                    const rows = await db.engine_render_log.all<{ op: string; pathname: string; status_rx: number; rx: string }>({ session_id: fork });
                     const observation = rows.find((row) => row.op === "READ" && row.pathname === "/1/2/3/READ");
                     assert.ok(observation, "the fork inherits the explicit log READ");
                     assert.equal(typeof JSON.parse(observation.rx).nativeContentHash, "string", observation.rx);

@@ -25,6 +25,6 @@ export {
     type ParsedRule,
     type ScheduleRuleCode,
 } from "./rules.ts";
-export { DEFINITION_SCHEMA, DefinitionError, readDefinition, targetWorkerName, type ScheduleDefinition } from "./definition.ts";
+export { DEFINITION_SCHEMA, DefinitionError, readDefinition, targetSessionName, type ScheduleDefinition } from "./definition.ts";
 export { serviceDefinitions, validateConfiguration } from "./config.ts";
 export { isoString, zoned } from "./temporal.ts";

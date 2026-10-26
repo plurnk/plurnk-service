@@ -27,8 +27,8 @@ import Module, { type AcpSetupSeam } from "./Module.ts";
 import type { AcpPlusState, ActionOutcome } from "./client.ts";
 
 const WsConstructor = WebSocket as unknown as WebSocketConstructor;
-type ModelSelection = Awaited<ReturnType<ApplicationPort["setWorkerModel"]>>;
-type EffortValue = Awaited<ReturnType<ApplicationPort["setWorkerEffort"]>>["effort"];
+type ModelSelection = Awaited<ReturnType<ApplicationPort["setSessionModel"]>>;
+type EffortValue = Awaited<ReturnType<ApplicationPort["setSessionEffort"]>>["effort"];
 
 interface ProblemError extends Error {
     problem?: ProblemDetails;
@@ -44,11 +44,11 @@ interface Harness {
         streams: Array<Record<string, unknown>>;
         inbox: Array<Record<string, unknown>>;
         logs: Array<Record<string, unknown>>;
-        workers: Array<{
+        sessions: Array<{
             id: number;
             workspaceId: number;
             name: string;
-            parentWorkerId: number | null;
+            parentSessionId: number | null;
             kind: "model" | "bare" | "system";
             hiddenAt: string | null;
         }>;
@@ -84,12 +84,12 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
             hidden_at: null,
         },
     ];
-    const workers: Harness["port"]["workers"] = [
+    const sessions: Harness["port"]["sessions"] = [
         {
             id: 1,
             workspaceId: 1,
             name: "user",
-            parentWorkerId: null,
+            parentSessionId: null,
             kind: "model",
             hiddenAt: null,
         },
@@ -139,7 +139,7 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
 
     const port: Harness["port"] = {
         workspaces,
-        workers,
+        sessions,
         proposals,
         interactions,
         streams,
@@ -213,9 +213,9 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                 return () => revocationHandlers.delete(handler);
             },
         } as unknown as ApplicationPort["credentials"],
-        registerWorkerOwner: async () => {},
-        claimWorkerOwner: async ({ owner }) =>
-            ({ owner, capabilities: ["request_approval"] }) as unknown as Awaited<ReturnType<ApplicationPort["claimWorkerOwner"]>>,
+        registerSessionOwner: async () => {},
+        claimSessionOwner: async ({ owner }) =>
+            ({ owner, capabilities: ["request_approval"] }) as unknown as Awaited<ReturnType<ApplicationPort["claimSessionOwner"]>>,
         configurationNotices: () => [],
         listClientDisplayCapabilities: async () => [],
         listModuleActions: () => [
@@ -292,16 +292,16 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
             };
             throw err;
         },
-        ensureRuntimeWorker: async () => 999,
-        runLoop: async ({ workspaceId, workerId, prompt }) => {
+        ensureRuntimeSession: async () => 999,
+        runLoop: async ({ workspaceId, sessionId, prompt }) => {
             setImmediate(() => {
                 port.emitEvent({
                     type: "log/entry",
                     workspaceId,
                     entry: {
                         id: logs.length + 1,
-                        worker_id: workerId,
-                        worker_name: workers.find((w) => w.id === workerId)?.name ?? "user",
+                        session_id: sessionId,
+                        session_name: sessions.find((w) => w.id === sessionId)?.name ?? "user",
                         loop_id: 1,
                         loop_seq: 1,
                         turn_id: 1,
@@ -319,7 +319,7 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                 port.emitEvent({
                     type: "loop/terminated",
                     workspaceId,
-                    workerId,
+                    sessionId,
                     loopId: 1,
                     loopSeq: 1,
                     status: 200,
@@ -337,18 +337,18 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                     },
                 });
             });
-            return { workspaceId, workerId, loopId: 1, loopSeq: 1, status: 102, queued: false } as unknown as Awaited<
+            return { workspaceId, sessionId, loopId: 1, loopSeq: 1, status: 102, queued: false } as unknown as Awaited<
                 ReturnType<ApplicationPort["runLoop"]>
             >;
         },
         cancelDrain: () => true,
-        cancelWorker: async () => {},
+        cancelSession: async () => {},
         dispatchClientAction: async ({ statements }) =>
             statements.map(() => ({ status: 200, message: "OK", content: "executed", mimetype: "text/plain" })),
         cancelLoop: async () => true,
         executorTags: () => ["sh", "js"],
-        readLog: async ({ workerId }) =>
-            logs.filter((l) => l.worker_id === workerId) as unknown as Awaited<ReturnType<ApplicationPort["readLog"]>>,
+        readLog: async ({ sessionId }) =>
+            logs.filter((l) => l.session_id === sessionId) as unknown as Awaited<ReturnType<ApplicationPort["readLog"]>>,
         listProviders: () => ({
             aliases: [
                 {
@@ -432,48 +432,48 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                 projectLabel: found.project_label,
             };
         },
-        readWorkerReference: async ({ reference }) => {
-            const found = workers.find((w) => w.name === reference);
-            return found ? { workspaceId: found.workspaceId, workerId: found.id } : null;
+        readSessionReference: async ({ reference }) => {
+            const found = sessions.find((w) => w.name === reference);
+            return found ? { workspaceId: found.workspaceId, sessionId: found.id } : null;
         },
-        ensureWorkerReference: async ({ reference }) => {
-            const found = workers.find((w) => w.name === reference);
-            if (found) return { workspaceId: found.workspaceId, workerId: found.id };
+        ensureSessionReference: async ({ reference }) => {
+            const found = sessions.find((w) => w.name === reference);
+            if (found) return { workspaceId: found.workspaceId, sessionId: found.id };
             const created = {
-                id: workers.length + 1,
+                id: sessions.length + 1,
                 workspaceId: 1,
                 name: reference,
-                parentWorkerId: null,
+                parentSessionId: null,
                 kind: "model" as const,
                 hiddenAt: null,
             };
-            workers.push(created);
-            return { workspaceId: 1, workerId: created.id };
+            sessions.push(created);
+            return { workspaceId: 1, sessionId: created.id };
         },
-        listWorkerReferences: async () => [],
+        listSessionReferences: async () => [],
         listWorkspaces: async (query) =>
             workspaces.filter((w) =>
                 query?.hidden === undefined ? true : query.hidden ? w.hidden_at !== null : w.hidden_at === null,
             ),
-        listWorkers: async (workspaceId, query) => {
+        listSessions: async (workspaceId, query) => {
             const includeHidden = (query as { includeHidden?: boolean } | undefined)?.includeHidden;
-            return workers
+            return sessions
                 .filter((w) => w.workspaceId === workspaceId && (includeHidden ? true : w.hiddenAt === null))
                 .map((w) => ({
                     id: w.id,
                     workspaceId: w.workspaceId,
                     name: w.name,
-                    parentWorkerId: w.parentWorkerId,
+                    parentSessionId: w.parentSessionId,
                     kind: w.kind,
                     status: 200,
                     lifecycle: "idle",
                     hiddenAt: w.hiddenAt,
-                })) as unknown as Awaited<ReturnType<ApplicationPort["listWorkers"]>>;
+                })) as unknown as Awaited<ReturnType<ApplicationPort["listSessions"]>>;
         },
-        readWorker: async ({ workspaceId, identity }) => {
-            const id = identity as { id?: number; workerId?: number; name?: string };
-            const targetId = id.id ?? id.workerId;
-            const found = workers.find(
+        readSession: async ({ workspaceId, identity }) => {
+            const id = identity as { id?: number; sessionId?: number; name?: string };
+            const targetId = id.id ?? id.sessionId;
+            const found = sessions.find(
                 (w) =>
                     w.workspaceId === workspaceId &&
                     (targetId !== undefined ? w.id === targetId : w.name === id.name),
@@ -483,14 +483,14 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                 id: found.id,
                 workspaceId: found.workspaceId,
                 name: found.name,
-                parentWorkerId: found.parentWorkerId,
+                parentSessionId: found.parentSessionId,
                 kind: found.kind,
                 status: 200,
                 lifecycle: "idle",
                 hiddenAt: found.hiddenAt,
-            } as unknown as Awaited<ReturnType<ApplicationPort["readWorker"]>>;
+            } as unknown as Awaited<ReturnType<ApplicationPort["readSession"]>>;
         },
-        listWorkerLoops: async () =>
+        listSessionLoops: async () =>
             [
                 {
                     id: 1,
@@ -505,15 +505,15 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                     opening: "Hello world",
                     continued: false,
                 },
-            ] as unknown as Awaited<ReturnType<ApplicationPort["listWorkerLoops"]>>,
-        readWorkerOverview: async ({ workspaceId }) =>
+            ] as unknown as Awaited<ReturnType<ApplicationPort["listSessionLoops"]>>,
+        readSessionOverview: async ({ workspaceId }) =>
             ({
                 scope: workspaceId ? { workspaceId } : null,
                 workspaces: Object.fromEntries(
                     workspaces.map((w) => [w.id, { id: w.id, name: w.name, projectRoot: w.project_root, projectLabel: w.project_label }]),
                 ),
-                workers: Object.fromEntries(
-                    workers
+                sessions: Object.fromEntries(
+                    sessions
                         .filter((w) => w.hiddenAt === null && (!workspaceId || w.workspaceId === workspaceId))
                         .map((w) => [
                             w.id,
@@ -521,7 +521,7 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                                 workspaceId: w.workspaceId,
                                 id: w.id,
                                 name: w.name,
-                                parentWorkerId: w.parentWorkerId,
+                                parentSessionId: w.parentSessionId,
                                 kind: w.kind,
                                 lifecycle: "idle",
                                 gates: [],
@@ -536,18 +536,18 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                             },
                         ]),
                 ),
-                recent: workers.filter((w) => w.hiddenAt === null).map((w) => w.id),
+                recent: sessions.filter((w) => w.hiddenAt === null).map((w) => w.id),
                 omitted: 0,
-            }) as unknown as Awaited<ReturnType<ApplicationPort["readWorkerOverview"]>>,
-        workerAccounting: async () =>
+            }) as unknown as Awaited<ReturnType<ApplicationPort["readSessionOverview"]>>,
+        sessionAccounting: async () =>
             ({
                 requests: [],
                 usage: { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
                 knownUsage: true,
                 costUsd: "0.0025",
                 knownCostUsd: true,
-            }) as unknown as Awaited<ReturnType<ApplicationPort["workerAccounting"]>>,
-        workerGauge: async () => ({
+            }) as unknown as Awaited<ReturnType<ApplicationPort["sessionAccounting"]>>,
+        sessionGauge: async () => ({
             curationWeight: 120,
             curationBudget: 4000,
             contextTokens: 150,
@@ -567,11 +567,11 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                 ReturnType<ApplicationPort["setWorkspaceHidden"]>
             >;
         },
-        setWorkerHidden: async ({ workerId, hidden }) => {
-            const w = workers.find((item) => item.id === workerId);
+        setSessionHidden: async ({ sessionId, hidden }) => {
+            const w = sessions.find((item) => item.id === sessionId);
             if (w) w.hiddenAt = hidden ? new Date().toISOString() : null;
-            return { workerId, hidden, hiddenAt: w?.hiddenAt ?? null } as unknown as Awaited<
-                ReturnType<ApplicationPort["setWorkerHidden"]>
+            return { sessionId, hidden, hiddenAt: w?.hiddenAt ?? null } as unknown as Awaited<
+                ReturnType<ApplicationPort["setSessionHidden"]>
             >;
         },
         rollback: async () => ({ reversed: [], stoppedAt: null }) as unknown as Awaited<ReturnType<ApplicationPort["rollback"]>>,
@@ -594,45 +594,45 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
                 content: `Body for ${target}`,
                 totalBytes: 16,
             }) as unknown as Awaited<ReturnType<ApplicationPort["readEntryChannel"]>>,
-        forkWorker: async ({ workspaceId, workerId, name }) => {
+        forkSession: async ({ workspaceId, sessionId, name }) => {
             const created = {
-                id: workers.length + 1,
+                id: sessions.length + 1,
                 workspaceId,
-                name: name ?? `fork-${workers.length + 1}`,
-                parentWorkerId: workerId,
+                name: name ?? `fork-${sessions.length + 1}`,
+                parentSessionId: sessionId,
                 kind: "model" as const,
                 hiddenAt: null,
             };
-            workers.push(created);
-            return { workerId: created.id, workerName: created.name, parentWorkerId: workerId };
+            sessions.push(created);
+            return { sessionId: created.id, sessionName: created.name, parentSessionId: sessionId };
         },
-        createWorker: async ({ workspaceId, name }) => {
+        createSession: async ({ workspaceId, name }) => {
             if (name === "_plurnk") {
-                const err: ProblemError = new Error("Reserved worker name");
+                const err: ProblemError = new Error("Reserved session name");
                 err.problem = {
-                    type: "https://plurnk.xyz/problems/core/worker-name-reserved",
+                    type: "https://plurnk.xyz/problems/core/session-name-reserved",
                     title: "Bad Request",
                     status: 400,
-                    code: "core/worker-name-reserved",
-                    detail: "Worker name '_plurnk' is reserved.",
+                    code: "core/session-name-reserved",
+                    detail: "Session name '_plurnk' is reserved.",
                 };
                 throw err;
             }
-            const existing = workers.find((w) => w.workspaceId === workspaceId && w.name === name);
-            if (existing) return { workerId: existing.id, workerName: existing.name };
+            const existing = sessions.find((w) => w.workspaceId === workspaceId && w.name === name);
+            if (existing) return { sessionId: existing.id, sessionName: existing.name };
             const created = {
-                id: workers.length + 1,
+                id: sessions.length + 1,
                 workspaceId,
-                name: name ?? `worker-${workers.length + 1}`,
-                parentWorkerId: null,
+                name: name ?? `session-${sessions.length + 1}`,
+                parentSessionId: null,
                 kind: "model" as const,
                 hiddenAt: null,
             };
-            workers.push(created);
-            return { workerId: created.id, workerName: created.name };
+            sessions.push(created);
+            return { sessionId: created.id, sessionName: created.name };
         },
-        readWorkerModel: async () => ({ model: currentModel, spawnModel: currentSpawnModel }),
-        setWorkerModel: async ({ selector, effort }) => {
+        readSessionModel: async () => ({ model: currentModel, spawnModel: currentSpawnModel }),
+        setSessionModel: async ({ selector, effort }) => {
             const nextEffort = (effort as EffortValue | undefined) ?? currentEffort;
             currentModel = {
                 ...(selector.includes("/") ? {} : { alias: selector }),
@@ -643,18 +643,18 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
             };
             return currentModel;
         },
-        setWorkerSpawnModel: async ({ selector }) => {
+        setSessionSpawnModel: async ({ selector }) => {
             currentSpawnModel = selector
                 ? { provider: "mocktest", model: selector, effortSource: "default" }
                 : null;
             return currentSpawnModel;
         },
-        readWorkerEffort: async () => ({
+        readSessionEffort: async () => ({
             effort: currentEffort,
             source: currentEffortSource,
             supportedEfforts: ["low", "medium", "high"],
         }),
-        setWorkerEffort: async ({ effort }) => {
+        setSessionEffort: async ({ effort }) => {
             currentEffort = effort as EffortValue;
             currentEffortSource = "explicit";
             return {
@@ -784,7 +784,7 @@ test("{§acp-run-endpoint} {§acp-run-authority} {§acp-cors} {§acp-http-author
     }
 });
 
-test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§acp-run-start} {§acp-worker-owner} {§acp-owner-activation} {§acp-place-hiding}: session/new, session/resume, session/fork, session/list, session/delete, session/close, and qualified addresses", async () => {
+test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§acp-run-start} {§acp-session-owner} {§acp-owner-activation} {§acp-place-hiding}: session/new, session/resume, session/fork, session/list, session/delete, session/close, and qualified addresses", async () => {
     const h = await createHarness();
     try {
         const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
@@ -819,7 +819,7 @@ test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§ac
                         sessionId: "1#nonexistent",
                         cwd: "/workspace/alpha",
                     }),
-                /session-not-found|worker-not-found/,
+                /session-not-found|session-not-found/,
             );
 
             // session/fork forks the session ({§acp-thread-binding})
@@ -857,7 +857,7 @@ test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§ac
     }
 });
 
-test("{§acp-worker-model-actions} {§acp-worker-effort-actions} {§acp-provider-routes} {§acp-status-model} {§acp-state-patches} {§acp-workspace-state}: session/set_config_option, config_option_update, and providers/list", async () => {
+test("{§acp-session-model-actions} {§acp-session-effort-actions} {§acp-provider-routes} {§acp-status-model} {§acp-state-patches} {§acp-workspace-state}: session/set_config_option, config_option_update, and providers/list", async () => {
     const h = await createHarness();
     try {
         const updates: SessionUpdate[] = [];
@@ -881,7 +881,7 @@ test("{§acp-worker-model-actions} {§acp-worker-effort-actions} {§acp-provider
             const providers = await ctx.request(methods.agent.providers.list, {});
             assert.ok(providers.providers.length > 0);
 
-            // session/set_config_option updates model and effort ({§acp-worker-model-actions}, {§acp-worker-effort-actions})
+            // session/set_config_option updates model and effort ({§acp-session-model-actions}, {§acp-session-effort-actions})
             const updatedModel = await ctx.request(methods.agent.session.setConfigOption, {
                 sessionId: session.sessionId,
                 configId: "model",
@@ -1004,7 +1004,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             h.port.emitEvent({
                 type: "reasoning/event",
                 workspaceId: 1,
-                workerId: 1,
+                sessionId: 1,
                 callId: 1,
                 requestSeq: 1,
                 delta: "Thinking step 1...",
@@ -1014,7 +1014,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             h.port.emitEvent({
                 type: "outside/event",
                 workspaceId: 1,
-                workerId: 1,
+                sessionId: 1,
                 coordinate: "1/1/0",
                 text: "Outside commentary",
                 tokens: 3,
@@ -1026,8 +1026,8 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 workspaceId: 1,
                 entry: {
                     id: 10,
-                    worker_id: 1,
-                    worker_name: "user",
+                    session_id: 1,
+                    session_name: "user",
                     loop_id: 1,
                     loop_seq: 1,
                     turn_id: 1,
@@ -1053,8 +1053,8 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 workspaceId: 1,
                 entry: {
                     id: 11,
-                    worker_id: 1,
-                    worker_name: "user",
+                    session_id: 1,
+                    session_name: "user",
                     loop_id: 1,
                     loop_seq: 1,
                     turn_id: 1,
@@ -1072,7 +1072,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             h.port.emitEvent({
                 type: "stream/event",
                 workspaceId: 1,
-                workerId: 1,
+                sessionId: 1,
                 entryId: 11,
                 target: "sh://11",
                 channel: "stdout",
@@ -1082,7 +1082,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             h.port.emitEvent({
                 type: "stream/concluded",
                 workspaceId: 1,
-                workerId: 1,
+                sessionId: 1,
                 entryId: 11,
                 target: "sh://11",
                 status: 200,
@@ -1093,8 +1093,8 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 workspaceId: 1,
                 entry: {
                     id: 12,
-                    worker_id: 1,
-                    worker_name: "user",
+                    session_id: 1,
+                    session_name: "user",
                     loop_id: 1,
                     loop_seq: 1,
                     turn_id: 1,
@@ -1116,8 +1116,8 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 workspaceId: 1,
                 entry: {
                     id: 13,
-                    worker_id: 1,
-                    worker_name: "user",
+                    session_id: 1,
+                    session_name: "user",
                     loop_id: 1,
                     loop_seq: 1,
                     turn_id: 1,
@@ -1135,16 +1135,16 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             h.port.emitEvent({
                 type: "notice/event",
                 workspaceId: 1,
-                workerId: 1,
+                sessionId: 1,
                 notice: { level: "warn", code: "test-notice", message: "Watch out" },
             });
 
-            // 6. Delegated child worker, subagent_update, session_message, and child cancel ({§acp-status-descendants}, {§acp-delegation-observation}, {§acp-subagents})
-            h.port.workers.push({
+            // 6. Delegated child session, subagent_update, session_message, and child cancel ({§acp-status-descendants}, {§acp-delegation-observation}, {§acp-subagents})
+            h.port.sessions.push({
                 id: 2,
                 workspaceId: 1,
                 name: "helper",
-                parentWorkerId: 1,
+                parentSessionId: 1,
                 kind: "model",
                 hiddenAt: null,
             });
@@ -1153,8 +1153,8 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 workspaceId: 1,
                 entry: {
                     id: 14,
-                    worker_id: 2,
-                    worker_name: "helper",
+                    session_id: 2,
+                    session_name: "helper",
                     loop_id: 2,
                     loop_seq: 1,
                     turn_id: 2,
@@ -1165,14 +1165,14 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                     source: null,
                     status: 200,
                     state: "settled",
-                    attrs: { kind: "message", to: "worker://user", body: "Child progress" },
+                    attrs: { kind: "message", to: "session://user", body: "Child progress" },
                     rx: { status: 200, content: "Child progress", mimetype: "text/markdown" },
                 },
             });
             h.port.emitEvent({
                 type: "loop/packet",
                 workspaceId: 1,
-                workerId: 1,
+                sessionId: 1,
                 loopId: 1,
                 sequence: 1,
                 gauge: {
@@ -1185,7 +1185,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             h.port.emitEvent({
                 type: "loop/terminated",
                 workspaceId: 1,
-                workerId: 2,
+                sessionId: 2,
                 loopId: 2,
                 outcome: "end_turn",
                 turns: 1,
@@ -1315,8 +1315,8 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                 const proposal = {
                     logEntryId: 501,
                     workspaceId: 1,
-                    workerId: 1,
-                    workerName: "user",
+                    sessionId: 1,
+                    sessionName: "user",
                     loopId: 1,
                     turnId: 1,
                     coordinate: "1/1/1",
@@ -1330,7 +1330,7 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                 h.port.emitEvent({
                     type: "loop/proposal",
                     workspaceId: 1,
-                    workerId: 1,
+                    sessionId: 1,
                     proposal,
                 });
 
@@ -1338,7 +1338,7 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                 const interaction = {
                     interactionId: 601,
                     workspaceId: 1,
-                    workerId: 1,
+                    sessionId: 1,
                     loopId: 1,
                     turnId: 1,
                     recipient: "acp://operator",
@@ -1357,7 +1357,7 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                 h.port.emitEvent({
                     type: "loop/interaction",
                     workspaceId: 1,
-                    workerId: 1,
+                    sessionId: 1,
                     interaction,
                 });
 
@@ -1400,8 +1400,8 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
         h.port.logs.push(
             {
                 id: 1,
-                worker_id: 1,
-                worker_name: "user",
+                session_id: 1,
+                session_name: "user",
                 loop_id: 1,
                 loop_seq: 1,
                 turn_id: 1,
@@ -1417,8 +1417,8 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
             },
             {
                 id: 2,
-                worker_id: 1,
-                worker_name: "user",
+                session_id: 1,
+                session_name: "user",
                 loop_id: 1,
                 loop_seq: 1,
                 turn_id: 1,
@@ -1434,8 +1434,8 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
             },
             {
                 id: 3,
-                worker_id: 1,
-                worker_name: "user",
+                session_id: 1,
+                session_name: "user",
                 loop_id: 2,
                 loop_seq: 2,
                 turn_id: 2,
@@ -1451,8 +1451,8 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
             },
             {
                 id: 4,
-                worker_id: 1,
-                worker_name: "user",
+                session_id: 1,
+                session_name: "user",
                 loop_id: 2,
                 loop_seq: 2,
                 turn_id: 2,
@@ -1504,7 +1504,7 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
     }
 });
 
-test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overview-updates} {§acp-management-plane} {§acp-worker-loops} {§acp-client-operation} {§acp-op-parse} {§acp-module-action-scope} {§acp-module-actions} {§discovery} {§acp-discovery-contract} {§acp-broadcast-fan} {§pinned-wording-acp}: session/list directory, slash commands, _plurnk/action, op.parse, and discovery contract", async () => {
+test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overview-updates} {§acp-management-plane} {§acp-session-loops} {§acp-client-operation} {§acp-op-parse} {§acp-module-action-scope} {§acp-module-actions} {§discovery} {§acp-discovery-contract} {§acp-broadcast-fan} {§pinned-wording-acp}: session/list directory, slash commands, _plurnk/action, op.parse, and discovery contract", async () => {
     const h = await createHarness();
     try {
         const updates: SessionUpdate[] = [];
@@ -1547,9 +1547,9 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
                 }),
             );
 
-            // 3. worker.loops returns loop projections ({§acp-worker-loops})
+            // 3. session.loops returns loop projections ({§acp-session-loops})
             const loops = await ctx.request<{ items?: unknown[] } | unknown[]>("_plurnk/action", {
-                kind: "worker.loops",
+                kind: "session.loops",
                 workspace: "alpha",
                 params: {},
             });

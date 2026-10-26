@@ -12,7 +12,7 @@ import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertPacketTurn } from "./_db.ts";
 
 const TMP_DIR = testArtifactPath("core");
 
@@ -58,16 +58,16 @@ const recordCall = async (db: Db, turnId: number, tokens: number, sent: boolean)
     if (sent) await db.engine_classify_turn_attempt_response.run({ id: attempt.id, accepted: 1, parse_errors: "[]" });
 };
 
-test("{§digest-room-line}: the worker summary measures the room the model was shown against the provider's capacity and count", async () => {
+test("{§digest-room-line}: the session summary measures the room the model was shown against the provider's capacity and count", async () => {
     const dbPath = join(TMP_DIR, `room-line-${crypto.randomUUID()}.db`);
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "room-line");
-        const worker = await insertWorker(db, workspaceId, null, "bench");
-        const loopId = await insertLoop(db, worker, 1, "go");
+        const session = await insertSession(db, workspaceId, null, "bench");
+        const loopId = await insertLoop(db, session, 1, "go");
         await recordCall(db, await insertPacketTurn(db, loopId, 20, packetAt(91_030, 91_987), 102), 75_448, true);
         await recordCall(db, await insertPacketTurn(db, loopId, 21, packetAt(95_714, 91_987), 413), 78_492, false);
-        const quiet = await insertWorker(db, workspaceId, null, "quiet");
+        const quiet = await insertSession(db, workspaceId, null, "quiet");
         await insertLoop(db, quiet, 1, "go");
     } finally { await db.close(); }
 
@@ -75,5 +75,5 @@ test("{§digest-room-line}: the worker summary measures the room the model was s
     Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /^Room: {7}budget up to 124% of capacity · wall estimate -19\.4% to -18\.6% of the count {2}⚠ 1 over the wall the estimate admitted$/mu);
-    assert.match(markdown, /^Room: {7}\(no measured requests\)$/mu, "a worker without measured requests says so");
+    assert.match(markdown, /^Room: {7}\(no measured requests\)$/mu, "a session without measured requests says so");
 });

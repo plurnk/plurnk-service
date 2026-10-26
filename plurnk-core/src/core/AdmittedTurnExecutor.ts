@@ -28,7 +28,7 @@ const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND"]);
 
 // The exec scheme's turn settlement: its own hook, read where a turn settles.
 const settlesTurnSpawns = (handler: object | undefined): handler is {
-    settleTurnSpawns(workerId: number, turnId: number, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
+    settleTurnSpawns(sessionId: number, turnId: number, timeoutMs: number, signal?: AbortSignal): Promise<boolean>;
 } => handler !== undefined && "settleTurnSpawns" in handler && typeof handler.settleTurnSpawns === "function";
 
 // {§edit-batch-merges} — the rules an EDIT batch's resolutions applied, as its result's merged fact names them.
@@ -72,7 +72,7 @@ export default class AdmittedTurnExecutor {
         sourceModelCallId = null,
         origin,
         workspaceId,
-        workerId,
+        sessionId,
         loopId,
         turnId,
         fromSequence,
@@ -96,7 +96,7 @@ export default class AdmittedTurnExecutor {
         sourceModelCallId?: number | null;
         origin: WriterTier;
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
         loopId: number;
         turnId: number;
         fromSequence: number;
@@ -128,7 +128,7 @@ export default class AdmittedTurnExecutor {
         const recordReasoning = async (): Promise<void> => {
             if (reasoning === null || reasoningSequence === null) return;
             const id = await this.#dispatcher.writeReasoning({
-                ...reasoning, workerId, loopId, turnId, sequence: reasoningSequence, fit,
+                ...reasoning, sessionId, loopId, turnId, sequence: reasoningSequence, fit,
             });
             if (id !== null) { onDispatch?.(id); await onSettled?.(id); }
         };
@@ -136,7 +136,7 @@ export default class AdmittedTurnExecutor {
         const recordEngineProblem = async (kind: EngineProblemKind, sequence: number, extensions: Record<string, unknown>): Promise<void> => {
             const problem = ENGINE_PROBLEMS[kind];
             await this.#problems.record({
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 sequence,
@@ -153,10 +153,10 @@ export default class AdmittedTurnExecutor {
         const scheduled = scheduleTurnOps(statements);
         const executed: PlurnkStatement[] = [];
         const logSelectionMaxId = (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
-            worker_id: workerId,
+            session_id: sessionId,
         }))?.max_id;
         if (logSelectionMaxId === undefined) {
-            throw new Error(`log selection boundary could not be resolved for worker ${workerId}`);
+            throw new Error(`log selection boundary could not be resolved for session ${sessionId}`);
         }
         const editSequence = scheduled.some((statement) =>
             (statement.op === "EDIT" || statement.op === "KILL") && LineAnchors.hasAnchor(statement.lineMarker))
@@ -173,7 +173,7 @@ export default class AdmittedTurnExecutor {
         // {§emission-row} — the turn's next sequence after its recorded inputs and before its
         // operations, written after the selection snapshot so the emission's own program cannot select it.
         if (emission !== null) {
-            const id = await this.#dispatcher.writeEmission({ ...emission, workerId, loopId, turnId, sequence: rowSequence++ });
+            const id = await this.#dispatcher.writeEmission({ ...emission, sessionId, loopId, turnId, sequence: rowSequence++ });
             onDispatch?.(id);
             await onSettled?.(id);
         }
@@ -183,7 +183,7 @@ export default class AdmittedTurnExecutor {
             parseErrorsRecorded = true;
             for (const error of recoverableParseErrors) {
                 const recorded = await this.#problems.record({
-                    workerId,
+                    sessionId,
                     loopId,
                     turnId,
                     sequence: rowSequence++,
@@ -219,7 +219,7 @@ export default class AdmittedTurnExecutor {
             await recordRecoverableParseErrors();
             const execHandler = this.#schemes.get("exec");
             if (settlesTurnSpawns(execHandler)) {
-                await execHandler.settleTurnSpawns(workerId, turnId, readOptimisticSettlementMs(), signal);
+                await execHandler.settleTurnSpawns(sessionId, turnId, readOptimisticSettlementMs(), signal);
             }
         };
 
@@ -238,11 +238,11 @@ export default class AdmittedTurnExecutor {
             if ("metadata" in statement && statement.metadata !== null && !(isExecution(statement) || OWNS_METADATA.has(statement.op))) {
                 const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
                 const schemeName = target === null || target === undefined
-                    ? (statement.op === "WORK" || statement.op === "FORK" ? "worker" : null)
+                    ? (statement.op === "WORK" || statement.op === "FORK" ? "session" : null)
                     : target.kind === "url" ? target.scheme ?? null : "file";
                 const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, workspaceId);
                 if (manifest !== undefined && manifest.metadataModifier !== true) {
-                    this.#notices.push(workspaceId, workerId, loopId, {
+                    this.#notices.push(workspaceId, sessionId, loopId, {
                         source: "engine:dispatcher",
                         kind: "metadata_ignored",
                         level: "warn",
@@ -273,18 +273,18 @@ export default class AdmittedTurnExecutor {
                             const batch = await this.#bareBatch.runBareBatch({
                                 statements: bareStatements,
                                 preparePrompt: (bareStatement) => this.#dispatcher.prepareBarePrompt({
-                                    statement: bareStatement, workspaceId, workerId, loopId, turnId, origin,
+                                    statement: bareStatement, workspaceId, sessionId, loopId, turnId, origin,
                                     sequence: rowSequence + bareStatements.indexOf(bareStatement),
                                 }),
                                 provider: bare.provider,
                                 turnId,
                                 workspaceId,
-                                workerId,
+                                sessionId,
                                 loopId,
                                 loopSequence: bare.loopSequence,
                                 turnSequence: bare.turnSequence,
                                 signal: bare.signal,
-                                notice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+                                notice: (notice) => this.#notices.push(workspaceId, sessionId, loopId, notice),
                             });
                             bareResults = new Map(batch.map((item) => [item.statement, item]));
                         }
@@ -296,7 +296,7 @@ export default class AdmittedTurnExecutor {
                             statement,
                             emissionIndex,
                             workspaceId,
-                            workerId,
+                            sessionId,
                             loopId,
                             turnId,
                             sequence: rowSequence,
@@ -309,7 +309,7 @@ export default class AdmittedTurnExecutor {
                             statement,
                             emissionIndex,
                             workspaceId,
-                            workerId,
+                            sessionId,
                             loopId,
                             turnId,
                             sequence: rowSequence,
@@ -340,7 +340,7 @@ export default class AdmittedTurnExecutor {
                 throw new OperationFailureError(result);
             }
             for (const normalization of result.scopeNormalizations ?? []) {
-                this.#notices.push(workspaceId, workerId, loopId, {
+                this.#notices.push(workspaceId, sessionId, loopId, {
                     source: "engine:slicer",
                     kind: "scope_normalized",
                     level: "warn",
@@ -351,7 +351,7 @@ export default class AdmittedTurnExecutor {
             // {§edit-batch-merges} — every applied resolution is also a notice, so the row's
             // `merged` fact is never the only place it is said.
             for (const rule of mergedRules(result)) {
-                this.#notices.push(workspaceId, workerId, loopId, {
+                this.#notices.push(workspaceId, sessionId, loopId, {
                     source: "engine:slicer",
                     kind: "edit_merged",
                     level: "warn",
@@ -378,7 +378,7 @@ export default class AdmittedTurnExecutor {
             };
             await recordEngineProblem(kind, rowSequence++, extensions);
         }
-        const turnStatus = await this.#dispatcher.settleProgram({ workspaceId, workerId, loopId, turnId, origin }, waits, completionEligible);
+        const turnStatus = await this.#dispatcher.settleProgram({ workspaceId, sessionId, loopId, turnId, origin }, waits, completionEligible);
         await recordReasoning();
         await Turn.complete(this.#db, turnId, turnStatus);
         return {

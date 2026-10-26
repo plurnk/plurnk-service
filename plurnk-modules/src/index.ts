@@ -20,7 +20,7 @@ import type {
 } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 
-export type ModuleActionScope = "daemon" | "workspace" | "worker";
+export type ModuleActionScope = "daemon" | "workspace" | "session";
 
 export type ModuleActionContext = ApplicationActionContext;
 
@@ -74,12 +74,12 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // {§capability-admission} — general policy facts of the family's runtime and the resources its
     // scheme face serves (`web` for a family that reaches the network): what a capability policy selects on.
     readonly traits?: readonly string[];
-    // The action segment (`workspace.<family>.<verb>`, or `worker.<family>.<verb>` for a
-    // worker-scoped family) and the name of the family's runtime.
+    // The action segment (`workspace.<family>.<verb>`, or `session.<family>.<verb>` for a
+    // session-scoped family) and the name of the family's runtime.
     readonly family: string;
     // {§functionality-scope} Supported owners; the first is the model default.
-    // Absent means workspace. A worker layer inherits workspace defaults by reference.
-    readonly scopes?: readonly ("workspace" | "worker")[];
+    // Absent means workspace. A session layer inherits workspace defaults by reference.
+    readonly scopes?: readonly ("workspace" | "session")[];
     // The alias grammar the coordinator enforces for this family. Absent means the shared default
     // (`[a-z][a-z0-9-]*`); a family whose alias is case-sensitive, or whose alias is the definition's
     // own content ({§functionality-addressing}), declares its own.
@@ -136,10 +136,10 @@ export interface ModuleSetupSeam {
     // excludes reserved names ({§exec-env-scoped}) without applying the model-command ceiling.
     operatorEnvironment(): NodeJS.ProcessEnv;
     // {§workspace-env} The workspace layer over admitted ambient values, or over a supplied
-    // reference-resolution environment. Never includes worker overrides.
+    // reference-resolution environment. Never includes session overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    // {§workspace-env} The same layers with the Worker's own overrides on top ({§functionality-scope}).
-    readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
+    // {§workspace-env} The same layers with the Session's own overrides on top ({§functionality-scope}).
+    readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§module-workspace-directory} The host owns placement; the module owns the contents.
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
     registerModuleAction(registration: ModuleActionRegistration): void;

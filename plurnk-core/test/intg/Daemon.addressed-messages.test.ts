@@ -16,7 +16,7 @@ test("{§message-idempotency}: a client message's address is its idempotency key
     const provider = new Mock({ contextWindow: 100_000, responses: [makeMockResponse(PlurnkParser.frame("SEND [200]", "Hello back."))] });
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "keyed-messages", projectRoot: null });
-        const { workerId } = await daemon.createWorker({ workspaceId, name: "keyed" });
+        const { sessionId } = await daemon.createSession({ workspaceId, name: "keyed" });
         const address = "acp://operator/threads/keyed/messages/m1";
         const refusal = async (attempt: Promise<unknown>): Promise<string | null> => {
             try { await attempt; return null; } catch (cause) {
@@ -25,66 +25,66 @@ test("{§message-idempotency}: a client message's address is its idempotency key
             }
         };
         assert.equal(await daemon.messageAdmission({ workspaceId, address, body: "Hello." }), "new");
-        await daemon.runLoop({ workspaceId, workerId, prompt: "Hello.", source: address, messageAddress: address });
+        await daemon.runLoop({ workspaceId, sessionId, prompt: "Hello.", source: address, messageAddress: address });
         assert.equal(await daemon.messageAdmission({ workspaceId, address, body: "Hello." }), "accepted", "a repeat attaches to the message already accepted");
         assert.equal(await refusal(daemon.messageAdmission({ workspaceId, address, body: "Edited." })), "422 message-address-reused");
-        assert.equal(await refusal(daemon.runLoop({ workspaceId, workerId, prompt: "Hello.", source: address, messageAddress: address })),
+        assert.equal(await refusal(daemon.runLoop({ workspaceId, sessionId, prompt: "Hello.", source: address, messageAddress: address })),
             "409 message-already-accepted", "admission refuses the same words racing the original");
-        assert.equal(await refusal(daemon.runLoop({ workspaceId, workerId, prompt: "Edited.", source: address, messageAddress: address })),
+        assert.equal(await refusal(daemon.runLoop({ workspaceId, sessionId, prompt: "Edited.", source: address, messageAddress: address })),
             "422 message-address-reused", "and other words under the same key");
         const elsewhere = await daemon.createWorkspace({ name: "keyed-messages-elsewhere", projectRoot: null });
         assert.equal(await daemon.messageAdmission({ workspaceId: elsewhere.workspaceId, address, body: "Edited." }), "new", "the key is the workspace's");
-        assert.deepEqual((await daemon.readMessages({ workspaceId, workerId })).filter(({ direction }) => direction === "inbound").map(({ body }) => body),
+        assert.deepEqual((await daemon.readMessages({ workspaceId, sessionId })).filter(({ direction }) => direction === "inbound").map(({ body }) => body),
             ["Hello."], "nothing refused is admitted");
     });
 });
 
-test("{§worker-scheme-irc}: an empty directed SEND refuses before admission and the model can recover", async () => {
+test("{§session-scheme-irc}: an empty directed SEND refuses before admission and the model can recover", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse([
-            PlurnkParser.frame("SEND (worker://receiver)", null),
+            PlurnkParser.frame("SEND (session://receiver)", null),
             PlurnkParser.frame("NOTE", "Keep the sibling operation."),
         ].join("\n\n")),
         makeMockResponse(PlurnkParser.frame("SEND [200]", "No message was delivered to the receiver.")),
     ] });
     await withDaemon(provider, async (_db, daemon) => {
-        const { workspaceId } = await daemon.createWorkspace({ name: "empty-worker-message", projectRoot: null });
-        const sender = await daemon.createWorker({ workspaceId, name: "sender" });
-        const receiver = await daemon.createWorker({ workspaceId, name: "receiver" });
-        const accepted = await daemon.runLoop({ workspaceId, workerId: sender.workerId, prompt: "Check delivery." });
-        const loops = await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: sender.workerId }),
+        const { workspaceId } = await daemon.createWorkspace({ name: "empty-session-message", projectRoot: null });
+        const sender = await daemon.createSession({ workspaceId, name: "sender" });
+        const receiver = await daemon.createSession({ workspaceId, name: "receiver" });
+        const accepted = await daemon.runLoop({ workspaceId, sessionId: sender.sessionId, prompt: "Check delivery." });
+        const loops = await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId: sender.sessionId }),
             (rows) => rows.some((row) => row.id === accepted.loopId && row.status === 200));
         assert.equal(loops.find((row) => row.id === accepted.loopId)?.status, 200);
-        const rows = await daemon.readLog({ workspaceId, workerId: sender.workerId, loopId: accepted.loopId });
+        const rows = await daemon.readLog({ workspaceId, sessionId: sender.sessionId, loopId: accepted.loopId });
         const refused = rows.find((row) => row.origin === "model" && row.op === "SEND" && row.status_rx === 422);
         assert.ok(refused);
         assert.equal(refused.status_rx, 422);
         const receipt = refused.rx as SchemeResult;
-        assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/worker/message-empty");
+        assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/session/message-empty");
         assert.equal(receipt.problem?.detail, "SEND has no message text or attachments."); // {§problems-entries}
         assert.ok(rows.some((row) => row.origin === "model" && row.op === "NOTE" && row.status_rx === 200));
-        assert.deepEqual(await daemon.listWorkerLoops({ workspaceId, workerId: receiver.workerId }), [], "no empty receiving loop is created");
-        assert.deepEqual(await daemon.readMessages({ workspaceId, workerId: receiver.workerId }), [], "no empty message is stored");
+        assert.deepEqual(await daemon.listSessionLoops({ workspaceId, sessionId: receiver.sessionId }), [], "no empty receiving loop is created");
+        assert.deepEqual(await daemon.readMessages({ workspaceId, sessionId: receiver.sessionId }), [], "no empty message is stored");
         assert.equal(provider.received.length, 2, "only the sender ran and recovered");
         assert.match(provider.received[1].map(chatMessageText).join("\n"), /SEND has no message text or attachments\./);
-        const history = await daemon.readMessages({ workspaceId, workerId: sender.workerId });
+        const history = await daemon.readMessages({ workspaceId, sessionId: sender.sessionId });
         assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), [
             "No message was delivered to the receiver.",
         ]);
     });
 });
 
-test("{§message-reply-delivery} {§actor-boundary-client-operations}: a person's answer, sent as a client operation, wakes its assigned worker without making another request", async () => {
+test("{§message-reply-delivery} {§actor-boundary-client-operations}: a person's answer, sent as a client operation, wakes its assigned session without making another request", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse("````WAIT\nA collaborator may answer the request.\n````"),
         makeMockResponse("````WAIT\nThe collaborator answered; the held child is still running.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "client-answer-wake" });
-        const { workerId } = await daemon.createWorker({ workspaceId, name: "assigned" });
-        await holdChild(db, workspaceId, workerId);
+        const { sessionId } = await daemon.createSession({ workspaceId, name: "assigned" });
+        await holdChild(db, workspaceId, sessionId);
         const address = "message://assigned/12345678";
-        const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "What is the result?", messageAddress: address });
+        const accepted = await daemon.runLoop({ workspaceId, sessionId, prompt: "What is the result?", messageAddress: address });
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
         const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`SEND (${address}) [200]`, "The result is 42."));
         assert.equal(parsed.items.length, 1);
@@ -97,13 +97,13 @@ test("{§message-reply-delivery} {§actor-boundary-client-operations}: a person'
         await waitForDb(() => db.test_get_loop_status.get({ id: accepted.loopId }), (row) => row?.status === 202);
         assert.match(JSON.stringify(provider.received[1]), /The result is 42\./);
         assert.equal((await db.message_unanswered_count.get({ loop_id: accepted.loopId }))?.count, 0);
-        assert.equal((await db.test_messages_by_worker.all({ worker_id: workerId })).length, 1, "a reply is not another incoming obligation");
-        assert.equal((await db.test_loop_queue_by_worker.all({ worker_id: workerId })).length, 1, "the same parked loop resumed");
-        const history = await daemon.readMessages({ workspaceId, workerId });
+        assert.equal((await db.test_messages_by_session.all({ session_id: sessionId })).length, 1, "a reply is not another incoming obligation");
+        assert.equal((await db.test_loop_queue_by_session.all({ session_id: sessionId })).length, 1, "the same parked loop resumed");
+        const history = await daemon.readMessages({ workspaceId, sessionId });
         assert.deepEqual(history.map(({ direction, body }) => ({ direction, body })), [
             { direction: "inbound", body: "What is the result?" },
             { direction: "outbound", body: "The result is 42." },
         ]);
-        await daemon.cancelWorker({ workspaceId, workerId });
+        await daemon.cancelSession({ workspaceId, sessionId });
     });
 });

@@ -435,9 +435,9 @@ export default class SearchIndex {
             if (g === undefined) groups.set(p.hash, [p]); else g.push(p);
         }
         const concurrency = SearchIndex.producerConcurrency();
-        const workerPool = async (work: PendingDerivation[][]): Promise<void> => {
+        const sessionPool = async (work: PendingDerivation[][]): Promise<void> => {
             let next = 0;
-            const worker = async (): Promise<void> => {
+            const session = async (): Promise<void> => {
                 while (next < work.length) {
                     ctx.signal?.throwIfAborted();
                     const group = work[next++];
@@ -452,17 +452,17 @@ export default class SearchIndex {
                 }
             };
             const outcomes = await Promise.allSettled(
-                Array.from({ length: Math.min(concurrency, work.length || 1) }, () => worker()),
+                Array.from({ length: Math.min(concurrency, work.length || 1) }, () => session()),
             );
             const failures = outcomes
                 .filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected")
                 .map(({ reason }) => reason);
             if (failures.length === 1) throw failures[0];
             if (failures.length > 1) {
-                throw new AggregateError(failures, `${failures.length} search derivation workers failed`);
+                throw new AggregateError(failures, `${failures.length} search derivation sessions failed`);
             }
         };
-        // Each group stays on one worker: its representative completes the artifact, then every
+        // Each group stays on one session: its representative completes the artifact, then every
         // sibling attaches that same immutable result.
         ctx.signal?.throwIfAborted();
         const heartbeat = setInterval(() => {
@@ -472,7 +472,7 @@ export default class SearchIndex {
         }, progressHeartbeatMs);
         heartbeat.unref();
         try {
-            await workerPool([...groups.values()]);
+            await sessionPool([...groups.values()]);
             if (memberFailures.length === 0) {
                 publish("complete", "Repository search index is ready");
             } else {

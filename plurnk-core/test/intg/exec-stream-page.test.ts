@@ -40,7 +40,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "exec-stream-page" });
-            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "count" });
+            const { finalStatus, turnIds, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "count" });
             const turn2 = turnIds![2];
             const rows = await db.test_log_entries_by_turn.all<{ id: number; scheme: string; op: string; origin: string; source: string | null; fragment: string | null; rx: string }>({ turn_id: turn2 });
             const foisted = rows.find((r) => r.scheme === "sh" && r.op === "READ" && r.origin === "_plurnk" && r.fragment === "stdout");
@@ -73,7 +73,7 @@ test("{§exec-stream} a 40-line stream closes as its first page with the extent;
             assert.equal(emptyTerminal, undefined, "an empty sibling channel lands no row");
             assert.deepEqual(terminal.channels, { "#stderr": 0 }, "the surviving conclusion names the empty sibling");
             assert.equal(finalStatus, 200, "the scoped READ turn concluded");
-            const read = await db.test_get_log_rx_by_worker_op.get<{ rx: string }>({ worker_id: modelWorkerId, op: "READ" });
+            const read = await db.test_get_log_rx_by_session_op.get<{ rx: string }>({ session_id: modelSessionId, op: "READ" });
             const asked = JSON.parse(read!.rx) as { content: string; startLine: number };
             assert.equal(asked.content, "38\n39\n40", "the channel keeps every line for a scoped READ");
             assert.equal(asked.startLine, 38);

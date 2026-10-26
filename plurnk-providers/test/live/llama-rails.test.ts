@@ -41,7 +41,7 @@ const provider = (): AiSdkProvider => new AiSdkProvider({
 // {§llama-reasoning-request}
 test("live llama-server honors PLURNK's request-scoped reasoning allowance", { requires: [...REQUIRES] }, async () => {
     const response = await provider().generate({
-        workerId: "llama-reasoning-contract",
+        sessionId: "llama-reasoning-contract",
         messages: [{
             role: "user",
             content: "Use at least 500 tokens of private reasoning before answering with exactly OK.",
@@ -63,7 +63,7 @@ test("live llama-server returns exact pre-projection grammar evidence", { requir
     const prefix = envelope("verify");
     const input = `${prefix}PLURNK-RAILS-LIVE`;
     const response = await provider().generate({
-        workerId: "llama-grammar-evidence",
+        sessionId: "llama-grammar-evidence",
         messages: [{ role: "user", content: "ok" }],
         grammar: `root ::= ${JSON.stringify(sampled("verify", "PLURNK-RAILS-LIVE"))}`,
         maxOutputTokens: 32,
@@ -82,7 +82,7 @@ test("live llama-server preserves an empty grammar-required reasoning channel", 
     const prefix = envelope("");
     const input = `${prefix}PLURNK-EMPTY-RAILS-LIVE`;
     const response = await provider().generate({
-        workerId: "llama-empty-grammar-evidence",
+        sessionId: "llama-empty-grammar-evidence",
         messages: [{ role: "user", content: "ok" }],
         grammar: `root ::= ${JSON.stringify(sampled("", "PLURNK-EMPTY-RAILS-LIVE"))}`,
         maxOutputTokens: 32,

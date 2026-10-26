@@ -8,7 +8,7 @@ The fix: only check for negativity when the item is a `MatMul` with a numeric co
 
 Now let me verify the fix works:
 
-```WORK (worker://verify)
+```WORK (session://verify)
 Run this test in the sympy repository to verify the MatAdd pretty printing fix works:
 
 ```sh

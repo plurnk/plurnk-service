@@ -11,7 +11,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { killStmt, urlPath } from "./_dsl.ts";
 
@@ -46,14 +46,14 @@ test(`{§stream-control} Engine.dispatch: KILL through ${scheme} aborts a runnin
         const engine = new Engine({ db, schemes: registry });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-kill-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "exec kill test");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "exec kill test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         // Background a long sleep (host effect → proposes 202; accept → spawns).
         const idD = deferred<number>();
         const execPromise = engine.dispatch({
-            statement: execStmt("sleep 30"), workspaceId, workerId, loopId, turnId,
+            statement: execStmt("sleep 30"), workspaceId, sessionId, loopId, turnId,
             sequence: 1, origin: "model", onDispatch: (id) => idD.resolve(id),
         });
         const execLogId = await idD.promise;
@@ -68,18 +68,18 @@ test(`{§stream-control} Engine.dispatch: KILL through ${scheme} aborts a runnin
 
         // The spawn is registered + in-flight.
         const exec = registry.get("exec") as unknown as Exec;
-        assert.equal(exec.hasActiveSpawns(workerId), true, "the sleep must be in-flight before KILL");
+        assert.equal(exec.hasActiveSpawns(sessionId), true, "the sleep must be in-flight before KILL");
 
         // KILL it by coordinate.
         const kill = await engine.dispatch({
-            statement: killExec(pathname, scheme), workspaceId, workerId, loopId, turnId,
+            statement: killExec(pathname, scheme), workspaceId, sessionId, loopId, turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200, "KILL on a running exec returns 200");
 
         // The abort tears the child down; idle() drains the killed spawn.
         await exec.idle();
-        assert.equal(exec.hasActiveSpawns(workerId), false, "the killed spawn must be drained");
+        assert.equal(exec.hasActiveSpawns(sessionId), false, "the killed spawn must be drained");
     } finally { await db.close(); }
 });
 }
@@ -91,14 +91,14 @@ test("{§stream-control}: KILL on an unknown exec coordinate returns 404", async
         const engine = new Engine({ db, schemes: registry });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-kill-404-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "kill 404 test");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "kill 404 test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         // No spawn was ever stamped at this coordinate — exec is model-writable
         // (no 403 confound), so kill() resolves the closed-subscription lookup to 404.
         const r = await engine.dispatch({
-            statement: killExec("/sh/9/9/9"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            statement: killExec("/sh/9/9/9"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 404, "KILL on a coordinate that was never spawned is 404");
     } finally { await db.close(); }
@@ -108,8 +108,8 @@ test("{§stream-control}: a KILL error answers in the model's runtime-tag scheme
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-canon-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = { db, workspaceId, sessionId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
         const exec = new Exec(undefined, () => { throw new Error("this test materializes nothing"); });
         // {§scheme-operation-dispatch} The authored target names the runtime, not its adapter.
         const notRunning = await exec.kill(killStmt(urlPath("sh", "/3/1/4")), ctx);
@@ -125,8 +125,8 @@ test("{§stream-control} KILL rejects streams whose terminal state is already du
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `exec-kill-terminal-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = { db, workspaceId, workerId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = { db, workspaceId, sessionId, loopId: 0, turnId: 0, writer: "model" as const, signal: undefined, mimetypes: undefined, weigh: (t: string) => t.length };
         const exec = new Exec(undefined, () => { throw new Error("this test materializes nothing"); });
         const close = async (pathname: string, result: { status: number; problem?: never } | ReturnType<typeof Results.failure>): Promise<void> => {
             const entryId = await seedEntryWithChannel(db, {
@@ -138,7 +138,7 @@ test("{§stream-control} KILL rejects streams whose terminal state is already du
                 mimetype: "text/stream",
             });
             const subscriptionId = await ChannelWrite.openSubscription(db, {
-                workerId,
+                sessionId,
                 entryId,
                 scheme: "sh",
                 handle: `sh: ${pathname}`,

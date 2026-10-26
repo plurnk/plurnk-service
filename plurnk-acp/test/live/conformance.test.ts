@@ -20,8 +20,8 @@ test("live: the ACP client accepts the complete model response stream", async (t
     const { bindListener } = await import(join(SERVICE, "test/intg/_http.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
-    // {§tier-census} — the worker's run directory holds its database, its own host and, at the end,
-    // its digest and census row, like every other live worker's.
+    // {§tier-census} — the session's run directory holds its database, its own host and, at the end,
+    // its digest and census row, like every other live session's.
     const run = await liveRun("live-acp-conformance");
     const db = await openMigrated(run.dbPath);
     const provider = await liveProvider();

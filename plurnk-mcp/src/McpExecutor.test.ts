@@ -305,7 +305,7 @@ test("{§mcp-tool-problem-detail} tool-reported errors retain bounded text expla
             if (specimen.result.isError) {
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-reported-error", specimen.name);
                 assert.equal(result.problem?.retryable, false, specimen.name);
-                assert.equal(result.problem?.recovery, "```fixture (inspect) <!-- Schema: worker:///_plurnk/tools/fixture/inspect.json -->\n{}\n```", specimen.name);
+                assert.equal(result.problem?.recovery, "```fixture (inspect) <!-- Schema: workspace:///_plurnk/tools/fixture/inspect.json -->\n{}\n```", specimen.name);
             }
         }
     } finally {
@@ -517,11 +517,11 @@ test("{§mcp-host-composition} MCP progress and cancellation remain on the ownin
         const running = executor.run(cancelled.args);
         // In flight: the server is serving the call.
         await waitForFile(waiting);
-        assert.equal(residencyLeases, 1, "an in-flight MCP call retains worker Functionality");
+        assert.equal(residencyLeases, 1, "an in-flight MCP call retains session Functionality");
         controller.abort(new Error("test cancellation"));
         const result = await running;
         assert.equal(result.status, 499);
-        assert.equal(residencyLeases, 0, "terminal cancellation releases worker Functionality");
+        assert.equal(residencyLeases, 0, "terminal cancellation releases session Functionality");
         assert.deepEqual(cancelled.states, ["errored"]);
         await waitForFile(marker);
     } finally {
@@ -593,7 +593,7 @@ test("{§problems-mcp} invalid tool arguments carry the one-object recovery", as
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/invalid-tool-arguments");
             assert.equal(
                 result.problem?.recovery,
-                "One JSON object per MCP tool call.\n```echo (echo) <!-- Schema: worker:///_plurnk/tools/echo/echo.json -->\n{\"message\": \"\"}\n```",
+                "One JSON object per MCP tool call.\n```echo (echo) <!-- Schema: workspace:///_plurnk/tools/echo/echo.json -->\n{\"message\": \"\"}\n```",
             ); // {§problems-mcp}
         }
     } finally {

@@ -16,7 +16,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
 
 const execFileP = promisify(execFile);
 const FILE = "tests/test_ext_autodoc.py";
@@ -40,8 +40,8 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `whole-line-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Add the test.");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Add the test.");
         const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
             await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
         let calls = 0;
@@ -50,7 +50,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
             calls += 1;
             if (calls === 1) return await respond(PlurnkParser.frame(`READ (${FILE}) <790,800>`, null), args);
             if (calls === 2) {
-                const row = (await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ worker_id: workerId }))
+                const row = (await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ session_id: sessionId }))
                     .findLast(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 assert.ok(row, "the model READ the file");
                 const anchors = (JSON.parse(row.rx) as { lineAnchors?: string[] }).lineAnchors;
@@ -59,7 +59,7 @@ const program = async (frames: (anchor: (line: number) => string) => string[]): 
             }
             return await respond(PlurnkParser.frame("SEND [200]", "Done."), args);
         };
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Add the test." }] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Add the test." }] });
         assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));
         const logRows = (await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: id })))).flat();
         const rows = logRows.filter(({ op, origin }) => op === "EDIT" && origin === "model").map(({ status_rx, rx }) => {

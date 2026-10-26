@@ -2,7 +2,7 @@ import type { Db } from "./Db.ts";
 import type HostPaths from "./HostPaths.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
-import type { InjectWorkerNotify, StreamEventNotify, WakeWorkerNotify } from "./ChannelWrite.ts";
+import type { InjectSessionNotify, StreamEventNotify, WakeSessionNotify } from "./ChannelWrite.ts";
 import type {
     ClientInteractionRequest,
     ClientInteractionResolution,
@@ -28,9 +28,9 @@ export interface CoreSchemeServices {
     readonly executors: () => ExecutorRegistry | undefined;
     readonly weigh: (text: string) => number;
     readonly streamEventNotify: StreamEventNotify | undefined;
-    readonly wakeWorkerNotify: WakeWorkerNotify | undefined;
-    readonly injectWorker: InjectWorkerNotify | undefined;
-    readonly pushNotice: (workspaceId: number, workerId: number, loopId: number, notice: Notice) => void;
+    readonly wakeSessionNotify: WakeSessionNotify | undefined;
+    readonly injectSession: InjectSessionNotify | undefined;
+    readonly pushNotice: (workspaceId: number, sessionId: number, loopId: number, notice: Notice) => void;
     readonly defaultChannelFor: (scheme: string, workspaceId: number) => string;
     readonly settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
     readonly resolveEntryAddress: (
@@ -42,7 +42,7 @@ export interface CoreSchemeServices {
     readonly referenceVisibility: (ctx: PlurnkSchemeContext) => Promise<(pathname: string) => boolean>;
     readonly requestInteraction: (
         request: ClientInteractionRequest,
-        ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
+        ids: { workspaceId: number; sessionId: number; loopId: number; turnId: number },
         signal?: AbortSignal,
     ) => Promise<ClientInteractionResolution>;
     readonly liveSubscriptions: LiveSubscriptions;
@@ -107,7 +107,7 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             db: services.db,
             ...(services.hostPaths === undefined ? {} : { hostPaths: services.hostPaths }),
             workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
+            sessionId: ctx.sessionId,
             loopId: ctx.loopId,
             turnId: ctx.turnId,
             ...(sequence === undefined ? {} : { sequence }),
@@ -118,18 +118,18 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
             ...(ambientMembers === undefined ? {} : { ambientMembers }),
             resources: "resources" in ctx ? ctx.resources : undefined,
             streamEventNotify: services.streamEventNotify,
-            wakeWorkerNotify: services.wakeWorkerNotify,
-            injectWorker: services.injectWorker,
+            wakeSessionNotify: services.wakeSessionNotify,
+            injectSession: services.injectSession,
             mimetypes: services.mimetypes,
             executors: services.executors(),
             weigh: services.weigh,
             defaultChannelFor: (scheme) => services.defaultChannelFor(scheme, ctx.workspaceId),
             settleDerivations: () => services.settleDerivations(this.coreContext(ctx)),
-            pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.workerId, ctx.loopId, notice),
+            pushNotice: (notice) => services.pushNotice(ctx.workspaceId, ctx.sessionId, ctx.loopId, notice),
             referenceVisibility: () => services.referenceVisibility(this.coreContext(ctx)),
             requestInteraction: (request, signal = ctx.signal) => services.requestInteraction(request, {
                 workspaceId: ctx.workspaceId,
-                workerId: ctx.workerId,
+                sessionId: ctx.sessionId,
                 loopId: ctx.loopId,
                 turnId: ctx.turnId,
             }, signal),

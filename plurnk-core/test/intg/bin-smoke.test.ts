@@ -314,7 +314,7 @@ test("{§acp-daemon-client} bin: persisted and attached workspaces stay cold unt
         assert.deepEqual(
             await markerLines(startMarker),
             [],
-            "global boot must not launch one enabled MCP process per dormant worker",
+            "global boot must not launch one enabled MCP process per dormant session",
         );
         await action(booted, "workspace.attach", { id: 1 });
         assert.deepEqual(

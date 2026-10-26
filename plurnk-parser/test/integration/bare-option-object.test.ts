@@ -22,13 +22,13 @@ test("{§bare-option-object}: SEND reads one JSON object after the target as its
 });
 
 test("{§bare-option-object}: BARE and WORK lift the same way as SEND", () => {
-    const bare = PlurnkParser.parse("````BARE (worker:///question.md) {\"model\": \"dumbox\"}\nAnswer briefly.\n````\n");
+    const bare = PlurnkParser.parse("````BARE (workspace:///question.md) {\"model\": \"dumbox\"}\nAnswer briefly.\n````\n");
     const [ask] = statements(bare);
     assert.equal(ask?.op, "BARE");
     if (ask?.op !== "BARE") return;
     assert.deepEqual([ask.metadata, ask.body], [["{\"model\": \"dumbox\"}"], "Answer briefly."]);
     assert.deepEqual(warnings(bare), [RECEIPT("BARE")]);
-    const work = PlurnkParser.parse("````WORK (worker://child) {\"model\": \"dumbox\"}\nDo the thing.\n````\n");
+    const work = PlurnkParser.parse("````WORK (session://child) {\"model\": \"dumbox\"}\nDo the thing.\n````\n");
     const [spawn] = statements(work);
     assert.equal(spawn?.op, "WORK");
     if (spawn?.op !== "WORK") return;
@@ -37,14 +37,14 @@ test("{§bare-option-object}: BARE and WORK lift the same way as SEND", () => {
 });
 
 test("{§bare-option-object}: a heading that already carries a block keeps the object as inline body, and braces that are not JSON stay body", () => {
-    const carried = PlurnkParser.parse("````SEND (worker://peer) [{\"a\": 1}] {\"b\": 2}\nbody\n````\n");
+    const carried = PlurnkParser.parse("````SEND (session://peer) [{\"a\": 1}] {\"b\": 2}\nbody\n````\n");
     const [send] = statements(carried);
     assert.equal(send?.op, "SEND");
     if (send?.op !== "SEND") return;
     assert.deepEqual(send.metadata, ["{\"a\": 1}"], "the carried block stands alone");
     assert.equal(send.body?.raw, "{\"b\": 2}\nbody", "the second object is body, as it always was");
     assert.match(warnings(carried).join("\n"), /body text was on the OP line/, "the inline-body advisory, not the receipt");
-    const notJson = PlurnkParser.parse("````SEND (worker://peer) {nope\nbody\n````\n");
+    const notJson = PlurnkParser.parse("````SEND (session://peer) {nope\nbody\n````\n");
     const [plain] = statements(notJson);
     assert.equal(plain?.op === "SEND" ? plain.body?.raw : null, "{nope\nbody");
     assert.match(warnings(notJson).join("\n"), /body text was on the OP line/);

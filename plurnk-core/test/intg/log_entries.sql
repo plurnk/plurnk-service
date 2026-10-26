@@ -3,11 +3,11 @@ SELECT sql FROM sqlite_master WHERE name = 'log_entries';
 
 -- PREP: test_log_entries_insert_full
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source, op, signal,
+    session_id, loop_id, turn_id, sequence, origin, source, op, signal,
     scheme, pathname, port, query,
     lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $op, $signal,
+    $session_id, $loop_id, $turn_id, $sequence, $origin, $source, $op, $signal,
     $scheme, $pathname, $port, $query,
     $lineMarker, $tx, $mimetype_tx, $rx, $mimetype_rx, $status_rx, $weight, $attrs
 ) RETURNING id;
@@ -22,8 +22,8 @@ SELECT tx FROM log_entries WHERE id = $id;
 SELECT COUNT(*) AS n FROM log_entries;
 
 -- PREP: test_log_entries_insert_minimal
-INSERT INTO log_entries (worker_id, loop_id, turn_id, sequence, origin, op, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx)
-VALUES ($worker_id, $loop_id, $turn_id, 1, 'model', 'READ', '/x', '', 'text/x-plurnk', '', 'text/plain', 200)
+INSERT INTO log_entries (session_id, loop_id, turn_id, sequence, origin, op, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx)
+VALUES ($session_id, $loop_id, $turn_id, 1, 'model', 'READ', '/x', '', 'text/x-plurnk', '', 'text/plain', 200)
 RETURNING id;
 
 -- PREP: test_log_entries_signals_by_turn
@@ -68,6 +68,6 @@ DELETE FROM log_entry_projections WHERE log_entry_id = $id;
 -- PREP: test_log_entries_delete_turns
 DELETE FROM turns WHERE id = $id;
 
--- PREP: test_log_entries_insert_no_worker_id
+-- PREP: test_log_entries_insert_no_session_id
 INSERT INTO log_entries (loop_id, turn_id, sequence, origin, op, tx, mimetype_tx, rx, mimetype_rx, status_rx)
 VALUES ($loop_id, $turn_id, 1, 'model', 'READ', '', 'text/x-plurnk', '', 'text/plain', 200);

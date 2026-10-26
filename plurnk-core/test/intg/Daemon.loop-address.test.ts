@@ -5,31 +5,31 @@ import { withDaemon, waitForDb } from "./_rpc.ts";
 import { holdChild } from "./_db.ts";
 import { answer, makeMockResponse } from "./_mock.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { admitTogether, namedModelWorker } from "./_workers.ts";
+import { admitTogether, namedModelSession } from "./_sessions.ts";
 
 test("{§loop-addressed-admission}: explicit delivery wakes its addressed parked Loop, not the oldest", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: 3 }, () => makeMockResponse("````WAIT\n````")) });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        await holdChild(db, workspaceId, workerId);
-        const common = { workspaceId, workerId, providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await holdChild(db, workspaceId, sessionId);
+        const common = { workspaceId, sessionId, providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
             effort: "adaptive" as const, systemPrompt: "test system" };
-        const [first, second] = await admitTogether(t, workerId, [
+        const [first, second] = await admitTogether(t, sessionId, [
             () => daemon.inject({ ...common, prompt: "first" }), () => daemon.inject({ ...common, prompt: "second" }),
         ]);
         try {
-            await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }),
+            await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId }),
                 (loops) => loops.length === 2 && loops.every(({ status }) => status === 202));
-            const accepted = await daemon.runLoop({ workspaceId, workerId, loopId: second.loopId, prompt: "addressed arrival" });
+            const accepted = await daemon.runLoop({ workspaceId, sessionId, loopId: second.loopId, prompt: "addressed arrival" });
             assert.equal(accepted.loopId, second.loopId);
             assert.equal(accepted.action, "injected_next_turn");
-            await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }),
+            await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId }),
                 (loops) => provider.received.length === 3 && loops.every(({ status }) => status === 202));
-            assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === first.loopId)?.status, 202);
-            const messages = await daemon.readMessages({ workspaceId, workerId, loopId: second.loopId });
+            assert.equal((await daemon.listSessionLoops({ workspaceId, sessionId })).find(({ id }) => id === first.loopId)?.status, 202);
+            const messages = await daemon.readMessages({ workspaceId, sessionId, loopId: second.loopId });
             assert.ok(messages.some(({ body }) => body === "addressed arrival"));
-        } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
+        } finally { await daemon.cancelSession({ workspaceId, sessionId }); }
     });
 });
 
@@ -37,21 +37,21 @@ test("{§loop-addressed-admission}: terminal, foreign and missing recipients cre
     const provider = new Mock({ contextWindow: 100_000, responses: [answer("finished"), makeMockResponse("````WAIT\n````")] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "loop-address-refusal" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        const other = await daemon.createWorker({ workspaceId });
-        const terminal = await daemon.runLoop({ workspaceId, workerId, prompt: "finish" });
-        await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }), (loops) => loops[0]?.status === 200);
-        await holdChild(db, workspaceId, other.workerId);
-        const foreign = await daemon.runLoop({ workspaceId, workerId: other.workerId, prompt: "wait" });
-        await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: other.workerId }), (loops) => loops[0]?.status === 202);
-        const before = await daemon.listWorkerLoops({ workspaceId, workerId });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const other = await daemon.createSession({ workspaceId });
+        const terminal = await daemon.runLoop({ workspaceId, sessionId, prompt: "finish" });
+        await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId }), (loops) => loops[0]?.status === 200);
+        await holdChild(db, workspaceId, other.sessionId);
+        const foreign = await daemon.runLoop({ workspaceId, sessionId: other.sessionId, prompt: "wait" });
+        await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId: other.sessionId }), (loops) => loops[0]?.status === 202);
+        const before = await daemon.listSessionLoops({ workspaceId, sessionId });
         for (const loopId of [terminal.loopId, foreign.loopId, 999_999]) {
-            await assert.rejects(daemon.runLoop({ workspaceId, workerId, loopId, prompt: "must not be admitted" }),
+            await assert.rejects(daemon.runLoop({ workspaceId, sessionId, loopId, prompt: "must not be admitted" }),
                 (error: unknown) => error instanceof OperationFailureError && error.result.status === 409
                     && error.result.problem.type === "https://problems.plurnk.xyz/daemon/admission/loop-not-open");
         }
-        assert.deepEqual(await daemon.listWorkerLoops({ workspaceId, workerId }), before);
+        assert.deepEqual(await daemon.listSessionLoops({ workspaceId, sessionId }), before);
         assert.equal(provider.received.length, 2);
-        assert.equal((await daemon.readMessages({ workspaceId, workerId })).some(({ body }) => body === "must not be admitted"), false);
+        assert.equal((await daemon.readMessages({ workspaceId, sessionId })).some(({ body }) => body === "must not be admitted"), false);
     });
 });

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Wall-clock-bounded test runner with forensic-on-hang.
 #
-# node's `--test-timeout` is per-test and event-loop-based, so a CPU-spinning or worker-pool hang
+# node's `--test-timeout` is per-test and event-loop-based, so a CPU-spinning or session-pool hang
 # outlives it (the timer can't fire) — that's how an intg subprocess once pegged ~8 cores for 66
 # minutes, unreaped. This wrapper bounds the WHOLE run at the OS level and, on the deadline, dumps a
-# node diagnostic report (SIGUSR2 → JS stack + libuv handles + worker/resource state) BEFORE SIGKILL,
+# node diagnostic report (SIGUSR2 → JS stack + libuv handles + session/resource state) BEFORE SIGKILL,
 # so a recurrence leaves a stack to read instead of a mystery zombie.
 #
 #   bin/test-safe npm run test:intg
 #   PLURNK_TEST_BUDGET=2400 bin/test-safe npm run test:demo   # longer budget for real-model tiers
 #
-# Caveat: SIGUSR2 reports the main thread; it fires for a worker-pool spin (main free) but NOT a pure
+# Caveat: SIGUSR2 reports the main thread; it fires for a session-pool spin (main free) but NOT a pure
 # main-thread sync spin (the handler starves too). For that, reproduce under `node --prof` and process
 # the incremental isolate-*.log — there is no OS sampler (perf/gdb) in this sandbox.
 set -uo pipefail

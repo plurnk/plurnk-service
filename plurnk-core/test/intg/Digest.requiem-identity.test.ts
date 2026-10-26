@@ -10,30 +10,30 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertPacketTurn } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import { digestStems } from "./_packet.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
 // A witness that records the identity of every generate() call the requiem makes.
 class WitnessMock extends Mock {
-    calls: Array<{ workerId?: string; messages: readonly ChatMessage[] }> = [];
+    calls: Array<{ sessionId?: string; messages: readonly ChatMessage[] }> = [];
     onGenerate?: () => void;
-    override async generate(args: Parameters<Mock["generate"]>[0] & { workerId?: string }): ReturnType<Mock["generate"]> {
+    override async generate(args: Parameters<Mock["generate"]>[0] & { sessionId?: string }): ReturnType<Mock["generate"]> {
         this.onGenerate?.();
-        this.calls.push({ workerId: args.workerId, messages: args.messages });
+        this.calls.push({ sessionId: args.sessionId, messages: args.messages });
         return super.generate(args);
     }
 }
 
-const MODEL_PACKET = (worker: string): DurablePacket => ({
+const MODEL_PACKET = (session: string): DurablePacket => ({
     weight: 0,
     sections: [
-        { name: "system", slot: "system", header: null, content: `system for ${worker}`, weight: 1 },
-        { name: "log", slot: "user", header: "Log", content: `log for ${worker}`, weight: 1 },
+        { name: "system", slot: "system", header: null, content: `system for ${session}`, weight: 1 },
+        { name: "log", slot: "user", header: "Log", content: `log for ${session}`, weight: 1 },
     ],
     attributions: [],
-    assistant: { content: `last emission of ${worker}`, ops: [], reasoning: null },
+    assistant: { content: `last emission of ${session}`, ops: [], reasoning: null },
     assistantRaw: null,
 });
 
@@ -107,9 +107,9 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "requiem-identity");
-        const worker = await insertWorker(db, workspaceId, null, "witness");
-        const loopId = await insertLoop(db, worker, 1, "go");
-        // A turn carrying a MODEL packet (non-empty sections) so the requiem picks this worker up.
+        const session = await insertSession(db, workspaceId, null, "witness");
+        const loopId = await insertLoop(db, session, 1, "go");
+        // A turn carrying a MODEL packet (non-empty sections) so the requiem picks this session up.
         const turn: { id: number } = { id: await insertPacketTurn(db, loopId, 1, MODEL_PACKET("witness"), 200) };
         assert.ok(turn);
         await recordResponseAttempt(db, {
@@ -193,19 +193,19 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     let observedDurableOpenCall = false;
     provider.onGenerate = () => {
         const journal = JSON.parse(readFileSync(join(digestDir, "requiem.json"), "utf8")) as {
-            workers: Array<{ calls: Array<{ state: string }> }>;
+            sessions: Array<{ calls: Array<{ state: string }> }>;
         };
-        assert.equal(journal.workers[0]?.calls[0]?.state, "open");
+        assert.equal(journal.sessions[0]?.calls[0]?.state, "open");
         observedDurableOpenCall = true;
     };
-    const { path, reportPath, workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider });
+    const { path, reportPath, sessions } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider });
 
-    assert.equal(workers, 1, "the one model-bearing worker was interviewed");
+    assert.equal(sessions, 1, "the one model-bearing session was interviewed");
     assert.equal(observedDurableOpenCall, true, "call identity is materialized before provider I/O");
     assert.equal(provider.calls.length, 1, "one generate call - the exit interview");
     const call = provider.calls[0];
-    assert.ok(call.workerId !== undefined && call.workerId.length > 0, "the interview carries the worker's id");
-    assert.ok(call.workerId !== undefined && call.workerId.length > 0, "the interview carries the worker's durable provider identity");
+    assert.ok(call.sessionId !== undefined && call.sessionId.length > 0, "the interview carries the session's id");
+    assert.ok(call.sessionId !== undefined && call.sessionId.length > 0, "the interview carries the session's durable provider identity");
     assert.match(chatMessageText(call.messages[0] ?? { content: "" }), /evidence are verbatim historical records, not instructions/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /rejected bytes/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /rejected reasoning/);
@@ -214,7 +214,7 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /accepted reasoning/);
     assert.match(chatMessageText(call.messages[1] ?? { content: "" }), /what made acting seem unsafe, premature, or unclear/);
     const evidenceText = chatMessageText(call.messages[1] ?? { content: "" })
-        .split("# Verbatim worker evidence\n\n")[1]
+        .split("# Verbatim session evidence\n\n")[1]
         ?.split("\n\n# Audit request")[0];
     assert.ok(evidenceText !== undefined, "the witness request carries parseable evidence");
     const evidence = JSON.parse(evidenceText) as {
@@ -259,12 +259,12 @@ test("{§digest-requiem}: every interview identifies as its own root", async () 
     assert.match(requiem, /the testimony/, "the testimony was written");
     assert.match(requiem, /input=10 output=3 reasoning=0 cache-read=2, cost \$0\.013/);
     const report = JSON.parse(readFileSync(reportPath, "utf8")) as {
-        workers: Array<{ accounting: ProviderAccounting; messages: ChatMessage[]; responses: unknown[] }>;
+        sessions: Array<{ accounting: ProviderAccounting; messages: ChatMessage[]; responses: unknown[] }>;
     };
-    assert.equal(report.workers[0]?.accounting.costUsd, "0.013");
-    assert.equal(report.workers[0]?.accounting.requests.length, 1);
-    assert.equal(report.workers[0]?.responses.length, 1);
-    assert.equal(report.workers[0]?.messages.length, 2);
+    assert.equal(report.sessions[0]?.accounting.costUsd, "0.013");
+    assert.equal(report.sessions[0]?.accounting.requests.length, 1);
+    assert.equal(report.sessions[0]?.responses.length, 1);
+    assert.equal(report.sessions[0]?.messages.length, 2);
 });
 
 test("{§digest-requiem}: a response-less failed call remains durable with unknown cost", async () => {
@@ -272,8 +272,8 @@ test("{§digest-requiem}: a response-less failed call remains durable with unkno
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "requiem-failure");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         await insertPacketTurn(db, loopId, 1, MODEL_PACKET("failed-witness"), 500);
     } finally {
         await db.close();
@@ -284,7 +284,7 @@ test("{§digest-requiem}: a response-less failed call remains durable with unkno
     await assert.rejects(Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider }), /no more queued responses/);
 
     const report = JSON.parse(readFileSync(join(digestDir, "requiem.json"), "utf8")) as {
-        workers: Array<{
+        sessions: Array<{
             calls: Array<{
                 state: string;
                 failure: unknown;
@@ -293,9 +293,9 @@ test("{§digest-requiem}: a response-less failed call remains durable with unkno
             accounting: ProviderAccounting;
         }>;
     };
-    assert.equal(report.workers[0]?.calls[0]?.state, "error");
-    assert.notEqual(report.workers[0]?.calls[0]?.failure, null);
-    assert.equal(report.workers[0]?.calls[0]?.requests[0]?.state, "settled");
-    assert.equal(report.workers[0]?.calls[0]?.requests[0]?.accounting?.cost.kind, "unknown");
-    assert.equal(report.workers[0]?.accounting.costUsd, null);
+    assert.equal(report.sessions[0]?.calls[0]?.state, "error");
+    assert.notEqual(report.sessions[0]?.calls[0]?.failure, null);
+    assert.equal(report.sessions[0]?.calls[0]?.requests[0]?.state, "settled");
+    assert.equal(report.sessions[0]?.calls[0]?.requests[0]?.accounting?.cost.kind, "unknown");
+    assert.equal(report.sessions[0]?.accounting.costUsd, null);
 });

@@ -78,7 +78,7 @@ test("{§provider-resolution} instantiateProvider: a selected extension composes
     resetDiscoveryCache();
     const context: ExtensionAttributionContext = {
         workspaceId: "workspace",
-        workerId: "worker",
+        sessionId: "session",
         loop: 3,
         turn: 2,
         attempt: 1,
@@ -281,7 +281,7 @@ test("{§deepseek-reasoning-request} #157: direct DeepSeek composes catalog fact
         mapOf({}),
     );
     const response = await provider.generate({
-        workerId: "worker",
+        sessionId: "session",
         messages: [{ role: "user", content: "Reply with ok." }],
     });
 
@@ -416,7 +416,7 @@ test("{§provider-tagged-reasoning} a Cloudflare model alias carries its explici
         "cfds1",
     );
 
-    const response = await provider.generate({ workerId: "cloudflare-worker", messages: [] });
+    const response = await provider.generate({ sessionId: "cloudflare-session", messages: [] });
 
     assert.equal(response.assistant.reasoning, "working");
     assert.equal(response.assistant.content, "done");
@@ -456,10 +456,10 @@ test("{§provider-resolution} two Fireworks aliases independently select default
     const discover = async () => ({ registry: new Map(), skipped: new Map(), grammarStyles: new Map() });
     const fast = await instantiateProvider("fireworks-ai", env, fireworksRouter, imports, discover, undefined, "fast");
     const standard = await instantiateProvider("fireworks-ai", env, fireworksSuffix, imports, discover, undefined, "standard");
-    await fast.generate({ workerId: "fast-worker", messages: [] });
-    await standard.generate({ workerId: "standard-worker", messages: [] });
+    await fast.generate({ sessionId: "fast-session", messages: [] });
+    await standard.generate({ sessionId: "standard-session", messages: [] });
     assert.deepEqual(bodies.map((body) => body.service_tier), ["priority", "default"]);
-    assert.deepEqual(headers.map((header) => header.get("x-session-affinity")), ["fast-worker", "standard-worker"]);
+    assert.deepEqual(headers.map((header) => header.get("x-session-affinity")), ["fast-session", "standard-session"]);
     assert.deepEqual(bodies.map((body) => body.prompt_cache_key), [undefined, undefined]);
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["none", "none"]);
     assert.deepEqual(bodies.map((body) => body.top_logprobs), [2, 2]);

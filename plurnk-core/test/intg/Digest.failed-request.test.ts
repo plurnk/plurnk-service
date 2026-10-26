@@ -8,7 +8,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 
 for (const capture of [false, true]) {
@@ -16,7 +16,7 @@ for (const capture of [false, true]) {
         const dir = await mkdtemp(join(await testArtifactDirectory("core"), "failed-request-"));
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
-        const failedContent = "````EDIT (worker:///never.txt)\nMust not execute.\n````";
+        const failedContent = "````EDIT (workspace:///never.txt)\nMust not execute.\n````";
         let calls = 0;
         const bodies: string[] = [];
         const provider = new AiSdkProvider({
@@ -41,14 +41,14 @@ for (const capture of [false, true]) {
         const db = await openMigrated(dbPath);
         try {
             const workspaceId = await insertWorkspace(db, "failed-evidence");
-            const workerId = await insertWorker(db, workspaceId, null, "witness");
-            const loopId = await insertLoop(db, workerId, 1, "Recover.");
+            const sessionId = await insertSession(db, workspaceId, null, "witness");
+            const loopId = await insertLoop(db, sessionId, 1, "Recover.");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 3,
+            const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 3,
                 messages: [{ role: "user", content: "Recover." }] });
             assert.equal(result.result.status, 200);
             assert.equal(calls, 2);
-            assert.equal(await db.test_get_entry_by_pathname_scheme.get({ pathname: "/never.txt", scheme: "worker" }), undefined);
+            assert.equal(await db.test_get_entry_by_pathname_scheme.get({ pathname: "/never.txt", scheme: "workspace" }), undefined);
         } finally { await db.close(); }
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
         const digest = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8"));

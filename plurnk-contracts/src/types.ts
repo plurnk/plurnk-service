@@ -77,8 +77,8 @@ export const PROPOSAL_POLICIES = Object.freeze(
     proposalPolicySchema.enum as ProposalPolicy[],
 );
 
-// Minting predicate only; URL ingestion deliberately remains permissive. {§worker-name}
-export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
+// Minting predicate only; URL ingestion deliberately remains permissive. {§session-name}
+export const SESSION_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
 
 // {§agent-skills-name} Discovery and registration share the wire schema's grammar.
 export const SKILL_NAME = new RegExp(skillDefinitionSchema.properties.name.pattern, "u");
@@ -89,7 +89,7 @@ export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, col
 // The platform's setTimeout ceiling (2^31-1 ms): the bound on any delay a knob may name.
 export const MAX_TIMER_MS = 2_147_483_647;
 
-// {§parse-attempt} The statement a hard fact refused, as the worker wrote it.
+// {§parse-attempt} The statement a hard fact refused, as the session wrote it.
 export interface ParseAttempt {
     readonly verb: string;
     readonly text: string;

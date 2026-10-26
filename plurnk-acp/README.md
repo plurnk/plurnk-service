@@ -9,13 +9,13 @@ connections alongside HTTP entry and history resources under one OAuth 2.1 perim
 
 `/acp` serves ACP v2 JSON-RPC 2.0 over WebSocket (`Upgrade: websocket`) and Streamable HTTP
 (`POST /acp`, `GET /acp`, `DELETE /acp`), plus HTTP entry and history resources
-(`GET /acp/<workspaceId>/<workerId>/entry`, `GET /acp/<workspaceId>/<workerId>/messages`) under
+(`GET /acp/<workspaceId>/<sessionId>/entry`, `GET /acp/<workspaceId>/<sessionId>/messages`) under
 `{§acp-http-authorization}`.
 
 A stock `@agentclientprotocol/sdk` v2 client needs only the endpoint and, when enabled, a bearer
 token:
 
-- `session/new` creates or attaches a workspace (`cwd`) and session worker, returning
+- `session/new` creates or attaches a workspace (`cwd`) and session session, returning
   `configOptions` (`model`, `thought_level`, `spawn_model`, `mode`), `availableCommands` (`/mcp`,
   `/skills`, `/members`, `/env`, `/schedule`, `/rollback`, `/share`, `/script`), and
   `_meta.plurnk`.
@@ -30,7 +30,7 @@ token:
 
 ## Event Projection
 
-Each attached session observes its bound worker and, by default, its delegated subagent tree
+Each attached session observes its bound session and, by default, its delegated subagent tree
 ({§acp-topology-scope}, {§acp-subagents}) through standard ACP v2 `SessionUpdate` variants:
 
 | Daemon evidence | Standard ACP v2 `SessionUpdate` |

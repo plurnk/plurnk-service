@@ -74,29 +74,29 @@ export const insertWorkspace = async (db: Db, name: string): Promise<number> => 
     return row.id;
 };
 
-let workerCounter = 0;
+let sessionCounter = 0;
 
-export const insertWorker = async (
+export const insertSession = async (
     db: Db,
     workspaceId: number,
-    parentWorkerId: number | null = null,
+    parentSessionId: number | null = null,
     name?: string,
     origin: "model" | "_plurnk" = "model",
 ): Promise<number> => {
-    const row = await db.test_insert_worker.get<{ id: number }>({
+    const row = await db.test_insert_session.get<{ id: number }>({
         workspace_id: workspaceId,
-        name: name ?? `worker-test-${++workerCounter}-${Math.random().toString(36).slice(2, 8)}`,
-        parent_worker_id: parentWorkerId,
+        name: name ?? `session-test-${++sessionCounter}-${Math.random().toString(36).slice(2, 8)}`,
+        parent_session_id: parentSessionId,
         origin,
     });
-    if (row === undefined) throw new Error("insertWorker: insert returned no row");
+    if (row === undefined) throw new Error("insertSession: insert returned no row");
     return row.id;
 };
 
 // {§message-arrival} — a loop's nonempty initial prompt is ordinal 1 of its inbox, published on turn 1.
-export const insertLoop = async (db: Db, workerId: number, sequence: number, prompt: string = ""): Promise<number> => {
+export const insertLoop = async (db: Db, sessionId: number, sequence: number, prompt: string = ""): Promise<number> => {
     const row = await db.test_insert_loop.get<{ id: number }>({
-        worker_id: workerId, sequence, prompt,
+        session_id: sessionId, sequence, prompt,
     });
     if (row === undefined) throw new Error("insertLoop: insert returned no row");
     if (prompt.length > 0) {
@@ -106,10 +106,10 @@ export const insertLoop = async (db: Db, workerId: number, sequence: number, pro
     return row.id;
 };
 
-// {§worker-obligations}: a fixture-controlled child holds its parent without a
+// {§session-obligations}: a fixture-controlled child holds its parent without a
 // provider drain. Restart recovery settles the vanished child like any other owner.
-export const holdChild = async (db: Db, workspaceId: number, workerId: number): Promise<number> => {
-    const childId = await insertWorker(db, workspaceId, workerId);
+export const holdChild = async (db: Db, workspaceId: number, sessionId: number): Promise<number> => {
+    const childId = await insertSession(db, workspaceId, sessionId);
     return insertLoop(db, childId, 1, "Fixture-controlled work.");
 };
 
@@ -154,7 +154,7 @@ export const insertTurn = async (db: Db, loopId: number, sequence: number, statu
     return row.id;
 };
 
-// {§worker-obligations} The operation by which a worker sends a message: a completed turn of the sender's loop, at its
+// {§session-obligations} The operation by which a session sends a message: a completed turn of the sender's loop, at its
 // next sequence, with the sending row first in it. Fixtures name it as the message's opener, as a SEND, WORK or FORK does.
 export const sendingOperation = async (db: Db, loopId: number): Promise<MessageOpener> => {
     const next = await db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
@@ -184,14 +184,14 @@ export const seedEnvelope = async (
     label: string,
     options: { producer?: "model" | "client" | "_plurnk"; prompt?: string } = {},
 ): Promise<{
-    workspaceId: number; workerId: number; loopId: number; turnId: number;
+    workspaceId: number; sessionId: number; loopId: number; turnId: number;
 }> => {
     const workspaceId = await insertWorkspace(db, label);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, options.prompt);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, options.prompt);
     const producer = options.producer ?? "model";
     const { id: turnId } = await Turn.open(db, { loopId, producer, kind: producer === "model" ? "inference" : "operation" });
-    return { workspaceId, workerId, loopId, turnId };
+    return { workspaceId, sessionId, loopId, turnId };
 };
 
 // Seed an entry with one channel + visibility row, bypassing scheme handlers.
@@ -214,7 +214,7 @@ export const seedEntryWithChannel = async (
 ): Promise<number> => {
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
         workspace_id: opts.workspaceId,
-        scheme: opts.scheme ?? "worker",
+        scheme: opts.scheme ?? ((opts.authority ?? "") === "" ? "workspace" : "session"),
         authority: opts.authority ?? "",
         pathname: opts.pathname ?? "/x",
         default_channel: opts.defaultChannel ?? opts.channel ?? "body",

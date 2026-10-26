@@ -6,7 +6,7 @@
 -- KILL cannot capture operation rows the same program is still emitting.
 SELECT COALESCE(MAX(id), 0) AS max_id
 FROM log_entries
-WHERE worker_id = $worker_id;
+WHERE session_id = $session_id;
 
 -- PREP: engine_turn_packet_boundaries
 -- {§send-premature-terminate}: executed operations, independent of log curation.
@@ -19,7 +19,7 @@ WHERE turn_id = $turn_id
   AND op NOT IN ('SEND', 'NOTE', 'WAIT')
 ORDER BY sequence, id;
 
--- PREP: engine_worker_has_undelivered_stream_term
+-- PREP: engine_session_has_undelivered_stream_term
 -- A stream may finish between its EXEC and a same-turn SEND. It is then no longer
 -- live, but its terminal outcome has not crossed the pre-turn observation boundary:
 -- one or more selected channel publication rows remain nonterminal. Treat that
@@ -29,8 +29,8 @@ ORDER BY sequence, id;
 -- an empty failure must receive the same terminal observation as a non-empty stream.
 -- Success and failure both require observation.
 SELECT DISTINCT status AS closeStatus
-FROM unobserved_worker_completions
-WHERE worker_id = $worker_id AND kind = 'stream';
+FROM unobserved_session_completions
+WHERE session_id = $session_id AND kind = 'stream';
 
 -- PREP: engine_turn_failure_count
 -- {§send-premature-terminate}: model-authored failures require observation before
@@ -42,10 +42,10 @@ WHERE turn_id = $turn_id
   AND status_rx >= 400
   AND (op != 'error' OR source = 'grammar');
 
--- PREP: engine_worker_has_undelivered_child_term
+-- PREP: engine_session_has_undelivered_child_term
 -- A child conclusion newer than the parent's observation cursor is complete but
 -- not delivered. This is the same durable boundary the next packet consumes,
 -- not a second timestamp race. {§send-undelivered-child-term}
-SELECT 1 AS pending FROM unobserved_worker_completions
-WHERE worker_id = $worker_id AND kind = 'ambient'
+SELECT 1 AS pending FROM unobserved_session_completions
+WHERE session_id = $session_id AND kind = 'ambient'
 LIMIT 1;

@@ -55,7 +55,7 @@ editing
                 await rpcCall(ws, 1, "workspace.create", { name: "anchors-shift", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
+                const readRow = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: first.modelSessionId! }))
                     .find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow?.rx ?? "{}").lineAnchors as string[] | undefined;
                 assert.ok(Array.isArray(anchors) && anchors.length === fixture.source.split("\n").length - 1, `the READ published one anchor per line; got ${JSON.stringify(anchors)}`);
@@ -71,7 +71,7 @@ FIVE
                 ].join("\n\n");
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
-                const edits = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! }))
+                const edits = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: second.modelSessionId! }))
                     .filter(({ op }) => op === "EDIT");
                 assert.deepEqual(edits.map(({ status_rx }) => status_rx), [200, 200], `both anchored edits applied; got ${edits.map(({ rx }) => rx).join(" | ")}`);
                 assert.equal(await readFile(join(root, "doc.md"), "utf8"), `zero-a\nzero-b\n${fixture.expected}`, "the edits landed on the selected moved lines, leaving any twin intact");

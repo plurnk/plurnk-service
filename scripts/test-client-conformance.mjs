@@ -270,7 +270,7 @@ try {
     const cli = await runClient(clientBin, [
         "--json",
         "--workspace", "installed-cli",
-        "--worker", "Cli_Worker",
+        "--session", "Cli_Session",
         "--project-root", "",
         "--model", "journey",
         "--max-turns", "2",
@@ -293,7 +293,7 @@ try {
     process.stdout.write("installed one-shot CLI journey GREEN: workspace + Turn 0 + delivered response + observed completion\n");
     // {§file-publication} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
     const files = await runClient(clientBin, [
-        "--json", "--yolo", "--workspace", "installed-files", "--worker", "File_Worker",
+        "--json", "--yolo", "--workspace", "installed-files", "--session", "File_Session",
         "--project-root", project, "--model", "journey", "--max-turns", "4", "--timeout", "20",
         "Exercise installed file publication and persistence.",
     ], { cwd: project, env: clientEnv, timeout: 30_000 });
@@ -313,7 +313,7 @@ try {
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-tui",
-        "--worker", "Tui_Worker",
+        "--session", "Tui_Session",
         "--project-root", "",
         "--model", "journey",
         "--max-turns", "2",
@@ -329,11 +329,11 @@ try {
     // The status row settles on the session's summary line: elapsed time, the concluded
     // accounting and the gauge's model. With an empty tree ({§acp-status-descendants}),
     // the client omits the ant and the gate light. The lifecycle glyph stands alone, and the place (workspace,
-    // loop, turn, worker) is the prompt prefix's, asserted separately below.
+    // loop, turn, session) is the prompt prefix's, asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
     await tui.waitFor(/⏹️  · 🎲 journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
-    // The prompt prefix names the place: [workspace/~worker(loop/turn)].
-    await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Worker(?:\(\d+\/\d+\))?\]/);
+    // The prompt prefix names the place: [workspace/~session(loop/turn)].
+    await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Session(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
     if (tuiOutput.includes("🐜")) throw new Error(`installed TUI displayed a child indicator with no live children\n${tuiOutput}`);
     if (tuiOutput.includes("🚦")) throw new Error(`installed TUI displayed a gate indicator with no waiting descendants\n${tuiOutput}`);
@@ -349,7 +349,7 @@ try {
 
     tui = spawnInstalledTui(clientBin, [
         "--workspace", "installed-rejected",
-        "--worker", "rejected-worker",
+        "--session", "rejected-session",
         "--project-root", "",
         "--model", "journey",
     ], clientEnv);
@@ -360,9 +360,9 @@ try {
     await tui.waitFor(wrapped("The requested model is unavailable; select an available model."));
     // The glyph is the lifecycle; the status line carries no turn count.
     await tui.waitFor(/❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
-    tui.write("/workers\r");
-    // The bound worker's row carries its lifecycle mark.
-    await tui.waitFor(/● rejected-worker ❌[\s\S]*❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
+    tui.write("/sessions\r");
+    // The bound session's row carries its lifecycle mark.
+    await tui.waitFor(/● rejected-session ❌[\s\S]*❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
     if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️")) {
         throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
     }
@@ -400,7 +400,7 @@ try {
     try {
         await faultDb.test_fail_stream_close();
         tui = spawnInstalledTui(clientBin, [
-            "--workspace", "installed-recovery", "--worker", "Recovery_Worker",
+            "--workspace", "installed-recovery", "--session", "Recovery_Session",
             "--project-root", "", "--model", "journey", "--max-turns", "4", "--yolo",
         ], clientEnv);
         await tui.waitFor(/workspace: installed-recovery/);
@@ -413,7 +413,7 @@ try {
             throw new Error(`failed close lost its live obligation or parked loop: ${JSON.stringify(state)}`);
         }
         const recoveryWorkspace = await clientFor().rpc("workspace.attach", { name: "installed-recovery" });
-        const retained = await clientFor({ workspaceId: recoveryWorkspace.id, worker: "Recovery_Worker" })
+        const retained = await clientFor({ workspaceId: recoveryWorkspace.id, session: "Recovery_Session" })
             .rpc("entry.read", { target: `sh://${state.pathname}` });
         if (retained.status !== 200
             || !Object.values(retained.entry?.channels ?? {}).some(({ content }) => String(content).includes("retained-stream-output"))) {
@@ -424,8 +424,8 @@ try {
         }
         tui.write("Please keep observing the unresolved stream.\r");
         await tui.waitFor(/Follow-up accepted while parked\./);
-        tui.write("/workers\r");
-        await tui.waitFor(/● Recovery_Worker\b/);
+        tui.write("/sessions\r");
+        await tui.waitFor(/● Recovery_Session\b/);
         await faultDb.test_restore_stream_close();
         tui.write("/stop\r");
         await tui.waitFor(/cancelled|final 499/);
@@ -450,7 +450,7 @@ try {
     fixture.assertComplete();
 
     const sharedWorkspace = await clientFor().rpc("workspace.create", { name: workspace });
-    const binding = { workspaceId: sharedWorkspace.id, worker: "user" };
+    const binding = { workspaceId: sharedWorkspace.id, session: "user" };
     const terminal = clientFor(binding);
     const durableCapabilities = { deny: [{ traits: ["interaction"] }] };
     await terminal.rpc("workspace.capabilities.set", { policy: durableCapabilities });
@@ -486,13 +486,13 @@ try {
         }
     }
 
-    const observer = clientFor({ workspaceId: sharedWorkspace.id, worker: "independent-observer" });
+    const observer = clientFor({ workspaceId: sharedWorkspace.id, session: "independent-observer" });
     const observedCapabilities = await observer.rpc("workspace.capabilities.get");
     if (JSON.stringify(observedCapabilities.workspace) !== JSON.stringify(durableCapabilities)) {
         throw new Error("a second client connection did not observe the workspace's durable capabilities");
     }
     await observer.rpc("workspace.members.add", { files: ["cross/**"] });
-    // Both connections observe the same workspace definition independently of their Worker.
+    // Both connections observe the same workspace definition independently of their Session.
     const membersOf = (listed) => (listed.definitions ?? [])
         .filter((definition) => definition.alias === "cross/**")
         .map(({ alias, origin, state, definition }) => ({ alias, origin, state, glob: definition?.glob }));
@@ -504,8 +504,8 @@ try {
 
     await daemon.stop();
     daemon = await boot();
-    // The read takes the perspective of the worker the CLI journey created ({§acp-action-binding}).
-    const persistedFiles = clientFor({ workspaceId: fileRecord.workspace.id, worker: "File_Worker" });
+    // The read takes the perspective of the session the CLI journey created ({§acp-action-binding}).
+    const persistedFiles = clientFor({ workspaceId: fileRecord.workspace.id, session: "File_Session" });
     const persistedFile = await persistedFiles.rpc("entry.read", { target: pathToFileURL(join(project, "integrity.txt")).href });
     if (persistedFile.status !== 200 || persistedFile.entry?.channels.body?.content !== "after"
         || await readFile(join(project, "integrity.txt"), "utf8") !== "after") {

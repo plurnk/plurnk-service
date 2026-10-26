@@ -9,8 +9,8 @@ const statement: FindStatement = {
     aside: null,
     target: {
         kind: "url",
-        raw: "worker:///doc.md",
-        scheme: "worker",
+        raw: "workspace:///doc.md",
+        scheme: "workspace",
         username: null,
         password: null,
         hostname: null,
@@ -26,7 +26,7 @@ const statement: FindStatement = {
 };
 
 const item: CatalogMatch = [
-    { path: "worker:///doc.md", mimetype: "text/markdown", sourceMimetype: "image/png", weight: 4, lines: 1 },
+    { path: "workspace:///doc.md", mimetype: "text/markdown", sourceMimetype: "image/png", weight: 4, lines: 1 },
 ];
 
 test("{§find-result-projection}: a valid exact match without an addressable location remains a successful selection", () => {
@@ -68,16 +68,16 @@ test("{§find-result-projection}: resource results are default-first channel gro
         { ...statement, matcher: null },
         pathScope("*", false),
         [{ item, match: { pathname: "/doc.md", matches: [] } }],
-        [{ path: "worker:///src/**", items: 2, weight: 8 }],
+        [{ path: "workspace:///src/**", items: 2, weight: 8 }],
     );
 
     assert.deepEqual(result.results, [
-        [{ path: "worker:///doc.md", mimetype: "text/markdown", sourceMimetype: "image/png", weight: 4, lines: 1 }],
-        [{ path: "worker:///src/**", items: 2, weight: 8 }],
+        [{ path: "workspace:///doc.md", mimetype: "text/markdown", sourceMimetype: "image/png", weight: 4, lines: 1 }],
+        [{ path: "workspace:///src/**", items: 2, weight: 8 }],
     ]);
     assert.equal(result.content, [
-        "[[{\"path\":\"worker:///doc.md\",\"mimetype\":\"text/markdown\",\"sourceMimetype\":\"image/png\",\"tokens\":4,\"lines\":1}],",
-        "[{\"path\":\"worker:///src/**\",\"items\":2,\"tokens\":8}]]",
+        "[[{\"path\":\"workspace:///doc.md\",\"mimetype\":\"text/markdown\",\"sourceMimetype\":\"image/png\",\"tokens\":4,\"lines\":1}],",
+        "[{\"path\":\"workspace:///src/**\",\"items\":2,\"tokens\":8}]]",
     ].join("\n"));
     assert.equal(result.returnedItemsWeightTotal, 12);
 });

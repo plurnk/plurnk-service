@@ -1,12 +1,12 @@
 // Db-backed implementation of plurnk-schemes {§scheme-subscriptions}.
 // The streaming lifecycle a sibling drives:
 //   open(pathname, handle) → registers the subscription and hands back a
-//     worker+teardown-composed StreamSubscription; a worker abort also
+//     session+teardown-composed StreamSubscription; a session abort also
 //     force-cancels the sibling's handle.
 //   notifyChunk(channel, chunk) → FUSED append-to-channel + stream/event.
 //   close(result, summary?, channelResults?) → composites every channel's
-//     terminal state, registry close, and rich worker wake (the only place with
-//     the close context; NotifyCaps therefore has no wakeWorker operation).
+//     terminal state, registry close, and rich session wake (the only place with
+//     the close context; NotifyCaps therefore has no wakeSession operation).
 // The returned object owns the exact retained lifecycle. Namespace methods are
 // operation-scoped compatibility forwarders to that same object.
 
@@ -51,23 +51,23 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const { entryId } = entry;
         const {
             db,
-            workerId,
+            sessionId,
             workspaceId,
             signal: parent,
             streamEventNotify,
-            wakeWorkerNotify,
+            wakeSessionNotify,
         } = this.#ctx;
         const scheme = this.#scheme;
         const liveSubscriptions = this.#liveSubscriptions;
         const publishedChannel = this.#publishedChannel;
         const subscriptionId = await ChannelWrite.openSubscription(db, {
-            workerId, entryId, scheme, handle: pathname, publishedChannel,
+            sessionId, entryId, scheme, handle: pathname, publishedChannel,
         });
         const controller = new AbortController();
         let unlink = (): void => {};
         const notifyChunk = async (channel: string, chunk: string, mimetype?: string): Promise<void> => {
             await ChannelWrite.appendToChannel(db, {
-                entryId, producerWorkerId: workerId, channel, chunk,
+                entryId, producerSessionId: sessionId, channel, chunk,
                 ...(publishedChannel === null || publishedChannel === channel ? { notify: streamEventNotify } : {}),
                 mimetype,
             });
@@ -75,11 +75,11 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const lifecycle = new LiveSubscription({
             db, registry: liveSubscriptions,
             identity: {
-                workspaceId, workerId, entryId,
+                workspaceId, sessionId, entryId,
                 target: renderAddress({ scheme, authority: this.#authority, pathname }),
                 subscriptionId, scheme,
             },
-            notify: streamEventNotify, wake: wakeWorkerNotify, release: () => unlink(),
+            notify: streamEventNotify, wake: wakeSessionNotify, release: () => unlink(),
             reaperLoopId: parent === undefined ? null : this.#ctx.loopId,
             handle: { cancel: async () => {
                 controller.abort("subscription cancelled");

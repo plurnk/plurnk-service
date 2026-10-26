@@ -52,7 +52,7 @@ test("live: a client-attached image persists until log curation", { requires: ["
             prompt: "Using the image you just examined, are its two panels arranged horizontally or vertically?",
             maxTurns: 6,
         }, { signal: t.signal });
-        assert.equal(followup.modelWorkerId, first.modelWorkerId);
+        assert.equal(followup.modelSessionId, first.modelSessionId);
         assert.equal(followup.finalStatus, 200);
         assert.match(followup.lastContent, /horizontal|side.by.side/i);
         // {§packet-attachment-parts}: the first request of another loop already contains the same observation.
@@ -65,11 +65,11 @@ test("live: a client-attached image persists until log curation", { requires: ["
             maxTurns: 6,
         }, { signal: t.signal });
         assert.equal(cleanup.finalStatus, 200);
-        const active = await s.db.engine_render_log.all<{ op: string; rx: string }>({ worker_id: first.modelWorkerId });
+        const active = await s.db.engine_render_log.all<{ op: string; rx: string }>({ session_id: first.modelSessionId });
         assert.equal(active.some((row) => row.op === "READ" && JSON.parse(row.rx).nativeContentHash === contentHash), false,
             "curation removes the native observation from the active log");
         assert.deepEqual(await readFile(join(projectRoot, "sample.png")), PNG, "log curation leaves the file unchanged");
-        const history = await s.db.test_log_entries_by_worker_op_full.all<{ rx: string }>({ worker_id: first.modelWorkerId, op: "READ" });
+        const history = await s.db.test_log_entries_by_session_op_full.all<{ rx: string }>({ session_id: first.modelSessionId, op: "READ" });
         assert.ok(history.some((row) => JSON.parse(row.rx).nativeContentHash === contentHash), "immutable READ evidence survives curation");
     } finally { await lifetime.disposeAsync(); }
 });
@@ -104,7 +104,7 @@ test("live: a retained image is reported as one earlier READ, never as a new arr
 
         // A second message, carrying nothing; the retained part rides along, captioned.
         const second = await liveLoop(s, 3, { prompt: ACCOUNT, maxTurns: 4 }, { signal: t.signal });
-        assert.equal(second.modelWorkerId, first.modelWorkerId);
+        assert.equal(second.modelSessionId, first.modelSessionId);
         assert.equal(second.finalStatus, 200);
         const retained = (await packets(s, second.turnIds))[0]?.attachments ?? [];
         assert.ok(retained.some((attachment) => attachment.coordinate === observed.coordinate), "the observation is still in the packet when the account is asked for");

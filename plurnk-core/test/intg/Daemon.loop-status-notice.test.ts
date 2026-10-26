@@ -7,9 +7,9 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { holdChild } from "./_db.ts";
 import { connect, rpcCall, subscribeNotifications, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
-type LoopStatusNotice = { workerId: number; loopId: number; notice: { source: string; kind: string; level: string; status: number; waitUntil: number | null; packetCount: number; claimedAt: number | null } };
+type LoopStatusNotice = { sessionId: number; loopId: number; notice: { source: string; kind: string; level: string; status: number; waitUntil: number | null; packetCount: number; claimedAt: number | null } };
 
 test("{§loop-status-notice}: claim, park and wake each broadcast the loop's status as a lifecycle notice", async () => {
     const provider = new Mock({
@@ -24,15 +24,15 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
         try {
             const { workspaceId } = await daemon.createWorkspace({ name: "loop-status-notice" });
             await rpcAttach(ws, workspaceId);
-            const workerId = await namedModelWorker(daemon, workspaceId, "main");
-            await holdChild(db, workspaceId, workerId);
+            const sessionId = await namedModelSession(daemon, workspaceId, "main");
+            await holdChild(db, workspaceId, sessionId);
             const captured = subscribeNotifications(ws, "notice/event");
             const terminals = subscribeNotifications(ws, "loop/terminated");
             const lifecycle = (): LoopStatusNotice[] => (captured() as LoopStatusNotice[])
                 .filter(({ notice }) => notice.source === "engine:lifecycle" && notice.kind === "loop_status");
             try {
                 const accepted = await daemon.inject({
-                    workspaceId, workerId,
+                    workspaceId, sessionId,
                     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                     effort: "adaptive", systemPrompt: "test system", prompt: "Delegate and wait.",
                 });
@@ -43,31 +43,31 @@ test("{§loop-status-notice}: claim, park and wake each broadcast the loop's sta
                 const firstDeadline = lifecycle()[1].notice.waitUntil;
                 assert.ok(typeof firstDeadline === "number" && firstDeadline > Date.now(), "the parked notice names a future wake deadline");
                 assert.equal(lifecycle()[0].notice.waitUntil, null, "running has no countdown");
-                assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)?.waitUntil,
+                assert.equal((await daemon.listSessionLoops({ workspaceId, sessionId })).find(({ id }) => id === accepted.loopId)?.waitUntil,
                     firstDeadline, "reattachment and live updates describe the same durable deadline");
                 // {§acp-status-timing} — every beat carries its loop's own packet count and claim stamp, the ones a snapshot reads.
-                const projected = (await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)!;
+                const projected = (await daemon.listSessionLoops({ workspaceId, sessionId })).find(({ id }) => id === accepted.loopId)!;
                 assert.deepEqual(lifecycle().map(({ notice }) => [notice.packetCount, notice.claimedAt]), [[0, Date.parse(projected.claimedAt!)], [projected.packetCount, Date.parse(projected.claimedAt!)]],
                     "claimed with no packet yet, parked after its first, the same claim stamp throughout");
 
-                const delivered = await daemon.runLoop({ workspaceId, workerId, prompt: "A message wakes it." });
+                const delivered = await daemon.runLoop({ workspaceId, sessionId, prompt: "A message wakes it." });
                 assert.equal(delivered.loopId, accepted.loopId);
                 await waitForDb(async () => lifecycle(), (notices) => notices.length >= 5);
                 assert.deepEqual(lifecycle().slice(2).map(({ notice }) => notice.status), [100, 102, 202], "waking queues the loop, then claim and WAIT move it through running to parked");
                 assert.deepEqual(lifecycle().slice(2, 4).map(({ notice }) => notice.waitUntil), [null, null], "the countdown clears before inference begins");
                 const nextDeadline = lifecycle()[4].notice.waitUntil;
                 assert.ok(typeof nextDeadline === "number" && nextDeadline > firstDeadline, "the next WAIT starts a fresh bounded park");
-                assert.equal((await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)?.waitUntil, nextDeadline);
-                assert.ok(lifecycle().every(({ workerId: owner }) => owner === workerId), "every beat names the owning worker");
+                assert.equal((await daemon.listSessionLoops({ workspaceId, sessionId })).find(({ id }) => id === accepted.loopId)?.waitUntil, nextDeadline);
+                assert.ok(lifecycle().every(({ sessionId: owner }) => owner === sessionId), "every beat names the owning session");
                 const packets = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: accepted.loopId });
                 assert.ok(packets.every(({ rx }) => !rx.includes("loop_status")), "the beat is transient: no log row, nothing for a packet");
                 assert.ok(lifecycle().slice(2).every(({ notice }) => notice.claimedAt === Date.parse(projected.claimedAt!)), "a woken loop keeps its first claim stamp");
                 // {§notifications-loop-terminated} — the terminal carries the stamp a snapshot reads.
-                await daemon.cancelWorker({ workspaceId, workerId });
+                await daemon.cancelSession({ workspaceId, sessionId });
                 await waitForDb(async () => terminals(), (events) => events.length >= 1);
-                const ended = (await daemon.listWorkerLoops({ workspaceId, workerId })).find(({ id }) => id === accepted.loopId)!;
+                const ended = (await daemon.listSessionLoops({ workspaceId, sessionId })).find(({ id }) => id === accepted.loopId)!;
                 assert.equal((terminals()[0] as { terminatedAt: number }).terminatedAt, Date.parse(ended.terminatedAt!));
-            } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
+            } finally { await daemon.cancelSession({ workspaceId, sessionId }); }
         } finally { ws.close(); }
     });
 });

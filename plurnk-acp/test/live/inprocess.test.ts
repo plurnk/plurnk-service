@@ -1,6 +1,6 @@
 // {§acp-daemon-client} The go-live smoke: the in-process client interface, discovered by the
 // daemon and mounted at /acp on its listener, drives
-// a real model worker through the shared live runner.
+// a real model session through the shared live runner.
 
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -21,8 +21,8 @@ test("live: discovery and model response traverse the in-process ACP module", as
     const { bindListener } = await import(join(SERVICE, "test/intg/_http.ts"));
     const { default: Daemon } = await import(join(SERVICE, "src/server/Daemon.ts"));
 
-    // {§tier-census} — the worker's run directory holds its database, its own host and, at the end,
-    // its digest and census row, like every other live worker's.
+    // {§tier-census} — the session's run directory holds its database, its own host and, at the end,
+    // its digest and census row, like every other live session's.
     const run = await liveRun("live-acp-inprocess");
     const db = await openMigrated(run.dbPath);
     const provider = await liveProvider();

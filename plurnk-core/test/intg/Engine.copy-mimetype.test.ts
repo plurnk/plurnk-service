@@ -27,7 +27,7 @@ const setup = async (mimetypes = DEFAULT_MIMETYPES) => {
 };
 
 for (const transfer of [copyStmt, moveStmt]) {
-    const op = transfer(urlPath("worker", "/src"), urlPath("worker", "/dst")).op;
+    const op = transfer(urlPath("workspace", "/src"), urlPath("workspace", "/dst")).op;
     for (const binary of [false, true]) {
         test(`{§mimetype-verbatim-transfer}: ${op} honors a handler's ${binary ? "binary" : "textual"} classification over the MIME prefix`, async () => {
             const mimetype = binary ? "text/x-encoded" : "application/x-treeish";
@@ -47,7 +47,7 @@ for (const transfer of [copyStmt, moveStmt]) {
             const { db, seed, read, dispatch } = await setup(mimetypes);
             try {
                 await seed("/src", mimetype, body);
-                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", "/dst.md")));
+                const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", "/dst.md")));
                 assert.equal(result.status, binary ? 415 : 201);
                 if (binary) assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
                 assert.deepEqual(await read("/dst.md"), binary ? undefined : { content: body, mimetype: "text/markdown" });
@@ -65,7 +65,7 @@ for (const transfer of [copyStmt, moveStmt]) {
             try {
                 const body = content.replaceAll("\n", "\r\n");
                 await seed("/src", "text/plain", body);
-                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", pathname)));
+                const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", pathname)));
                 assert.equal(result.status, 201);
                 assert.deepEqual(await read(pathname), { content: body, mimetype: "text/markdown" });
                 assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype: "text/plain" } : undefined);
@@ -84,7 +84,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                 const { db, seed, read, dispatch } = await setup();
                 try {
                     await seed("/src", mimetype, body);
-                    const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", pathname)));
+                    const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", pathname)));
                     assert.equal(result.status, 201, JSON.stringify(result));
                     assert.deepEqual(await read(pathname), { content: body, mimetype });
                     assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype } : undefined);
@@ -98,7 +98,7 @@ for (const transfer of [copyStmt, moveStmt]) {
             const { db, seed, read, dispatch } = await setup();
             try {
                 await seed("/src", "application/octet-stream", "AP+A");
-                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", pathname)));
+                const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", pathname)));
                 assert.equal(result.status, 415);
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
                 assert.equal(result.problem?.destinationMimetype, destinationMimetype);
@@ -121,7 +121,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                 await seed("/src", sourceMimetype);
                 await seed("/dst.txt", destinationMimetype, "before\nreplace\nafter\n");
                 const result = await dispatch(transfer(
-                    urlPath("worker", "/src"), urlPath("worker", "/dst.txt"),
+                    urlPath("workspace", "/src"), urlPath("workspace", "/dst.txt"),
                     { marks: [2, 2] }, { marks: [2, 2] },
                 ));
                 assert.equal(result.status, 200);
@@ -144,7 +144,7 @@ for (const transfer of [copyStmt, moveStmt]) {
             const { db, seed, read, dispatch } = await setup();
             try {
                 await seed("/src", mimetype, body);
-                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", "/dst.md")));
+                const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", "/dst.md")));
                 assert.equal(result.status, 201);
                 assert.deepEqual(await read("/dst.md"), { content: body, mimetype: "text/markdown" });
                 assert.deepEqual(await read("/src"), op === "COPY" ? { content: body, mimetype } : undefined);
@@ -163,7 +163,7 @@ for (const transfer of [copyStmt, moveStmt]) {
             try {
                 await seed("/src", sourceMimetype, body);
                 await seed("/dst", destinationMimetype, "unchanged destination");
-                const result = await dispatch(transfer(urlPath("worker", "/src"), urlPath("worker", "/dst"), null, { marks: [1, -1] }));
+                const result = await dispatch(transfer(urlPath("workspace", "/src"), urlPath("workspace", "/dst"), null, { marks: [1, -1] }));
                 assert.equal(result.status, 415);
                 assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/mimetype-mismatch");
                 assert.equal(result.problem?.channel, "body");
@@ -183,7 +183,7 @@ for (const same of [true, false]) {
             const destinationContent = same ? content : "other content";
             await seed("/src", "text/markdown");
             await seed("/dst", "text/plain", destinationContent);
-            const result = await dispatch(copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")));
+            const result = await dispatch(copyStmt(urlPath("workspace", "/src"), urlPath("workspace", "/dst")));
             assert.equal(result.status, same ? 304 : 409);
             if (!same) assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/copy-destination-exists");
             assert.equal(result.effects, undefined);

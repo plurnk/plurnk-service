@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { ownSession, TEST_OWNER } from "./_approval.ts";
 // {§skills-functionality} {§skills-sources} — standard Agent Skills through the shared workspace
 // Functionality lifecycle: source roots are inputs, workspace bindings own
 // enablement, discovery is inert, and only fetched sources are materialized.
@@ -21,7 +21,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { makeMockResponse } from "./_mock.ts";
 import { viableWindow } from "./_provider.ts";
 import { waitForDb } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const run = promisify(execFile);
@@ -172,8 +172,8 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill binding ch
     t.after(async () => { await daemon.stop(); await db.close(); await rm(base, { recursive: true, force: true }); });
     await daemon.start();
     const workspace = await daemon.createWorkspace({ name: "skills-busy", projectRoot: project });
-    const model = await namedModelWorker(daemon, workspace.workspaceId, "main");
-    await ownWorker(db, workspace.workspaceId, model);
+    const model = await namedModelSession(daemon, workspace.workspaceId, "main");
+    await ownSession(db, workspace.workspaceId, model);
     const action = (verb: string, params: Record<string, unknown>) => daemon.invokeModuleAction(`workspace.skills.${verb}`, params, {
         scope: "workspace", workspaceId: workspace.workspaceId,
     });
@@ -183,7 +183,7 @@ test("{§module-workspace-quiescence}: a busy workspace refuses skill binding ch
         if (method === "loop/proposal") proposal.resolve((params as { logEntryId: number }).logEntryId);
     });
     t.after(unsubscribe);
-    const { loopId } = await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId: model, prompt: "Run the command." });
+    const { loopId } = await daemon.runLoop({ workspaceId: workspace.workspaceId, sessionId: model, prompt: "Run the command." });
     const id = await proposal.promise;
     try {
         const originalPolicy = await daemon.readWorkspaceCapabilities({ workspaceId: workspace.workspaceId });

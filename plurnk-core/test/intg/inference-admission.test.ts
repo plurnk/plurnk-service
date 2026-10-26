@@ -29,7 +29,7 @@ for (const delegated of ["WORK", "BARE"] as const) {
                 : parentTurns++ === 0
                     ? delegated === "BARE"
                         ? "````BARE\nWhat is six times seven?\n````"
-                        : "````WORK (worker://first)\nComplete your task.\n````\n\n````WORK (worker://second)\nComplete your task.\n````\n\n````WAIT\n````"
+                        : "````WORK (session://first)\nComplete your task.\n````\n\n````WORK (session://second)\nComplete your task.\n````\n\n````WAIT\n````"
                     : "````SEND [200]\nDelegated results received.\n````";
             response.writeHead(200, { "content-type": "text/event-stream" });
             response.write(`data: ${JSON.stringify({

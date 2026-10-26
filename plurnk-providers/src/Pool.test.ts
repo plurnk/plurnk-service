@@ -46,7 +46,7 @@ type FakeOpts = {
     tokenize?: boolean; throws?: Error;
     promptMeasurement?: PromptTokenMeasurement;
 };
-// A fake backend that records which workers it served, and optionally throws.
+// A fake backend that records which sessions it served, and optionally throws.
 const backend = (opts: FakeOpts = {}) => {
     const served: string[] = [];
     const b: Provider = {
@@ -96,7 +96,7 @@ const backend = (opts: FakeOpts = {}) => {
             },
         }),
         generate: async (args: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> => {
-            served.push(args.workerId);
+            served.push(args.sessionId);
             if (opts.throws !== undefined) throw opts.throws;
             return RESP;
         },
@@ -106,8 +106,8 @@ const backend = (opts: FakeOpts = {}) => {
 const netErr = () => new ProviderError("provider:x", "network_failure", "down", { status: 503 });
 const authErr = () => new ProviderError("provider:x", "unauthorized", "no key", { status: 401 });
 const interruptedErr = () => new ProviderError("provider:x", "resource_interrupted", "generation interrupted");
-const gen = (p: Pool, workerId: string, extra: Record<string, unknown> = {}) =>
-    p.generate({ messages: [], workerId, ...extra });
+const gen = (p: Pool, sessionId: string, extra: Record<string, unknown> = {}) =>
+    p.generate({ messages: [], sessionId, ...extra });
 
 // --- construction / homogeneity ---
 
@@ -210,7 +210,7 @@ test("{§provider-capacity-admission} Pool: request capacity uses the smallest c
 
 // --- dispatch: round-robin + affinity ---
 
-test("{§provider-capacity-pool} Pool: NEW workers round-robin across backends", async () => {
+test("{§provider-capacity-pool} Pool: NEW sessions round-robin across backends", async () => {
     const b0 = backend(), b1 = backend(), b2 = backend();
     const p = new Pool([b0.b, b1.b, b2.b]);
     await gen(p, "w1"); await gen(p, "w2"); await gen(p, "w3"); await gen(p, "w4");
@@ -219,7 +219,7 @@ test("{§provider-capacity-pool} Pool: NEW workers round-robin across backends",
     assert.deepEqual(b2.served, ["w3"]);
 });
 
-test("{§provider-capacity-pool} Pool: a worker STICKS to its backend across turns (KV-cache affinity)", async () => {
+test("{§provider-capacity-pool} Pool: a session STICKS to its backend across turns (KV-cache affinity)", async () => {
     const b0 = backend(), b1 = backend();
     const p = new Pool([b0.b, b1.b]);
     await gen(p, "w1"); await gen(p, "w2"); await gen(p, "w1"); await gen(p, "w1");
@@ -275,6 +275,6 @@ test("{§provider-capacity-pool} Pool: an aborted signal propagates, never overf
     assert.deepEqual(up.served, []);        // cancellation is not a failover
 });
 
-test("{§provider-cache-identity} Pool: generate requires a workerId (affinity keys on it)", async () => {
-    await assert.rejects(() => gen(new Pool([backend().b]), ""), /workerId is required/);
+test("{§provider-cache-identity} Pool: generate requires a sessionId (affinity keys on it)", async () => {
+    await assert.rejects(() => gen(new Pool([backend().b]), ""), /sessionId is required/);
 });

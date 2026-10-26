@@ -13,7 +13,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
 process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -91,16 +91,16 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             PLURNK_MCP_CONNECT_TIMEOUT: "5000",
             PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }), "@plurnk/plurnk-mcp");
-        let identity: { workspaceId: number; workerId: number } | undefined;
+        let identity: { workspaceId: number; sessionId: number } | undefined;
         try {
             await daemon.start();
             const { workspaceId } = await daemon.createWorkspace({ name: "mcp-media-composition" });
-            identity = { workspaceId, workerId: await namedModelWorker(daemon, workspaceId, "main") };
+            identity = { workspaceId, sessionId: await namedModelSession(daemon, workspaceId, "main") };
             const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP media." });
             const lifecycle = new LoopLifecycle(db);
             await called.promise;
             await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 202, { timeoutMs: 5000 });
-            assert.equal(provider.received.length, 1, "the worker really parked before the MCP response");
+            assert.equal(provider.received.length, 1, "the session really parked before the MCP response");
             release.resolve();
             await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 200, { timeoutMs: 8000 });
             const delivered = form === "multipart" ? 3 : 2;
@@ -131,7 +131,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             assert.deepEqual(JSON.parse(evidence.content).content, content, "the complete original protocol content remains in #json");
         } finally {
             release.resolve();
-            if (identity !== undefined) await daemon.cancelWorker(identity);
+            if (identity !== undefined) await daemon.cancelSession(identity);
             await daemon.stop();
             await db.close();
         }

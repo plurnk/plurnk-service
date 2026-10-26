@@ -5,17 +5,17 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import LoopDriver from "../../src/core/LoopDriver.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import WorkerCap from "../../src/core/worker-cap.ts";
+import SessionCap from "../../src/core/session-cap.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 for (const op of ["WORK", "FORK"]) {
-    test(`{§worker-lifecycle-no-resurrection}: ${op} cannot admit a child after its source task is cancelled`, async (t) => {
+    test(`{§session-lifecycle-no-resurrection}: ${op} cannot admit a child after its source task is cancelled`, async (t) => {
     serverProposals(t, "accept");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            makeMockResponse(`\`\`\`\`${op} (worker://late-child)
+            makeMockResponse(`\`\`\`\`${op} (session://late-child)
 Do the delegated task.
 \`\`\`\`
 \`\`\`\`WAIT
@@ -25,31 +25,31 @@ Wait for the child.
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-late-${op}` });
-            const workerId = await namedModelWorker(daemon, workspaceId, "main");
+            const sessionId = await namedModelSession(daemon, workspaceId, "main");
             const entered = Promise.withResolvers<void>();
             const release = Promise.withResolvers<void>();
             const finished = Promise.withResolvers<void>();
-            const deny = WorkerCap.deny;
+            const deny = SessionCap.deny;
             const run = LoopDriver.prototype.runLoop;
-            t.mock.method(WorkerCap, "deny", async (...args: Parameters<typeof deny>) => {
+            t.mock.method(SessionCap, "deny", async (...args: Parameters<typeof deny>) => {
                 entered.resolve();
                 await release.promise;
                 return deny(...args);
             });
             t.mock.method(LoopDriver.prototype, "runLoop", async function (this: LoopDriver, ...args: Parameters<typeof run>) {
                 try { return await run.apply(this, args); }
-                finally { if (args[0].workerId === workerId) finished.resolve(); }
+                finally { if (args[0].sessionId === sessionId) finished.resolve(); }
             });
             try {
-                const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Delegate this task." });
+                const accepted = await daemon.runLoop({ workspaceId, sessionId, prompt: "Delegate this task." });
                 await entered.promise;
-                await daemon.cancelWorker({ workspaceId, workerId });
+                await daemon.cancelSession({ workspaceId, sessionId });
                 assert.equal((await db.test_get_loop_status.get({ id: accepted.loopId }))?.status, 499);
                 release.resolve();
                 await finished.promise;
-                const workers = await db.test_workers_by_workspace.all<{ id: number }>({ workspace_id: workspaceId });
-                const tasks = (await Promise.all(workers.map(({ id }) =>
-                    db.test_loop_queue_by_worker.all<{ status: number }>({ worker_id: id })))).flat();
+                const sessions = await db.test_sessions_by_workspace.all<{ id: number }>({ workspace_id: workspaceId });
+                const tasks = (await Promise.all(sessions.map(({ id }) =>
+                    db.test_loop_queue_by_session.all<{ status: number }>({ session_id: id })))).flat();
                 assert.equal(tasks.some(({ status }) => [100, 102, 202].includes(status)), false,
                     "no late runnable child escapes the cancelled parent task");
                 assert.equal(provider.received.length, 1, "cancellation prevented child inference");
@@ -59,20 +59,20 @@ Wait for the child.
                 assert.equal(JSON.parse(receipt.rx).problem.type, "https://problems.plurnk.xyz/daemon/admission/source-not-running");
             } finally {
                 release.resolve();
-                await daemon.cancelWorker({ workspaceId, workerId });
+                await daemon.cancelSession({ workspaceId, sessionId });
             }
         });
     });
 }
 
-test("{§worker-lifecycle-no-resurrection}: cancellation wins over completion with an unread arrival and survives restart", async (t) => {
+test("{§session-lifecycle-no-resurrection}: cancellation wins over completion with an unread arrival and survives restart", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````SEND [200]\nFinished the original request.\n````"),
         makeMockResponse("````SEND [200]\nIndependent new request completed.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-prompt-promotion" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
         const concluding = Promise.withResolvers<void>();
         const conclude = Promise.withResolvers<void>();
         const finished = Promise.withResolvers<void>();
@@ -90,30 +90,30 @@ test("{§worker-lifecycle-no-resurrection}: cancellation wins over completion wi
         });
         t.mock.method(LoopDriver.prototype, "runLoop", async function (this: LoopDriver, ...args: Parameters<typeof run>) {
             try { return await run.apply(this, args); }
-            finally { if (args[0].workerId === workerId) finished.resolve(); }
+            finally { if (args[0].sessionId === sessionId) finished.resolve(); }
         });
         try {
-            const task = await daemon.runLoop({ workspaceId, workerId, prompt: "Finish the original request." });
+            const task = await daemon.runLoop({ workspaceId, sessionId, prompt: "Finish the original request." });
             taskLoopId = task.loopId;
             await concluding.promise;
-            const arrival = await daemon.runLoop({ workspaceId, workerId, prompt: "A now-cancelled follow-up request." });
+            const arrival = await daemon.runLoop({ workspaceId, sessionId, prompt: "A now-cancelled follow-up request." });
             assert.equal(arrival.loopId, task.loopId);
             assert.equal(arrival.action, "injected_next_turn");
-            await daemon.cancelWorker({ workspaceId, workerId });
+            await daemon.cancelSession({ workspaceId, sessionId });
             conclude.resolve();
             await finished.promise;
             assert.equal((await db.test_get_loop_status.get({ id: task.loopId }))?.status, 499,
                 "the pending completion cannot overwrite cancellation");
-            assert.equal((await db.test_loop_queue_by_worker.all<{ status: number }>({ worker_id: workerId }))
+            assert.equal((await db.test_loop_queue_by_session.all<{ status: number }>({ session_id: sessionId }))
                 .some(({ status }) => [100, 102, 202].includes(status)), false, "cancelled unread work was not promoted");
             assert.deepEqual(await db.recovery_orphan_message_sources.all({}), [], "boot cannot resurrect the cancelled arrival");
-            assert.equal((await db.test_messages_by_worker.all({ worker_id: workerId })).length, 2,
+            assert.equal((await db.test_messages_by_session.all({ session_id: sessionId })).length, 2,
                 "both original messages remain available as evidence");
             await daemon.stop();
             const restarted = new Daemon({ db, provider });
             await restarted.start();
             try {
-                const fresh = await restarted.runLoop({ workspaceId, workerId, prompt: "This is an independent new request." });
+                const fresh = await restarted.runLoop({ workspaceId, sessionId, prompt: "This is an independent new request." });
                 await waitForDb(async () => (await db.test_get_loop_status.get({ id: fresh.loopId }))?.status, (status) => status === 200);
                 assert.notEqual(fresh.loopId, task.loopId);
                 assert.equal(provider.received.length, 2, "only the explicit new request ran after restart");
@@ -125,31 +125,31 @@ test("{§worker-lifecycle-no-resurrection}: cancellation wins over completion wi
 });
 
 for (const recipientState of ["idle", "parked"]) {
-    test(`{§worker-lifecycle-no-resurrection}: cancelled SEND cannot deliver to a ${recipientState} recipient`, async (t) => {
+    test(`{§session-lifecycle-no-resurrection}: cancelled SEND cannot deliver to a ${recipientState} recipient`, async (t) => {
         const wait = makeMockResponse("````WAIT\nWaiting for a message.\n````");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(recipientState === "parked" ? [wait] : []),
-            makeMockResponse("````SEND (worker://recipient)\nThis message must not escape cancellation.\n````\n````SEND\nSent.\n````"),
+            makeMockResponse("````SEND (session://recipient)\nThis message must not escape cancellation.\n````\n````SEND\nSent.\n````"),
             wait,
         ] });
         await withDaemon(provider, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-send-${recipientState}` });
-            const sourceWorkerId = await namedModelWorker(daemon, workspaceId, "main");
-            const { workerId } = await daemon.createWorker({ workspaceId, name: "recipient" });
-            await holdChild(db, workspaceId, workerId);
+            const sourceSessionId = await namedModelSession(daemon, workspaceId, "main");
+            const { sessionId } = await daemon.createSession({ workspaceId, name: "recipient" });
+            await holdChild(db, workspaceId, sessionId);
             if (recipientState === "parked") {
-                const task = await daemon.runLoop({ workspaceId, workerId, prompt: "Await instructions." });
+                const task = await daemon.runLoop({ workspaceId, sessionId, prompt: "Await instructions." });
                 await waitForDb(async () => (await db.test_get_loop_status.get({ id: task.loopId }))?.status, (status) => status === 202);
             }
-            const promptsBefore = await db.test_messages_by_worker.all({ worker_id: workerId });
-            const loopsBefore = await db.test_loop_queue_by_worker.all({ worker_id: workerId });
+            const promptsBefore = await db.test_messages_by_session.all({ session_id: sessionId });
+            const loopsBefore = await db.test_loop_queue_by_session.all({ session_id: sessionId });
             const entered = Promise.withResolvers<void>();
             const release = Promise.withResolvers<void>();
             const finished = Promise.withResolvers<void>();
             const inject = Daemon.prototype.inject;
             const run = LoopDriver.prototype.runLoop;
             t.mock.method(Daemon.prototype, "inject", async function (this: Daemon, args: Parameters<typeof inject>[0]) {
-                if (args.workerId === workerId) {
+                if (args.sessionId === sessionId) {
                     entered.resolve();
                     await release.promise;
                 }
@@ -157,18 +157,18 @@ for (const recipientState of ["idle", "parked"]) {
             });
             t.mock.method(LoopDriver.prototype, "runLoop", async function (this: LoopDriver, ...args: Parameters<typeof run>) {
                 try { return await run.apply(this, args); }
-                finally { if (args[0].workerId === sourceWorkerId) finished.resolve(); }
+                finally { if (args[0].sessionId === sourceSessionId) finished.resolve(); }
             });
             try {
-                const task = await daemon.runLoop({ workspaceId, workerId: sourceWorkerId, prompt: "Send instructions to recipient." });
+                const task = await daemon.runLoop({ workspaceId, sessionId: sourceSessionId, prompt: "Send instructions to recipient." });
                 await entered.promise;
-                await daemon.cancelWorker({ workspaceId, workerId: sourceWorkerId });
+                await daemon.cancelSession({ workspaceId, sessionId: sourceSessionId });
                 assert.equal((await db.test_get_loop_status.get({ id: task.loopId }))?.status, 499);
                 release.resolve();
                 await finished.promise;
-                assert.deepEqual(await db.test_messages_by_worker.all({ worker_id: workerId }), promptsBefore,
+                assert.deepEqual(await db.test_messages_by_session.all({ session_id: sessionId }), promptsBefore,
                     "the cancelled source did not append a prompt to the recipient");
-                assert.deepEqual(await db.test_loop_queue_by_worker.all({ worker_id: workerId }), loopsBefore,
+                assert.deepEqual(await db.test_loop_queue_by_session.all({ session_id: sessionId }), loopsBefore,
                     "the cancelled source did not start or wake recipient work");
                 const receipt = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: task.loopId }))
                     .find((row) => row.op === "SEND" && row.status_rx === 409);
@@ -176,8 +176,8 @@ for (const recipientState of ["idle", "parked"]) {
                 assert.equal(JSON.parse(receipt.rx).problem.type, "https://problems.plurnk.xyz/daemon/admission/source-not-running");
             } finally {
                 release.resolve();
-                await daemon.cancelWorker({ workspaceId, workerId: sourceWorkerId });
-                await daemon.cancelWorker({ workspaceId, workerId });
+                await daemon.cancelSession({ workspaceId, sessionId: sourceSessionId });
+                await daemon.cancelSession({ workspaceId, sessionId });
             }
         });
     });

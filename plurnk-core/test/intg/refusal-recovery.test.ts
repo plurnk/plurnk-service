@@ -59,7 +59,7 @@ const runtime = async (t: TestContext) => {
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
-        const written = await db.log_read_by_coordinate.get<Row>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence });
+        const written = await db.log_read_by_coordinate.get<Row>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence });
         assert.ok(written, source);
         return { status: written.status_rx, problem: (JSON.parse(written.rx) as { problem?: Problem }).problem ?? {} };
     };
@@ -204,9 +204,9 @@ test("{§unregistered-scheme-recovery} {§diagnostic-observation} an unregistere
 
 test("{§fts-word-phrase} {§diagnostic-observation} a full-text query FTS5 refuses carries FTS5's message and the dialect's form", async (t) => {
     const { engine, ids, dispatch } = await runtime(t);
-    assert.equal((await dispatch("````EDIT (worker:///notes.md)\nif all(flags):\n````")).status, 201);
+    assert.equal((await dispatch("````EDIT (workspace:///notes.md)\nif all(flags):\n````")).status, 201);
     await engine.warmWorkspaceDerivations(ids.workspaceId);
-    const refused = await dispatch("````FIND (worker:///notes.md) ~all(````");
+    const refused = await dispatch("````FIND (workspace:///notes.md) ~all(````");
     assert.equal(refused.status, 400);
     assert.equal(refused.problem.recovery, "An FTS5 query is barewords, \"quoted phrases\", and AND, OR, NOT and NEAR between them.");
 });

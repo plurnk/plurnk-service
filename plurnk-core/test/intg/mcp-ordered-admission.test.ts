@@ -8,8 +8,8 @@ import type { OperationResult } from "@plurnk/plurnk-contracts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
+import { insertSession, openMigrated } from "./_db.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 import { makeRawMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
@@ -54,27 +54,27 @@ for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid"
         t.after(async () => { await daemon.stop(); await db.close(); });
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: `ordered-${scenario}` });
-        const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-        if (manual) await ownWorker(db, workspaceId, workerId);
+        const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+        if (manual) await ownSession(db, workspaceId, sessionId);
         if (scenario === "deny") await daemon.setWorkspaceCapabilities({ workspaceId, policy: { deny: [{ runtime: "fresh", tool: "inspect" }] } });
         assert.ok(!daemon.executorTags(workspaceId).includes("fresh"), "the parser is not preloaded with the new runtime");
-        const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Configure the server and inspect it.", maxTurns: 2 });
+        const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Configure the server and inspect it.", maxTurns: 2 });
         if (manual) {
             const proposals = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
             assert.deepEqual(received, [], "the invocation cannot run while addition awaits approval");
             assert.ok(!daemon.executorTags(workspaceId).includes("fresh"));
-            if (scenario === "cancel") await daemon.cancelWorker({ workspaceId, workerId, reason: "cancelled before approval" });
+            if (scenario === "cancel") await daemon.cancelSession({ workspaceId, sessionId, reason: "cancelled before approval" });
             else await daemon.resolveProposal(proposals[0].logEntryId, { decision: scenario }, { workspaceId, address: TEST_OWNER });
         }
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
         if (scenario === "cancel") {
-            await waitForDb(() => daemon.readLog({ workspaceId, workerId }), (rows) =>
+            await waitForDb(() => daemon.readLog({ workspaceId, sessionId }), (rows) =>
                 rows.some((row) => row.origin === "model" && row.op === "plurnk" && row.status_rx === 499));
         }
         const succeeds = !["reject", "cancel", "invalid", "disable", "remove", "deny", "quoted"].includes(scenario);
         assert.deepEqual(received, succeeds ? [{ query: "unchanged" }] : [], "only the actually published capability can be invoked");
-        const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+        const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
         const invoked = rows.filter((row) => row.origin === "model" && row.op === "fresh");
         const configured = rows.filter((row) => row.origin === "model" && row.op === "plurnk");
         assert.ok(configured.length > 0);

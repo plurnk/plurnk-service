@@ -88,11 +88,11 @@ test("{§proposal-projection} pending projection rejects malformed durable revie
     const base = {
         logEntryId: 7,
         workspaceId: 11,
-        workerId: 12,
+        sessionId: 12,
         loopId: 13,
         turnId: 14,
         op: "EDIT",
-        scheme: "worker",
+        scheme: "session",
         pathname: "/x",
         rx: JSON.stringify({ status: 202 }),
         attrs: "{}",
@@ -107,7 +107,7 @@ test("{§proposal-projection} pending projection rejects malformed durable revie
         },
         {
             row: { ...base, owner_tools: '[42]' },
-            error: /WorkerOwner/,
+            error: /SessionOwner/,
         },
     ];
 
@@ -123,7 +123,7 @@ test("{§proposal-projection} pending projection rejects malformed durable revie
     }
 });
 
-test("{§proposal-accept-applies} workerApply invokes a discovered scheme through the public proposal context", async () => {
+test("{§proposal-accept-applies} sessionApply invokes a discovered scheme through the public proposal context", async () => {
     const schemes = new SchemeRegistry();
     await schemes.discoverExternal();
     const http = schemes.get("https") as {
@@ -143,7 +143,7 @@ test("{§proposal-accept-applies} workerApply invokes a discovered scheme throug
     };
 
     const db = {
-        envelope_get_worker_by_name: { get: async (args: { workspace_id: number; name: string }) => {
+        envelope_get_session_by_name: { get: async (args: { workspace_id: number; name: string }) => {
             assert.deepEqual(args, { workspace_id: 11, name: "commons" });
             return { id: 15 };
         } },
@@ -180,11 +180,11 @@ test("{§proposal-accept-applies} workerApply invokes a discovered scheme throug
         position: { line: 1, column: 1 },
     } as PlurnkStatement;
 
-    const resolution = await lifecycle.workerApply(
+    const resolution = await lifecycle.sessionApply(
         statement,
         { status: 202, attrs: { operation: "publish" } },
         { decision: "accept", body: "accepted body" },
-        { workspaceId: 11, workerId: 12, loopId: 13, turnId: 14 },
+        { workspaceId: 11, sessionId: 12, loopId: 13, turnId: 14 },
     );
 
     assert.ok(receivedContext);
@@ -331,8 +331,8 @@ test("{§proposal-projection} {§proposal-disposition}: capability allow pre-app
     const baseRow = {
         logEntryId: 101,
         workspaceId: 11,
-        workerId: 12,
-        worker: "user",
+        sessionId: 12,
+        session: "user",
         loopId: 13,
         turnId: 14,
         loopSeq: 1,

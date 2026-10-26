@@ -5,7 +5,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { statement, type Read } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
@@ -15,29 +15,29 @@ process.env.PLURNK_SERVICE_REASONING_ROWS = "0";
 
 const next = PlurnkParser.frame("NOTE", "Continue.");
 
-test("{§worker-initialization-entry}: initialization is an ordinary `_plurnk` operation turn — its survey runs as a program, authors no reasoning, and fabricates no emission", async () => {
+test("{§session-initialization-entry}: initialization is an ordinary `_plurnk` operation turn — its survey runs as a program, authors no reasoning, and fabricates no emission", async () => {
     const db = await openMigrated();
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
         const workspaceId = await insertWorkspace(db, "ops-bootstrap");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
         // A workspace entry, so the workspace survey selects something and the initialization program exists.
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-        const loopId = await insertLoop(db, workerId, 3, "Inspect the initial program.");
-        const context = { workspaceId, workerId, loopId };
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
+        const loopId = await insertLoop(db, sessionId, 3, "Inspect the initial program.");
+        const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: next, reasoning: "Unrequested model reasoning." } }] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(result.status, 102, "the initialization surveys do not change implicit continuation");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         assert.equal(logEntries(packet).find((row) => row.path === "reasoning://alice/3/1"), undefined, "no reasoning is authored, so nothing reads it back");
-        assert.deepEqual(await db.test_reasoning_reads.all<Read>({ worker_id: workerId }), [], "initialization performs no reasoning READ");
-        // Read as another worker: alice's own reads and packets are what this test counts.
-        const observer = await insertWorker(db, workspaceId, null, "observer");
-        const reasoning = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
+        assert.deepEqual(await db.test_reasoning_reads.all<Read>({ session_id: sessionId }), [], "initialization performs no reasoning READ");
+        // Read as another session: alice's own reads and packets are what this test counts.
+        const observer = await insertSession(db, workspaceId, null, "observer");
+        const reasoning = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/3/1) <1,-1>", null)) });
         assert.equal(reasoning.status, 204, "the initialization turn has no reasoning source");
-        const program = await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
+        const program = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(PlurnkParser.frame("READ (ops://alice/3/1) <1,-1>", null)) });
         assert.equal(program.status, 200, "the survey is the turn's ops source, the program that ran");
         assert.ok("content" in program && typeof program.content === "string");
         const operations = PlurnkParser.parseStatements(program.content).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -57,9 +57,9 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-current");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1);
+        const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const read = PlurnkParser.frame("READ (reasoning://alice/1/2) <2,2> <!-- retain this determination -->", null);
         const provider = new Mock({ contextWindow: 100_000, responses: [
@@ -67,15 +67,15 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
             { assistant: { content: next, reasoning: "Not requested." } },
         ] });
         const produced = await engine.runTurn({ ...context, provider, messages: [] });
-        const before = await db.test_reasoning_reads.all<Read>({ worker_id: workerId });
+        const before = await db.test_reasoning_reads.all<Read>({ session_id: sessionId });
         const observation = before.find(({ pathname }) => pathname === "/1/2");
         assert.ok(observation);
         assert.equal(observation.turn_id, produced.turnId);
         const result = JSON.parse(observation.rx);
         assert.equal(result.status, 200, "the READ is complete before any later model turn exists");
         assert.equal(result.content, "selected reasoning");
-        const observer = await insertWorker(db, workspaceId, null, "observer");
-        assert.deepEqual(result, await clientRead(engine, db, { workspaceId, workerId: observer, statement: statement(read) }));
+        const observer = await insertSession(db, workspaceId, null, "observer");
+        assert.deepEqual(result, await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(read) }));
         const firstPacket = (await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet;
         const observed = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
@@ -84,7 +84,7 @@ test("{§reasoning-history}: a model READ of its own reasoning settles in that t
         assert.equal(receipt.aside, undefined);
         assert.ok(packetSection(packet, "emission-history").includes(read), "the paired operation retains the source, scope and aside");
         assert.match(String(receipt.body), /selected reasoning/);
-        assert.deepEqual(await db.test_reasoning_reads.all<Read>({ worker_id: workerId }), before, "later inference neither adds nor updates reasoning READs");
+        assert.deepEqual(await db.test_reasoning_reads.all<Read>({ session_id: sessionId }), before, "later inference neither adds nor updates reasoning READs");
         assert.equal((await db.test_get_packet.get<{ packet: string }>({ id: produced.turnId }))!.packet, firstPacket);
         assert.equal(provider.received.length, 2);
         const absent = await engine.dispatch({ ...context, turnId: observed.turnId, sequence: 50, origin: "model",

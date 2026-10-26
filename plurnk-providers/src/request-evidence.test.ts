@@ -47,7 +47,7 @@ for (const native of [false, true]) {
                 const content = `${identity}: literal "quotes" and a newline\n`;
                 const evidence: unknown[] = [];
                 const result = await provider.generate({
-                    workerId: identity, messages: [{ role: "user", content }],
+                    sessionId: identity, messages: [{ role: "user", content }],
                     observeRequest: async () => async (_accounting, value) => { evidence.push(value); },
                 });
                 assert.equal(result.assistant.content, "observed");
@@ -95,7 +95,7 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
                 return new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } });
             },
         });
-        const result = await provider.generate({ workerId: "witness", messages: [{ role: "user", content: "Inspect the native body." }],
+        const result = await provider.generate({ sessionId: "witness", messages: [{ role: "user", content: "Inspect the native body." }],
             observeRequest: async () => async (_accounting, value) => { evidence = value as typeof evidence; },
         });
         assert.equal(result.assistant.content, "observed");
@@ -127,7 +127,7 @@ test("{§provider-request-evidence} native Messages failures retain SDK reasonin
         temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
     });
     const records: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
-    await assert.rejects(provider.generate({ workerId: "witness", messages: [],
+    await assert.rejects(provider.generate({ sessionId: "witness", messages: [],
         observeRequest: async () => async (accounting, evidence) => { records.push({ accounting, evidence }); },
     }), /Native stream failed/);
     assert.equal(records.length, 1);
@@ -156,7 +156,7 @@ for (const reported of [false, true]) {
             }),
         });
         await assert.rejects(provider.generate({
-            workerId: "witness", messages: [],
+            sessionId: "witness", messages: [],
             observeRequest: async () => async (accounting, evidence) => { settled.push({ accounting, evidence }); },
         }), /Response stream ended without a finish reason/);
         assert.equal(settled.length, 1);
@@ -199,7 +199,7 @@ for (const capture of [false, true]) {
             },
         });
         const result = await provider.generate({
-            workerId: "witness", messages: [],
+            sessionId: "witness", messages: [],
             observeRequest: async () => async (accounting, evidence) => { records.push({ accounting, evidence }); },
         });
         assert.equal(result.assistant.content, "recovered");

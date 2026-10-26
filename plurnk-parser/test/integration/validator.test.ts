@@ -174,8 +174,8 @@ test("{§path-syntax} Validator: ParsedPath accepts url with full decomposition"
 test("{§path-syntax} Validator: ParsedPath accepts url with null authority fields", () => {
     const { valid } = Validator.validateParsedPath({
         kind: "url",
-        raw: "worker://philosophy",
-        scheme: "worker",
+        raw: "session://philosophy",
+        scheme: "session",
         username: null,
         password: null,
         hostname: "philosophy",

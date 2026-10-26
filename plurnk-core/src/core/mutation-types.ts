@@ -94,7 +94,7 @@ export type PrepareDataRepresentation = (args: {
 
 export type ProposalIds = {
     workspaceId: number;
-    workerId: number;
+    sessionId: number;
     loopId: number;
     turnId: number;
     // {§log-mutation-patch} — the operation row being settled, for the facts a scheme keeps on it.

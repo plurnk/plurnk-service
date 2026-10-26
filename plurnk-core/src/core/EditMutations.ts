@@ -27,7 +27,7 @@ export default class EditMutations {
     readonly #editTargetIdentity: (
         statement: EditStatement,
         workspaceId: number,
-        workerId: number,
+        sessionId: number,
     ) => Promise<string | null>;
     readonly #resolveDataEntryAddress: EntryAddressBinding["resolve"];
     readonly #preparedEdits = new WeakMap<EditStatement, {
@@ -47,7 +47,7 @@ export default class EditMutations {
         editTargetIdentity: (
             statement: EditStatement,
             workspaceId: number,
-            workerId: number,
+            sessionId: number,
         ) => Promise<string | null>;
         resolveDataEntryAddress: EntryAddressBinding["resolve"];
     }) {
@@ -190,12 +190,12 @@ export default class EditMutations {
         // that does not verify is content and is written as authored, with the fact reported.
         let prefixFact: EditMergeFact | undefined;
         // A paste from an older READ verifies against the anchors that READ actually published
-        // (this worker's log rows for the same identity), so a stale paste is still a paste.
+        // (this session's log rows for the same identity), so a stale paste is still a paste.
         type PublishedRead = { readonly startLine: number; readonly anchors: readonly string[] };
         let publishedReads: PublishedRead[] | null = null;
         const publishedAnchors = async (): Promise<PublishedRead[]> => {
             if (publishedReads !== null) return publishedReads;
-            const rows = await ctx.db.edit_published_reads.all<{ start_line: number; anchors: string }>({ worker_id: ctx.workerId, identity: lineAnchorIdentity });
+            const rows = await ctx.db.edit_published_reads.all<{ start_line: number; anchors: string }>({ session_id: ctx.sessionId, identity: lineAnchorIdentity });
             publishedReads = rows.map(({ start_line, anchors }) => {
                 const parsed: unknown = JSON.parse(anchors);
                 if (!Array.isArray(parsed) || !parsed.every(LineAnchors.isAnchor)) {

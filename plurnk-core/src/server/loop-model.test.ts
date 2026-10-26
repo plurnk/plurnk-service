@@ -46,7 +46,7 @@ test("{§methods-loop-run-model} a malformed exact model selector throws legibly
     }
 });
 
-test("{§methods-loop-run-model} an undeclared alias throws - never a silent wrong-model worker", () => {
+test("{§methods-loop-run-model} an undeclared alias throws - never a silent wrong-model session", () => {
     const { result } = failureFrom(() => resolveLoopRoute("ghost", DECLARED));
     assert.equal(result.problem.type, "https://problems.plurnk.xyz/daemon/provider/alias-not-found");
     assert.equal(result.problem.status, 404);

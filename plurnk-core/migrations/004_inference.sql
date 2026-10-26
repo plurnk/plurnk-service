@@ -47,7 +47,7 @@ WHEN COALESCE((
         AND t.producer = 'model' AND t.kind = 'inference'
     FROM turns t
     JOIN loops l ON l.id = t.loop_id
-    JOIN workers w ON w.id = l.worker_id
+    JOIN sessions w ON w.id = l.session_id
     WHERE t.id = NEW.turn_id
 ), 0) != 1
 BEGIN
@@ -387,7 +387,7 @@ OR EXISTS (
         FROM inference_calls call
         JOIN turns request_turn ON request_turn.id = call.turn_id
         JOIN loops request_loop ON request_loop.id = request_turn.loop_id
-        JOIN log_entries entry ON entry.worker_id = request_loop.worker_id
+        JOIN log_entries entry ON entry.session_id = request_loop.session_id
         JOIN turns entry_turn ON entry_turn.id = entry.turn_id
         JOIN loops entry_loop ON entry_loop.id = entry_turn.loop_id
         WHERE call.id = NEW.id
@@ -397,5 +397,5 @@ OR EXISTS (
     )
 )
 BEGIN
-    SELECT RAISE(ABORT, 'model call native inputs must be unique successful READ coordinates owned by its worker');
+    SELECT RAISE(ABORT, 'model call native inputs must be unique successful READ coordinates owned by its session');
 END;

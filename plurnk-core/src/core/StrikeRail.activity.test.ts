@@ -23,8 +23,8 @@ test("{§engine-cycle-evidence} every operational operand distinguishes activity
         ["````MOVE (a) <1> (b) <0>````", "````MOVE (a) <2> (b) <0>````"],
         ["````COPY (a) <1> (b) <0>````", "````COPY (a) <1> (b) <-1>````"],
         ["````READ (https://example.test/) [{\"Accept\": \"text/plain\"}]````", "````READ (https://example.test/) [{\"Accept\": \"application/json\"}]````"],
-        ["````SEND (worker://child)\none\n````", "````SEND (worker://child)\ntwo\n````"],
-        ["````WORK (worker://child)\none\n````", "````WORK (worker://child)\ntwo\n````"],
+        ["````SEND (session://child)\none\n````", "````SEND (session://child)\ntwo\n````"],
+        ["````WORK (session://child)\none\n````", "````WORK (session://child)\ntwo\n````"],
         ["````READ (a)````\n````EDIT (b) <1>\nx\n````", "````EDIT (b) <1>\nx\n````\n````READ (a)````"],
     ]) {
         assert.notEqual(fingerprint(first), fingerprint(second), `${first} differs from ${second}`);

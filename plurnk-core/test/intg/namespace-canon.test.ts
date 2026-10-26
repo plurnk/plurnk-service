@@ -14,7 +14,7 @@ import MembershipMaterialization from "../../src/core/MembershipMaterialization.
 import GitMembership from "../../src/core/git-membership.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
-import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 import { resourcePaths } from "./_find.ts";
@@ -31,8 +31,8 @@ const setup = async (databasePath?: string) => {
     const db = await openMigrated(databasePath);
     const workspaceId = await insertWorkspace(db, `canon-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
-    const workerId = await insertWorker(db, workspaceId);
-    const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+    const sessionId = await insertSession(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
     return { root, db, workspaceId, ctx };
 };
 
@@ -174,12 +174,12 @@ test("{§fs-canonical-name} the log row: address columns speak canon while tx re
         const SchemeRegistry = (await import("../../src/core/SchemeRegistry.ts")).default;
         const { insertLoop, insertTurn } = await import("./_db.ts");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const loopId = await insertLoop(db, ctx.workerId, 1, "go");
+        const loopId = await insertLoop(db, ctx.sessionId, 1, "go");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const spelling = `${root}/./readme.md`; // a deliberately ugly legal spelling
         const r = await engine.dispatch({
-            statement: readStmt(spelling), workspaceId, workerId: ctx.workerId, loopId, turnId, sequence: 1, origin: "model",
+            statement: readStmt(spelling), workspaceId, sessionId: ctx.sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.status, 200, "the ugly spelling resolves");
         const row = await db.test_last_log_row.get<{ pathname: string | null; tx: string }>({ loop_id: loopId });

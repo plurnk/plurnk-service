@@ -3,7 +3,7 @@ import test from "node:test";
 import { writtenOp } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "../../src/index.ts";
 
-for (const path of ["notes.md", "log:///1/2/3", "log://worker/1/2/3"]) {
+for (const path of ["notes.md", "log:///1/2/3", "log://session/1/2/3"]) {
     for (const heading of [
         `KILL (${path}) <1>`, `KILL <1> (${path})`, `KILL → ${path} <1>`,
         `KILL (${path}<1>)`, `KILL (${path}) <!-- selected --> <1>`,
@@ -35,7 +35,7 @@ for (const path of ["notes.md", "log:///1/2/3", "log://worker/1/2/3"]) {
 }
 
 test("{§log-kill-distillation}: every accepted heading preserves the exact distillation and the following operation", () => {
-    for (const path of ["log:///1/2/3", "log://worker/1/2/3"]) {
+    for (const path of ["log:///1/2/3", "log://session/1/2/3"]) {
         for (const heading of [`KILL (${path}) <1>`, `KILL <1> (${path})`, `KILL → ${path} <1>`]) {
             const body = "Retained fact: 42.\n\nEvidence 🐜 stays here.";
             const result = PlurnkParser.parse(`\`\`\`${heading}\n${body}\n\`\`\`\n\`\`\`READ (after.md)\n\`\`\``);

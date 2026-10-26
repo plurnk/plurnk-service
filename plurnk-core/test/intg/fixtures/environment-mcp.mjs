@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 
 const values = {
     witness: process.env.ENV_WITNESS ?? null,
-    private: process.env.WORKER_ONLY ?? null,
+    private: process.env.SESSION_ONLY ?? null,
     bound: process.env.BOUND_VALUE ?? null,
     catalog: process.env.OPENAI_API_KEY ?? null,
     plurnk: process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV ?? null,

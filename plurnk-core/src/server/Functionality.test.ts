@@ -34,8 +34,8 @@ test("{§module-workspace-quiescence} a queued catalog refresh cannot block the 
             options?.publish?.();
             publications.push("published");
         }),
-        readWorkerModuleState: async () => null,
-        replaceWorkerModuleState: async () => {},
+        readSessionModuleState: async () => null,
+        replaceSessionModuleState: async () => {},
         withWorkspaceGate: (_workspaceId, _owner, mode, run) => exclusively(mode, run),
         atWorkspaceBoundary: (workspaceId, run) => gate.atBoundary(workspaceId, run),
         retainWorkspace: () => () => {},
@@ -87,8 +87,8 @@ const recording = (): { coordinator: Functionality; actions: Map<string, ModuleA
         registerWorkspaceCapabilityProvider: () => {},
         readWorkspaceModuleState: async () => null,
         replaceWorkspaceCapabilities: async () => {},
-        readWorkerModuleState: async () => null,
-        replaceWorkerModuleState: async () => {},
+        readSessionModuleState: async () => null,
+        replaceSessionModuleState: async () => {},
         withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
         atWorkspaceBoundary: (_workspaceId, run) => run(),
         retainWorkspace: () => () => {},
@@ -134,8 +134,8 @@ for (const phase of ["resolution", "preparation", "publication"] as const) {
                     await hold("publication");
                     options?.publish?.();
                 },
-                readWorkerModuleState: async () => null,
-                replaceWorkerModuleState: async () => {},
+                readSessionModuleState: async () => null,
+                replaceSessionModuleState: async () => {},
                 withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
                 atWorkspaceBoundary: (_workspaceId, run) => run(),
                 retainWorkspace: () => () => {},
@@ -184,7 +184,7 @@ for (const phase of ["resolution", "preparation", "publication"] as const) {
     }
 }
 
-for (const scope of ["workspace", "worker"] as const) {
+for (const scope of ["workspace", "session"] as const) {
     test(`{§functionality-admission-preparation} ${scope} admission data reaches only its candidate preparation`, async () => {
         let provider!: WorkspaceCapabilityProvider;
         let state: unknown = null;
@@ -205,8 +205,8 @@ for (const scope of ["workspace", "worker"] as const) {
                 publish(replacement.state);
                 options?.publish?.();
             },
-            readWorkerModuleState: async () => state,
-            replaceWorkerModuleState: async (_worker, _owner, next) => { publish(next); },
+            readSessionModuleState: async () => state,
+            replaceSessionModuleState: async (_session, _owner, next) => { publish(next); },
             withWorkspaceGate: (_workspaceId, _owner, _mode, run) => run(),
             atWorkspaceBoundary: (_workspaceId, run) => run(),
             retainWorkspace: () => () => {},
@@ -228,7 +228,7 @@ for (const scope of ["workspace", "worker"] as const) {
             },
         }));
         if (scope === "workspace") await provider.activate({ workspaceId: 1, retain: () => () => {} });
-        const identity = { workspaceId: 1, workerId: 2, scope };
+        const identity = { workspaceId: 1, sessionId: 2, scope };
         const input = { alias: "entry", definition: { value: "original" } };
         const added = await handle.invoke("replace", input, identity);
         assert.deepEqual(seen.at(-1), { ...input, preparation: payload });
@@ -271,7 +271,7 @@ test("{§functionality-discover-advertisement} discover's input schema carries e
     coordinator.register(family("one", { discovery: { inputs: ["source"] }, discover }));
     coordinator.register(family("two", { discovery: { inputs: ["source", "configuration"] }, discover }));
     coordinator.register(family("all", { discovery: { inputs: ["query", "source"], emptyListsAll: true }, discover }));
-    coordinator.register(family("scoped", { scopes: ["worker", "workspace"], discovery: { inputs: ["query"] }, discover }));
+    coordinator.register(family("scoped", { scopes: ["session", "workspace"], discovery: { inputs: ["query"] }, discover }));
     coordinator.register(family("none"));
     const schema = (name: string): JsonSchema | undefined => actions.get(name)?.inputSchema;
     assert.deepEqual(schema("workspace.one.discover"), {
@@ -284,10 +284,10 @@ test("{§functionality-discover-advertisement} discover's input schema carries e
     assert.deepEqual(schema("workspace.all.discover"), {
         type: "object", additionalProperties: false, properties: { query: QUERY, source: QUERY },
     }, "an empty request lists everything, so it names no input");
-    for (const scope of ["worker", "workspace"]) {
+    for (const scope of ["session", "workspace"]) {
         assert.deepEqual(schema(`${scope}.scoped.discover`), {
             type: "object", additionalProperties: false, required: ["query"],
-            properties: { query: QUERY, scope: { enum: ["worker", "workspace"], description: "Definition scope; model calls default to worker." } },
+            properties: { query: QUERY, scope: { enum: ["session", "workspace"], description: "Definition scope; model calls default to session." } },
         }, "a multi-scope family's discover adds scope beside its inputs");
     }
     assert.deepEqual([...actions.keys()].filter((name) => name.startsWith("workspace.none.")).toSorted(),

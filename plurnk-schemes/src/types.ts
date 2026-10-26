@@ -28,7 +28,7 @@ interface SchemeManifestBase {
     // name it without declaring a fixed mimetype; empty means no default.
     readonly defaultChannel: string;
     // data: entry-bearing content. logging: log:// rows. control: addresses
-    // sister workers and owns no entries (worker://: spawn/fork/irc).
+    // sister sessions and owns no entries (session://: spawn/fork/irc).
     readonly writableBy: ReadonlyArray<WriterTier>;
     readonly volatile: boolean;
     readonly modelVisible: boolean;

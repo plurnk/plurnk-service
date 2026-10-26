@@ -1,8 +1,8 @@
 ```NOTE
-tester4's streams show it stashed and popped changes mid-run, and its "1 error" report lacks verbatim details. I'll get a clean, verbatim failure report from a fresh worker.
+tester4's streams show it stashed and popped changes mid-run, and its "1 error" report lacks verbatim details. I'll get a clean, verbatim failure report from a fresh session.
 ```
 
-```WORK (worker://verifier) <!-- clean verification with verbatim output -->
+```WORK (session://verifier) <!-- clean verification with verbatim output -->
 Run from the repository root, read-only (do NOT edit files, do NOT use git stash):
 1. python tests/runtests.py delete --parallel 1 -v 1 2>&1 | tail -n 60
 2. python tests/runtests.py proxy_models --parallel 1 2>&1 | tail -n 5
@@ -15,13 +15,13 @@ Paste the tail output of each run verbatim, including any FAILED/ERROR blocks an
 ## Log
 
 ### log:///1/17/1/SEND · 111
-{"lines":3,"resource":"message://c95555b7/31fa4a0e","source":"worker://verifier","status":200}
+{"lines":3,"resource":"message://c95555b7/31fa4a0e","source":"session://verifier","status":200}
 1:Results:
 2:
 3:1. `python tests/runtests.py delete --parallel 1 -v 1 2>&1 | tail -n 60`:
 
 ### log:///1/17/2/READ → ops://verifier/1 · 556
-{"origin":"_plurnk","range":"8 lines","source":"worker://verifier"}
+{"origin":"_plurnk","range":"8 lines","source":"session://verifier"}
 1:Results:
 2:
 3:1. `python tests/runtests.py delete --parallel 1 -v 1 2>&1 | tail -n 60`:
@@ -36,15 +36,15 @@ Paste the tail output of each run verbatim, including any FAILED/ERROR blocks an
 1:All green: delete suite 53 tests OK (skipped=1), proxy_models 29 OK. The earlier "1 error" from tester4 was an artifact of its stash/restore sequence racing with its own run. Final state is consistent.
 
 ## Delegation
-{"workers":[],"streams":[]}```KILL (log:///1/[1-16]/*/{sh,READ,FIND}) <!-- trim bulky intermediate reads/streams -->
+{"sessions":[],"streams":[]}```KILL (log:///1/[1-16]/*/{sh,READ,FIND}) <!-- trim bulky intermediate reads/streams -->
 ```Failed to deliver final response```
 
 ### log:///1/19/1/NOTE · 84
-1:KILL with parameters is not a deliverable. All workers resolved, suites pass — deliver final response now.## Worker
-{"path":"worker://c95555b7","parent":null,"loop":1,"turn":20}
+1:KILL with parameters is not a deliverable. All sessions resolved, suites pass — deliver final response now.## Session
+{"path":"session://c95555b7","parent":null,"loop":1,"turn":20}
 
 ## Delegation
-{"workers":[],
+{"sessions":[],
 "streams":[]}
 
 ## Git Status

@@ -362,35 +362,35 @@ const extractMessageId = (source: string | null, sessionId: string): string | nu
 };
 
 export default class SessionTranslator {
-    readonly #sessionId: string;
+    readonly #acpSessionId: string;
     readonly #workspaceId: number;
-    readonly #workerId: number;
+    readonly #sessionId: number;
     readonly #origin: string | undefined;
     readonly #streamedReasoningTurns = new Set<string>();
     readonly #toolCallIdByEntryId = new Map<number, string>();
 
     constructor(args: {
-        readonly sessionId: string;
+        readonly acpSessionId: string;
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly origin?: string;
     }) {
-        this.#sessionId = args.sessionId;
+        this.#acpSessionId = args.acpSessionId;
         this.#workspaceId = args.workspaceId;
-        this.#workerId = args.workerId;
+        this.#sessionId = args.sessionId;
         this.#origin = args.origin;
     }
 
-    get sessionId(): string {
-        return this.#sessionId;
+    get acpSessionId(): string {
+        return this.#acpSessionId;
     }
 
     get workspaceId(): number {
         return this.#workspaceId;
     }
 
-    get workerId(): number {
-        return this.#workerId;
+    get sessionId(): number {
+        return this.#sessionId;
     }
 
     get origin(): string | undefined {
@@ -540,8 +540,8 @@ export default class SessionTranslator {
                 && Array.isArray(parsedRx.answers)
                 && parsedRx.answers.some((addr) => extractMessageId(typeof addr === "string" ? addr : null, sessionId) !== null);
         }
-        if (entry.scheme === "worker") return false;
-        if (typeof attrs.to === "string" && attrs.to.startsWith("worker://")) return false;
+        if (entry.scheme === "session" || entry.scheme === "workspace") return false;
+        if (typeof attrs.to === "string" && (attrs.to.startsWith("session://") || attrs.to.startsWith("workspace://"))) return false;
         if (isRecord(parsedRx) && Array.isArray(parsedRx.answers)) return true;
         if (attrs.kind === "response" || attrs.kind === "message") return true;
         if (entry.op === "SEND" && (entry.scheme === null || entry.scheme === undefined || entry.scheme === "acp") && !entry.pathname) return true;
@@ -549,7 +549,7 @@ export default class SessionTranslator {
     }
 
     logEntry({ entry }: LogEntryNotification): AcpSessionUpdate[] {
-        if (entry.worker_id !== this.#workerId) return [];
+        if (entry.session_id !== this.#sessionId) return [];
 
         const updates: AcpSessionUpdate[] = [];
         const coordinate = SessionTranslator.coordinateOf(entry);
@@ -562,7 +562,7 @@ export default class SessionTranslator {
         const address = rawAddress ?? (typeof attrs.path === "string" ? attrs.path : null);
         const statusRx = SessionTranslator.#statusOf(entry);
 
-        const reasoningTurnKey = `${entry.worker_id}:${entry.turn_id}`;
+        const reasoningTurnKey = `${entry.session_id}:${entry.turn_id}`;
         if (
             entry.op !== null
             && typeof entry.reasoning === "string"
@@ -574,7 +574,7 @@ export default class SessionTranslator {
                 ? `model-call-${entry.reasoning_model_call_id}/request-${entry.reasoning_request_sequence ?? 1}/reasoning`
                 : `${coordinate}/reasoning`;
             updates.push({
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "agent_thought_chunk",
                     messageId: thoughtMessageId,
@@ -584,7 +584,7 @@ export default class SessionTranslator {
         }
 
         // 1. Agent response message
-        const isResponse = SessionTranslator.#isResponseMessage(entry, parsedRx, attrs, text, this.#sessionId);
+        const isResponse = SessionTranslator.#isResponseMessage(entry, parsedRx, attrs, text, this.#acpSessionId);
         const isBodiedWait = entry.origin === "model" && entry.op === "WAIT" && text.trim().length > 0;
         const opMeta = {
             id: entry.id,
@@ -601,7 +601,7 @@ export default class SessionTranslator {
         };
         if (isResponse || isBodiedWait) {
             updates.push({
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "agent_message_chunk",
                     messageId: coordinate,
@@ -629,7 +629,7 @@ export default class SessionTranslator {
                 ? [{ type: "content", content: { type: "text", text } }]
                 : contentBlocks;
             updates.push({
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "tool_call_update",
                     toolCallId: targetCallId,
@@ -647,9 +647,9 @@ export default class SessionTranslator {
             && entry.op === "SEND"
             && (attrs.kind === "message" || typeof entry.answering === "string")
         ) {
-            const messageId = extractMessageId(entry.source, this.#sessionId) ?? coordinate;
+            const messageId = extractMessageId(entry.source, this.#acpSessionId) ?? coordinate;
             updates.push({
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "user_message_chunk",
                     messageId,
@@ -665,7 +665,7 @@ export default class SessionTranslator {
             if (attempt !== null && typeof attempt.verb === "string") {
                 const verb = attempt.verb;
                 updates.push({
-                    sessionId: this.#sessionId,
+                    sessionId: this.#acpSessionId,
                     update: {
                         sessionUpdate: "tool_call_update",
                         toolCallId: coordinate,
@@ -724,11 +724,11 @@ export default class SessionTranslator {
             const baseTitle = address === null ? entry.op : `${entry.op} (${address})`;
             const title = comment === null ? baseTitle : `${baseTitle} — ${comment}`;
             const bodyUrl = this.#origin !== undefined
-                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#workerId}/entry?target=${encodeURIComponent(`log:///${coordinate}/${entry.op}`)}`
+                ? `${this.#origin}/acp/${this.#workspaceId}/${this.#sessionId}/entry?target=${encodeURIComponent(`log:///${coordinate}/${entry.op}`)}`
                 : undefined;
 
             updates.push({
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "tool_call_update",
                     toolCallId: coordinate,
@@ -758,7 +758,7 @@ export default class SessionTranslator {
                         ? parsedRx.content
                         : undefined;
                 updates.push({
-                    sessionId: this.#sessionId,
+                    sessionId: this.#acpSessionId,
                     update: {
                         sessionUpdate: "terminal_update",
                         terminalId,
@@ -780,7 +780,7 @@ export default class SessionTranslator {
 
     reasoning(event: ReasoningEventNotification | Record<string, unknown>): AcpSessionUpdate[] {
         const rec = event as Record<string, unknown>;
-        if (rec.workerId !== this.#workerId) return [];
+        if (rec.sessionId !== this.#sessionId) return [];
         const phase = typeof rec.phase === "string" ? rec.phase : "content";
         const delta = typeof rec.delta === "string" ? rec.delta : "";
         if (phase !== "content" || delta.length === 0) return [];
@@ -796,11 +796,11 @@ export default class SessionTranslator {
                 : 1;
         const messageId = `model-call-${callId}/request-${reqSeq}/reasoning`;
         if (typeof rec.turnId === "number" || typeof rec.turnId === "string") {
-            const wId = typeof rec.workerId === "number" || typeof rec.workerId === "string" ? rec.workerId : this.#workerId;
+            const wId = typeof rec.sessionId === "number" || typeof rec.sessionId === "string" ? rec.sessionId : this.#sessionId;
             this.#streamedReasoningTurns.add(`${wId}:${rec.turnId}`);
         }
         return [{
-            sessionId: this.#sessionId,
+            sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "agent_thought_chunk",
                 messageId,
@@ -812,7 +812,7 @@ export default class SessionTranslator {
     terminalChunk(entryId: number, text: string, meta?: Record<string, unknown>): AcpSessionUpdate[] {
         if (text.length === 0) return [];
         return [{
-            sessionId: this.#sessionId,
+            sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "terminal_output_chunk",
                 terminalId: terminalIdForEntry(entryId),
@@ -826,7 +826,7 @@ export default class SessionTranslator {
         const terminalId = terminalIdForEntry(entryId);
         const updates: AcpSessionUpdate[] = [
             {
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "terminal_update",
                     terminalId,
@@ -840,7 +840,7 @@ export default class SessionTranslator {
         const toolCallId = this.#toolCallIdByEntryId.get(entryId);
         if (toolCallId !== undefined) {
             updates.push({
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "tool_call_update",
                     toolCallId,
@@ -865,7 +865,7 @@ export default class SessionTranslator {
                 ? rec.code
                 : "notice";
         return [{
-            sessionId: this.#sessionId,
+            sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "notice",
                 severity,
@@ -881,9 +881,9 @@ export default class SessionTranslator {
     }
 
     outside(event: OutsideEventNotification): AcpSessionUpdate[] {
-        if (event.workerId !== this.#workerId) return [];
+        if (event.sessionId !== this.#sessionId) return [];
         return [{
-            sessionId: this.#sessionId,
+            sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "agent_message_chunk",
                 messageId: `outside-${event.coordinate}`,
@@ -893,13 +893,13 @@ export default class SessionTranslator {
     }
 
     packet(event: ApplicationLoopPacket): AcpSessionUpdate[] {
-        if (event.workerId !== this.#workerId) return [];
+        if (event.sessionId !== this.#sessionId) return [];
         const curationWeight = event.gauge.curationWeight ?? 0;
         const curationBudget = event.gauge.curationBudget ?? 0;
         const contextTokens = event.gauge.contextTokens ?? null;
         const contextCapacity = event.gauge.contextCapacity ?? null;
         return [{
-            sessionId: this.#sessionId,
+            sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "usage_update",
                 used: contextTokens ?? curationWeight,
@@ -920,7 +920,7 @@ export default class SessionTranslator {
 
     terminated(event: TerminatedNotification | Record<string, unknown>): AcpSessionUpdate[] {
         const rec: Record<string, unknown> = isRecord(event) ? event : {};
-        if (rec.workerId !== this.#workerId) return [];
+        if (rec.sessionId !== this.#sessionId) return [];
         const usageObj = isRecord(rec.usage) ? rec.usage : {};
         const accounting = isRecord(usageObj.accounting) ? usageObj.accounting : {};
         const costUsd = accounting.costUsd ?? (typeof accounting.knownCostUsd === "string" || typeof accounting.knownCostUsd === "number" ? accounting.knownCostUsd : null);
@@ -1003,7 +1003,7 @@ export default class SessionTranslator {
         const updates: AcpSessionUpdate[] = [];
         if (problem !== null) {
             updates.push({
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "notice",
                     severity: "error",
@@ -1014,7 +1014,7 @@ export default class SessionTranslator {
         }
         updates.push(
             {
-                sessionId: this.#sessionId,
+                sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "usage_update",
                     used,
@@ -1033,8 +1033,10 @@ export default class SessionTranslator {
                 },
             },
             {
-                sessionId: this.#sessionId,
-                update: idleUpdate,
+                sessionId: this.#acpSessionId,
+                update: {
+                    ...idleUpdate,
+                },
             },
         );
         return updates;
@@ -1076,9 +1078,9 @@ export default class SessionTranslator {
 
         if (options.beforeLoopSeq === undefined && options.exactLoopSeq === undefined) {
             for (const msg of inbox) {
-                const messageId = extractMessageId(msg.source ?? msg.path, translator.#sessionId) ?? msg.path;
+                const messageId = extractMessageId(msg.source ?? msg.path, translator.#acpSessionId) ?? msg.path;
                 updates.push({
-                    sessionId: translator.#sessionId,
+                    sessionId: translator.#acpSessionId,
                     update: {
                         sessionUpdate: "user_message_chunk",
                         messageId,
@@ -1095,7 +1097,7 @@ export default class SessionTranslator {
         const hasNewer = newestSelected !== undefined && allLoopSeqs.some((seq) => seq > newestSelected);
 
         const baseOrigin = translator.#origin ?? "http://127.0.0.1";
-        const messagesBase = `${baseOrigin}/acp/${translator.#workspaceId}/${translator.#workerId}/messages?session=${encodeURIComponent(translator.#sessionId)}`;
+        const messagesBase = `${baseOrigin}/acp/${translator.#workspaceId}/${translator.#sessionId}/messages?session=${encodeURIComponent(translator.#acpSessionId)}`;
         const history: ReplayHistoryLinks = {
             ...(hasOlder && oldestSelected !== undefined ? { older: `${messagesBase}&before=${oldestSelected}` } : {}),
             ...(hasNewer && newestSelected !== undefined ? { newer: `${messagesBase}&after=${newestSelected}` } : {}),

@@ -10,7 +10,7 @@ import { lastReply, logEntries } from "./_packet.ts";
 // Every operation is on the line after its fence.
 const MISFENCED = [
     "````\nsh <!-- brand presence -->\nprintf plurnk\n````",
-    "````\nREAD (worker:///notes.md) <!-- retry the notes -->\n````",
+    "````\nREAD (workspace:///notes.md) <!-- retry the notes -->\n````",
     "````\nWAIT\nResearch positioning.\n````",
 ].join("\n\n");
 
@@ -31,7 +31,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-nested-fences" });
-            const { finalStatus, loopId, result, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Explain with examples." });
+            const { finalStatus, loopId, result, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "Explain with examples." });
             assert.equal(finalStatus, 200);
             assert.equal(result.content, undefined);
             assert.equal(await lastReply(db, loopId), body, "the client receives the entire answer, not its prefix");
@@ -39,7 +39,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["SEND", 200], ["SEND", 200]], "quoted commands produce no dispatch, proposals or execution receipts");
             const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: loopId });
             assert.equal(turns.filter(({ producer }) => producer === "model").length, 1, "no recovery turn or unnecessary continuation");
-            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: modelWorkerId! });
+            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
             assert.ok(sources.some((row) => row.kind === "ops" && row.content === source), "the original emission remains forensic evidence");
         } finally { ws.close(); }
     });
@@ -55,7 +55,7 @@ test("{§forgotten-tag} {§retrieval-annotation}: recovered READ preserves neste
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-misfenced" });
-            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk" });
+            const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "research plurnk" });
             assert.equal(finalStatus, 200, "the second turn concludes");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; tx: string }>({ loop_id: loopId });
             const model = rows.filter((r) => r.origin === "model").map(({ op, tx }) => ({ op, tx }));
@@ -64,7 +64,7 @@ test("{§forgotten-tag} {§retrieval-annotation}: recovered READ preserves neste
             assert.ok(model.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body === "````\n\n````\nWAIT\nResearch positioning."),
                 "the complete annotation survives rather than executing its quoted WAIT");
             assert.ok(model.some(({ op, tx }) => op === "NOTE" && /printf plurnk/u.test(JSON.parse(tx).body)), "a bare executor name is a word: its block stays quoted text, and beside the operations that text is the turn's NOTE ({§outside-text})");
-            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: modelWorkerId! });
+            const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: modelSessionId! });
             assert.equal(sources.some((row) => row.kind === "outside"), false, "a turn with fenced operations keeps no outside source");
             assert.match(JSON.stringify(mock.received[1]), /ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line/, "the next packet states the form once");
             assert.equal(await lastReply(db, loopId), "the answer");
@@ -103,7 +103,7 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-receipt" });
-            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
+            const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "answer me" });
             assert.equal(finalStatus, 200);
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
             const send = rows.find((r) => r.origin === "model" && r.op === "SEND");
@@ -112,11 +112,11 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
             assert.ok(Array.isArray(receipt.answers), "a reply names answered message addresses in answers");
             assert.equal(Object.hasOwn(receipt, "recipients"), false, "answered messages are not mislabeled as recipient actors");
             const { answers } = receipt;
-            assert.ok(modelWorkerId !== undefined);
+            assert.ok(modelSessionId !== undefined);
             const arrivals = rows.filter((r) => r.origin === "_plurnk" && r.op === "SEND");
             assert.equal(arrivals.length, 1, "one message in the loop");
             assert.equal(answers.length, 1, "the receipt names the one open message");
-            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: modelWorkerId }))!.workspace_id, path: answers[0] });
+            const source = await db.message_source_by_address.get<{ body: string }>({ workspace_id: (await db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: modelSessionId }))!.workspace_id, path: answers[0] });
             assert.equal(source?.body, "answer me", "the receipt names the durable message source");
         } finally { ws.close(); }
     });
@@ -133,10 +133,10 @@ test("{§packet-extent-metadata} {§context-fit}: a sent reply renders whole in 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "send-preview" });
-            const { finalStatus, loopId, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "Send the report." });
+            const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "Send the report." });
             assert.equal(finalStatus, 200);
             assert.equal(await lastReply(db, loopId), body, "the client receives every line");
-            const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", workerId: modelWorkerId });
+            const next = await runLoopToTerminal(ws, 3, { prompt: "Thanks.", sessionId: modelSessionId });
             assert.equal(next.finalStatus, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: next.turnIds!.at(-1)! }))!.packet);
             const reply = logEntries(packet).find((row) => Array.isArray(row.answers) && row.logPath.endsWith("/SEND"));

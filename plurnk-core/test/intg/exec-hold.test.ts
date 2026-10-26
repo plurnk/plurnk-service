@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { completeStmt, dispositionStmt, noteStmt } from "./_dsl.ts";
@@ -54,9 +54,9 @@ const wire = async (finishAfterMs: number, effect: "read" | "host" | "pure" = "p
         glyph: "?", summary: "Hold fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, details: "", available: true, detail: undefined,
     });
     const workspaceId = await insertWorkspace(db, `hold-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "hold test");
-    return { db, engine, schemes, workspaceId, workerId, loopId, tag };
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "hold test");
+    return { db, engine, schemes, workspaceId, sessionId, loopId, tag };
 };
 
 const streamsSection = (packetJson: string): string => {
@@ -65,7 +65,7 @@ const streamsSection = (packetJson: string): string => {
 };
 
 const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read" | "host" | "pure" = "pure", holdSuffix?: string) => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, tag } = await wire(finishAfterMs, effect);
+    const { db, engine, schemes, workspaceId, sessionId, loopId, tag } = await wire(finishAfterMs, effect);
     // The effect-qualified selector uses the runtime's actual registered tag.
     if (holdSuffix !== undefined) process.env.PLURNK_SERVICE_EXEC_HOLD = `${tag}${holdSuffix}`;
     try {
@@ -76,7 +76,7 @@ const driveLoop = async (finishAfterMs: number, midTurns: number, effect: "read"
         ];
         const provider = new Mock({ contextWindow: 100000, responses: responses });
         const t0 = Date.now();
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }], maxTurns: 5 });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }], maxTurns: 5 });
         const elapsed = Date.now() - t0;
         const turn2 = await db.test_get_turn.get<{ packet: string }>({ id: result.turnIds[2] });
         return { result, elapsed, streams: streamsSection(turn2?.packet ?? "{}"), tag };

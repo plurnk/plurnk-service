@@ -13,7 +13,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import MaterializerRegistry from "@plurnk/plurnk-schemes-http/materializer";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx, makeHandlerCtx, settleOutbound } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
@@ -89,8 +89,8 @@ test("{§http-channel-outcomes} finite origin statuses never become nonterminal 
     assert.ok(address !== null && typeof address !== "string");
     const authority = `127.0.0.1:${address.port}`;
     const workspaceId = await insertWorkspace(db, `http-status-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+    const sessionId = await insertSession(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
     const stored = await makeHandlerCtx(ctx, { ...Http.manifest, name: "http" }, authority);
     const http = new Http();
     for (const status of [200, 201, 202, 203, 204, 206, 299, 300, 302, 307, 400, 404, 503, 599, 600, 999]) {
@@ -128,8 +128,8 @@ for (const status of [201, 202, 206]) {
             });
         });
         const workspaceId = await insertWorkspace(db, `http-ineligible-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const stored = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const http = new Http();
         const read = parsedRead("https://93.184.216.34/ineligible");
@@ -153,7 +153,7 @@ for (const { policy, reuse, conditional } of [
     { policy: "s-maxage=0, max-age=60", reuse: false, conditional: true },
     { policy: "s-maxage=invalid, max-age=60", reuse: false, conditional: true },
 ]) {
-    test(`{§revalidation} shared-cache ${policy} governs cross-worker READ without removing evidence`, async (t) => {
+    test(`{§revalidation} shared-cache ${policy} governs cross-session READ without removing evidence`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const priorTtl = process.env.PLURNK_SCHEMES_HTTP_TTL_MS;
@@ -179,15 +179,15 @@ for (const { policy, reuse, conditional } of [
         assert.ok(address !== null && typeof address !== "string");
         const authority = `127.0.0.1:${address.port}`;
         const workspaceId = await insertWorkspace(db, `http-shared-${crypto.randomUUID()}`);
-        const firstWorker = await insertWorker(db, workspaceId, null, "first");
-        const secondWorker = await insertWorker(db, workspaceId, null, "second");
-        const firstCtx = makeSchemeCtx({ db, workspaceId, workerId: firstWorker });
-        const secondCtx = makeSchemeCtx({ db, workspaceId, workerId: secondWorker });
+        const firstSession = await insertSession(db, workspaceId, null, "first");
+        const secondSession = await insertSession(db, workspaceId, null, "second");
+        const firstCtx = makeSchemeCtx({ db, workspaceId, sessionId: firstSession });
+        const secondCtx = makeSchemeCtx({ db, workspaceId, sessionId: secondSession });
         const stored = await makeHandlerCtx(secondCtx, { ...Http.manifest, name: "http" }, authority);
         const read = parsedRead(`http://${authority}/resource`);
         const http = new Http();
         assert.equal((await readHttp(http, read, firstCtx)).content, "revision 1");
-        assert.equal((await stored.entries.read("/resource")).entry?.channels.body.content, "revision 1", "evidence remains accessible to another worker");
+        assert.equal((await stored.entries.read("/resource")).entry?.channels.body.content, "revision 1", "evidence remains accessible to another session");
         const next = await readHttp(http, read, secondCtx);
         assert.equal(next.status, 200, JSON.stringify(next));
         assert.equal(next.content, `revision ${reuse ? 1 : 2}`);
@@ -207,8 +207,8 @@ for (const mode of ["complete", "oversize", "interrupted"] as const) {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, `http-mutation-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const pdf = readablePdf();
         const maximum = process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES;
@@ -296,8 +296,8 @@ for (const size of [0, 3]) {
             status, statusText: status === 200 ? "OK" : status === 202 ? "Accepted" : "Not Found", headers: { "content-type": "application/octet-stream" },
         }));
         const workspaceId = await insertWorkspace(db, `http-outcome-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const http = new Http();
         for (const fragment of ["", "#bytes"]) {
             const read = await readHttp(http, parsedRead(`https://93.184.216.34/result.bin${fragment}`), ctx);
@@ -319,8 +319,8 @@ test("{§http-binary-source} an invalid image remains byte-readable without inve
             { status: 200, statusText: "OK", headers: { "content-type": "image/png" } },
         );
         const workspaceId = await insertWorkspace(db, `http-binary-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const acquired = await readHttp(http, statement(), ctx);
         assert.equal(acquired.status, 200);
         assert.equal(acquired.content, "89\n50\n4e\n47\n00\nff");
@@ -355,8 +355,8 @@ test("{§http-binary-source} a direct PDF retains its complete bytes beside fact
             headers: { "content-type": "application/pdf" },
         });
         const workspaceId = await insertWorkspace(db, `http-readable-binary-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const manifest = { ...Http.manifest, name: "https" };
         const handlerCtx = await makeHandlerCtx(ctx, manifest, "93.184.216.34");
 
@@ -401,8 +401,8 @@ test("{§http-lifecycle} a direct textual response durably preserves Fetch UTF-8
             },
         );
         const workspaceId = await insertWorkspace(db, `http-text-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const manifest = { ...Http.manifest, name: "https" };
         const handlerCtx = await makeHandlerCtx(ctx, manifest, "93.184.216.34");
 
@@ -457,8 +457,8 @@ test("{§http-channel-outcomes}: a hard materializer failure is the readable cha
             headers: { "content-type": "text/html" },
         });
         const workspaceId = await insertWorkspace(db, `http-channel-outcomes-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const pathname = "/hard.html";
 
@@ -527,8 +527,8 @@ test("{§readable-channel} an empty finite GET materializes atomically and remai
         };
 
         const workspaceId = await insertWorkspace(db, `http-empty-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const pathname = "/empty";
 
@@ -592,8 +592,8 @@ test("{§http-lifecycle} parser-produced request metadata cannot share a fresh H
         };
 
         const workspaceId = await insertWorkspace(db, `http-variants-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const publicRead = parsedRead("https://93.184.216.34/account");
         const privateRead = parsedRead(
@@ -660,8 +660,8 @@ test("{§http-lifecycle} a durable no-store response is operation evidence, not 
         };
 
         const workspaceId = await insertWorkspace(db, `http-no-store-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const handlerCtx = await makeHandlerCtx(ctx, { ...Http.manifest, name: "https" }, "93.184.216.34");
         const read = parsedRead("https://93.184.216.34/evidence");
         const pathname = "/evidence";
@@ -714,8 +714,8 @@ test("{§revalidation} a strong response tag after a stored weak tag reacquires 
         };
 
         const workspaceId = await insertWorkspace(db, `http-weak-strong-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
 
         const acquired = await readHttp(http, plainTextStatement(), ctx);
         assert.equal(acquired.status, 200, "the weak-etag representation materializes");
@@ -785,8 +785,8 @@ test("{§revalidation} wire validators select reuse or reacquisition of durable 
                 assert.ok(address !== null && typeof address !== "string");
                 const authority = `127.0.0.1:${address.port}`;
                 const workspaceId = await insertWorkspace(db, `http-validators-${crypto.randomUUID()}`);
-                const workerId = await insertWorker(db, workspaceId);
-                const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+                const sessionId = await insertSession(db, workspaceId);
+                const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
                 const stored = await makeHandlerCtx(ctx, { ...Http.manifest, name: "http" }, authority);
                 const http = new Http();
                 const read = parsedRead(`http://${authority}/representation`);
@@ -845,8 +845,8 @@ test("{§revalidation} #288: a 304 that cannot identify the stored representatio
         };
 
         const workspaceId = await insertWorkspace(db, `http-mismatch-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
 
         const acquired = await readHttp(http, plainTextStatement(), ctx);
         assert.equal(acquired.status, 200);

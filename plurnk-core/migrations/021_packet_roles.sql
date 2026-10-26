@@ -31,7 +31,7 @@ SELECT turn_id, section, position, item_hash FROM turn_section_items;
 DROP VIEW turn_packets;
 DROP TRIGGER turn_inference_evidence_insert;
 -- {§db-process-triggers}: reinstalled from its owning INIT after migration.
-DROP TRIGGER IF EXISTS workers_fork_copies_history;
+DROP TRIGGER IF EXISTS sessions_fork_copies_history;
 DROP TABLE turn_section_items;
 DROP TABLE turn_sections;
 ALTER TABLE turn_sections_rebuilt RENAME TO turn_sections;

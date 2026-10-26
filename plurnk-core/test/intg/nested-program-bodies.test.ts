@@ -4,20 +4,20 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
-for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
+for (const header of ["SEND", "EDIT (workspace:///example.md)"]) {
     test(`{§statement-rendering}: a framed ${header} preserves quoted examples, original source, and the real task disposition`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `nested-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "Preserve the examples.");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "Preserve the examples.");
             await seedEntryWithChannel(db, { workspaceId, pathname: "/victim.md", content: "unchanged" });
             const body = [
                 "These are examples, not instructions to execute:",
                 "````sh", "printf example", "````",
-                "````EDIT (worker:///victim.md) <1,-1>", "must not replace the original", "````",
+                "````EDIT (workspace:///victim.md) <1,-1>", "must not replace the original", "````",
                 "````WAIT", "Not a real wait.", "````",
                 "Report ends here.",
             ].join("\n");
@@ -30,7 +30,7 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
                 responses: [{ assistant: { content: source, reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }],
             });
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "user", content: "Preserve the examples." }] });
+            const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Preserve the examples." }] });
             assert.equal(result.status, 102, "the quoted body stays literal, and a sibling operation prevents conclusion");
             assert.equal(result.emissionAttempts, 1);
             assert.deepEqual(result.outcomes.map(({ op, status }) => ({ op, status })), [
@@ -38,12 +38,12 @@ for (const header of ["SEND", "EDIT (worker:///example.md)"]) {
                 { op: disposition, status: header === "SEND" ? 200 : 102 },
             ]);
             const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; rx: string }>({ turn_id: result.turnId });
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops")?.content, source);
             const emitted = JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === (header === "SEND" ? "SEND" : "EDIT"))!.tx);
             assert.equal(header === "SEND" ? emitted.body.raw : emitted.body, body);
             assert.equal(JSON.parse(rows.find(({ op }) => op === disposition)!.tx).body, null);
-            const saved = (pathname: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname, scheme: "worker", name: "body" });
+            const saved = (pathname: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname, scheme: "workspace", name: "body" });
             assert.equal((await saved("/victim.md"))?.content, "unchanged");
             if (header !== "SEND") assert.equal((await saved("/example.md"))?.content, body);
         } finally { await db.close(); }

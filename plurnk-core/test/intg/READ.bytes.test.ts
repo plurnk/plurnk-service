@@ -11,7 +11,7 @@ import { parsePath } from "@plurnk/plurnk-parser";
 import File from "../../src/schemes/File.ts";
 import ByteView from "../../src/content/byte-view.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
@@ -38,8 +38,8 @@ const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `bytes-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
-    const workerId = await insertWorker(db, workspaceId);
-    const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+    const sessionId = await insertSession(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
 
     // The materializer's shape for a binary member with no readable projection: an empty body
     // under the source mimetype; the bytes live on disk only.

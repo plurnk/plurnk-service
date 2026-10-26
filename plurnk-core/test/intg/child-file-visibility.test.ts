@@ -1,6 +1,6 @@
 import { serverProposals } from "./_approval.ts";
-// {§membership} {§worker-scheme-collect} — a child worker's admitted file write is a workspace
-// member for every worker at once: after the child's `EDIT count.txt` (200) is observed, the
+// {§membership} {§session-scheme-collect} — a child session's admitted file write is a workspace
+// member for every session at once: after the child's `EDIT count.txt` (200) is observed, the
 // parent's own `READ count.txt` answers the content, never `entry-not-found` (#373) — scoped
 // or not, inside a git repository or in a bare directory.
 import test from "node:test";
@@ -39,7 +39,7 @@ for (const c of CASES) {
     serverProposals(approvalContext, "accept");
         const root = await c.root();
         const mock = new Mock({ contextWindow: 32768, responses: [
-            makeMockResponse("````WORK (worker://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
+            makeMockResponse("````WORK (session://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
             makeMockResponse("````EDIT (count.txt)\n3\n````\n\n````NOTE\nwrote\n````", 10),
             makeMockResponse("````SEND [200]\nwritten\n````", 10),
             makeMockResponse(`${c.read}
@@ -60,7 +60,7 @@ reading
                     assert.ok(edit && edit.status_rx < 300, `the child's write was admitted, got ${edit?.status_rx}: ${edit?.rx.slice(0, 200)}`);
                     // {§env-delta-child-activity} — the child's model activity crossed, its
                     // runtime-private initialization never did.
-                    const crossed = all.filter((r) => r.source === "worker://counter");
+                    const crossed = all.filter((r) => r.source === "session://counter");
                     assert.ok(crossed.some((r) => r.op === "EDIT"), "the child's EDIT crossed to the parent");
                     assert.deepEqual(crossed.filter((r) => /"init"/.test(String(r.signal))).map((r) => r.op), [], "no turn-0 initialization row of the child reached the parent");
                     const read = all.find((r) => r.op === "READ" && r.origin === "model");
@@ -71,7 +71,7 @@ reading
                     // {§message-reply-delivery} {§env-delta-child-termination}
                     const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
                     const observations = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
-                        .filter((entry) => entry.source === "worker://counter" && entry.origin === "_plurnk"));
+                        .filter((entry) => entry.source === "session://counter" && entry.origin === "_plurnk"));
                     const replies = observations.filter((entry) => entry.logPath.endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.answers));
                     const conclusions = observations.filter((entry) => entry.logPath.endsWith("/READ") && entry.path === "ops://counter/1");
                     // {§loop-answer}: the child's answer to its parent's own task arrives once, as the
@@ -85,13 +85,13 @@ reading
     });
 }
 
-// {§child-orientation} {§worker-read-scope} — a child is told whose child it is (#394): its packet
-// carries a Parent Worker pointer naming the parent, so it can address the parent's streams and
-// space by name. The root worker has no such section.
-test("{§packet-empty-sections} a child's packet names its parent worker; the root's packet does not", async (approvalContext) => {
+// {§child-orientation} {§session-read-scope} — a child is told whose child it is (#394): its packet
+// carries a Parent Session pointer naming the parent, so it can address the parent's streams and
+// space by name. The root session has no such section.
+test("{§packet-empty-sections} a child's packet names its parent session; the root's packet does not", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````WORK (worker://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
+        makeMockResponse("````WORK (session://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
         makeMockResponse("````SEND [200]\n3\n````", 10),
         makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
@@ -100,20 +100,20 @@ test("{§packet-empty-sections} a child's packet names its parent worker; the ro
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "parent-pointer" });
             const workspaceId = 1;
-            const { finalStatus, turnIds, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
+            const { finalStatus, turnIds, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
             assert.equal(finalStatus, 200);
-            const childTurn = await db.test_first_packet_turn_by_worker_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });
+            const childTurn = await db.test_first_packet_turn_by_session_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });
             assert.ok(childTurn, "the child ran a model turn");
             const childPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: childTurn.id }))!.packet);
-            assert.ok(modelWorkerId !== undefined);
-            const parent = await db.worker_get.get<{ name: string }>({ id: modelWorkerId });
+            assert.ok(modelSessionId !== undefined);
+            const parent = await db.session_get.get<{ name: string }>({ id: modelSessionId });
             assert.ok(parent !== undefined);
-            // {§packet-empty-sections} — the parent rides the Worker identity block, never a separate section.
-            const identity = JSON.parse(packetSection(childPacket, "worker"));
-            assert.equal(identity.parent, `worker://${parent.name}`, "the child is told its actual parent's address");
-            assert.equal(packetSection(childPacket, "parent-worker"), "", "no Parent Worker section exists");
+            // {§packet-empty-sections} — the parent rides the Session identity block, never a separate section.
+            const identity = JSON.parse(packetSection(childPacket, "session"));
+            assert.equal(identity.parent, `session://${parent.name}`, "the child is told its actual parent's address");
+            assert.equal(packetSection(childPacket, "parent-session"), "", "no Parent Session section exists");
             const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1] }))!.packet);
-            assert.equal(JSON.parse(packetSection(rootPacket, "worker")).parent, null, "a root worker states parent: null rather than omitting it");
+            assert.equal(JSON.parse(packetSection(rootPacket, "session")).parent, null, "a root session states parent: null rather than omitting it");
         } finally { ws.close(); }
     });
 });

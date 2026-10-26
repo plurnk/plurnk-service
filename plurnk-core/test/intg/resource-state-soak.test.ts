@@ -15,7 +15,7 @@ import GitMembership from "../../src/core/git-membership.ts";
 import ResourceState from "./resource-state.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { viableWindow } from "./_provider.ts";
 
@@ -35,8 +35,8 @@ test("{§fs-resource-state} soak: N turn boundaries with per-turn membership re-
 
         const workspaceId = await insertWorkspace(db, `soak-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx: PlurnkSchemeContext = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx: PlurnkSchemeContext = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const TURNS = 6;
@@ -51,12 +51,12 @@ continue
         }));
         const provider = new Mock({ contextWindow: viableWindow(), responses });
 
-        const loopId = await insertLoop(db, workerId, 1, "soak");
+        const loopId = await insertLoop(db, sessionId, 1, "soak");
         let baseline: number | null = null;
         for (let turn = 1; turn <= TURNS; turn++) {
             // the per-turn membership pass
             await GitMembership.indexGitMembership(ctx);
-            const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+            const r = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             assert.ok(r.status < 500, `turn ${turn} completed (${r.status})`);
             const count = await ResourceState.entryCount(db);
             if (baseline === null) baseline = count;

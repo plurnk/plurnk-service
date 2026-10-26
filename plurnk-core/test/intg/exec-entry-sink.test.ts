@@ -15,7 +15,7 @@ import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import { executionAddress, testExecutors, quiesceExecs } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
@@ -145,16 +145,16 @@ const wire = async (opts?: {
         glyph: "?", summary: "Entry sink fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, details: "", available: true, detail: undefined,
     });
     const workspaceId = await insertWorkspace(db, `sink-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "researcher");
-    const loopId = await insertLoop(db, workerId, 1, "sink test");
+    const sessionId = await insertSession(db, workspaceId, null, "researcher");
+    const loopId = await insertLoop(db, sessionId, 1, "sink test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag };
+    return { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag };
 };
 
 test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overwrite, and remain workspace-shared", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ resources: true, tag: "resourcepublisher" });
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire({ resources: true, tag: "resourcepublisher" });
     try {
-        const result = await engine.dispatch({ statement: execStmt("resourcepublisher", "publish"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        const result = await engine.dispatch({ statement: execStmt("resourcepublisher", "publish"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         assert.ok(result.status < 400);
         await quiesceExecs(schemes);
         const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "resourcepublisher", name: "results" });
@@ -164,22 +164,22 @@ test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overw
         assert.match(paths[2], /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
         const contents = [];
         for (const path of paths) {
-            const read = await engine.dispatch({ statement: parseOne(`\`\`\`\`READ (${path}) <1,-1>\`\`\`\``), workspaceId, workerId, loopId, turnId, sequence: contents.length + 2, origin: "model" });
+            const read = await engine.dispatch({ statement: parseOne(`\`\`\`\`READ (${path}) <1,-1>\`\`\`\``), workspaceId, sessionId, loopId, turnId, sequence: contents.length + 2, origin: "model" });
             assert.equal(read.status, 200);
             contents.push(Results.assertReadResult(read).content);
         }
         assert.deepEqual(contents, ["first", "01\n02\nff", "second"]);
         const directory = paths[0].slice(0, paths[0].lastIndexOf("/") + 1);
-        const found = await engine.dispatch({ statement: parseOne(`\`\`\`\`FIND (${directory}*)\`\`\`\``), workspaceId, workerId, loopId, turnId, sequence: 5, origin: "model" });
+        const found = await engine.dispatch({ statement: parseOne(`\`\`\`\`FIND (${directory}*)\`\`\`\``), workspaceId, sessionId, loopId, turnId, sequence: 5, origin: "model" });
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.ok("results" in found && Array.isArray(found.results));
         assert.equal(found.results.length, 3, "the published resources participate in ordinary pattern discovery");
-        const peerId = await insertWorker(db, workspaceId, null, "peer");
+        const peerId = await insertSession(db, workspaceId, null, "peer");
         const peerLoopId = await insertLoop(db, peerId, 1, "inspect peer resource");
         const peerTurnId = await insertTurn(db, peerLoopId, 1, 102);
-        const peer = { workspaceId, workerId: peerId, loopId: peerLoopId, turnId: peerTurnId, origin: "model" as const };
+        const peer = { workspaceId, sessionId: peerId, loopId: peerLoopId, turnId: peerTurnId, origin: "model" as const };
         const shared = await engine.dispatch({ ...peer, statement: parseOne(`\`\`\`\`READ (${paths[0]})\`\`\`\``), sequence: 2 });
-        assert.equal(shared.status, 200, "the same resource address remains meaningful to another Worker");
+        assert.equal(shared.status, 200, "the same resource address remains meaningful to another Session");
     } finally {
         await quiesceExecs(schemes);
         await db.close();
@@ -187,11 +187,11 @@ test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overw
 });
 
 test("{§env-delta-entry-materialization} entry() materializes an https resource as plurnk narration rows", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire();
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
             statement: execStmt("stubsearch", "turkeys"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
         // The spawn streams — run() completes in the background. idle() is the complete barrier:
@@ -217,11 +217,11 @@ test("{§env-delta-entry-materialization} entry() materializes an https resource
         assert.ok(entry !== undefined, "the https entry materialized at its exact resource coordinate");
         assert.equal(entry.scheme, "https");
         assert.equal(entry.authority, "example.org");
-        // The ambience: the runtime worker carries ONE narration row per write (2 here), the
-        // fs-fiction shape — origin _plurnk, source = the calling worker, weight on the meta line.
-        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
-        assert.ok(plurnkWorker !== undefined, "the runtime worker exists");
-        const narrationLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
+        // The ambience: the runtime session carries ONE narration row per write (2 here), the
+        // fs-fiction shape — origin _plurnk, source = the calling session, weight on the meta line.
+        const plurnkSession = await db.envelope_get_session_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
+        assert.ok(plurnkSession !== undefined, "the runtime session exists");
+        const narrationLoop = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: plurnkSession.id });
         assert.ok(narrationLoop !== undefined);
         const [narrationTurn] = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
@@ -232,26 +232,26 @@ test("{§env-delta-entry-materialization} entry() materializes an https resource
             "the entry batch is one completed ordinary producer turn",
         );
         assert.match(narrationTurn?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
-        const rows = await db.test_log_entries_by_worker_op.all<{
+        const rows = await db.test_log_entries_by_session_op.all<{
             hostname: string | null;
             pathname: string;
             source: string;
             weight: number;
             attrs: string;
-        }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        }>({ session_id: plurnkSession.id, op: "EDIT" });
         const narrations = rows.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys");
         assert.equal(narrations.length, 2, "one narration row per entry() write");
-        assert.equal(narrations[0]?.source, "worker://researcher", "source uses the calling worker's control identity");
+        assert.equal(narrations[0]?.source, "session://researcher", "source uses the calling session's control identity");
         assert.ok((narrations[0]?.weight ?? 0) > 0, "the row carries the write's real curation weight");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
         // {§env-delta-entry-materialization} — durable narration retains the
         // write statement and its source-numbered resulting span.
-        const full = await db.test_log_entries_by_worker_op_full.all<{
+        const full = await db.test_log_entries_by_session_op_full.all<{
             hostname: string | null;
             pathname: string;
             tx: string;
             rx: string;
-        }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        }>({ session_id: plurnkSession.id, op: "EDIT" });
         const second = full.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys")[1];
         assert.ok(second !== undefined, "the second narration row is present");
         const tx = JSON.parse(second.tx) as { op: string; body: string };
@@ -266,7 +266,7 @@ test("{§env-delta-entry-materialization} entry() materializes an https resource
             coordinate: "1/1/2", origin: "_plurnk", op: "EDIT",
             target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
             status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
-            initial_folded, source: "worker://researcher", attrs: { kind: "entry_materialized" },
+            initial_folded, source: "session://researcher", attrs: { kind: "entry_materialized" },
         }];
         const countTokens = (t: string): number => Math.ceil(t.length / 4);
         const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
@@ -283,7 +283,7 @@ test("{§env-delta-entry-materialization} entry() materializes an https resource
 });
 
 test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its durable narration row", async (t) => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         tag: "stubsearch-entry-failure",
         entryFailure: true,
     });
@@ -308,17 +308,17 @@ test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its
     try {
         const accepted = await engine.dispatch({
             statement: execStmt(tag, "rejected"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(accepted.status < 400);
         await quiesceExecs(schemes);
 
-        const plurnkWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({
+        const plurnkSession = await db.envelope_get_session_by_name.get<{ id: number }>({
             workspace_id: workspaceId,
             name: "_plurnk",
         });
-        assert.ok(plurnkWorker !== undefined);
-        const narrationLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: plurnkWorker.id });
+        assert.ok(plurnkSession !== undefined);
+        const narrationLoop = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: plurnkSession.id });
         assert.ok(narrationLoop !== undefined);
         const [narrationTurn] = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
@@ -342,12 +342,12 @@ test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its
             "https://problems.plurnk.xyz/scheme/https/materialization-refused",
             "the administrative loop retains the exact failed operation result",
         );
-        const rows = await db.test_log_entries_by_worker_op_full.all<{
+        const rows = await db.test_log_entries_by_session_op_full.all<{
             hostname: string | null;
             pathname: string;
             rx: string;
             status_rx: number;
-        }>({ worker_id: plurnkWorker.id, op: "EDIT" });
+        }>({ session_id: plurnkSession.id, op: "EDIT" });
         const failure = rows.find((row) => row.hostname === "example.org" && row.pathname === "/rejected");
         assert.ok(failure !== undefined, "the rejected materialization remains durable evidence");
         assert.equal(failure.status_rx, 422);
@@ -376,11 +376,11 @@ test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its
 });
 
 test("{§exec-entry-sink} search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query" });
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query" });
     try {
         const search = await engine.dispatch({
             statement: execStmt(tag, "turkeys"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(search.status < 400);
         await quiesceExecs(schemes);
@@ -390,12 +390,12 @@ test("{§exec-entry-sink} search-prefetched https content is matcher-queryable i
         // deterministic integration test impossible by construction.
         const queried = await engine.dispatch({
             statement: parseOne("````FIND (https://example.org/turkeys) *large birds*````"),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 200);
 
         const delivered = await db.log_read_by_coordinate.get<{ scheme: string; pathname: string; rx: string }>({
-            worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
+            session_id: sessionId, loop_seq: 1, turn_seq: 1, sequence: 2,
         });
         assert.equal(delivered?.scheme, "https");
         assert.equal(delivered?.pathname, "/turkeys");
@@ -422,15 +422,15 @@ test("{§http-binary-source} executor acquisition preserves binary source and na
     t.mock.method(globalThis, "fetch", async () => new Response(pdf, { headers: {
         "content-type": "application/pdf", "cache-control": "max-age=600",
     } }));
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         tag: "binary-prefetch", nullContent: true,
         fetchWeb: (url) => url.endsWith("/dead") ? Promise.resolve(null) : new WebFetcher().fetch(url, { guarded: false }),
     });
     try {
-        const result = await engine.dispatch({ statement: execStmt(tag, "fetch"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        const result = await engine.dispatch({ statement: execStmt(tag, "fetch"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         assert.ok(result.status < 400);
         await quiesceExecs(schemes);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         const entry = await EntryCrud.readEntry({ authority: "example.org", pathname: "/live" }, ctx, "https");
         assert.equal(entry.status, 200);
         assert.deepEqual(Buffer.from(entry.entry!.channels.body.content, "base64"), pdf);
@@ -438,10 +438,10 @@ test("{§http-binary-source} executor acquisition preserves binary source and na
         assert.match(entry.entry!.channels.readable.content, /^PDF document, 1 page,/u);
         const read = await engine.dispatch({
             statement: parseOne("````READ (https://example.org/live#readable)````"),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
-        const logged = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2 });
+        const logged = await db.log_read_by_coordinate.get<{ rx: string }>({ session_id: sessionId, loop_seq: 1, turn_seq: 1, sequence: 2 });
         const receipt = JSON.parse(logged!.rx);
         assert.deepEqual(receipt.document, { mimetype: "application/pdf", pages: 1, bytes: pdf.byteLength });
         assert.match(receipt.nativeContentHash, /^[a-f0-9]+$/u);
@@ -449,14 +449,14 @@ test("{§http-binary-source} executor acquisition preserves binary source and na
 });
 
 test("{§exec-entry-sink} search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         tag: "stubsearch-encoded-path",
         encodedPath: true,
     });
     try {
         await engine.dispatch({
             statement: execStmt(tag, "people"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         await quiesceExecs(schemes);
 
@@ -469,11 +469,11 @@ test("{§exec-entry-sink} search-prefetched encoded parentheses resolve through 
             "ingestion stores one canonical decoded identity");
         const read = await engine.dispatch({
             statement: parseOne("````READ (https://example.org/people_%28current%29) <2,2>````"),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
         const delivered = await db.log_read_by_coordinate.get<{ rx: string }>({
-            worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: 2,
+            session_id: sessionId, loop_seq: 1, turn_seq: 1, sequence: 2,
         });
         assert.match(delivered?.rx ?? "", /spouse: Example Person/,
             "the grammar-safe address resolves the canonical entry and applies its scope");
@@ -481,14 +481,14 @@ test("{§exec-entry-sink} search-prefetched encoded parentheses resolve through 
 });
 
 test("{§exec-entry-sink} an exact HTTPS full-text FIND cannot leak or retarget a match from another authority", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ tag: "stubsearch-fulltext-scope" });
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ tag: "stubsearch-fulltext-scope" });
     try {
         await engine.dispatch({
             statement: execStmt(tag, "turkeys"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         await quiesceExecs(schemes);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
         await EntryCrud.writeEntry({ authority: "other.example", pathname: "/cake" }, {
             channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
         }, ctx, "https");
@@ -496,14 +496,14 @@ test("{§exec-entry-sink} an exact HTTPS full-text FIND cannot leak or retarget 
 
         const queried = await engine.dispatch({
             statement: parseOne("````FIND (https://example.org/turkeys) ~birthday cake````"),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(queried.status, 204);
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
 test("{§exec-entry-sink} an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId } = await wire({ tag: "stubsearch-web-root" });
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire({ tag: "stubsearch-web-root" });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => new Response("publisher home", {
         status: 200,
@@ -512,7 +512,7 @@ test("{§exec-entry-sink} an absolute web URL ending in slash is one fetchable r
     try {
         const result = await engine.dispatch({
             statement: parseOne("````READ (https://example.org/)````"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");
         assert.equal(result.content, "publisher home");
@@ -548,11 +548,11 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
                 `x-plurnk-fetched-at: ${new Date().toISOString()}`,
             ].join("\n"),
         };
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
     try {
         const result = await engine.dispatch({
             statement: execStmt(tag, "turkeys"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
         await quiesceExecs(schemes);
@@ -597,7 +597,7 @@ test("{§exec-entry-sink} entry(content:null) preserves caller cancellation thro
     const webFetcher = new WebFetcher();
     let preserved = false;
     const fetchWeb: WebFetch = (url, opts) => webFetcher.fetch(url, opts);
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         fetchWeb,
         tag: "stubsearch-cancelled-fetch",
         cancelledNullContent: (failure, signal) => { preserved = failure === signal.reason; },
@@ -617,11 +617,11 @@ test("{§exec-entry-sink} entry(content:null) preserves caller cancellation thro
     try {
         const result = await engine.dispatch({
             statement: execStmt(tag, "cancelled"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(result.status < 400);
         await started.promise;
-        const subscription = await db.test_open_subscription_for_worker.get<{ id: number }>({ worker_id: workerId });
+        const subscription = await db.test_open_subscription_for_session.get<{ id: number }>({ session_id: sessionId });
         assert.ok(subscription !== undefined);
         await engine.cancelSubscription(subscription.id);
         await quiesceExecs(schemes);
@@ -646,7 +646,7 @@ test("{§exec-entry-sink} entry(content:null) admits only HTTP acquisition targe
         fetches += 1;
         return { url, body: "unexpected", mimetype: "text/plain" };
     };
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         fetchWeb,
         unsupportedNullUrl: "wss://example.org/events?topic=updates",
         tag: "stubsearch-non-http-null",
@@ -654,7 +654,7 @@ test("{§exec-entry-sink} entry(content:null) admits only HTTP acquisition targe
     try {
         const result = await engine.dispatch({
             statement: execStmt(tag, "events"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.ok(result.status < 400);
         await quiesceExecs(schemes);
@@ -675,13 +675,13 @@ test("{§html-materialization}: server HTML keeps its source as body and materia
             body: "<html><body><h1>Headline</h1><p>useful article</p></body></html>",
             mimetype: "text/html",
         };
-    const { db, engine, schemes, workspaceId, workerId, loopId, turnId, tag } = await wire({
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         fetchWeb, nullContent: true, tag: "stubsearch3",
     });
     try {
         await engine.dispatch({
             statement: execStmt(tag, "turkeys"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         await quiesceExecs(schemes);
 

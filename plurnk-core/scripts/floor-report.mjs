@@ -2,7 +2,7 @@
 // A report, never a gate: always exits 0; a broken measurement prints loudly
 // and yields nothing else.
 //
-// The metric: input weight of the FIRST model call for a fresh worker in an
+// The metric: input weight of the FIRST model call for a fresh session in an
 // empty project under the selected config — the price of existing, before any work.
 // Decomposed with the packet's own per-row accounting (tokens is the
 // daemon's exact weigher, embedded in each Markdown-framed log record).
@@ -17,7 +17,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run report:floor   (from plurnk-core)
-Measures the packet token floor: the input weight of a fresh worker's first model call in an empty project under the selected configuration. A report, never a gate; always exits 0.
+Measures the packet token floor: the input weight of a fresh session's first model call in an empty project under the selected configuration. A report, never a gate; always exits 0.
 Reads: the Mock-tier bootstrap and .env.defaults.
 Writes: the report to stdout.
 `);
@@ -81,7 +81,7 @@ try {
     const systemTokens = approxTokens(system);
     const userTokens = approxTokens(user);
 
-    console.log("packet token floor (fresh worker, empty project, mock model) — report only, never a gate");
+    console.log("packet token floor (fresh session, empty project, mock model) — report only, never a gate");
     console.log(`  system prompt : ~${systemTokens} tok (${system.length} chars)`);
     console.log(`  user packet   : ~${userTokens} tok (${user.length} chars)`);
     console.log(`    log rows    : ${rows.length} rows, ${rowActive} tok active, ${rowMetadata} metadata — daemon-weighed (mock weigher; ratios comparable, scale differs from the ~ estimates)`);

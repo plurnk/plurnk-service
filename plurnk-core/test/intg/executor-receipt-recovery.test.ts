@@ -9,7 +9,7 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES, schemeManifest } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import { quiesceExecs } from "./_execs.ts";
 
@@ -47,13 +47,13 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
         engine.setExecutors(executors);
         try {
             const workspaceId = await insertWorkspace(db, "receipt-recovery");
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "Inspect the tool result.");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "Inspect the tool result.");
             const turn = async (program: string) => {
                 const provider = new Mock({ contextWindow: 100_000,
                     responses: [{ assistant: { content: program, reasoning: null } }],
                 });
-                const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+                const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
                 const stored = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
                 assert.ok(stored, "the actual model request was persisted");
                 const packet = JSON.parse(stored.packet);
@@ -65,7 +65,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.deepEqual(started.outcomes.map(({ op, status }) => [op, status]), [["receiptfixture", 200]]);
             await quiesceExecs(schemes);
             const detached = await new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined }).buildRequestPacket({
-                workspaceId, workerId, loopId, currentTurnSeq: 3,
+                workspaceId, sessionId, loopId, currentTurnSeq: 3,
                 provider: new Mock({ contextWindow: 100_000, responses: [] }), initialMessages: [], gitStatus: null,
             });
             assert.equal(PacketWire.sectionContent(detached, "emission-history"), frame("receiptfixture (inspect)", body),

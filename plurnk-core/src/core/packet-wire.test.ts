@@ -19,19 +19,19 @@ test("{§packet-wire-envelope}: retained user-role evidence keeps its original e
 
 test("{§packet-wire-envelope}: historical whole-log and assistant-tail sections keep their recorded placement", () => {
     const content = "````EDIT (a.md)\nFull replacement.\n```NOTE\nNested example.\n```\n````\n\n```NOTE\nMemory.\n```";
-    const log = "### log:///1/2/1/READ · 24\n1: ## Worker\n2: ## Previous Emission";
+    const log = "### log:///1/2/1/READ · 24\n1: ## Session\n2: ## Previous Emission";
     const packet: RequestPacket = { weight: 0, attributions: [], sections: [
         { name: "definition", slot: "system", header: null, content: "The language", weight: 0 },
         { name: "log", slot: "user", header: "Log", content: log, weight: 0 },
         { name: "emission-history", slot: "assistant", header: null, content, weight: 0 },
-        { name: "worker", slot: "user", header: "Worker", content: '{"turn":3}', weight: 0 },
+        { name: "session", slot: "user", header: "Session", content: '{"turn":3}', weight: 0 },
         { name: "messages", slot: "user", header: "Open Messages", content: "[]", weight: 0 },
     ] };
     assert.deepEqual(PacketWire.packetToWireMessages(packet), [
         { role: "system", content: "The language" },
         { role: "user", content: `## Log\n\n${log}` },
         { role: "assistant", content },
-        { role: "user", content: '## Worker\n{"turn":3}\n\n## Open Messages\n[]' },
+        { role: "user", content: '## Session\n{"turn":3}\n\n## Open Messages\n[]' },
     ], "roles and boundaries come from sections, never headings inside source text");
 });
 

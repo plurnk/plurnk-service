@@ -113,7 +113,7 @@ export const cacheAffinityDeclarationFromEnv = (env: NodeJS.ProcessEnv, provider
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the cache-affinity schema just proved the declaration its type names
     const field = Validator.assertJsonSchemaInstance(key, cacheAffinitySchema, value) as CacheAffinity;
     if (field.target === "header") {
-        try { new Headers({ [field.name]: "worker" }); }
+        try { new Headers({ [field.name]: "session" }); }
         catch (cause) { throw new TypeError(`${key} must name a valid HTTP header`, { cause }); }
         if (["authorization", "proxy-authorization", "cookie", "host", "content-type", "content-length", "accept", "transfer-encoding", "connection"].includes(field.name.toLowerCase())) {
             throw new TypeError(`${key} cannot replace an HTTP transport or authentication header`);

@@ -90,7 +90,7 @@ export default class HttpRequester {
         const written = await ctx.entries.write(pathname, this.#seedEntry());
         if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
 
-        // open() returns the worker+teardown-composed signal — fires on loop.cancel
+        // open() returns the session+teardown-composed signal — fires on loop.cancel
         // OR our local teardown. Wire it so either path aborts acquisition.
         const subscription = await ctx.subscriptions.open(pathname, handle);
         const onAbort = () => local.abort();

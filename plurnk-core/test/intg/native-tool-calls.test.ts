@@ -6,7 +6,7 @@ import type { Notice } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
 for (const transport of ["text", "wire"] as const) {
     for (const withOperation of [false, true]) {
@@ -14,12 +14,12 @@ for (const transport of ["text", "wire"] as const) {
             const db = await openMigrated();
             try {
                 const workspaceId = await insertWorkspace(db, "native-calls");
-                const workerId = await insertWorker(db, workspaceId, null, "alice");
-                const loopId = await insertLoop(db, workerId, 1, "Update the fact.");
+                const sessionId = await insertSession(db, workspaceId, null, "alice");
+                const loopId = await insertLoop(db, sessionId, 1, "Update the fact.");
                 await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Original fact." });
                 const markup = '<tool_call><function=EDIT><parameter=old_string>Original fact.</parameter><parameter=new_string>Unadmitted change.</parameter></function></tool_call>';
-                const tool = { index: 0, id: "call-1", type: "function", function: { name: "EDIT", arguments: '{"path":"worker:///fact.txt","body":"Unadmitted change."}' } };
-                const operation = withOperation ? PlurnkParser.frame("EDIT (worker:///fact.txt) <1,-1>", "Admitted change.") : "";
+                const tool = { index: 0, id: "call-1", type: "function", function: { name: "EDIT", arguments: '{"path":"workspace:///fact.txt","body":"Unadmitted change."}' } };
+                const operation = withOperation ? PlurnkParser.frame("EDIT (workspace:///fact.txt) <1,-1>", "Admitted change.") : "";
                 const content = transport === "text" ? `${operation}\n\n${markup}` : operation;
                 const notices: Notice[] = [];
                 let requests = 0;
@@ -39,7 +39,7 @@ for (const transport of ["text", "wire"] as const) {
                 const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
                     noticeNotify: (_workspaceId, { notice }) => { notices.push(notice); },
                 });
-                const result = await engine.runLoop({ workspaceId, workerId, loopId, provider, maxTurns: 3,
+                const result = await engine.runLoop({ workspaceId, sessionId, loopId, provider, maxTurns: 3,
                     messages: [{ role: "user", content: "Update the fact." }],
                 });
                 assert.equal(result.result.status, 200);
@@ -52,12 +52,12 @@ for (const transport of ["text", "wire"] as const) {
                 assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ status_rx }) => status_rx), withOperation ? [200] : []);
                 assert.deepEqual(rows.filter(({ op }) => op === "error").map(({ rx }) => JSON.parse(rx).problem.detail),
                     withOperation ? [] : ["The turn performed no operation."]);
-                const fact = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/fact.txt", scheme: "worker", name: "body" });
+                const fact = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/fact.txt", scheme: "workspace", name: "body" });
                 assert.equal(fact?.content, withOperation ? "Admitted change." : "Original fact.");
                 assert.equal(notices.filter(({ message }) => transport === "wire"
                     ? message === "The response included native tool calls, but no tools were declared."
                     : message?.includes("tool-call markup and was not executed")).length, 1);
-                const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+                const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
                 assert.equal(sources.find((row) => row.turn_id === first && row.kind === "ops")?.content ?? "", content);
             } finally { await db.close(); }
         });
@@ -68,17 +68,17 @@ for (const finish of ["stop", "tool_calls"]) {
     test(`{§loop-completion} {§provider-native-tool-calls}: native calls with finish=${finish} cannot conclude resolved work`, async (t) => {
         const db = await openMigrated(); t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "native-call-settlement");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Report the fact.");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Report the fact.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "The fact." });
-        const tool = { index: 0, id: "call-extra", type: "function", function: { name: "READ", arguments: '{"path":"worker:///fact.txt"}' } };
+        const tool = { index: 0, id: "call-extra", type: "function", function: { name: "READ", arguments: '{"path":"workspace:///fact.txt"}' } };
         let requests = 0;
         const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
             fetch: async () => {
                 requests += 1;
-                const delta = requests === 1 ? { content: `${PlurnkParser.frame("READ (worker:///fact.txt)", null)}\n${PlurnkParser.frame("SEND [200]", "The fact.")}` }
+                const delta = requests === 1 ? { content: `${PlurnkParser.frame("READ (workspace:///fact.txt)", null)}\n${PlurnkParser.frame("SEND [200]", "The fact.")}` }
                     : requests === 2 ? { tool_calls: [tool] } : { content: "" };
                 return new Response(`data: ${JSON.stringify({ model: "fixture", choices: [{ index: 0, delta, finish_reason: requests === 2 ? finish : "stop" }] })}\n\ndata: [DONE]\n\n`,
                     { headers: { "content-type": "text/event-stream" } });
@@ -87,7 +87,7 @@ for (const finish of ["stop", "tool_calls"]) {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const statuses: number[] = [];
         for (let index = 0; index < 3; index += 1) {
-            statuses.push((await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] })).status);
+            statuses.push((await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] })).status);
         }
         assert.deepEqual(statuses, [102, 102, 200]);
         assert.equal(requests, 3);

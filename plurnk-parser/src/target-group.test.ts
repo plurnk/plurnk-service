@@ -62,15 +62,15 @@ test("{§target-group} {§log-kill-distillation}: distillation lands once; other
 
 test("{§safe-uri-target-groups}: explicit URI lists compile in member order at the parser boundary", () => {
     for (const [heading, expected] of [
-        ["READ (worker:///a worker:///b)", ["worker:///a", "worker:///b"]],
+        ["READ (workspace:///a workspace:///b)", ["workspace:///a", "workspace:///b"]],
         ["KILL (log:///1/1/1/READ, log:///1/1/2/READ)", ["log:///1/1/1/READ", "log:///1/1/2/READ"]],
-        ["READ (log:///1/1/1/READ, worker:///notes.md https://example.com)", ["log:///1/1/1/READ", "worker:///notes.md", "https://example.com"]],
+        ["READ (log:///1/1/1/READ, workspace:///notes.md https://example.com)", ["log:///1/1/1/READ", "workspace:///notes.md", "https://example.com"]],
         ["KILL (log:///1/1/1/READ,log:///1/1/2/READ)", ["log:///1/1/1/READ", "log:///1/1/2/READ"]],
     ] as const) {
         const parsed = operations(PlurnkParser.frame(heading, null));
         assert.deepEqual(parsed.map((op) => "target" in op ? op.target?.raw : null), expected);
     }
-    const selections = operations('```KILL (worker:///a worker:///b) <2,4> [{"keep":1}] *.md <!-- inspect both -->\n```') as KillStatement[];
+    const selections = operations('```KILL (workspace:///a workspace:///b) <2,4> [{"keep":1}] *.md <!-- inspect both -->\n```') as KillStatement[];
     assert.equal(selections.length, 2);
     const expected = { ...selections[0], target: null };
     for (const op of selections) assert.deepEqual({ ...op, target: null }, expected);
@@ -83,13 +83,13 @@ test("{§safe-uri-target-groups}: explicit URI lists compile in member order at 
 test("{§safe-uri-target-groups}: ambiguous, invalid and ineligible targets stay singular and exact", () => {
     for (const [op, raw] of [
         ["READ", "notes and plans.md"], ["READ", "alpha,beta.md"],
-        ["READ", "worker:///a local.md"], ["READ", "https://example.com/a,b"],
-        ["READ", "worker:///notes%20and%20plans.md"], ["KILL", "log:///1/1/*/{NEXT,READ}"],
-        ["KILL", "worker:///a local.md"], ["READ", "worker:///valid https://%"],
-        ["FIND", "worker:///a worker:///b"], ["EDIT", "worker:///a worker:///b"],
-        ["COPY", "worker:///a worker:///b"], ["MOVE", "worker:///a worker:///b"],
+        ["READ", "workspace:///a local.md"], ["READ", "https://example.com/a,b"],
+        ["READ", "workspace:///notes%20and%20plans.md"], ["KILL", "log:///1/1/*/{NEXT,READ}"],
+        ["KILL", "workspace:///a local.md"], ["READ", "workspace:///valid https://%"],
+        ["FIND", "workspace:///a workspace:///b"], ["EDIT", "workspace:///a workspace:///b"],
+        ["COPY", "workspace:///a workspace:///b"], ["MOVE", "workspace:///a workspace:///b"],
     ]) {
-        const parsed = operations(PlurnkParser.frame(`${op} (${raw})${op === "COPY" || op === "MOVE" ? " (worker:///destination)" : ""}`, op === "EDIT" ? "replacement" : null));
+        const parsed = operations(PlurnkParser.frame(`${op} (${raw})${op === "COPY" || op === "MOVE" ? " (workspace:///destination)" : ""}`, op === "EDIT" ? "replacement" : null));
         assert.equal(parsed.length, 1);
         const statement = parsed[0];
         assert.equal(statement.op === "COPY" || statement.op === "MOVE" ? statement.source.target.raw : statement.target?.raw, raw);
@@ -104,7 +104,7 @@ test("{§reasoning-operations} {§target-group}: reasoning and statement tiers r
 });
 
 test("{§trailing-slots} {§safe-uri-target-groups}: a URI list in one slot retains that slot's unambiguous recovered scope", () => {
-    const parsed = PlurnkParser.parse("```READ (worker:///a worker:///b) /pattern/ <1,3>\n```");
+    const parsed = PlurnkParser.parse("```READ (workspace:///a workspace:///b) /pattern/ <1,3>\n```");
     const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(ops.length, 2);
     for (const op of ops) {

@@ -15,8 +15,8 @@ sources into a consuming package would create a second teaching owner.
 | ------------------------------- | ---------- | -------------------------------------------------- | ------------------------------------------------------- |
 | `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
 | `recap.md`                       | Required   | Optional default operational Recap                 | Per-packet user-slot footer {§recap}                    |
-| `docs/worker.md`                | Required   | Deep reference prose for the reserved worker scheme | Pull-doc materialization {§schemes-directory}           |
-| `docs/delegation.md`            | Required   | Worker delegation, lifecycle, and messaging | Pull-doc materialization with the worker scheme |
+| `docs/session.md`                | Required   | Deep reference prose for the reserved session scheme | Pull-doc materialization {§schemes-directory}           |
+| `docs/delegation.md`            | Required   | Session delegation, lifecycle, and messaging | Pull-doc materialization with the session scheme |
 | `docs/pattern.md`               | Required   | Operation-neutral pattern selection and literal source editing | Pull-doc materialization independent of schemes |
 | `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§plurnk-skill} |
 | `skills/plurnk/references/extensibility.md` | Required | How integrations and extensions reach the model, and each kind's contract | Skill chapter {§plurnk-skill} |
@@ -218,7 +218,7 @@ unreadable directory. No framework reads a manifest any other way.
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Static declaration      | Optional `plurnk.attribution` is one non-empty string or an array of non-empty strings. `null`, absence, and an empty array normalize to no tags. A declaration is an always-on source for the admitted package.                            |
 | Runtime declaration     | A loaded extension object may implement synchronous `attributions(context)`, returning the same declaration shape, `null`, or `undefined`. The function is pulled once for each provider emission attempt; returning no tags omits that source.     |
-| Function context        | `workspaceId`, `workerId`, and `primaryWorkerId` are opaque strings; `loop`, `turn`, and `attempt` are positive sequence numbers. The function receives no engine, database, trust, or mutation capability.                                      |
+| Function context        | `workspaceId`, `sessionId`, and `primarySessionId` are opaque strings; `loop`, `turn`, and `attempt` are positive sequence numbers. The function receives no engine, database, trust, or mutation capability.                                      |
 | Trust                   | The kind's framework applies {§extension-trust-boundary} before attribution validation or extension import. Trust admits executable code; it does not make an authored tag truthful.                                                                        |
 | Normalization           | `Meta.normalizeAttribution(raw, packageName)` and `Meta.runtimeAttribution(source, context, packageName)` produce readonly ordered lists. A malformed trusted declaration, malformed function, or thrown function fails at the package boundary.    |
 | Namespace reservation   | A tag beginning `@plurnk/` is valid only when `packageName` also begins `@plurnk/`; a violating trusted package fails. Other tag vocabularies, collisions, and meanings are deliberately uninterpreted.                                      |

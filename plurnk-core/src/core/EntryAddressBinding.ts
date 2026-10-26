@@ -15,8 +15,8 @@ export interface EntryAddressResolution {
 
 // {§entry-address-resolution} One canonical resource address in the workspace.
 export default class EntryAddressBinding {
-    static addressContext({ workspaceId, workerId, loopId, turnId, writer, signal }: PlurnkSchemeContext): SchemeAddressCtx {
-        return { workspaceId, workerId, loopId, turnId, writer, signal };
+    static addressContext({ workspaceId, sessionId, loopId, turnId, writer, signal }: PlurnkSchemeContext): SchemeAddressCtx {
+        return { workspaceId, sessionId, loopId, turnId, writer, signal };
     }
 
     async resolve({ target, routedScheme, handler, manifest, ctx, access = "read" }: {

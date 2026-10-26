@@ -6,22 +6,22 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
 const response = (content: string, reasoning: string | null = null): MockResponse => ({ assistant: { content, reasoning } });
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `reply-completion-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "alice");
-    const loopId = await insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId, null, "alice");
+    const loopId = await insertLoop(db, sessionId, 1);
     const notices: Array<{ kind: string; message?: string }> = [];
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
     await engine.injectIntoLoop(loopId, "Answer the question.", [], "acp://operator/threads/alice/messages/question");
     const provider = new Mock({ contextWindow: 100_000, responses });
-    return { db, engine, provider, workspaceId, workerId, loopId, notices,
-        turn: () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
-        history: () => db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId }),
+    return { db, engine, provider, workspaceId, sessionId, loopId, notices,
+        turn: () => engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] }),
+        history: () => db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, session_id: sessionId, loop_id: loopId }),
     };
 };
 const speech = async (f: Awaited<ReturnType<typeof setup>>) => (await f.history())
@@ -29,7 +29,7 @@ const speech = async (f: Awaited<ReturnType<typeof setup>>) => (await f.history(
 
 test("{§operation-fences}: ordinary EDIT, progress SEND and final SEND execute without framing notices", async (t) => {
     const f = await setup([
-        response(frame("EDIT (worker:///kept.md)", "Retained.")),
+        response(frame("EDIT (workspace:///kept.md)", "Retained.")),
         response(frame("SEND", "Progress delivered.")),
         response(frame("SEND [200]", "Verified.")),
     ]);
@@ -48,11 +48,11 @@ test("{§operation-fences}: ordinary EDIT, progress SEND and final SEND execute 
 
 for (const shape of ["nested", "indented"] as const) {
     test(`{§quotation}: a ${shape} deletion example is not executed`, async (t) => {
-        const example = frame("KILL (worker:///kept.md)");
+        const example = frame("KILL (workspace:///kept.md)");
         const answer = `Example only:\n${example}\nNothing was deleted.`;
         const content = shape === "nested" ? frame("SEND [200]", answer)
             : example.split("\n").map((line) => `\t${line}`).join("\n") + "\n\n" + frame("SEND [200]", "Done.");
-        const f = await setup([response(frame("EDIT (worker:///kept.md)", "Retained.")), response(content)]);
+        const f = await setup([response(frame("EDIT (workspace:///kept.md)", "Retained.")), response(content)]);
         t.after(() => f.db.close());
         assert.equal((await f.turn()).status, 102);
         const final = await f.turn();
@@ -75,7 +75,7 @@ test("{§outside-text}: rejected prose is not silently promoted by a later compl
 
 for (const completionFirst of [false, true]) {
     test(`{§loop-completion}: EDIT ${completionFirst ? "after" : "before"} a final reply still runs and requires observation`, async (t) => {
-        const edit = frame("EDIT (worker:///answer)", "42");
+        const edit = frame("EDIT (workspace:///answer)", "42");
         const reply = frame("SEND [200]", "Delivered answer.");
         const f = await setup([response((completionFirst ? [reply, edit] : [edit, reply]).join("\n\n")), response("")]);
         t.after(() => f.db.close());
@@ -96,7 +96,7 @@ for (const completionFirst of [false, true]) {
         assert.equal((await f.turn()).status, 102);
         assert.equal((await f.turn()).status, 200);
         assert.deepEqual(await speech(f), ["42."]);
-        assert.equal((await f.db.engine_render_log.all<{ op: string }>({ worker_id: f.workerId })).some(({ op }) => op === "NOTE"), false);
+        assert.equal((await f.db.engine_render_log.all<{ op: string }>({ session_id: f.sessionId })).some(({ op }) => op === "NOTE"), false);
     });
 }
 

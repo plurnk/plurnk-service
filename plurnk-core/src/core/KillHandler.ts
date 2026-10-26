@@ -1,13 +1,13 @@
-// KILL dispatch: entry, channel, and worker termination, split out of Dispatcher.
+// KILL dispatch: entry, channel, and session termination, split out of Dispatcher.
 import type { ParsedPath, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
-import WorkerControlAddress from "./WorkerControlAddress.ts";
+import SessionControlAddress from "./SessionControlAddress.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type { DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryAddress, entryCoordinateOf, missDetail, missExtensions, schemeNameOf } from "./plurnk-uri.ts";
 import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
-import { type CancelWorkerNotify } from "./ChannelWrite.ts";
+import { type CancelSessionNotify } from "./ChannelWrite.ts";
 import SchemeCtxImpl from "./caps/SchemeCtxImpl.ts";
 import { InvalidOperationResultError, type SchemeCtx, type SchemeResult } from "@plurnk/plurnk-schemes";
 import { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
@@ -21,7 +21,7 @@ import type LiveSubscriptions from "./LiveSubscriptions.ts";
 export default class KillHandler {
     readonly #db: Db;
     readonly #schemes: SchemeRegistry;
-    readonly #cancelWorker: CancelWorkerNotify | undefined;
+    readonly #cancelSession: CancelSessionNotify | undefined;
     readonly #resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
     readonly #boundEntryContext: (routedScheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => SchemeCtxImpl | null;
     readonly #handlerContext: (scheme: string, ctx: PlurnkSchemeContext, authority?: string) => Promise<SchemeCtxImpl | null>;
@@ -30,16 +30,16 @@ export default class KillHandler {
 
     readonly #liveSubscriptions: LiveSubscriptions;
 
-    // {§worker-scheme} The worker scheme's entry deletion: its own hook, beside the handler surface.
+    // {§session-scheme} The session scheme's entry deletion: its own hook, beside the handler surface.
     static #killsEntries(handler: object | undefined): handler is SchemeWithEntryAddress & { killEntry: (s: PlurnkStatement, c: SchemeCtx) => Promise<SchemeResult> } {
         return handler !== undefined && "killEntry" in handler && typeof handler.killEntry === "function";
     }
 
-    constructor({ db, schemes, liveSubscriptions, cancelWorker, resolveDataEntryAddress, boundEntryContext, handlerContext, deleteEntry, failure }: {
+    constructor({ db, schemes, liveSubscriptions, cancelSession, resolveDataEntryAddress, boundEntryContext, handlerContext, deleteEntry, failure }: {
         db: Db;
         schemes: SchemeRegistry;
         liveSubscriptions: LiveSubscriptions;
-        cancelWorker: CancelWorkerNotify | undefined;
+        cancelSession: CancelSessionNotify | undefined;
         resolveDataEntryAddress: (arg0: { target: ParsedPath; routedScheme: string; handler: SchemeWithEntryAddress; manifest: SchemeManifest; ctx: PlurnkSchemeContext; access?: "read" | "write"; }) => Promise<PreparedRepresentation>;
         boundEntryContext: (routedScheme: string, address: ResolvedDataEntryAddress, ctx: PlurnkSchemeContext) => SchemeCtxImpl | null;
         handlerContext: (scheme: string, ctx: PlurnkSchemeContext, authority?: string) => Promise<SchemeCtxImpl | null>;
@@ -49,7 +49,7 @@ export default class KillHandler {
         this.#db = db;
         this.#schemes = schemes;
         this.#liveSubscriptions = liveSubscriptions;
-        this.#cancelWorker = cancelWorker;
+        this.#cancelSession = cancelSession;
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
         this.#boundEntryContext = boundEntryContext;
         this.#handlerContext = handlerContext;
@@ -77,7 +77,7 @@ export default class KillHandler {
         const binding = await ResourceBindings.resolve(path, ctx);
         const manifest = binding?.manifest;
         // {§kill-pattern} — a pattern selects log rows or an entry's lines; both leave before this
-        // point. A KILL that still carries one addresses a worker, a stream, or a scheme with no
+        // point. A KILL that still carries one addresses a session, a stream, or a scheme with no
         // lines, and is refused rather than silently widened to its whole target.
         if (statement.matcher !== null) {
             return this.#failure(
@@ -121,56 +121,56 @@ export default class KillHandler {
             }
             return await killable.kill(statement, handlerCtx);
         }
-        if (schemeName === "worker") {
-            // {§worker-scheme}: an entry path deletes scratch; a pathless target cancels an actor.
+        if (schemeName === "session") {
+            // {§session-scheme}: an entry path deletes scratch; a pathless target cancels an actor.
             const entryPath = path.kind === "url" ? (path.pathname ?? "") : "";
             if (entryPath !== "" && entryPath !== "/") {
-                const workerHandler = this.#schemes.get("worker");
+                const sessionHandler = this.#schemes.get("session");
                 if (manifest?.category !== "data") {
-                    throw new InvalidOperationResultError("Registered scheme 'worker' is not entry-bearing.");
+                    throw new InvalidOperationResultError("Registered scheme 'session' is not entry-bearing.");
                 }
-                if (!KillHandler.#killsEntries(workerHandler)) {
-                    throw new InvalidOperationResultError("Registered scheme 'worker' has no killEntry hook.");
+                if (!KillHandler.#killsEntries(sessionHandler)) {
+                    throw new InvalidOperationResultError("Registered scheme 'session' has no killEntry hook.");
                 }
                 const resolved = await this.#resolveDataEntryAddress({
                     target: path,
-                    routedScheme: "worker",
-                    handler: workerHandler,
+                    routedScheme: "session",
+                    handler: sessionHandler,
                     manifest,
                     ctx,
                     access: "write",
                 });
                 if (resolved.result !== null) return resolved.result;
                 if (resolved.address === null) {
-                    return this.#failure("entry-not-found", 404, "The worker entry does not exist.");
+                    return this.#failure("entry-not-found", 404, "The session entry does not exist.");
                 }
-                const handlerCtx = this.#boundEntryContext("worker", resolved.address, ctx);
+                const handlerCtx = this.#boundEntryContext("session", resolved.address, ctx);
                 if (handlerCtx === null) {
-                    throw new InvalidOperationResultError("Registered scheme 'worker' has no dispatch context.");
+                    throw new InvalidOperationResultError("Registered scheme 'session' has no dispatch context.");
                 }
-                const cancelled = await this.#cancelLiveSubscription("worker", resolved.address, ctx);
+                const cancelled = await this.#cancelLiveSubscription("session", resolved.address, ctx);
                 if (cancelled !== null) return cancelled;
-                return await workerHandler.killEntry(statement, handlerCtx);
+                return await sessionHandler.killEntry(statement, handlerCtx);
             }
-            const address = WorkerControlAddress.resolve(path, "KILL");
+            const address = SessionControlAddress.resolve(path, "KILL");
             if (!address.ok) return address.result;
-            // An idle worker is a no-op 200; a missing named worker is 404. {§worker-control-addressing}
+            // An idle session is a no-op 200; a missing named session is 404. {§session-control-addressing}
             const name = address.authority;
-                const row = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
+                const row = await this.#db.session_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
                 if (row === undefined) {
                     return this.#failure(
-                        "worker-not-found",
+                        "session-not-found",
                         404,
-                        `Worker '${name}' does not exist in this workspace.`,
+                        `Session '${name}' does not exist in this workspace.`,
                         {},
-                        { worker: name, retryable: false },
+                        { session: name, retryable: false },
                     );
                 }
-            const workerId = row.id;
-            if (this.#cancelWorker === undefined) throw new Error("worker kill: cancelWorker capability absent");
+            const sessionId = row.id;
+            if (this.#cancelSession === undefined) throw new Error("session kill: cancelSession capability absent");
             // {§op-synchronous} — KILL is decisive. Await the one lifecycle owner so the
             // same-turn pending-work gate observes the complete subtree as terminal.
-            await this.#cancelWorker(workerId, "killed via worker:// KILL");
+            await this.#cancelSession(sessionId, "killed via session:// KILL");
             return { status: 200 };
         }
         if (binding === undefined) {
@@ -210,6 +210,13 @@ export default class KillHandler {
         }
         const cancelled = await this.#cancelLiveSubscription(schemeName, resolved.address, ctx);
         if (cancelled !== null) return cancelled;
+        if (KillHandler.#killsEntries(handler)) {
+            const handlerCtx = this.#boundEntryContext(schemeName, resolved.address, ctx);
+            if (handlerCtx === null) {
+                throw new InvalidOperationResultError(`Registered scheme '${schemeName}' has no dispatch context.`);
+            }
+            return await handler.killEntry(statement, handlerCtx);
+        }
         // A host-effecting delete (file) returns 202 to PROPOSE — pass its attrs through so the proposal
         // carries the delete target to review (#isProposal fires on 202). Plurnk-internal deletes execute inline.
         return this.#deleteEntry(schemeName, resolved.address, ctx);
@@ -227,7 +234,7 @@ export default class KillHandler {
         if (entry === undefined) return null;
         const subscription = await ChannelWrite.findActiveSubscription(this.#db, { entryId: entry.id });
         if (subscription === null || subscription.scheme !== schemeName) return null;
-        if (ctx.writer === "model") this.#liveSubscriptions.asked(subscription.id, ctx.workerId);
+        if (ctx.writer === "model") this.#liveSubscriptions.asked(subscription.id, ctx.sessionId);
         const cancelled = await this.#liveSubscriptions.cancel(subscription.id);
         if (!cancelled) {
             throw new InvalidOperationResultError(`Subscription ${subscription.id} is durable but has no live cancellation handle.`);

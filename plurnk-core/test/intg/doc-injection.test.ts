@@ -1,7 +1,7 @@
 // Project AGENTS.md turn-0 stunt ({§turn0-agents-stunt}). The project's
-// AGENTS.md is materialized as worker:///_plurnk/AGENTS.md by an ordinary _plurnk
-// administrative turn in the addressed Worker, then foisted as a READ into
-// that Worker's turn 0.
+// AGENTS.md is materialized as workspace:///_plurnk/AGENTS.md by an ordinary _plurnk
+// administrative turn in the addressed Session, then foisted as a READ into
+// that Session's turn 0.
 // Global policy stays in the system prompt; nothing else is force-read.
 
 import test from "node:test";
@@ -13,7 +13,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Worker + READ into turn 0", async () => {
+test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Session + READ into turn 0", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-agents-"));
     const docBody = "# Project rules\nBe excellent.\n";
     await writeFile(join(dir, "AGENTS.md"), docBody, "utf8");
@@ -32,22 +32,22 @@ test("{§turn0-agents-stunt}: the project AGENTS.md is materialized in the Worke
                 const rows = await db.test_log_entries_by_loop.all<{
                     op: string; pathname: string; scheme: string; hostname: string | null; status_rx: number;
                 }>({ loop_id: loopId });
-                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "worker" && r.hostname === null && r.pathname === "/_plurnk/AGENTS.md");
-                assert.ok(docRead !== undefined, "model turn-0 carries a READ of worker:///_plurnk/AGENTS.md");
+                const docRead = rows.find((r) => r.op === "READ" && r.scheme === "workspace" && r.hostname === null && r.pathname === "/_plurnk/AGENTS.md");
+                assert.ok(docRead !== undefined, "model turn-0 carries a READ of workspace:///_plurnk/AGENTS.md");
                 assert.equal(docRead.status_rx, 200, "the stunt READ hits the materialized entry, not a 404");
 
-                const editInInferenceLoop = rows.find((r) => r.op === "EDIT" && r.scheme === "worker" && r.pathname === "/_plurnk/AGENTS.md");
+                const editInInferenceLoop = rows.find((r) => r.op === "EDIT" && r.scheme === "workspace" && r.pathname === "/_plurnk/AGENTS.md");
                 assert.equal(editInInferenceLoop, undefined, "the materializing EDIT lives in its own administrative turn");
 
                 const entry = await db.crud_find_workspace_entry.get<{ id: number }>({
                     workspace_id: workspaceId,
-                    scheme: "worker",
+                    scheme: "workspace",
                     authority: "",
                     pathname: "/_plurnk/AGENTS.md",
                 });
-                assert.ok(entry !== undefined, "the generated policy entry is owned by the model Worker");
+                assert.ok(entry !== undefined, "the generated policy entry is owned by the model Session");
                 const body = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
-                assert.equal(body?.content, docBody, "the Worker entry mirrors the project file");
+                assert.equal(body?.content, docBody, "the Session entry mirrors the project file");
             } finally { ws.close(); }
         });
     } finally {
@@ -70,7 +70,7 @@ test("{§turn0-agents-stunt}: the stunt is never gated by the catalog-preview sw
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string }>({ loop_id: loopId });
                 assert.ok(
-                    rows.some((r) => r.op === "READ" && r.scheme === "worker" && r.pathname === "/_plurnk/AGENTS.md"),
+                    rows.some((r) => r.op === "READ" && r.scheme === "workspace" && r.pathname === "/_plurnk/AGENTS.md"),
                     "the AGENTS stunt fires even when the catalog preview is off",
                 );
             } finally { ws.close(); }
@@ -93,7 +93,7 @@ test("{§turn0-agents-stunt}: no AGENTS.md means no stunt — nothing 404s and n
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<{ op: string; pathname: string; scheme: string }>({ loop_id: loopId });
                 assert.ok(
-                    !rows.some((r) => r.scheme === "worker" && r.pathname === "/_plurnk/AGENTS.md"),
+                    !rows.some((r) => r.scheme === "workspace" && r.pathname === "/_plurnk/AGENTS.md"),
                     "no stunt row without a project AGENTS.md",
                 );
             } finally { ws.close(); }

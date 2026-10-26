@@ -10,16 +10,16 @@ test("{§methods-op-mirror} op.edit creates an entry via engine.dispatch (origin
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "ops-test" });
             const response = await rpcCall(ws, 2, "op.edit", {
-                target: "worker:///france/capital", content: "Paris",
+                target: "workspace:///france/capital", content: "Paris",
             });
             assert.equal((response.result as { status: number }).status, 201);
 
-            const entry = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string; pathname: string }>({ pathname: "/france/capital", scheme: "worker" });
-            assert.equal(entry?.scheme, "worker");
+            const entry = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string; pathname: string }>({ pathname: "/france/capital", scheme: "workspace" });
+            assert.equal(entry?.scheme, "workspace");
             assert.equal(entry?.pathname, "/france/capital");
             const body = (await db.test_get_body_by_pathname.get<{ content: string }>({ pathname: "/france/capital" }))?.content;
             assert.equal(body, "Paris");
-            const log = await db.test_first_log_entry.get<{ id: number; worker_id: number; origin: string; op: string }>();
+            const log = await db.test_first_log_entry.get<{ id: number; session_id: number; origin: string; op: string }>();
             assert.ok(log !== undefined);
             assert.equal(log?.origin, "client");
             assert.equal(log?.op, "EDIT");
@@ -39,7 +39,7 @@ test("{§methods-op-mirror}: op.edit log/entry notification precedes the action 
                 const m = JSON.parse(typeof data === "string" ? data : (data as Buffer).toString("utf8")) as { method?: string; id?: number };
                 order.push(m.method ?? `response#${m.id}`);
             });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "hi" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///x", content: "hi" });
             const notifyIdx = order.indexOf("log/entry");
             const respIdx = order.indexOf("response#2");
             assert.ok(notifyIdx !== -1, `log/entry should have fired (order: ${order.join(", ")})`);
@@ -53,8 +53,8 @@ test("{§methods-op-mirror} op.read fetches an entry's body", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "read-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "hello" });
-            const response = await rpcCall(ws, 3, "op.read", { target: "worker:///x" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///x", content: "hello" });
+            const response = await rpcCall(ws, 3, "op.read", { target: "workspace:///x" });
             const result = response.result as { status: number; content: string };
             assert.equal(result.status, 200);
             assert.equal(result.content, "hello");
@@ -67,7 +67,7 @@ test("{§methods-op-mirror} op.read on nonexistent entry returns 404", async () 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "404-test" });
-            const response = await rpcCall(ws, 2, "op.read", { target: "worker:///nope" });
+            const response = await rpcCall(ws, 2, "op.read", { target: "workspace:///nope" });
             assert.equal((response.result as { status: number }).status, 404);
         } finally { ws.close(); }
     });
@@ -83,8 +83,8 @@ test("{§methods-op-mirror} op.dispatch accepts a raw PlurnkStatement AST and di
                 aside: null,
                 metadata: null,
                 target: {
-                    kind: "url" as const, raw: "worker:///hello",
-                    scheme: "worker", username: null, password: null,
+                    kind: "url" as const, raw: "workspace:///hello",
+                    scheme: "workspace", username: null, password: null,
                     hostname: null, port: null, pathname: "/hello",
                     query: null, fragment: null,
                 },
@@ -108,7 +108,7 @@ test("{§notifications-log-entry-notify} op.* fires log/entry notification with 
         try {
             const notifications = subscribeNotifications(ws, "log/entry");
             await rpcCall(ws, 1, "workspace.create", { name: "notif-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "test" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///x", content: "test" });
 
             const captured = notifications();
             assert.equal(captured.length, 1);
@@ -131,7 +131,7 @@ test("{§notifications-envelope-carries-workspaceid} log/entry notification is s
             await rpcCall(wsA, 1, "workspace.create", { name: "workspace-A" });
             await rpcCall(wsB, 1, "workspace.create", { name: "workspace-B" });
 
-            await rpcCall(wsA, 2, "op.edit", { target: "worker:///x", content: "from A" });
+            await rpcCall(wsA, 2, "op.edit", { target: "workspace:///x", content: "from A" });
 
             assert.equal(aNotifs().length, 1);
             assert.equal(bNotifs().length, 0);
@@ -143,7 +143,7 @@ test("{§find-result-projection} op.find on empty scope returns 200 with empty r
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "find-test" });
-            const response = await rpcCall(ws, 2, "op.find", { scope: "worker:///empty/" });
+            const response = await rpcCall(ws, 2, "op.find", { scope: "workspace:///empty/" });
             const result = response.result as { status: number; results: string[]; content: string };
             assert.equal(result.status, 200);
             assert.deepEqual(result.results, []);
@@ -159,12 +159,12 @@ test("{§connection-lifecycle} a completed client operation concludes its admini
             const workspace = await rpcCall(ws, 1, "workspace.create", { name: "note-test" });
             const workspaceId = (workspace.result as { id: number }).id;
 
-            // The operation opens its own loop in the workspace's runtime worker.
+            // The operation opens its own loop in the workspace's runtime session.
             const response = await rpcCall(ws, 2, "op.dispatch", { statement: Dsl.parseSingleStatement("````NOTE\nClient observation.\n````") });
             assert.equal((response.result as { status: number }).status, 200);
 
-            const runtime = await daemon.ensureRuntimeWorker(workspaceId);
-            const operations = (await daemon.listWorkerLoops({ workspaceId, workerId: runtime }))
+            const runtime = await daemon.ensureRuntimeSession(workspaceId);
+            const operations = (await daemon.listSessionLoops({ workspaceId, sessionId: runtime }))
                 .filter(({ promptSource }) => promptSource === SeamSocket.owner);
             assert.deepEqual(operations.map(({ status }) => status), [200], "the one operation's loop concluded 200");
         } finally { ws.close(); }

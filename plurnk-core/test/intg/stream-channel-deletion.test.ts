@@ -8,7 +8,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { serverProposals } from "./_approval.ts";
 
 const frame = (heading: string, body: string | null = null) => PlurnkParser.frame(heading, body);
@@ -31,8 +31,8 @@ for (const shape of RESPONSES) {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, `stream-channel-deletion-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "probe");
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId, null, "probe");
+        const loopId = await insertLoop(db, sessionId, 1);
         const schemes = new SchemeRegistry();
         schemes.register("https", new Http());
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
@@ -45,7 +45,7 @@ for (const shape of RESPONSES) {
         ] });
         const statuses: number[] = [];
         while (statuses.length < 4 && ![200, 499].includes(statuses.at(-1) ?? 0)) {
-            statuses.push((await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] })).status);
+            statuses.push((await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] })).status);
         }
         assert.deepEqual(statuses, [102, 200], "the request's turn continues; the reply's turn, with the response observed, concludes");
     });

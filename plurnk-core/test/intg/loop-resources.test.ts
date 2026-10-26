@@ -10,21 +10,21 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import Results from "../../src/core/results.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { readStmt, findStmt, editStmt, copyStmt, moveStmt, killStmt } from "./_dsl.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
-test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and immutable source boundaries", async (t) => {
+test("{§session-loop-result}: exact outcomes compose with READ, FIND, COPY and immutable source boundaries", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "loop-resources");
-    const workerId = await insertWorker(db, workspaceId, null, "reader");
-    const loopId = await insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId, null, "reader");
+    const loopId = await insertLoop(db, sessionId, 1);
     const turnId = await insertTurn(db, loopId, 1);
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     let sequence = 0;
-    const dispatch = (statement: PlurnkStatement) => engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model" });
-    const child = await insertWorker(db, workspaceId, null, "child");
+    const dispatch = (statement: PlurnkStatement) => engine.dispatch({ statement, workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "model" });
+    const child = await insertSession(db, workspaceId, null, "child");
     const first = await insertLoop(db, child, 1);
     const source = parsePath("ops://child/1")!;
     const unfinished = await dispatch(readStmt(source));
@@ -42,7 +42,7 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
     assert.equal((await dispatch(readStmt(source, { marks: [17, -1] }))).content, body.split("\n").slice(16).join("\n"));
 
     const live = await insertLoop(db, child, 2);
-    const latest = await dispatch(readStmt(parsePath("worker://child")));
+    const latest = await dispatch(readStmt(parsePath("session://child")));
     assert.equal(latest.status, 425);
     assert.equal(latest.resource, "ops://child/2");
     assert.equal((await dispatch(readStmt(source, { marks: [1, -1] }))).content, body);
@@ -51,10 +51,10 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.match(JSON.stringify(found.results), /ops:\/\/child\/1/);
     }
-    const destination = parsePath("worker:///copied.txt")!;
+    const destination = parsePath("workspace:///copied.txt")!;
     assert.equal((await dispatch(copyStmt(source, destination, { marks: [20, 21] }))).status, 201);
     assert.equal((await dispatch(readStmt(destination))).content, "Result line 20\nResult line 21\n");
-    for (const statement of [editStmt(source, "changed"), killStmt(source), moveStmt(source, parsePath("worker:///moved.txt")!), copyStmt(destination, source)]) {
+    for (const statement of [editStmt(source, "changed"), killStmt(source), moveStmt(source, parsePath("workspace:///moved.txt")!), copyStmt(destination, source)]) {
         const denied = await dispatch(statement);
         assert.equal(denied.status, 403, JSON.stringify(denied));
         assert.equal(denied.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/writer-forbidden");
@@ -67,12 +67,12 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
         assert.equal(invalid.problem?.type, "https://problems.plurnk.xyz/scheme/ops/coordinate-malformed");
     }
     const otherWorkspace = await insertWorkspace(db, "separate-loop-resources");
-    const otherChild = await insertWorker(db, otherWorkspace, null, "child");
+    const otherChild = await insertSession(db, otherWorkspace, null, "child");
     const otherLoop = await insertLoop(db, otherChild, 1);
     await lifecycle.finish(otherLoop, { status: 200, content: "Different workspace." });
-    assert.equal((await dispatch(readStmt(source, { marks: [1, -1] }))).content, body, "workspace scope is not worker privacy");
+    assert.equal((await dispatch(readStmt(source, { marks: [1, -1] }))).content, body, "workspace scope is not session privacy");
     await lifecycle.finish(live, { status: 200 });
-    const collected = await dispatch(readStmt(parsePath("worker://child")));
+    const collected = await dispatch(readStmt(parsePath("session://child")));
     assert.equal(collected.status, 200);
     assert.equal(collected.content, "");
     assert.equal(collected.resource, "ops://child/2");
@@ -93,22 +93,22 @@ test("{§worker-loop-result}: exact outcomes compose with READ, FIND, COPY and i
     assert.equal((await dispatch(readStmt(parsePath("ops://branch/4")))).problem?.instance, external.problem?.instance);
 });
 
-test("{§worker-loop-result}: source identity and exact outcome survive reopening the database", async () => {
+test("{§session-loop-result}: source identity and exact outcome survive reopening the database", async () => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-loop-resource-"));
     let db = await openMigrated(join(directory, "plurnk.db"));
     try {
         const workspaceId = await insertWorkspace(db, "loop-resource-restart");
-        const workerId = await insertWorker(db, workspaceId, null, "producer");
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId, null, "producer");
+        const loopId = await insertLoop(db, sessionId, 1);
         const exact = await new LoopLifecycle(db).finish(loopId, Results.failure("test:source", "failed", 502, "Retained failure."));
         assert.ok(exact);
         await db.close();
         db = await openMigrated(join(directory, "plurnk.db"));
-        const reader = await insertWorker(db, workspaceId, null, "reader");
+        const reader = await insertSession(db, workspaceId, null, "reader");
         const readingLoop = await insertLoop(db, reader, 1);
         const turnId = await insertTurn(db, readingLoop, 1);
         const read = await new Engine({ db, schemes: new SchemeRegistry() }).dispatch({
-            workspaceId, workerId: reader, loopId: readingLoop, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId: reader, loopId: readingLoop, turnId, sequence: 1, origin: "model",
             statement: readStmt(parsePath("ops://producer/1")),
         });
         assert.equal(read.status, 502);

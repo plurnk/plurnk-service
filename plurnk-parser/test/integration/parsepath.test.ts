@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import AstBuilder from "../../src/AstBuilder.ts";
 import { PlurnkParser } from "../../src/index.ts";
-import { PathSyntax, PlurnkParseError, WORKER_NAME } from "@plurnk/plurnk-contracts";
+import { PathSyntax, PlurnkParseError, SESSION_NAME } from "@plurnk/plurnk-contracts";
 
 // {§path-syntax} Detailed target admission behind the public parsePath helper.
 
@@ -38,9 +38,9 @@ test("{§path-syntax} parsePath: HTTPS retains full authority decomposition", ()
 });
 
 test("{§path-syntax} parsePath: authority-less scheme uses three slashes — empty authority, leading-slash path", () => {
-    const p = AstBuilder.parsePath("worker:///philosophy/existentialism/meaning");
+    const p = AstBuilder.parsePath("workspace:///philosophy/existentialism/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
-    assert.equal(p.scheme, "worker");
+    assert.equal(p.scheme, "workspace");
     assert.equal(p.hostname, null);
     assert.equal(p.pathname, "/philosophy/existentialism/meaning");
     assert.equal(p.port, null);
@@ -49,7 +49,7 @@ test("{§path-syntax} parsePath: authority-less scheme uses three slashes — em
 });
 
 test("{§path-syntax} parsePath: two-slash URL parses the first segment as its host", () => {
-    const p = AstBuilder.parsePath("worker://philosophy/meaning");
+    const p = AstBuilder.parsePath("session://philosophy/meaning");
     if (p?.kind !== "url") { assert.fail("expected url"); return; }
     assert.equal(p.hostname, "philosophy");
     assert.equal(p.pathname, "/meaning");
@@ -126,7 +126,7 @@ test("{§path-syntax} parsePath: absent and explicitly empty queries remain dist
 });
 
 test("{§path-syntax} parsePath: a question mark in a fragment does not create a query", () => {
-    for (const raw of ["https://host/path#fragment?text", "worker:///path#fragment?text"]) {
+    for (const raw of ["https://host/path#fragment?text", "workspace:///path#fragment?text"]) {
         const parsed = AstBuilder.parsePath(raw);
         assert.equal(parsed?.kind, "url");
         if (parsed?.kind !== "url") return;
@@ -136,7 +136,7 @@ test("{§path-syntax} parsePath: a question mark in a fragment does not create a
 });
 
 test("{§path-syntax} parsePath: brace glob protection never rewrites query or fragment slashes", () => {
-    for (const raw of ["https://host?x=/{a,b}", "https://host#/{a,b}", "worker://host?x=/{a,b}#/{c,d}", "https://host/{path}?x=/{a,b}#/{c,d}"]) {
+    for (const raw of ["https://host?x=/{a,b}", "https://host#/{a,b}", "session://host?x=/{a,b}#/{c,d}", "https://host/{path}?x=/{a,b}#/{c,d}"]) {
         const expected = new URL(raw);
         const parsed = AstBuilder.parsePath(raw);
         assert.equal(parsed?.kind, "url");
@@ -219,18 +219,18 @@ test("{§path-syntax} parsePath: the ws op trio (READ open+stream, SEND push, KI
     assert.deepEqual(schemes, ["ws", "wss", "ws"]);
 });
 
-test("{§worker-name}: parser preserves worker authority case and underscores", () => {
-    const upper = AstBuilder.parsePath("worker://Approach_A/x");
-    const lower = AstBuilder.parsePath("worker://approach_a/x");
+test("{§session-name}: parser preserves session authority case and underscores", () => {
+    const upper = AstBuilder.parsePath("session://Approach_A/x");
+    const lower = AstBuilder.parsePath("session://approach_a/x");
     if (upper?.kind !== "url" || lower?.kind !== "url") { assert.fail("both must decompose"); return; }
     assert.equal(upper.hostname, "Approach_A");
     assert.equal(lower.hostname, "approach_a");
     assert.notEqual(upper.hostname, lower.hostname);
 });
 
-for (const authority of ["!", "a.b", "a+b"]) test(`{§worker-name}: URL authority ${authority} decomposes independently of the mintable alphabet`, () => {
-    const p = AstBuilder.parsePath(`worker://${authority}/draft`);
+for (const authority of ["!", "a.b", "a+b"]) test(`{§session-name}: URL authority ${authority} decomposes independently of the mintable alphabet`, () => {
+    const p = AstBuilder.parsePath(`session://${authority}/draft`);
     if (p?.kind !== "url") { assert.fail("authority must decompose"); return; }
     assert.equal(p.hostname, authority);
-    assert.ok(!WORKER_NAME.test(authority));
+    assert.ok(!SESSION_NAME.test(authority));
 });

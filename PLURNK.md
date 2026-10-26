@@ -130,8 +130,8 @@ In Plurnk everything has one:
 | `src/server.py` | A file in the project |
 | `log:///1/4/2/READ` | An observation the model made: loop 1, turn 4, item 2 |
 | `sh:///ab3d5678#stderr` | The error stream of a running process |
-| `worker://tests` | Another agent in the same workspace |
-| `reasoning://cc2b614d/1/7` | What a worker was thinking on a past turn |
+| `session://tests` | Another agent in the same workspace |
+| `reasoning://cc2b614d/1/7` | What a session was thinking on a past turn |
 | `skill://plurnk/SKILL.md` | A skill and its files |
 | `https://example.com/feed.xml` | A resource on the web |
 
@@ -148,12 +148,12 @@ Once things have addresses, the ordinary verbs reach them:
 Two consequences follow. First, memory becomes random-access instead of sequential: the model's past
 is not a tape to rewind but a space to navigate. Second, authority can attach to names. Reading is
 free; acting on the world is proposed. Anything with effects outside the workspace becomes a proposal
-that the worker's owner accepts or rejects: a subprocess that touches the host, an outbound request
+that the session's owner accepts or rejects: a subprocess that touches the host, an outbound request
 that writes, a file created outside policy. Consent becomes a property of addresses and effects
 rather than a list of tools.
 
-Processes are addresses too. Workers persist beyond any client session. WORK starts a child with a
-fresh journal, and FORK starts one with a copy of the parent's. SEND writes to a worker or to a running
+Processes are addresses too. Sessions persist beyond any client session. WORK starts a child with a
+fresh journal, and FORK starts one with a copy of the parent's. SEND writes to a session or to a running
 process, and WAIT yields until a child or a stream has something to say. A machine with a stochastic
 control unit can still be a multiprocessing machine, as long as every process can be named.
 
@@ -205,7 +205,7 @@ Plurnk offers instead of imposing, and what arrives is sized by what the model a
 - **A precise request,** such as a range of lines or a pattern, is answered exactly.
 - **A loose request, or none at all,** is answered with a preview: the first page, plus one line stating
   the whole, such as `<1,100> of 4812 lines`. This covers an unscoped READ of a large file, a command's
-  output, or a message from another worker.
+  output, or a message from another session.
 - **Anything too large for the room** arrives as a receipt: its size, its address, and the verbs that
   will fetch it.
 
@@ -351,7 +351,7 @@ applied outward:
 | An MCP tool | A statement: a fence with the tool's name and a JSON body |
 | An MCP resource | An address, reachable by every verb and every pattern |
 | An Agent Skill | A tree of files at `skill://`, searchable and readable by pattern |
-| An ACP client | A view of a durable worker that outlives the connection |
+| An ACP client | A view of a durable session that outlives the connection |
 
 Every standard Plurnk adopts becomes one more factor in the multiplication. Integration is not a
 concession a contrarian system makes to an ordinary world. It is the input the orthogonal machine was

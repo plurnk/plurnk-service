@@ -17,7 +17,7 @@ test("{§balanced-fences} replies keep every line after a balanced inner fence p
     const fenced = statements("```SEND [200]\nRan the tests:\n```\ntraceback\n```\nAll done.\n```");
     assert.deepEqual(fenced.map(({ op }) => op), ["SEND"]);
     assert.equal(bodyOf(fenced[0]), "Ran the tests:\n```\ntraceback\n```\nAll done.");
-    for (const op of ["SEND", "WORK (worker://verify)"]) {
+    for (const op of ["SEND", "WORK (session://verify)"]) {
         const [statement] = statements(`\`\`\`${op}\nRan the tests:\n\`\`\`\ntraceback\n\`\`\`\nAll done.\n\`\`\``);
         assert.equal(bodyOf(statement), "Ran the tests:\n```\ntraceback\n```\nAll done.", op);
     }
@@ -53,7 +53,7 @@ test("{§prose-code-blocks} qflash run118's SEND report keeps its quoted code an
 
 test("{§prose-code-blocks} a native operation's heading still ends an unclosed message; an executor heading ends a non-prose body", () => {
     assert.deepEqual(statements("```SEND\nDone.\n```WAIT\n```").map(({ op }) => op), ["SEND", "WAIT"]);
-    assert.deepEqual(statements("```WORK (worker://a)\nRun:\n```sh\nls\n```").map((statement) => "runtime" in statement ? statement.runtime : statement.op), ["WORK"]);
+    assert.deepEqual(statements("```WORK (session://a)\nRun:\n```sh\nls\n```").map((statement) => "runtime" in statement ? statement.runtime : statement.op), ["WORK"]);
     assert.deepEqual(statements("```EDIT (notes.md)\nRun:\n```sh\nls\n```").map((statement) => "runtime" in statement ? statement.runtime : statement.op), ["EDIT", "sh"]);
 });
 

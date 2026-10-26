@@ -8,7 +8,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket from "../../src/core/StoredPacket.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§digest-evidence-reader}: the public reader supplies canonical packets to the independent report package", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-boundary-"));
@@ -23,8 +23,8 @@ test("{§digest-evidence-reader}: the public reader supplies canonical packets t
     });
     try {
         const workspaceId = await insertWorkspace(db, "reader-contract");
-        const workerId = await insertWorker(db, workspaceId, null, "witness");
-        const loopId = await insertLoop(db, workerId, 1, "report the evidence");
+        const sessionId = await insertSession(db, workspaceId, null, "witness");
+        const loopId = await insertLoop(db, sessionId, 1, "report the evidence");
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         await Turn.recordInference(db, turn.id, {
             packet: StoredPacket.stringify(packet), sections: StoredPacket.sections(packet),

@@ -197,7 +197,7 @@ export default class WorkspaceCapabilities {
         this.#enforceWarmMaximum();
     }
 
-    // {§operator-config-worker-warm} — negative never cools by time, zero cools at once, otherwise after the delay.
+    // {§operator-config-session-warm} — negative never cools by time, zero cools at once, otherwise after the delay.
     #scheduleCooling(state: WorkspaceCapabilityState, delayMs: number): void {
         if (delayMs < 0 || state.phase !== "active" || state.leases !== 0 || this.signal.aborted) return;
         if (delayMs === 0) {

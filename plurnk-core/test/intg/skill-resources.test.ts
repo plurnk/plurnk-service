@@ -84,15 +84,15 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
         assert.deepEqual((await find("skill://{alpha,beta}/SKILL.md")).map(({ path }) => path), [
             "skill://alpha/SKILL.md", "skill://beta/SKILL.md",
         ]);
-        const unknownType = await dispatch(copyStmt(parsePath("skill://alpha/binary.bin")!, parsePath("worker:///copied.bin")!));
+        const unknownType = await dispatch(copyStmt(parsePath("skill://alpha/binary.bin")!, parsePath("workspace:///copied.bin")!));
         assert.equal(unknownType.status, 201, JSON.stringify(unknownType));
-        const unknownBytes = await dispatch(readStmt(parsePath("worker:///copied.bin"), { marks: [1, -1] }));
+        const unknownBytes = await dispatch(readStmt(parsePath("workspace:///copied.bin"), { marks: [1, -1] }));
         assert.equal(unknownBytes.status, 200);
         assert.equal(unknownBytes.content, "00\nff\n80", "{§copy-destination-mimetype} an untyped destination preserves every source byte");
-        assert.equal((await find("worker:///copied.bin"))[0]?.mimetype, "application/octet-stream");
-        const copied = await dispatch(copyStmt(parsePath("skill://alpha/image.png")!, parsePath("worker:///copied.png")!));
+        assert.equal((await find("workspace:///copied.bin"))[0]?.mimetype, "application/octet-stream");
+        const copied = await dispatch(copyStmt(parsePath("skill://alpha/image.png")!, parsePath("workspace:///copied.png")!));
         assert.equal(copied.status, 201, JSON.stringify(copied));
-        const bytes = await dispatch(readStmt(parsePath("worker:///copied.png"), { marks: [1, -1] }));
+        const bytes = await dispatch(readStmt(parsePath("workspace:///copied.png"), { marks: [1, -1] }));
         assert.equal(bytes.status, 200);
         assert.equal(bytes.content, [...PNG].map((byte) => byte.toString(16).padStart(2, "0")).join("\n"), "COPY preserves source bytes across schemes");
         assert.equal((await find("skill://alpha/binary.bin"))[0]?.mimetype, "application/octet-stream");

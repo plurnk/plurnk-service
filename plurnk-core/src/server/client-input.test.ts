@@ -14,7 +14,7 @@ const failureFrom = (run: () => unknown): OperationFailureError => {
 };
 
 test("{§methods-loop-run-open-paths} malformed resource URIs are refused before a loop is admitted", () => {
-    assert.deepEqual(ClientInput.assertOpenPaths("runLoop", ["literal (file).txt", "worker:///reference.txt#body"]), ["literal (file).txt", "worker:///reference.txt#body"]);
+    assert.deepEqual(ClientInput.assertOpenPaths("runLoop", ["literal (file).txt", "workspace:///reference.txt#body"]), ["literal (file).txt", "workspace:///reference.txt#body"]);
     const failure = failureFrom(() => ClientInput.assertOpenPaths("runLoop", ["http://["]));
     assert.equal(failure.result.status, 400);
     assert.equal(failure.result.problem.type, "https://problems.plurnk.xyz/daemon/input/open-path-invalid");
@@ -43,7 +43,7 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        capabilities: { only: [{ scheme: "worker" }, { runtime: "sh" }] },
+        capabilities: { only: [{ scheme: "session" }, { runtime: "sh" }] },
 
     })), {
         filesItems: 3,
@@ -51,15 +51,15 @@ test("{§operator-config-workspace-settings} client input accepts the complete s
         git: false,
         fileCreateScope: "root",
         client: "plurnk.test/1",
-        capabilities: { only: [{ scheme: "worker" }, { runtime: "sh" }] },
+        capabilities: { only: [{ scheme: "session" }, { runtime: "sh" }] },
 
     });
     assert.deepEqual(JSON.parse(ClientInput.parseSettings("{\"git\":false}")), { git: false });
     assert.equal(ClientInput.assertPrompt("loop.run", "continue"), "continue");
     assert.equal(ClientInput.assertOptionalSource("loop.run", "acp://session42"), "acp://session42");
     assert.equal(ClientInput.assertOptionalSource("loop.run", undefined), undefined);
-    assert.equal(ClientInput.assertSelector("worker.model.set", "selector", "google/gemini"), "google/gemini");
-    assert.equal(ClientInput.assertChildSelector("worker.child.set", null), null);
+    assert.equal(ClientInput.assertSelector("session.model.set", "selector", "google/gemini"), "google/gemini");
+    assert.equal(ClientInput.assertChildSelector("session.child.set", null), null);
     assert.equal(ClientInput.assertMaxTurns("loop.run", -1), -1);
     assert.deepEqual(ClientInput.assertOpenPaths("loop.run", ["README.md"]), ["README.md"]);
     assert.equal(ClientInput.assertLimit("workspace.prompts", 10), 10);
@@ -167,15 +167,15 @@ test("{§operator-config-workspace-settings} client input failures are exact RFC
             field: "childSelector",
         },
         {
-            run: () => ClientInput.assertSelector("worker.model.set", "selector", undefined),
+            run: () => ClientInput.assertSelector("session.model.set", "selector", undefined),
             code: "selector-invalid",
-            context: "worker.model.set",
+            context: "session.model.set",
             field: "selector",
         },
         {
-            run: () => ClientInput.assertChildSelector("worker.child.set", undefined),
+            run: () => ClientInput.assertChildSelector("session.child.set", undefined),
             code: "child-selector-invalid",
-            context: "worker.child.set",
+            context: "session.child.set",
             field: "childSelector",
         },
         {

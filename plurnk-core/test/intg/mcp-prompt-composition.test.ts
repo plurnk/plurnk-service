@@ -14,7 +14,7 @@ import { openMigrated } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 import { userText } from "./_mock.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Media inspected.");
@@ -65,11 +65,11 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
         daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
             PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
         } }), "@plurnk/plurnk-mcp");
-        let identity: { workspaceId: number; workerId: number } | undefined;
+        let identity: { workspaceId: number; sessionId: number } | undefined;
         try {
             await daemon.start();
             const { workspaceId } = await daemon.createWorkspace({ name: "mcp-prompt-media" });
-            identity = { workspaceId, workerId: await namedModelWorker(daemon, workspaceId, "main") };
+            identity = { workspaceId, sessionId: await namedModelSession(daemon, workspaceId, "main") };
             const run = await daemon.runLoop({ ...identity, prompt: "Inspect the MCP prompt media." });
             const lifecycle = new LoopLifecycle(db);
             await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 200, { timeoutMs: 10_000 });
@@ -108,7 +108,7 @@ for (const modalities of [[media.kind], []] as InputModality[][]) {
             const raw = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/prompts/inspect", scheme: "fixture", name: "json" });
             assert.equal(JSON.parse(raw?.content ?? "{}").messages.at(-1).content.data, media.bytes.toString("base64"));
         } finally {
-            if (identity !== undefined) await daemon.cancelWorker(identity);
+            if (identity !== undefined) await daemon.cancelSession(identity);
             await daemon.stop();
             await db.close();
         }

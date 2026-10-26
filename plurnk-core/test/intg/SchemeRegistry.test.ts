@@ -1,19 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Session from "../../src/schemes/Session.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 
 test("{§extension-namespace-arbitration} SchemeRegistry: constructor registers the engine-owned scheme roster", () => {
     const r = new SchemeRegistry();
-    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "message", "note", "ops", "reasoning", "worker"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
+    assert.deepEqual(r.list().toSorted(), ["exec", "file", "log", "message", "note", "ops", "reasoning", "session", "workspace"], "the engine roster is exact; skill belongs to the daemon's skills lifecycle");
 });
 
 test("{§extension-namespace-arbitration} SchemeRegistry: register(name) on already-registered name fails hard", () => {
     const r = new SchemeRegistry();
     assert.throws(
-        () => r.register("worker", new Worker()),
-        /scheme name 'worker' is reserved by core package '@plurnk\/plurnk-service'; programmatic scheme 'worker' cannot claim it/,
+        () => r.register("session", new Session()),
+        /scheme name 'session' is reserved by core package '@plurnk\/plurnk-service'; programmatic scheme 'session' cannot claim it/,
     );
 });
 

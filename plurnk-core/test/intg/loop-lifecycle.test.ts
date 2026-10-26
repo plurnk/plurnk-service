@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import Turn from "../../src/core/Turn.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
-test("{§worker-lifecycle-terminal-result} loop transitions are guarded and terminal state is immutable", async () => {
+test("{§session-lifecycle-terminal-result} loop transitions are guarded and terminal state is immutable", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lifecycle-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "work");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "work");
         const lifecycle = new LoopLifecycle(db);
 
         assert.equal(await lifecycle.wake(loopId), false, "an active loop cannot be woken");
@@ -44,18 +44,18 @@ test("{§problems-functionality} structured cancellation atomically claims the u
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cancel-tree-${crypto.randomUUID()}`);
-        const root = await insertWorker(db, workspaceId, null, "root");
+        const root = await insertSession(db, workspaceId, null, "root");
         const rootLoop = await insertLoop(db, root, 1, "root");
-        const child = await insertWorker(db, workspaceId, root, "child");
+        const child = await insertSession(db, workspaceId, root, "child");
         const childLoop = await insertLoop(db, child, 1, "child");
-        const grandchild = await insertWorker(db, workspaceId, child, "grandchild");
+        const grandchild = await insertSession(db, workspaceId, child, "grandchild");
         const grandchildLoop = await insertLoop(db, grandchild, 1, "grandchild");
-        const sibling = await insertWorker(db, workspaceId, null, "sibling");
+        const sibling = await insertSession(db, workspaceId, null, "sibling");
         const siblingLoop = await insertLoop(db, sibling, 1, "sibling");
 
         const cancelled = await new LoopLifecycle(db).cancelTree(root, "scope abandoned", false);
 
-        assert.deepEqual(cancelled.workerIds, [grandchild, child], "descendants are returned deepest-first for process-local reap");
+        assert.deepEqual(cancelled.sessionIds, [grandchild, child], "descendants are returned deepest-first for process-local reap");
         assert.deepEqual(new Set(cancelled.loops.map(({ loopId }) => loopId)), new Set([childLoop, grandchildLoop]));
         const status = async (loopId: number): Promise<number | undefined> =>
             (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
@@ -66,16 +66,16 @@ test("{§problems-functionality} structured cancellation atomically claims the u
         for (const loop of cancelled.loops) {
             assert.equal(loop.result.status, 499);
             assert.equal(loop.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
-            assert.equal(loop.result.problem?.instance, `ops://${loop.workerId === child ? "child" : "grandchild"}/1`);
-            assert.equal(loop.result.problem?.detail, "The worker scope was cancelled: scope abandoned."); // {§problems-functionality}
+            assert.equal(loop.result.problem?.instance, `ops://${loop.sessionId === child ? "child" : "grandchild"}/1`);
+            assert.equal(loop.result.problem?.detail, "The session scope was cancelled: scope abandoned."); // {§problems-functionality}
             assert.equal(loop.result.problem?.reason, "scope abandoned");
             assert.equal(loop.result.problem?.stage, "loop");
             assert.equal(loop.result.problem?.retryable, false);
         }
-        // {§worker-cancel-trigger} — the worker row carries the cancellation that retired its loops;
-        // an untouched worker carries none.
+        // {§session-cancel-trigger} — the session row carries the cancellation that retired its loops;
+        // an untouched session carries none.
         const cancellation = async (id: number): Promise<unknown> =>
-            JSON.parse((await db.test_get_worker_cancellation.get<{ cancellation: string | null }>({ id }))?.cancellation ?? "null");
+            JSON.parse((await db.test_get_session_cancellation.get<{ cancellation: string | null }>({ id }))?.cancellation ?? "null");
         assert.equal((await cancellation(child) as { problem: { reason: string } }).problem.reason, "scope abandoned");
         assert.equal((await cancellation(grandchild) as { status: number }).status, 499);
         assert.equal(await cancellation(sibling), null);
@@ -85,12 +85,12 @@ test("{§problems-functionality} structured cancellation atomically claims the u
     }
 });
 
-test("{§worker-lifecycle-terminal-result} an uncommon terminal status remains exact in the result while the scheduler stores its terminal class", async () => {
+test("{§session-lifecycle-terminal-result} an uncommon terminal status remains exact in the result while the scheduler stores its terminal class", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lifecycle-projection-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "work");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "work");
         const lifecycle = new LoopLifecycle(db);
         const failure = Results.failure(
             "engine:provider",
@@ -104,7 +104,7 @@ test("{§worker-lifecycle-terminal-result} an uncommon terminal status remains e
         assert.equal(await lifecycle.status(loopId), 500, "the scheduler sees one terminal failure class");
         assert.equal(exact?.status, 502, "the product result retains the exact status");
         assert.equal(exact?.problem?.status, 502);
-        const name = (await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name;
+        const name = (await db.session_name_by_id.get<{ name: string }>({ session_id: sessionId }))!.name;
         assert.equal(exact?.problem?.instance, `ops://${name}/1`);
         assert.deepEqual(await lifecycle.result(loopId), exact);
     } finally {
@@ -112,12 +112,12 @@ test("{§worker-lifecycle-terminal-result} an uncommon terminal status remains e
     }
 });
 
-test("{§worker-lifecycle-terminal-result} 202 remains a parked lifecycle state and cannot be stored as a terminal result", async () => {
+test("{§session-lifecycle-terminal-result} 202 remains a parked lifecycle state and cannot be stored as a terminal result", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lifecycle-park-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "work");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "work");
         const lifecycle = new LoopLifecycle(db);
 
         await assert.rejects(
@@ -131,15 +131,15 @@ test("{§worker-lifecycle-terminal-result} 202 remains a parked lifecycle state 
     }
 });
 
-test("{§worker-wait-timing}: the wake time commits with the park and survives a new lifecycle owner", async () => {
+test("{§session-wait-timing}: the wake time commits with the park and survives a new lifecycle owner", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "atomic-wait-deadline");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "inspect running work");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "inspect running work");
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await lifecycle.park(loopId, { wakenBy: "obligations", pollAt: 10_600 }), true);
-        assert.deepEqual((await new LoopLifecycle(db).parked(workerId))[0], {
+        assert.deepEqual((await new LoopLifecycle(db).parked(sessionId))[0], {
             id: loopId, wait_revision: 1, wait_poll_at: 10_600,
         });
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_599 }), false);
@@ -155,21 +155,21 @@ test("{§loop-wake-identity}: durable observation times cannot resume another wa
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "durable-wait");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "original task");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "original task");
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture", pollAt: 10_100 }), true);
-        assert.deepEqual((await lifecycle.parked(workerId))[0], { id: loopId, wait_revision: 1, wait_poll_at: 10_100 });
+        assert.deepEqual((await lifecycle.parked(sessionId))[0], { id: loopId, wait_revision: 1, wait_poll_at: 10_100 });
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_099 }), false);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_100 }), true);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 10_300 }), false, "duplicate wake is inert");
-        const claimed = await db.drain_claim_next_loop.get<{ id: number; prompt: string }>({ worker_id: workerId });
+        const claimed = await db.drain_claim_next_loop.get<{ id: number; prompt: string }>({ session_id: sessionId });
         assert.equal(claimed?.id, loopId);
         assert.equal(claimed?.prompt, "original task", "a wake is not another prompt or task");
         assert.equal(await lifecycle.park(loopId, { wakenBy: "test-fixture" }), true);
         assert.equal(await lifecycle.wake(loopId, { revision: 1, dueAt: 99_999 }), false, "an old timer cannot wake a new wait");
-        assert.equal((await lifecycle.parked(workerId))[0]?.wait_poll_at, null, "a new wait starts without an observation time");
-        await lifecycle.cancelTree(workerId, "cancel waiting work", true);
+        assert.equal((await lifecycle.parked(sessionId))[0]?.wait_poll_at, null, "a new wait starts without an observation time");
+        await lifecycle.cancelTree(sessionId, "cancel waiting work", true);
         assert.equal(await lifecycle.wake(loopId, { revision: 2, dueAt: 99_999 }), false, "cancellation wins over every late timer");
         assert.equal(await lifecycle.status(loopId), 499);
     } finally { await db.close(); }
@@ -179,10 +179,10 @@ test("{§loop-wake-identity}: multiple parked loops retain independent event obs
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "independent-wakes");
-        const parent = await insertWorker(db, workspaceId, null, "parent");
+        const parent = await insertSession(db, workspaceId, null, "parent");
         const first = await insertLoop(db, parent, 1);
         const second = await insertLoop(db, parent, 2);
-        const child = await insertWorker(db, workspaceId, parent, "child");
+        const child = await insertSession(db, workspaceId, parent, "child");
         const childLoop = await insertLoop(db, child, 1);
         const lifecycle = new LoopLifecycle(db);
         await lifecycle.park(first, { wakenBy: "test-fixture" });
@@ -213,15 +213,15 @@ for (const disposition of ["park", "finish", "cancel", "exception"] as const) {
         let loopId: number | undefined;
         try {
             const workspaceId = await insertWorkspace(db, `execution-${disposition}`);
-            const workerId = await insertWorker(db, workspaceId);
-            loopId = await insertLoop(db, workerId, 1);
+            const sessionId = await insertSession(db, workspaceId);
+            loopId = await insertLoop(db, sessionId, 1);
             let expired = false;
             assert.equal(await lifecycle.startExecution(loopId, 60000, () => { expired = true; }), true);
             clock += 40000;
             t.mock.timers.tick(40000);
             if (disposition === "park") await lifecycle.park(loopId, { wakenBy: "test-fixture" });
             else if (disposition === "finish") await lifecycle.finish(loopId, { status: 200 });
-            else if (disposition === "cancel") await lifecycle.cancelTree(workerId, "cancel task", true);
+            else if (disposition === "cancel") await lifecycle.cancelTree(sessionId, "cancel task", true);
             else await lifecycle.endExecution(loopId);
             assert.deepEqual(await db.test_get_loop_execution.get({ id: loopId }), {
                 execution_budget_ms: 60000, execution_elapsed_ms: 40000,
@@ -245,8 +245,8 @@ test("{§loop-execution-allowance}: execution time is monotonic and invalid tran
     let loopId: number | undefined;
     try {
         const workspaceId = await insertWorkspace(db, "monotonic-execution");
-        const workerId = await insertWorker(db, workspaceId);
-        loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        loopId = await insertLoop(db, sessionId, 1);
         const id = loopId;
         let expired = false;
         assert.equal(await lifecycle.startExecution(id, 60000, () => { expired = true; }), true);

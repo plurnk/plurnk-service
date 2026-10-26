@@ -24,7 +24,7 @@ test("{§schedule-module} a discovered schedule rejects malformed persisted enab
         namespace_owner: "@plurnk/plurnk-schedule",
         state: JSON.stringify({ version: 1, definitions: { beat: {
             origin: "workspace", enabled: "false",
-            definition: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://recipient", prompt: "Must not fire." },
+            definition: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY;COUNT=2", target: "session://recipient", prompt: "Must not fire." },
         } } }),
     });
     const daemon = new Daemon({ db, provider: null });
@@ -38,12 +38,12 @@ test("{§schedule-module} a discovered schedule arms a persisted rule at restart
     const first = new Daemon({ db, provider: null });
     await first.start();
     const { workspaceId } = await first.createWorkspace({ name: "discovered-schedule", projectRoot: null });
-    const { workerName } = await first.createWorker({ workspaceId, name: "recipient" });
+    const { sessionName } = await first.createSession({ workspaceId, name: "recipient" });
     const due = new Date(Math.ceil((Date.now() + 4_000) / 1_000) * 1_000);
     const stamp = due.toISOString().replaceAll(/[-:]/gu, "").replace(/\.\d{3}Z$/u, "");
     const added = await first.invokeModuleAction("workspace.schedule.add", {
         alias: "once",
-        definition: { rule: `DTSTART;TZID=UTC:${stamp}\nRRULE:FREQ=HOURLY;COUNT=1`, target: `worker://${workerName}`, prompt: "discovered-proof" },
+        definition: { rule: `DTSTART;TZID=UTC:${stamp}\nRRULE:FREQ=HOURLY;COUNT=1`, target: `session://${sessionName}`, prompt: "discovered-proof" },
     }, { scope: "workspace", workspaceId }) as { status: number };
     assert.equal(added.status, 201);
     await first.stop();

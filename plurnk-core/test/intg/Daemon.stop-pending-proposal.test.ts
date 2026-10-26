@@ -1,4 +1,4 @@
-// {§worker-lifecycle-total-reap}: shutdown cancels a pending stopped-world proposal
+// {§session-lifecycle-total-reap}: shutdown cancels a pending stopped-world proposal
 // before awaiting its drain.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§worker-lifecycle-total-reap}: Daemon.stop terminates with a pending proposal", async () => {
+test("{§session-lifecycle-total-reap}: Daemon.stop terminates with a pending proposal", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [
         // A non-auto host execution proposes (202) and stops the world; nobody ever resolves it.
         makeMockResponse("\n````sh\necho pending\n````\n\n````NOTE\nproposed\n````", 10),

@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { provider, statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 
@@ -27,11 +27,11 @@ test("{§db-maintenance-optimize}: stopping the daemon runs PRAGMA optimize on t
     await daemon.start();
     try {
         const workspaceId = await insertWorkspace(db, "maintenance");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
-        await daemon.engine.runTurn({ workspaceId, workerId, loopId, provider: provider("thought",
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1);
+        await daemon.engine.runTurn({ workspaceId, sessionId, loopId, provider: provider("thought",
             `${PlurnkParser.frame("READ (reasoning://alice/1/2) <1,-1>", null)}\n\n${PlurnkParser.frame("SEND", "Ready.")}`), messages: [] });
-        assert.equal((await clientRead(daemon.engine, db, { workspaceId, workerId, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") })).status, 200);
+        assert.equal((await clientRead(daemon.engine, db, { workspaceId, sessionId, statement: statement("````READ (reasoning://alice/1/2) <1,-1>````") })).status, 200);
         assert.equal(stat1(path), 0, "a fresh baseline carries no statistics");
     } finally {
         await daemon.stop();

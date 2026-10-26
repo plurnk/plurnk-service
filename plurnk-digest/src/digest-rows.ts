@@ -2,10 +2,10 @@ import type { ChatMessage, ProviderAccounting, ProviderRequestAccounting } from 
 import type { DigestEvidence, EvidencePacket, OpenEvidence } from "./evidence.ts";
 
 export interface WorkspaceRow { id: number; name: string }
-export interface WorkerRow { id: number; workspace_id: number; name: string; provider_identity: string; owner: string }
+export interface SessionRow { id: number; workspace_id: number; name: string; provider_identity: string; owner: string }
 export interface LoopRow {
     id: number;
-    worker_id: number;
+    session_id: number;
     sequence: number;
     status: number;
     prompt: string;
@@ -84,7 +84,7 @@ export interface ProviderRequestRow {
     kind: InferenceCallRow["kind"];
     turn_id: number;
     loop_id: number | null;
-    worker_id: number | null;
+    session_id: number | null;
     workspace_id: number;
     sequence: number;
     provider: string;
@@ -111,7 +111,7 @@ export interface ProviderRequestRow {
 }
 export interface LogRow {
     target: string | null;
-    id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
+    id: number; session_id: number; loop_id: number; turn_id: number; sequence: number;
     origin: string; source: string | null; model_call_id: number | null; attrs: string;
     inherited_history?: 0 | 1; ambient_event_id?: number | null;
     op: string | null; scheme: string | null; hostname: string | null; port: number | null;
@@ -127,13 +127,13 @@ export interface LogRow {
     };
 }
 // {§emission-row} — one announced emission: its row's coordinate, its frozen text, whether it is live.
-export interface EmissionRow { worker_id: number; coordinate: string; content: string; active: 0 | 1 }
+export interface EmissionRow { session_id: number; coordinate: string; content: string; active: 0 | 1 }
 // {§reasoning-row} — one landed reasoning row: its row's coordinate, its frozen text, whether it is live.
-export interface ReasoningRow { worker_id: number; coordinate: string; content: string; active: 0 | 1 }
+export interface ReasoningRow { session_id: number; coordinate: string; content: string; active: 0 | 1 }
 // {§digest-edit-census} — one model-authored EDIT: the scope it authored (the log row's lineMarker
 // JSON), the pattern its durable statement carried, and the status it landed with.
 export interface EditRow {
-    id: number; worker_id: number; loop_id: number; turn_id: number; sequence: number;
+    id: number; session_id: number; loop_id: number; turn_id: number; sequence: number;
     pathname: string | null; status_rx: number; line_marker: string | null; pattern: string | null;
 }
 export const EDIT_FORMS = Object.freeze(["hash", "line", "range", "insert", "column", "prepend", "append", "offset", "pattern", "whole"] as const);
@@ -141,7 +141,7 @@ export type EditForm = (typeof EDIT_FORMS)[number];
 export interface EditCensus {
     edits: number;
     refused: number;   // status >= 400
-    revisits: number;  // an EDIT of a path this worker edited within its previous two model turns
+    revisits: number;  // an EDIT of a path this session edited within its previous two model turns
     // Every EditForm's count, keyed by its name: built from EDIT_FORMS, so each form is present.
     forms: Record<string, number>;
 }
@@ -155,11 +155,11 @@ export interface LogCurationEffectRow {
     folded_before: string;
     folded_after: string;
 }
-export interface WorkerRollupRow {
-    worker_id: number; loops: number; turns: number;
+export interface SessionRollupRow {
+    session_id: number; loops: number; turns: number;
     last_status: number | null;
 }
-export interface OpMixRow { worker_id: number; op: string; n: number }
+export interface OpMixRow { session_id: number; op: string; n: number }
 export interface SearchStateRow {
     channel_entries: number;
     derivation_complete: number;
@@ -188,7 +188,7 @@ export interface DigestModel {
     storage: StorageRow & { tables: StorageTableRow[] };
     digestDir: string;
     workspaces: WorkspaceRow[];
-    workers: WorkerRow[];
+    sessions: SessionRow[];
     loops: LoopRow[];
     turns: TurnRow[];
     inferenceCalls: InferenceCallRow[];
@@ -197,29 +197,29 @@ export interface DigestModel {
     providerRequests: ProviderRequestRow[];
     logEntries: LogRow[];
     curationEffects: LogCurationEffectRow[];
-    workersByWorkspace: Map<number, WorkerRow[]>;
-    loopsByWorker: Map<number, LoopRow[]>;
+    sessionsByWorkspace: Map<number, SessionRow[]>;
+    loopsBySession: Map<number, LoopRow[]>;
     turnsByLoop: Map<number, TurnRow[]>;
     attemptsByTurn: Map<number, TurnAttemptRow[]>;
     requestsByInferenceCall: Map<number, ProviderRequestRow[]>;
     requestsByAttempt: Map<number, ProviderRequestRow[]>;
     requestsByTurn: Map<number, ProviderRequestRow[]>;
     requestsByLoop: Map<number, ProviderRequestRow[]>;
-    requestsByWorker: Map<number, ProviderRequestRow[]>;
+    requestsBySession: Map<number, ProviderRequestRow[]>;
     requestsByWorkspace: Map<number, ProviderRequestRow[]>;
     logEntriesByTurn: Map<number, LogRow[]>;
-    // {§emission-row} — each worker's announced emissions by row coordinate, retired ones included.
+    // {§emission-row} — each session's announced emissions by row coordinate, retired ones included.
     emissionRows: EmissionRow[];
-    // {§reasoning-row} — each worker's landed reasoning rows by row coordinate, retired ones included.
+    // {§reasoning-row} — each session's landed reasoning rows by row coordinate, retired ones included.
     reasoningRows: ReasoningRow[];
     editRows: EditRow[];
-    editRowsByWorker: Map<number, EditRow[]>;
+    editRowsBySession: Map<number, EditRow[]>;
     // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§exec-env-scoped})
     environments: Map<string, Record<string, unknown>>;
     loopsById: Map<number, LoopRow>;
-    workersById: Map<number, WorkerRow>;
-    workerRollups: Map<number, WorkerRollupRow>;
-    opMixByWorker: Map<number, OpMixRow[]>;
+    sessionsById: Map<number, SessionRow>;
+    sessionRollups: Map<number, SessionRollupRow>;
+    opMixBySession: Map<number, OpMixRow[]>;
     search: {
         channel_entries: number;
         derivation_complete: number;
@@ -250,12 +250,12 @@ export interface CacheLedgerEntry {
 
 // Programmatic entry options ({§digest-programmatic-surface}).
 // dbPath is required; digestDir defaults to the bin's test/digest; an optional
-// workerId/workspaceId narrows the digest to one scope instead of the whole DB.
+// sessionId/workspaceId narrows the digest to one scope instead of the whole DB.
 export interface DigestOptions {
     openEvidence: OpenEvidence;
     dbPath: string;
     digestDir?: string;
-    workerId?: number;
+    sessionId?: number;
     workspaceId?: number;
 }
 
@@ -275,9 +275,9 @@ export type RequiemCallRecord = {
     failure: unknown;
 };
 
-export type RequiemWorkerReport = {
-    workerId: number;
-    workerName: string;
+export type RequiemSessionReport = {
+    sessionId: number;
+    sessionName: string;
     messages: ChatMessage[];
     responses: unknown[];
     calls: RequiemCallRecord[];

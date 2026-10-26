@@ -1,5 +1,5 @@
-// {§schedule-delivery} — the module inside a real daemon: a worker adds a rule through the family
-// action, the occurrence fires, and the target worker's log carries the message as an arrival row
+// {§schedule-delivery} — the module inside a real daemon: a session adds a rule through the family
+// action, the occurrence fires, and the target session's log carries the message as an arrival row
 // from `schedule://<alias>` ({§message-causal-source}); the family's list names the next occurrence.
 import assert from "node:assert/strict";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
@@ -19,9 +19,9 @@ const FIRST = Date.UTC(2026, 8, 16, 12, 30, 16);
 
 interface LogRow { readonly op: string; readonly origin: string; readonly source: string | null; readonly attrs: string }
 
-const assertDelivery = async (workerName: string): Promise<void> => {
+const assertDelivery = async (sessionName: string): Promise<void> => {
     await import(join(SERVICE, "test/setup.ts"));
-    const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, insertWorker, rootWorkspace }] = await Promise.all([
+    const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, insertSession, rootWorkspace }] = await Promise.all([
         import(join(SERVICE, "src/server/Daemon.ts")),
         import(join(SERVICE, "test/intg/_mock.ts")),
         import(join(SERVICE, "test/intg/_db.ts")),
@@ -35,7 +35,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-schedule-"));
     const workspaceId = await insertWorkspace(db, "scheduled");
     await rootWorkspace(db, workspaceId, root);
-    const workerId = await insertWorker(db, workspaceId, null, workerName, "model");
+    const sessionId = await insertSession(db, workspaceId, null, sessionName, "model");
 
     let now = NOW;
     const armed = new Map<number, () => void>();
@@ -60,7 +60,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
         });
         const added = await application.invokeModuleAction("workspace.schedule.add", {
             alias: "beat",
-            definition: { rule: "FREQ=HOURLY;COUNT=2", target: `worker://${workerName}`, prompt: "Take the beat." },
+            definition: { rule: "FREQ=HOURLY;COUNT=2", target: `session://${sessionName}`, prompt: "Take the beat." },
         }, { scope: "workspace", workspaceId }) as { status: number; alias: string; definition?: { state: string; detail?: { next: string | null; rule: string } } };
         assert.equal(added.status, 201);
         assert.equal(added.alias, "beat");
@@ -73,7 +73,7 @@ const assertDelivery = async (workerName: string): Promise<void> => {
         for (const callback of [...armed.values()]) callback();
         await terminated;
 
-        const rows = await db.test_log_entries_by_loop.all({ loop_id: (await db.test_all_loops.all() as Array<{ id: number; worker_id: number }>).find((loop) => loop.worker_id === workerId)!.id }) as LogRow[];
+        const rows = await db.test_log_entries_by_loop.all({ loop_id: (await db.test_all_loops.all() as Array<{ id: number; session_id: number }>).find((loop) => loop.session_id === sessionId)!.id }) as LogRow[];
         const arrivals = rows.filter((row) => row.op === "SEND" && row.origin === "_plurnk" && (JSON.parse(row.attrs) as { kind?: string }).kind === "message");
         assert.equal(arrivals.length, 1, "the delivery published exactly one arrival row");
         assert.equal(arrivals[0].source, "schedule://beat", "the arrival names the schedule as its causal source");
@@ -94,8 +94,8 @@ const assertDelivery = async (workerName: string): Promise<void> => {
     }
 };
 
-for (const workerName of ["recipient", "Approach_A"]) {
-    test(`{§schedule-delivery} a scheduled message reaches ${workerName} as an arrival from schedule://<alias>`, { timeout: 60_000 }, async () => {
-        await assertDelivery(workerName);
+for (const sessionName of ["recipient", "Approach_A"]) {
+    test(`{§schedule-delivery} a scheduled message reaches ${sessionName} as an arrival from schedule://<alias>`, { timeout: 60_000 }, async () => {
+        await assertDelivery(sessionName);
     });
 }

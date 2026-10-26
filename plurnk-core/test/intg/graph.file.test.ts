@@ -9,7 +9,7 @@ import type { FindStatement, MatcherBody, LocalPath } from "@plurnk/plurnk-contr
 import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 import { resourcePaths } from "./_find.ts";
 
@@ -33,8 +33,8 @@ const FILES: ReadonlyArray<readonly [string, string]> = [
 const seed = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `gfile-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+    const sessionId = await insertSession(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
 
     // Materialize file entries exactly as git-membership does: writeEntry(scheme="file").
     for (const [pathname, content] of FILES) {
@@ -42,13 +42,13 @@ const seed = async () => {
     }
     // Populate the graph through the pre-model persistent-index pass.
     await SearchIndex.maintain(ctx);
-    return { db, workspaceId, workerId };
+    return { db, workspaceId, sessionId };
 };
 
 test("{§graph-relations} &graph resolves over file:/// entries", async () => {
-    const { db, workspaceId, workerId } = await seed();
+    const { db, workspaceId, sessionId } = await seed();
     try {
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId: 0, turnId: 0 });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, loopId: 0, turnId: 0 });
         // FIND returns channel groups; a stored file resource renders its default path BARE
         // (slash-free, namespace-relative) — the same form the manifest catalogs and the
         // model types back, not the addressed file:/// form.

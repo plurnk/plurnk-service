@@ -30,7 +30,7 @@ export const SCHEDULE_FAMILY = "schedule";
 export const SCHEDULE_OWNER = "@plurnk/plurnk-schedule";
 
 // {§module-seam-slices} — the environment readers this family resolves rules under.
-export type EnvironmentSeam = Pick<ModuleSetupSeam, "readWorkspaceEnvironment" | "readWorkerEnvironment">;
+export type EnvironmentSeam = Pick<ModuleSetupSeam, "readWorkspaceEnvironment" | "readSessionEnvironment">;
 
 interface Snapshot {
     readonly rules: ReadonlyMap<string, ScheduledRule>;
@@ -80,7 +80,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         alias: "standup",
         definition: {
             rule: "FREQ=DAILY;BYHOUR=9;BYMINUTE=0;BYSECOND=0;COUNT=20",
-            target: "worker://scribe",
+            target: "session://scribe",
             prompt: "Summarize yesterday's log entries for the team.",
         },
     };
@@ -230,14 +230,14 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     // leaves its timers armed.
     async teardown(_snapshot: Snapshot, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
 
-    // {§schedule-zone} — the zone a rule is read in: the invoking Worker's environment (its
+    // {§schedule-zone} — the zone a rule is read in: the invoking Session's environment (its
     // overrides over the workspace layer over the service's), else the workspace's.
     async #zone(identity: FunctionalityIdentity): Promise<string> {
         const environment = this.#environment === null
             ? this.#env
-            : identity.workerId === undefined
+            : identity.sessionId === undefined
                 ? (await this.#environment.readWorkspaceEnvironment(identity.workspaceId))(this.#env)
-                : (await this.#environment.readWorkerEnvironment(identity.workspaceId, identity.workerId))(this.#env);
+                : (await this.#environment.readSessionEnvironment(identity.workspaceId, identity.sessionId))(this.#env);
         const zone = environment.TZ;
         if (zone === undefined || zone.length === 0) throw new Error("TZ is unset; @plurnk/plurnk-schedule declares its default in .env.defaults.");
         return zone;

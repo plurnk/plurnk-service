@@ -6,7 +6,7 @@ import { Results } from "@plurnk/plurnk-schemes";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { sendStmt, urlPath, noteStmt } from "./_dsl.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
@@ -37,8 +37,8 @@ const setup = async (
 ) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `structured-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "observe structured output");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "observe structured output");
     const schemes = new SchemeRegistry();
     schemes.register("structured-fixture", new StructuredFixture());
     const engine = new Engine({ db, schemes });
@@ -52,7 +52,7 @@ const setup = async (
         state: "active",
     });
     const subscriptionId = await ChannelWrite.openSubscription(db, {
-        workerId,
+        sessionId,
         entryId,
         scheme: "structured-fixture",
         handle: "fixture",
@@ -62,14 +62,14 @@ const setup = async (
     const runTurn = () => engine.runTurn({
         provider,
         workspaceId,
-        workerId,
+        sessionId,
         loopId,
         messages: [
             { role: "system" as const, content: "Observe the result." },
             { role: "user" as const, content: "Continue." },
         ],
     });
-    return { db, workerId, loopId, entryId, subscriptionId, runTurn };
+    return { db, sessionId, loopId, entryId, subscriptionId, runTurn };
 };
 
 const structuredRows = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) =>
@@ -97,14 +97,14 @@ const close = async (fixture: Fixture, chunk?: string): Promise<void> => {
     if (chunk !== undefined) {
         await ChannelWrite.appendToChannel(fixture.db, {
             entryId: fixture.entryId,
-            producerWorkerId: fixture.workerId,
+            producerSessionId: fixture.sessionId,
             channel: "results",
             chunk,
         });
     }
     await ChannelWrite.setChannelState(fixture.db, {
         entryId: fixture.entryId,
-        producerWorkerId: fixture.workerId,
+        producerSessionId: fixture.sessionId,
         channel: "results",
         state: "closed",
     });
@@ -252,13 +252,13 @@ test("{§stream-observation-result}: invalid result liveness cannot advance publ
     const fixture = await setup("text/plain", "output");
     try {
         const turn = await fixture.runTurn();
-        const channels = await fixture.db.engine_worker_stream_channels.all<{ publication_id: number }>({ worker_id: fixture.workerId });
+        const channels = await fixture.db.engine_session_stream_channels.all<{ publication_id: number }>({ session_id: fixture.sessionId });
         assert.equal(channels.length, 1);
         const before = await structuredRows(fixture.db, turn.turnId);
         const publication = await fixture.db.test_subscription_publications.all({ id: fixture.subscriptionId });
         for (const terminal of [undefined, null, "true", 1]) {
             await assert.rejects(fixture.db.engine_insert_stream_delta.get({
-                worker_id: fixture.workerId, loop_id: fixture.loopId, turn_id: turn.turnId,
+                session_id: fixture.sessionId, loop_id: fixture.loopId, turn_id: turn.turnId,
                 sequence: 100, subscription_publication_id: channels[0].publication_id,
                 scheme: "structured-fixture", hostname: null, port: null,
                 pathname: "/1/0/1", fragment: "results",
@@ -298,7 +298,7 @@ test("{§markerless-first-page} KILLing a terminal observation cannot erase its 
     try {
         await ChannelWrite.setChannelState(fixture.db, {
             entryId: fixture.entryId,
-            producerWorkerId: fixture.workerId,
+            producerSessionId: fixture.sessionId,
             channel: "results",
             state: "errored",
         });
@@ -333,7 +333,7 @@ test("{§markerless-first-page} KILLing a terminal observation cannot erase its 
         assert.equal(durableObservations.length, 1, "the terminal observation remains durable evidence");
         assert.equal(durableObservations[0]?.active, 0, "KILL retires its model-facing projection");
         assert.equal(
-            (await fixture.db.engine_render_log.all<{ id: number }>({ worker_id: fixture.workerId }))
+            (await fixture.db.engine_render_log.all<{ id: number }>({ session_id: fixture.sessionId }))
                 .some(({ id }) => id === durableObservations[0]?.id),
             false,
             "the killed observation no longer renders",

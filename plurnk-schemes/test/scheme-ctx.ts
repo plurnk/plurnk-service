@@ -8,7 +8,7 @@ const outside = (surface: string) => async (): Promise<never> => {
 
 export const schemeCtx = (overrides: Partial<SchemeCtx> = {}): SchemeCtx => ({
     workspaceId: 1,
-    workerId: 1,
+    sessionId: 1,
     loopId: 1,
     turnId: 1,
     writer: "model",

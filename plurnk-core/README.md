@@ -13,15 +13,15 @@ See [installation and configuration](INSTALL.md), including the packaged
 The exact model-facing language and operation set are owned by
 [`plurnk.md`](https://github.com/plurnk/plurnk-service/blob/main/plurnk-contracts/plurnk.md). In brief, an agent can:
 
-- inspect and modify admitted project files and durable worker entries;
+- inspect and modify admitted project files and durable session entries;
 - search lexical, structural, and graph indexes;
 - run registered executors and observe their runtime-named streams;
-- delegate to workers, communicate, and collect their results; and
+- delegate to sessions, communicate, and collect their results; and
 - curate its addressable log with scoped or whole-item `KILL` operations.
 
 ## Lifecycle model
 
-Workspace = shared resources, configuration, and an optional project folder. Worker = one actor and its history within a workspace. Loop = one queued-to-terminal unit of work within a worker. Turns continue until messages are answered, results observed, and held work settled; WAIT yields while work remains. NOTE retains working memory independently of lifecycle. Workers fork and message each other — many clients, many workers, one workspace.
+Workspace = shared resources, configuration, and an optional project folder. Session = one actor and its history within a workspace. Loop = one queued-to-terminal unit of work within a session. Turns continue until messages are answered, results observed, and held work settled; WAIT yields while work remains. NOTE retains working memory independently of lifecycle. Sessions fork and message each other — many clients, many sessions, one workspace.
 
 ## Integration
 
@@ -30,8 +30,8 @@ Clients use ACP management actions and ACP Run streams exposed by
 a second client transport.
 
 `models.list` locally lists catalog routes, configuration readiness, and each
-route's accepted `capabilities.efforts`. The `thought_level` session config option (`readWorkerEffort`)
-reports the choices shared by a worker's selected model and spawn override.
+route's accepted `capabilities.efforts`. The `thought_level` session config option (`readSessionEffort`)
+reports the choices shared by a session's selected model and spawn override.
 
 ## Start
 

@@ -4,10 +4,10 @@
     "title": "ApplicationOperationEvent",
     "description": "A core-owned dispatch boundary. A settled dispatch has its exact result; it does not assert asynchronous process completion.",
     "type": "object",
-    "required": ["workerId", "loopId", "turnId", "sequence", "origin", "projectRoot", "statement", "phase"],
+    "required": ["sessionId", "loopId", "turnId", "sequence", "origin", "projectRoot", "statement", "phase"],
     "additionalProperties": false,
     "properties": {
-        "workerId": { "type": "integer", "minimum": 1 },
+        "sessionId": { "type": "integer", "minimum": 1 },
         "loopId": { "type": "integer", "minimum": 1 },
         "turnId": { "type": "integer", "minimum": 1 },
         "sequence": { "type": "integer", "minimum": 1 },

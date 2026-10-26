@@ -12,8 +12,8 @@ const same = (nearMiss: string, canonical: string) => {
 };
 
 test("{§heading-slot-order} an aside before the remaining slots reads as if written after them", () => {
-    same("````READ (worker:///pantry/alpha.md) <!-- verify content --> <1,-1>\n````", "````READ (worker:///pantry/alpha.md) <1,-1> <!-- verify content -->\n````");
-    same("````FIND (worker:///pantry/**) <!-- re-confirm pantry state --> <1,-1>\n````", "````FIND (worker:///pantry/**) <1,-1> <!-- re-confirm pantry state -->\n````");
+    same("````READ (workspace:///pantry/alpha.md) <!-- verify content --> <1,-1>\n````", "````READ (workspace:///pantry/alpha.md) <1,-1> <!-- verify content -->\n````");
+    same("````FIND (workspace:///pantry/**) <!-- re-confirm pantry state --> <1,-1>\n````", "````FIND (workspace:///pantry/**) <1,-1> <!-- re-confirm pantry state -->\n````");
     same("````sh <-1,2> <!-- full suite --> [{\"cwd\": \"tests\"}]\npytest -q\n````", "````sh <-1,2> [{\"cwd\": \"tests\"}] <!-- full suite -->\npytest -q\n````");
 });
 

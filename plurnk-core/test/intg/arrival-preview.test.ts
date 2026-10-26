@@ -62,13 +62,13 @@ test("{§context-fit}: a jumbo message lands folded with its size; Open Messages
             assert.ok(packet.weight <= budget, "the packet itself fits");
             const bodyTarget = typeof projectedPrompt.logPath === "string" ? projectedPrompt.logPath : undefined;
             assert.match(bodyTarget ?? "", /^log:\/\/\/1\/2\/\d+\/SEND$/, "the message body is addressed in the first packet-bearing turn");
-            const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId });
-            assert.ok(worker, "the model worker exists");
+            const session = await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId });
+            assert.ok(session, "the model session exists");
             const [workspace] = await daemon.listWorkspaces();
             assert.ok(workspace, "the model workspace exists");
             const recovered = await readLog(
                 readStmt(urlPath("log", new URL(bodyTarget!).pathname), { marks: [1, -1] }),
-                makeSchemeCtx({ db, workspaceId: workspace.id, workerId: worker.worker_id, mimetypes: DEFAULT_MIMETYPES }),
+                makeSchemeCtx({ db, workspaceId: workspace.id, sessionId: session.session_id, mimetypes: DEFAULT_MIMETYPES }),
             );
             assert.equal(recovered.status, 200);
             assert.equal(recovered.content, fat, "the advertised log READ returns the exact canonical prompt body");
@@ -91,23 +91,23 @@ test("{§message-causal-source}: the operator's message is named for the model; 
     const records = parseLogRecords(PacketWire.renderLog([
         arrival("1/2/1", null),
         arrival("1/2/2", "acp://operator/threads/t/messages/m", true),
-        arrival("1/2/3", "worker://peer"),
+        arrival("1/2/3", "session://peer"),
     ], countTokens));
     assert.deepEqual(records.map(({ origin, source }) => ({ origin, source })), [
         { origin: "user", source: undefined },
         { origin: "user", source: undefined },
-        { origin: undefined, source: "worker://peer" },
+        { origin: undefined, source: "session://peer" },
     ], "left bare, the operator's row reads as the model's own SEND");
 });
 
-test("{§markerless-first-page}: a peer worker's deliverable renders as its first page with the page of the whole named; the character bound cuts a single line exactly", () => {
+test("{§markerless-first-page}: a peer session's deliverable renders as its first page with the page of the whole named; the character bound cuts a single line exactly", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const lines = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES);
     const chars = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
     const bomb = Array.from({ length: 400 }, (_, i) => `deranged output line ${i + 1}`).join("\n");
     const row = {
-        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://comparison-checker",
-        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", query: null, fragment: null },
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "session://comparison-checker",
+        target: { scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/comparison-checker", query: null, fragment: null },
         status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: { kind: "message" },
     };
     const rendered = PacketWire.renderLog([row], countTokens);
@@ -125,7 +125,7 @@ test("{§markerless-first-page}: a peer worker's deliverable renders as its firs
 test("{§markerless-first-page}: the operator's message and the model's own rows are never paged", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const bomb = Array.from({ length: 400 }, (_, i) => `line ${i + 1}`).join("\n");
-    const target = { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/x", query: null, fragment: null };
+    const target = { scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/x", query: null, fragment: null };
     const prompt = { coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "acp://operator/threads/t/messages/m", target, status: 200, rx: bomb, mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: { kind: "message" } };
     const note = { coordinate: "1/3/1", origin: "model", op: "NOTE", source: null, target: null, status: 200, rx: JSON.stringify({ status: 200 }), mimetype_rx: "application/json", tx: { op: "NOTE", body: bomb }, mimetype_tx: "application/json", folded: [], attrs: {} };
     for (const [row, who] of [[prompt, "the operator's message keeps its own rule"], [note, "a NOTE the model wrote stands whole"]] as const) {
@@ -138,8 +138,8 @@ test("{§markerless-first-page}: the operator's message and the model's own rows
 test("{§context-fit} a small deliverable rides whole — whole-when-small is the common case, untouched", () => {
     const countTokens = (s: string): number => Math.ceil(s.length / 4);
     const row = {
-        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "worker://tidy",
-        target: { scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/tidy", query: null, fragment: null },
+        coordinate: "1/2/1", origin: "_plurnk", op: "SEND", source: "session://tidy",
+        target: { scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/tidy", query: null, fragment: null },
         status: 200, rx: "answer: 42\nnotes: none", mimetype_rx: "text/markdown", tx: { body: "" }, folded: [], attrs: null,
     };
     const rendered = PacketWire.renderLog([row], countTokens);

@@ -39,7 +39,7 @@ test("demo: the model repairs a broken MCP file and uses its restored tool", asy
         assert.equal(effective?.state, "active");
         assert.equal(effective?.origin, "service");
         assert.deepEqual(effective?.provenance, { kind: "file", source: config, reference: "/mcpServers/echo" });
-        const log = await s.daemon.readLog({ workspaceId: s.workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
+        const log = await s.daemon.readLog({ workspaceId: s.workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
         assert.ok(log.some((row) => row.op === "READ" && row.scheme === "echo" && row.status_rx === 200 && JSON.stringify(row.rx).includes(marker)),
             "the model actually observes the restored tool output, not merely repeats the requested marker");
         assert.ok(result.lastContent.includes(marker));
@@ -71,11 +71,11 @@ test("demo: configured skill sources survive a model's workspace override and re
     process.env[`${key}_ENABLED`] = "0";
     const s = await liveWorkspace({ name: `demo-config-sources-${crypto.randomUUID()}`, projectRoot: root });
     try {
-        let workerId: number | undefined;
+        let sessionId: number | undefined;
         let requestId = 2;
         const run = async (prompt: string, marker: string) => {
-            const result = await liveLoop(s, requestId++, { prompt, workerId, maxTurns: 8 }, { signal: t.signal });
-            workerId = result.modelWorkerId;
+            const result = await liveLoop(s, requestId++, { prompt, sessionId, maxTurns: 8 }, { signal: t.signal });
+            sessionId = result.modelSessionId;
             assert.equal(result.finalStatus, 200, "the configuration request concludes cleanly");
             assert.ok(result.lastContent.includes(marker), "the answer contains the marker from the effective skill");
             return result.lastContent;

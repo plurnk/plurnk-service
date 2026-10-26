@@ -40,7 +40,7 @@ drill green over the previous lexer (#821).
 `npm run build` emits `dist`. `npm run test:installation` packs the built parser
 and contracts candidates, installs both into a clean consumer, verifies their
 installed versions, and exercises every tier entry point, `parsePath`, the CLI,
-and a browser-Worker bundle. Prepublication checks must not resolve the candidate
+and a browser-Session bundle. Prepublication checks must not resolve the candidate
 contracts version from the registry.
 
 §pinned-wording-parser **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.

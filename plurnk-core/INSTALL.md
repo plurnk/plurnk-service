@@ -56,7 +56,7 @@ choose a valid model in the client or correct the daemon's configuration.
 
 ## Backup and restore
 
-The database holds worker history and workspace state. Its default path is in
+The database holds session history and workspace state. Its default path is in
 the table above; `PLURNK_SERVICE_DB_PATH` overrides it, and
 `PLURNK_SERVICE_STATE_ROOT` relocates the default. Back up the actual daemon's
 database, not a different client's default.
@@ -92,7 +92,7 @@ Do not overwrite a live database or pair a restored file with old sidecars.
 
 | Restored input | Startup behaviour |
 | --- | --- |
-| Database | Retained history, approval decisions, attachments and workspace/worker configuration return. Interrupted work is settled without replaying uncertain effects ({§worker-lifecycle-restart-recovery}). |
+| Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects ({§session-lifecycle-restart-recovery}). |
 | Project files and service configuration | Restore separately. Current files remain authoritative; startup reads the current configuration, not an earlier ambient environment captured in history. |
 | Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed ({§schedule-residency}, {§schedule-first-arming}). |
 | Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup ({§oauth-lifetime}). |
@@ -154,10 +154,10 @@ outside the package.
 | Change | Owner and effect |
 | --- | --- |
 | Startup defaults or installed extension configuration | The daemon's environment cascade. A remote client's shell does not change it. |
-| Model, reasoning, child model | Worker selections persist. Set them through client controls; changing a startup default does not retarget an existing Worker. |
-| MCPs, skills, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Workers share the workspace's current selection. |
-| Command environment | `env` manages worker overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
-| External capabilities | Service policy is a ceiling; workspace policy can narrow it for every worker. Hiding a doc does not grant or revoke authority. |
+| Model, reasoning, child model | Session selections persist. Set them through client controls; changing a startup default does not retarget an existing Session. |
+| MCPs, skills, schedules, membership | Workspace Functionality: list, discover, add, replace, enable, disable, remove. Sessions share the workspace's current selection. |
+| Command environment | `env` manages session overrides or workspace defaults. It does not reconfigure the daemon; running processes keep their launch environment. |
+| External capabilities | Service policy is a ceiling; workspace policy can narrow it for every session. Hiding a doc does not grant or revoke authority. |
 | Proposal review / YOLO | Decides who accepts or rejects an admitted operation. Automatic acceptance never overrides capability or resource permissions. |
 | File creation and membership | Separate policies. Creating an out-of-root file, admitting a new file, and editing an existing member are distinct decisions. |
 | User-facing behavior | Operating policy; use configuration for runtime controls. |
@@ -171,7 +171,7 @@ hooks, HTTP, and content handling. Search the catalog for that subsystem instead
 of relying on a second list of knobs here.
 
 For file-access questions, inspect the generated
-[members tool contract](worker:///_plurnk/tools/plurnk/members.json) alongside the file
+[members tool contract](workspace:///_plurnk/tools/plurnk/members.json) alongside the file
 creation/membership defaults. Client controls inspect effective capabilities;
 a model cannot widen their ceiling by changing its policy prose.
 
@@ -188,7 +188,7 @@ Local folders and `SKILL.md` files stay live references, with supporting files i
 place. Git/archive sources become workspace-owned copies retained across enable
 and restart until the source definition changes. `remove` forgets the workspace
 binding without deleting its source. READ is not execution; running a skill's
-script follows ordinary proposal policy. The [skills tool contract](worker:///_plurnk/tools/plurnk/skills.json)
+script follows ordinary proposal policy. The [skills tool contract](workspace:///_plurnk/tools/plurnk/skills.json)
 covers discovery, source forms, and Git refs.
 
 ## Resource definitions

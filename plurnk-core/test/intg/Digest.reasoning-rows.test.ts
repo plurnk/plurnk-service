@@ -9,7 +9,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 const KNOB = "PLURNK_SERVICE_REASONING_ROWS";
 const withKnob = async (value: string | undefined, fn: () => Promise<void>): Promise<void> => {
@@ -24,17 +24,17 @@ test("{§reasoning-row} {§digest-forensic-fidelity}: the digest counts reasonin
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "````READ (worker:///test.txt)````", reasoning: "First turn thinking." } },
+            { assistant: { content: "````READ (workspace:///test.txt)````", reasoning: "First turn thinking." } },
             { assistant: { content: "````KILL (log:///1/2/2/reasoning)````", reasoning: "Second turn thinking." } },
             { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: "Third turn thinking." } },
         ] });
         const db = await openMigrated(dbPath);
         try {
             const workspaceId = await insertWorkspace(db, "reasoning-rows-digest");
-            const workerId = await insertWorker(db, workspaceId, null, "analyst");
-            const loopId = await insertLoop(db, workerId, 1, "Investigate and curate reasoning.");
+            const sessionId = await insertSession(db, workspaceId, null, "analyst");
+            const loopId = await insertLoop(db, sessionId, 1, "Investigate and curate reasoning.");
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-            const run = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 4, messages: [{ role: "user", content: "Start." }] });
+            const run = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 4, messages: [{ role: "user", content: "Start." }] });
             assert.equal(run.result.status, 200);
         } finally {
             await db.close();
@@ -63,10 +63,10 @@ test("{§reasoning-row} {§digest-forensic-fidelity}: when reasoning rows are di
         const db = await openMigrated(dbPath);
         try {
             const workspaceId = await insertWorkspace(db, "reasoning-disabled-digest");
-            const workerId = await insertWorker(db, workspaceId, null, "analyst");
-            const loopId = await insertLoop(db, workerId, 1, "Quick finish.");
+            const sessionId = await insertSession(db, workspaceId, null, "analyst");
+            const loopId = await insertLoop(db, sessionId, 1, "Quick finish.");
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-            const run = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 2, messages: [{ role: "user", content: "Start." }] });
+            const run = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 2, messages: [{ role: "user", content: "Start." }] });
             assert.equal(run.result.status, 200);
         } finally {
             await db.close();

@@ -55,10 +55,10 @@ export interface FunctionalityHost {
         replacement: WorkspaceCapabilityReplacement,
         options?: WorkspaceCapabilityPublication,
     ): Promise<void>;
-    // {§functionality-scope} — a worker-scoped family's durable value: the same shape, keyed by the
-    // Worker, replaced without runtimes and without workspace exclusivity.
-    readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown>;
-    replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown): Promise<void>;
+    // {§functionality-scope} — a session-scoped family's durable value: the same shape, keyed by the
+    // Session, replaced without runtimes and without workspace exclusivity.
+    readSessionModuleState(sessionId: number, namespaceOwner: string): Promise<unknown>;
+    replaceSessionModuleState(sessionId: number, namespaceOwner: string, state: unknown): Promise<void>;
     withWorkspaceGate<T>(workspaceId: number, namespaceOwner: string, gate: WorkspaceCapabilityGate, run: () => Promise<T>, signal?: AbortSignal): Promise<T>;
     atWorkspaceBoundary<T>(workspaceId: number, run: () => Promise<T>): Promise<T>;
     retainWorkspace(workspaceId: number): () => void;
@@ -82,24 +82,24 @@ export interface FunctionalityInvocationOptions {
 }
 
 // Who OWNS a definition, not where it is scoped. A family declares the scope its definitions
-// belong to ({§functionality-scope}); the locally-owned origin follows from it, so a worker-scoped
-// family's own entries say "worker" rather than claiming the workspace set them.
-type Origin = "service" | "workspace" | "worker";
+// belong to ({§functionality-scope}); the locally-owned origin follows from it, so a session-scoped
+// family's own entries say "session" rather than claiming the workspace set them.
+type Origin = "service" | "workspace" | "session";
 
 interface DefinitionRecord {
     readonly origin: Origin;
     readonly definition?: object;
     readonly enabled: boolean;
-    // {§functionality-scope} — the Worker a copied entry came from at this Worker's creation. Written
-    // by the copy, never by a verb: a mutation makes the entry the Worker's own and drops it.
+    // {§functionality-scope} — the Session a copied entry came from at this Session's creation. Written
+    // by the copy, never by a verb: a mutation makes the entry the Session's own and drops it.
     readonly inherited?: string;
 }
 
 // {§functionality-state} — one durable value per (workspace, family) in
-// `workspace_module_state` under the adapter's namespace owner, or per (worker, family) in
-// `worker_module_state` for a worker-scoped family ({§functionality-scope}). Service-origin
+// `workspace_module_state` under the adapter's namespace owner, or per (session, family) in
+// `session_module_state` for a session-scoped family ({§functionality-scope}). Service-origin
 // aliases persist only enabledness; locally-owned aliases persist the exact definition.
-// Workers reference workspace state without copying it.
+// Sessions reference workspace state without copying it.
 interface FamilyState {
     readonly version: 1;
     readonly definitions: Readonly<Record<string, DefinitionRecord>>;
@@ -154,7 +154,7 @@ const ALIAS = /^[a-z][a-z0-9-]*$/u;
 // A family may declare its own alias grammar ({§functionality-adapter}); the coordinator enforces it
 // wherever an alias enters: admission, the service projection, and persisted state.
 const aliasPattern = (adapter: HostFunctionalityAdapter): RegExp => adapter.aliasPattern ?? ALIAS;
-const scopesOf = (adapter: HostFunctionalityAdapter): readonly ("workspace" | "worker")[] => adapter.scopes ?? ["workspace"];
+const scopesOf = (adapter: HostFunctionalityAdapter): readonly ("workspace" | "session")[] => adapter.scopes ?? ["workspace"];
 const EMPTY_STATE: FamilyState = Object.freeze({ version: STATE_VERSION, definitions: Object.freeze({}) });
 // One object per verb result: every family action, in every daemon, shares its compiled validator.
 const LIST_RESULT: JsonSchema = Object.freeze({ $ref: "https://schemas.plurnk.xyz/v0/FunctionalityListResult.json" });
@@ -213,7 +213,7 @@ export default class Functionality {
         if (this.#owners.has(namespaceOwner)) throw new Error(`Functionality namespace owner '${namespaceOwner}' is already registered.`);
         if (!isRecord(adapter.definitionSchema)) throw new Error(`Functionality family '${family}' requires a definition schema.`);
         const scopes = scopesOf(adapter);
-        if (scopes.length === 0 || new Set(scopes).size !== scopes.length || scopes.some((scope) => scope !== "workspace" && scope !== "worker")) {
+        if (scopes.length === 0 || new Set(scopes).size !== scopes.length || scopes.some((scope) => scope !== "workspace" && scope !== "session")) {
             throw new Error(`Functionality family '${family}' declares invalid scopes.`);
         }
         // {§functionality-discovery-inputs}
@@ -292,8 +292,8 @@ export default class Functionality {
                     outputSchema: verb === "list" ? LIST_RESULT : verb === "discover" ? DISCOVER_RESULT : MUTATION_RESULT,
                     handler: async (params, context) => {
                         if (context.scope === "daemon" || context.scope !== scope) throw new Error(`${scope}.${family}.${verb} requires a ${scope}-scoped context.`);
-                        const identity: FunctionalityIdentity = context.scope === "worker"
-                            ? { workspaceId: context.workspaceId, workerId: context.workerId, scope }
+                        const identity: FunctionalityIdentity = context.scope === "session"
+                            ? { workspaceId: context.workspaceId, sessionId: context.sessionId, scope }
                             : { workspaceId: context.workspaceId, scope };
                         return (await this.invoke(family, verb, params, identity, "action")).body;
                     },
@@ -509,23 +509,23 @@ export default class Functionality {
             const { scope: _scope, ...query } = input;
             return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#discover(adapter, query, identity)) };
         }
-        // {§functionality-scope} — a worker-scoped family's list and mutations act for the invoking
-        // Worker. The state is that Worker's and nothing resident changes, so they serialize on the
-        // Worker's own lane and take no workspace exclusivity: a Worker shapes its environment while
+        // {§functionality-scope} — a session-scoped family's list and mutations act for the invoking
+        // Session. The state is that Session's and nothing resident changes, so they serialize on the
+        // Session's own lane and take no workspace exclusivity: a Session shapes its environment while
         // its siblings run.
-        if (scope === "worker") {
-            const workerId = Functionality.#workerOf(adapter, identity);
+        if (scope === "session") {
+            const sessionId = Functionality.#sessionOf(adapter, identity);
             return this.#trackAdmission(
                 identity.workspaceId,
-                this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, signal)),
+                this.#serialize(`${this.#key(identity.workspaceId, family)}:${sessionId}`, () => this.#invokeForSession(adapter, verb, input, identity, sessionId, caller, signal)),
             );
         }
         if (verb === "list") return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#list(adapter, identity)) };
         const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, signal));
-        // A context family (one that declares the worker scope) is read where it is used, so its workspace
-        // defaults change nothing resident either: they serialize on the family's lane, as a Worker's own do,
+        // A context family (one that declares the session scope) is read where it is used, so its workspace
+        // defaults change nothing resident either: they serialize on the family's lane, as a Session's own do,
         // and an operation inside its own held turn never waits on itself.
-        if (scopesOf(adapter).includes("worker")) {
+        if (scopesOf(adapter).includes("session")) {
             const outcome = await this.#trackAdmission(identity.workspaceId, mutate());
             if (outcome.settled === undefined) return outcome.invocation;
             options?.onAuthorizationRequired?.(outcome.aliases);
@@ -542,16 +542,16 @@ export default class Functionality {
             : (await publish()).invocation;
     }
 
-    // A worker-scoped verb that names no Worker is a defect at the projection, never a client
-    // failure: both projections name the Worker ({§functionality-model-projection}).
-    static #workerOf(adapter: HostFunctionalityAdapter, identity: FunctionalityIdentity): number {
-        if (identity.workerId === undefined) throw new Error(`${adapter.family} is worker-scoped; the invocation names no Worker.`);
-        return identity.workerId;
+    // A session-scoped verb that names no Session is a defect at the projection, never a client
+    // failure: both projections name the Session ({§functionality-model-projection}).
+    static #sessionOf(adapter: HostFunctionalityAdapter, identity: FunctionalityIdentity): number {
+        if (identity.sessionId === undefined) throw new Error(`${adapter.family} is session-scoped; the invocation names no Session.`);
+        return identity.sessionId;
     }
 
     // The origin a definition carries when this family owns it locally. Service definitions
     // always come from the adapter's own `available()`; everything else is the family's own.
-    static #localOrigin(identity: FunctionalityIdentity): "worker" | "workspace" {
+    static #localOrigin(identity: FunctionalityIdentity): "session" | "workspace" {
         return identity.scope ?? "workspace";
     }
 
@@ -603,11 +603,11 @@ export default class Functionality {
         return Functionality.#parseState(adapter, await this.#host.readWorkspaceModuleState(workspaceId, adapter.namespaceOwner), `workspace ${workspaceId}`, "workspace");
     }
 
-    async #loadWorkerState(adapter: HostFunctionalityAdapter, workerId: number): Promise<FamilyState> {
-        return Functionality.#parseState(adapter, await this.#host.readWorkerModuleState(workerId, adapter.namespaceOwner), `worker ${workerId}`, "worker");
+    async #loadSessionState(adapter: HostFunctionalityAdapter, sessionId: number): Promise<FamilyState> {
+        return Functionality.#parseState(adapter, await this.#host.readSessionModuleState(sessionId, adapter.namespaceOwner), `session ${sessionId}`, "session");
     }
 
-    static #parseState(adapter: HostFunctionalityAdapter, raw: unknown, where: string, scope: "workspace" | "worker"): FamilyState {
+    static #parseState(adapter: HostFunctionalityAdapter, raw: unknown, where: string, scope: "workspace" | "session"): FamilyState {
         if (raw === null) return EMPTY_STATE;
         if (!isRecord(raw) || raw.version !== STATE_VERSION || !isRecord(raw.definitions)) {
             throw new Error(`Functionality state for ${adapter.family} in ${where} is not a version ${STATE_VERSION} record.`);
@@ -616,13 +616,13 @@ export default class Functionality {
         for (const [alias, value] of Object.entries(raw.definitions)) {
             if (!aliasPattern(adapter).test(alias) || !isRecord(value)) throw new Error(`Functionality state for ${adapter.family} has an invalid alias '${alias}'.`);
             const { origin, enabled, definition, inherited } = value;
-            if ((origin !== "service" && origin !== "workspace" && origin !== "worker") || typeof enabled !== "boolean") {
+            if ((origin !== "service" && origin !== "workspace" && origin !== "session") || typeof enabled !== "boolean") {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' is malformed.`);
             }
-            if (origin !== "service" && origin !== scope && !(scope === "worker" && origin === "workspace" && scopesOf(adapter).includes("workspace"))) {
+            if (origin !== "service" && origin !== scope && !(scope === "session" && origin === "workspace" && scopesOf(adapter).includes("workspace"))) {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' has an invalid origin for ${scope} scope.`);
             }
-            if (inherited !== undefined && (typeof inherited !== "string" || inherited.length === 0 || scope !== "worker")) {
+            if (inherited !== undefined && (typeof inherited !== "string" || inherited.length === 0 || scope !== "session")) {
                 throw new Error(`Functionality state for ${adapter.family} alias '${alias}' carries an invalid inheritance.`);
             }
             const provenance = inherited === undefined ? {} : { inherited };
@@ -645,7 +645,7 @@ export default class Functionality {
     async #effective(adapter: HostFunctionalityAdapter, identity: FunctionalityIdentity, state: FamilyState): Promise<Map<string, EffectiveDefinition>> {
         const effective = new Map<string, EffectiveDefinition>();
         const local = Functionality.#localOrigin(identity);
-        const inheritsWorkspace = identity.scope === "worker" && scopesOf(adapter).includes("workspace");
+        const inheritsWorkspace = identity.scope === "session" && scopesOf(adapter).includes("workspace");
         const lower = inheritsWorkspace
             ? [...(await this.#effective(adapter, { workspaceId: identity.workspaceId, scope: "workspace" }, await this.#loadState(adapter, identity.workspaceId))).values()]
             : (await adapter.available(identity)).map((entry) => ({ ...entry, origin: "service" as const }));
@@ -731,7 +731,7 @@ export default class Functionality {
         effective: ReadonlyMap<string, EffectiveDefinition>,
     ): Promise<Transition> {
         const local = Functionality.#localOrigin(identity);
-        const here = local === "worker" ? "this worker" : "this workspace";
+        const here = local === "session" ? "this session" : "this workspace";
         const definitions: Record<string, DefinitionRecord> = { ...state.definitions };
         const aliases: string[] = [];
         let status: 200 | 201 = 200;
@@ -914,23 +914,23 @@ export default class Functionality {
         }
     }
 
-    // {§functionality-scope} — the Worker's own lane. State is read at each verb rather than held: the
-    // spawn reads the same row, and a Worker's row is written at its creation, so nothing in memory
+    // {§functionality-scope} — the Session's own lane. State is read at each verb rather than held: the
+    // spawn reads the same row, and a Session's row is written at its creation, so nothing in memory
     // could be more current than the table.
-    async #invokeForWorker(
+    async #invokeForSession(
         adapter: HostFunctionalityAdapter,
         verb: FunctionalityVerb,
         input: Record<string, unknown>,
         identity: FunctionalityIdentity,
-        workerId: number,
+        sessionId: number,
         caller: FunctionalityCaller,
         signal: AbortSignal,
     ): Promise<FunctionalityInvocation> {
         signal.throwIfAborted();
-        const state = await this.#loadWorkerState(adapter, workerId);
+        const state = await this.#loadSessionState(adapter, sessionId);
         const effective = await this.#effective(adapter, identity, state);
         if (verb === "list") {
-            const prepared = await this.#prepareForWorker(adapter, identity, effective, "publish-unavailable", [], signal);
+            const prepared = await this.#prepareForSession(adapter, identity, effective, "publish-unavailable", [], signal);
             try { signal.throwIfAborted(); }
             catch (cause) { return Functionality.#abort(prepared, cause); }
             prepared.publish();
@@ -943,10 +943,10 @@ export default class Functionality {
         const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
-        const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" || verb === "replace" ? "reject" : "publish-unavailable", transition.admissions, signal);
+        const prepared = await this.#prepareForSession(adapter, identity, effectiveAfter, caller === "action" || verb === "replace" ? "reject" : "publish-unavailable", transition.admissions, signal);
         try {
             signal.throwIfAborted();
-            await this.#host.replaceWorkerModuleState(workerId, adapter.namespaceOwner, Functionality.#persisted(nextState));
+            await this.#host.replaceSessionModuleState(sessionId, adapter.namespaceOwner, Functionality.#persisted(nextState));
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
         }
@@ -955,10 +955,10 @@ export default class Functionality {
         return this.#mutationResult(adapter, verb, transition, effectiveAfter, prepared.outcomes);
     }
 
-    // A worker-scoped family's preparation yields outcomes only. It holds no residency — no runtimes,
+    // A session-scoped family's preparation yields outcomes only. It holds no residency — no runtimes,
     // documents or snapshot ({§module-workspace-residency}) — because its definitions are read at the
     // spawn that uses them rather than leased and cooled; the coordinator enforces that here.
-    async #prepareForWorker(
+    async #prepareForSession(
         adapter: HostFunctionalityAdapter,
         identity: FunctionalityIdentity,
         effective: ReadonlyMap<string, EffectiveDefinition>,
@@ -975,7 +975,7 @@ export default class Functionality {
         try {
             Functionality.#checkOutcomes(adapter, enabled, prepared);
             if ((prepared.runtimes?.length ?? 0) > 0 || prepared.documents.length > 0 || prepared.snapshot !== null) {
-                throw new Error(`${adapter.family} is worker-scoped and holds no residency, yet its preparation published runtimes, documents or a snapshot.`);
+                throw new Error(`${adapter.family} is session-scoped and holds no residency, yet its preparation published runtimes, documents or a snapshot.`);
             }
         } catch (cause) {
             return Functionality.#abort(prepared, cause);
@@ -983,8 +983,8 @@ export default class Functionality {
         return prepared;
     }
 
-    // The enabled definitions a workspace publication of `state` prepares. A worker-scoped family's
-    // workspace publication carries only its manager: what is enabled is decided per Worker, at each
+    // The enabled definitions a workspace publication of `state` prepares. A session-scoped family's
+    // workspace publication carries only its manager: what is enabled is decided per Session, at each
     // verb and each spawn ({§functionality-scope}).
     async #publishable(adapter: HostFunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, FunctionalityPreparedDefinition>> {
         if (!scopesOf(adapter).includes("workspace")) return new Map();

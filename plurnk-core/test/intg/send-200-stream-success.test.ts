@@ -46,7 +46,7 @@ for (const command of ["true", "hostname"]) {
                 const observedPacket = JSON.stringify(provider.received[1]);
                 assert.match(observedPacket, /terminal/, "the next packet contains the stream conclusion");
                 if (command === "hostname") assert.ok(observedPacket.includes(hostname()), "the actual hostname reaches the model");
-                const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
+                const rows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
                 assert.ok(rows.some((r) => isExecutionOp(r.op)), "the stream ran");
                 assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op),
                     ["sh", ...(earlyReply ? ["SEND"] : []), "SEND"], "no synthetic completion operation");
@@ -82,7 +82,7 @@ test("{§completion-defers-to-results}: a successful execution receipt defers co
             assert.equal(result.finalStatus, 200, "the deferred completion concludes on the next packet; at MAX_STRIKES 1 a strike would have ended the loop");
             assert.equal(provider.received.length, 2);
             assert.equal(provider.remaining, 0);
-            const rows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
+            const rows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
             assert.equal(result.result.content, undefined);
             assert.equal(await lastReply(db, result.loopId), "Completed.", "an empty completion resolves the observed assignment without repeating its answer");
@@ -109,7 +109,7 @@ test("{§completion-defers-to-results}: a same-turn stream's nonzero exit defers
             const result = await runLoopToTerminal(ws, 2, { prompt: "submit, then conclude" });
             assert.equal(result.finalStatus, 200);
             assert.equal(provider.remaining, 0, "the deferral cost exactly one more provider turn");
-            const rows = await db.test_log_entries_by_worker.all<{ id: number; op: string; origin: string; status_rx: number }>({ worker_id: result.modelWorkerId });
+            const rows = await db.test_log_entries_by_session.all<{ id: number; op: string; origin: string; status_rx: number }>({ session_id: result.modelSessionId });
             assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op }) => op), ["sh", "SEND", "SEND"]);
             assert.ok(rows.some(({ op, origin, status_rx }) => op === "READ" && origin === "_plurnk" && status_rx === 200), "the terminal stream observation lands as the command's answer");
             assert.match(JSON.stringify(provider.received[1]), /\\"exitCode\\":3/, "the exit code reaches the observation packet");

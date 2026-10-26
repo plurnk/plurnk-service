@@ -21,11 +21,11 @@ body?
 * COPY: (path) <scope>? (path) <scope>? - Copy files, entries, streams, or text regions.
 * MOVE: (path) <scope>? (path) <scope>? - Move files, entries, streams, or text regions.
 * KILL: End things — delete an entry, stop a process, retire log items, or end the loop.
-* WORK: Deploy a child worker (fresh log).
-* FORK: Deploy a forked worker (forked log).
+* WORK: Deploy a child session (fresh log).
+* FORK: Deploy a forked session (forked log).
 * BARE: Deploy an isolated inference on the fence body (no log or tools).
-* WAIT: Yield until the next wake: a child worker's result or a stream's end.
-* SEND: Message endpoints or workers.
+* WAIT: Yield until the next wake: a child session's result or a stream's end.
+* SEND: Message endpoints or sessions.
 
 ## Workflow Management
 
@@ -69,7 +69,7 @@ When representing markdown, `~~~` notation can disambiguate nested content.
 
 ## Delegation
 
-```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
+```WORK (session://exampleSessionName) <!-- the child's result lands in your log -->
 The child's complete task.
 ```
 
@@ -81,7 +81,7 @@ A self-contained prompt.
 ```
 
 > [!TIP]
-> `SEND (worker://name)` messages a live worker.
+> `SEND (session://name)` messages a live session.
 
 ## Context Curation
 

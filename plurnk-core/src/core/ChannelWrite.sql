@@ -42,8 +42,8 @@ RETURNING name;
 -- PREP: open_subscription
 -- turn_scoped COALESCEs to 0 so a caller binding the raw prep without it (an unbounded stream) is
 -- a normal, non-turn-scoped subscription — the column is NOT NULL, so a missing bind would error.
-INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, turn_scoped, detached, published_channel, source)
-VALUES ($worker_id, $entry_id, $scheme, $handle, COALESCE($turn_scoped, 0), COALESCE($detached, 0), $published_channel, $source)
+INSERT INTO subscriptions (session_id, entry_id, scheme, handle, turn_scoped, detached, published_channel, source)
+VALUES ($session_id, $entry_id, $scheme, $handle, COALESCE($turn_scoped, 0), COALESCE($detached, 0), $published_channel, $source)
 RETURNING id;
 
 -- PREP: close_subscription
@@ -55,7 +55,7 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE id = $subscription_id AND closed_at IS NULL;
 
 -- PREP: subscription_published_channel_meta
-SELECT e.id AS entryId, s.worker_id AS workerId, e.workspace_id, e.scheme, e.authority, e.pathname,
+SELECT e.id AS entryId, s.session_id AS sessionId, e.workspace_id, e.scheme, e.authority, e.pathname,
        ec.name AS channel, ec.state, ec.mimetype,
        length(ec.content) AS contentLength
 FROM subscriptions s
@@ -69,44 +69,44 @@ SELECT id, scheme, handle
 FROM subscriptions
 WHERE entry_id = $entry_id AND closed_at IS NULL;
 
--- PREP: find_open_subscriptions_for_worker
--- The worker's still-open subscriptions — the registry-routed reap ({§worker-lifecycle-total-reap}):
+-- PREP: find_open_subscriptions_for_session
+-- The session's still-open subscriptions — the registry-routed reap ({§session-lifecycle-total-reap}):
 -- loop.cancel / KILL / shutdown iterate these and abort each via the owning scheme, so a
 -- backgrounded exec is reaped independent of any in-process AbortSignal-listener timing.
 SELECT id, scheme
 FROM subscriptions
-WHERE worker_id = $worker_id AND closed_at IS NULL;
+WHERE session_id = $session_id AND closed_at IS NULL;
 
--- PREP: worker_open_streams
--- {§methods-worker-streams} The worker's open subscriptions in opening order, one row per channel of each one's entry,
+-- PREP: session_open_streams
+-- {§methods-session-streams} The session's open subscriptions in opening order, one row per channel of each one's entry,
 -- written or not (none for an entry without channels): its address, the lifetime its spawn declared, and its source.
 -- An outer join cannot flatten the entry_channels view, so this one reads its table ({§content-store}).
-SELECT s.id, s.entry_id, s.worker_id, e.scheme, e.authority, e.pathname, s.turn_scoped, s.detached, s.source,
+SELECT s.id, s.entry_id, s.session_id, e.scheme, e.authority, e.pathname, s.turn_scoped, s.detached, s.source,
        ec.name AS channel, ec.state, ec.mimetype
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 LEFT JOIN entry_channel_rows ec ON ec.entry_id = s.entry_id
-WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
+WHERE s.session_id = $session_id AND s.closed_at IS NULL
 ORDER BY s.id, ec.name;
 
 -- PREP: find_open_subscriptions_announced_in_loop
--- {§connection-lifecycle} A client operation's executions that still run: the runtime worker's open, attached
+-- {§connection-lifecycle} A client operation's executions that still run: the runtime session's open, attached
 -- subscriptions beside each stream address its loop's rows announced. The caller keeps the pairs whose entry
 -- renders to that address; cancelling the operation reaps exactly those.
 SELECT s.id, e.scheme, e.authority, e.pathname, json_extract(le.attrs, '$.stream') AS stream
 FROM log_entries le
-JOIN workers w ON w.id = le.worker_id AND w.workspace_id = $workspace_id AND w.origin = '_plurnk'
-JOIN subscriptions s ON s.worker_id = le.worker_id AND s.closed_at IS NULL AND s.detached = 0
+JOIN sessions w ON w.id = le.session_id AND w.workspace_id = $workspace_id AND w.origin = '_plurnk'
+JOIN subscriptions s ON s.session_id = le.session_id AND s.closed_at IS NULL AND s.detached = 0
 JOIN entries e ON e.id = s.entry_id
 WHERE le.loop_id = $loop_id AND json_extract(le.attrs, '$.stream') IS NOT NULL;
 
--- PREP: find_open_turn_scoped_subscriptions_for_worker
--- The worker's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the worker's next pre-turn so a
+-- PREP: find_open_turn_scoped_subscriptions_for_session
+-- The session's open turn-scoped (EXEC `<0>`) subscriptions — reaped at the session's next pre-turn so a
 -- `<0>` stream never survives into the subsequent turn; its terminal output surfaces initially visible
 -- through the same conclusion-delta path as any close ({§exec-stream}).
 SELECT id, scheme
 FROM subscriptions
-WHERE worker_id = $worker_id AND closed_at IS NULL AND turn_scoped = 1;
+WHERE session_id = $session_id AND closed_at IS NULL AND turn_scoped = 1;
 
 -- PREP: find_exec_close_status
 -- Terminal outcome of a finished exec stream, addressed by its coordinate
@@ -137,7 +137,7 @@ CREATE TRIGGER subscriptions_wake_revision
 AFTER UPDATE OF closed_at ON subscriptions
 WHEN OLD.closed_at IS NULL AND NEW.closed_at IS NOT NULL
 BEGIN
-    UPDATE workers SET wake_revision = wake_revision + 1 WHERE id = NEW.worker_id;
+    UPDATE sessions SET wake_revision = wake_revision + 1 WHERE id = NEW.session_id;
 END;
 
 -- INIT: subscriptions_output_clock
@@ -151,7 +151,7 @@ END;
 
 -- INIT: subscriptions_output_changed
 -- Content and its clock commit together. State/metadata writes and identical
--- content do not count; publication chooses which channels the worker observes.
+-- content do not count; publication chooses which channels the session observes.
 DROP TRIGGER IF EXISTS subscriptions_output_changed;
 CREATE TRIGGER subscriptions_output_changed
 INSTEAD OF UPDATE OF content ON entry_channels

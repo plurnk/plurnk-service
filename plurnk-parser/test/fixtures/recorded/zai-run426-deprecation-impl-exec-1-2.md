@@ -1,8 +1,8 @@
 ```NOTE
-Task received from deprecation-coder: implement deprecation headers feature in FastAPI repo. I will delegate the full implementation to a child worker and wait for its result.
+Task received from deprecation-coder: implement deprecation headers feature in FastAPI repo. I will delegate the full implementation to a child session and wait for its result.
 ```
 
-```WORK (worker://deprecation-implementer) <1,-1>
+```WORK (session://deprecation-implementer) <1,-1>
 Implement the feature directly in the current repository (a FastAPI checkout, branch `master`). Create a new branch from main/master named `feat/deprecation-headers` and implement the following feature completely, with tests, and commit everything when done.
 
 ## Goal
@@ -68,5 +68,5 @@ Return a summary of: files changed, key design decisions (how precedence/inherit
 ```
 
 ```NOTE
-Awaiting child worker result before summarizing back to the coder.
+Awaiting child session result before summarizing back to the coder.
 ```

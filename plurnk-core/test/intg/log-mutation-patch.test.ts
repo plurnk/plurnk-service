@@ -57,13 +57,13 @@ const runtime = async (t: TestContext) => {
         }
     });
     let sequence = 0;
-    const row = (workerId: number, seq: number) => db.log_read_by_coordinate.get<Row>({ worker_id: workerId, loop_seq: 1, turn_seq: 1, sequence: seq });
+    const row = (sessionId: number, seq: number) => db.log_read_by_coordinate.get<Row>({ session_id: sessionId, loop_seq: 1, turn_seq: 1, sequence: seq });
     const dispatch = async (source: string): Promise<Row & { sequence: number; content: string }> => {
         const { items } = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
-        const written = await row(ids.workerId, sequence);
+        const written = await row(ids.sessionId, sequence);
         assert.ok(written, source);
         const parsed = JSON.parse(written.rx) as { content?: unknown };
         return { ...written, sequence, content: typeof parsed.content === "string" ? parsed.content : "" };
@@ -118,7 +118,7 @@ test("{§log-mutation-patch} every settled text mutation keeps its diff on its r
     assert.equal(missing.status_rx, 404, `a patchless row has no patch channel: ${missing.rx.slice(0, 200)}`);
 
     // A fork copies the row with its patch.
-    const branch = await Fork.fork(db, ids.workerId, "branch");
+    const branch = await Fork.fork(db, ids.sessionId, "branch");
     assert.equal((await row(branch, edited.sequence))?.patch, edited.patch, "the fork's copy of the EDIT row carries the same patch");
     assert.equal((await row(branch, bytes.sequence))?.patch, null, "and the patchless row stays patchless");
 });

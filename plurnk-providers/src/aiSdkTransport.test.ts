@@ -181,7 +181,7 @@ test("{§provider-connectivity} stream failure evidence distinguishes semantic o
 
 test("{§provider-cancellation-evidence} cancellation preserves received evidence through the SDK abort event (#971)", async (t) => {
     for (const channel of ["content", "reasoning_content"] as const) {
-        for (const reason of [new Error("worker cancelled"), "worker cancelled"]) {
+        for (const reason of [new Error("session cancelled"), "session cancelled"]) {
             for (const reported of [false, true]) {
                 await t.test(`${channel}, ${typeof reason}, usage=${reported}`, async () => {
                     const cancellation = new AbortController();
@@ -217,7 +217,7 @@ test("{§provider-cancellation-evidence} cancellation preserves received evidenc
                         assert.deepEqual(evidence.chargeEvidence.charge, reported ? charge : undefined);
                         assert.deepEqual(evidence.rawBody, [body]);
                         assert.equal(channel === "content" ? evidence.content : evidence.reasoning, "partial output");
-                        assert.match(JSON.stringify(evidence.error), /worker cancelled/);
+                        assert.match(JSON.stringify(evidence.error), /session cancelled/);
                         return true;
                     });
                     assert.equal(observed, "partial output");

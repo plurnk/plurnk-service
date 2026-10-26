@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { ownSession, TEST_OWNER } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import type {
@@ -25,7 +25,7 @@ test("{§message-envelope-evidence} {§problems-client}: competing interaction a
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, "interaction-message-race");
-    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    await ownSession(db, ids.workspaceId, ids.sessionId, ["choose_repository"]);
     const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
@@ -55,7 +55,7 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a pending 
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-${crypto.randomUUID()}`);
-    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    await ownSession(db, ids.workspaceId, ids.sessionId, ["choose_repository"]);
     const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
@@ -72,7 +72,7 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a pending 
     });
     assert.deepEqual(await interactions.list(ids.workspaceId), [{
         interactionId: pending.interactionId,
-        workerId: ids.workerId,
+        sessionId: ids.sessionId,
         loopId: ids.loopId,
         turnId: ids.turnId,
         recipient: TEST_OWNER,
@@ -98,7 +98,7 @@ test("{§client-interactions}: owner cancellation removes the durable request an
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-abort-${crypto.randomUUID()}`);
-    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    await ownSession(db, ids.workspaceId, ids.sessionId, ["choose_repository"]);
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
     interactions.onPending(observed.resolve);
@@ -116,7 +116,7 @@ test("{§client-interactions}: owner cancellation removes the durable request an
 test("{§client-interactions}: invalid response content leaves the same interaction answerable", async () => {
     const db = await openMigrated();
     const ids = await seedEnvelope(db, "interaction-invalid-response");
-    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    await ownSession(db, ids.workspaceId, ids.sessionId, ["choose_repository"]);
     const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     const observed = Promise.withResolvers<ClientInteractionPendingEvent>();
@@ -149,7 +149,7 @@ test("{§client-interactions}: invalid response content leaves the same interact
 test("{§methods-client-interaction-resolve} {§client-interactions}: a retired interrupt identity never addresses a subsequent input request", async () => {
     const db = await openMigrated();
     const ids = await seedEnvelope(db, "interaction-identities");
-    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    await ownSession(db, ids.workspaceId, ids.sessionId, ["choose_repository"]);
     const respondent = { workspaceId: ids.workspaceId, address: TEST_OWNER };
     const interactions = new ClientInteractions(db);
     let observed = Promise.withResolvers<ClientInteractionPendingEvent>();
@@ -172,12 +172,12 @@ test("{§methods-client-interaction-resolve} {§client-interactions}: a retired 
     }
 });
 
-test("{§client-interactions}: insertion requires one exact workspace/worker/loop/turn ownership chain", async (t) => {
+test("{§client-interactions}: insertion requires one exact workspace/session/loop/turn ownership chain", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const first = await seedEnvelope(db, `interaction-owner-a-${crypto.randomUUID()}`);
     const second = await seedEnvelope(db, `interaction-owner-b-${crypto.randomUUID()}`);
-    await ownWorker(db, first.workspaceId, first.workerId, ["choose_repository"]);
+    await ownSession(db, first.workspaceId, first.sessionId, ["choose_repository"]);
     const interactions = new ClientInteractions(db);
 
     await assert.rejects(
@@ -192,10 +192,10 @@ test("{§client-interactions}: boot recovery removes a request whose process-loc
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, `interaction-recovery-${crypto.randomUUID()}`);
-    await ownWorker(db, ids.workspaceId, ids.workerId, ["choose_repository"]);
+    await ownSession(db, ids.workspaceId, ids.sessionId, ["choose_repository"]);
     const inserted = await db.client_interaction_insert.get({
         workspace_id: ids.workspaceId,
-        worker_id: ids.workerId,
+        session_id: ids.sessionId,
         loop_id: ids.loopId,
         turn_id: ids.turnId,
         recipient: TEST_OWNER,

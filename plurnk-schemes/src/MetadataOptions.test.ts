@@ -5,8 +5,8 @@ import MetadataOptions from "./MetadataOptions.ts";
 
 test("{§scheme-metadata-modifier} MetadataOptions.read retains ordered scalars and objects for their owning contract", () => {
     assert.deepEqual(MetadataOptions.read(null, "message:reply"), { elements: [] });
-    assert.deepEqual(MetadataOptions.read(['200,{"attachments":["worker:///report.txt"]}'], "message:reply"),
-        { elements: [200, { attachments: ["worker:///report.txt"] }] });
+    assert.deepEqual(MetadataOptions.read(['200,{"attachments":["workspace:///report.txt"]}'], "message:reply"),
+        { elements: [200, { attachments: ["workspace:///report.txt"] }] });
     const refused = MetadataOptions.parse(["200"], "scheme:test");
     assert.ok("failure" in refused, "the object-options contract still rejects scalars");
     assert.equal(refused.failure.problem?.type, "https://problems.plurnk.xyz/scheme/test/metadata-invalid");

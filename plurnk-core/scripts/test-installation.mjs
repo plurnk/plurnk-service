@@ -179,7 +179,7 @@ const bootStart = (env = {}, probe) => new Promise((res) => {
     // not from CWD/node_modules — the global-dogfood scenario (start from your own project).
     const childEnv = { ...process.env };
     for (const key of ["PLURNK_AUTH", "PLURNK_SECRET", "PLURNK_PASS", "PLURNK_ACP_ALLOW_ORIGIN", "PLURNK_ACP_MAX_TURNS", "PLURNK_ACP_HEARTBEAT_MS",
-        "PLURNK_ACP_HISTORY_LOOPS", "PLURNK_ACP_HISTORY_PAGE_CHARS", "PLURNK_ACP_EXCERPT_CHARS", "PLURNK_ACP_OVERVIEW_WORKERS"]) delete childEnv[key];
+        "PLURNK_ACP_HISTORY_LOOPS", "PLURNK_ACP_HISTORY_PAGE_CHARS", "PLURNK_ACP_EXCERPT_CHARS", "PLURNK_ACP_OVERVIEW_SESSIONS"]) delete childEnv[key];
     for (const key of Object.keys(childEnv)) {
         if (key.startsWith("PLURNK_MCP_")) delete childEnv[key];
     }
@@ -408,12 +408,12 @@ const digestFixture = await SqlRiteSync.open({
 });
 try {
     const workspace = digestFixture.installation_insert_workspace.get({ name: "packed-digest-workspace" });
-    const worker = digestFixture.installation_insert_worker.get({
+    const session = digestFixture.installation_insert_session.get({
         workspace_id: workspace.id,
-        name: "packed-digest-worker",
+        name: "packed-digest-session",
     });
     const loop = digestFixture.installation_insert_loop.get({
-        worker_id: worker.id,
+        session_id: session.id,
         prompt: "packed-digest-prompt",
     });
     const turn = digestFixture.installation_insert_turn.get({ loop_id: loop.id });
@@ -434,7 +434,7 @@ const packedDigest = JSON.parse(readFileSync(resolve(packedDigestDir, "digest.js
 const packedStem = packedDigest.turns[0]?.artifact;
 ok(
     packedDigest.workspaces.some(({ name }) => name === "packed-digest-workspace")
-        && packedDigest.workers.some(({ name }) => name === "packed-digest-worker")
+        && packedDigest.sessions.some(({ name }) => name === "packed-digest-session")
         && packedDigest.loops.some(({ prompt }) => prompt === "packed-digest-prompt")
         && packedDigest.turns.length === 1,
     "the packed digest subpath resolves its SQL and writes selected forensic artifacts",
@@ -515,7 +515,7 @@ const skillBoot = await bootStart({ PLURNK_SERVICE_DB_PATH: packedSkillDb }, asy
     await acpAction(address, "workspace.create", { name: "packed-dormant-two" });
     await acpAction(address, "workspace.create", { name: "packed-dormant-three" });
     const anchorWorkspace = await acpAction(address, "workspace.create", { name: "packed-anchor-range" });
-    const sourceTarget = "worker:///installed.py";
+    const sourceTarget = "workspace:///installed.py";
     await acpAction(address, "op.parse", {
         text: `\`\`\`\`EDIT (${sourceTarget})
 def target():
@@ -528,7 +528,7 @@ def target():
     const sourceRead = (await acpAction(address, "op.parse", {
         text: `\`\`\`\`READ (${sourceTarget}) <1,1,2,13>\`\`\`\``,
     }, anchorWorkspace.name)).results[0];
-    const anchorTarget = "worker:///packed-anchor.md";
+    const anchorTarget = "workspace:///packed-anchor.md";
     const anchorContent = "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight";
     await acpAction(address, "op.parse", {
         text: `\`\`\`\`EDIT (${anchorTarget})
@@ -750,7 +750,7 @@ ok(
 );
 ok(
     dormantBoot.probeResult?.disabledSkillRead?.status === 404,
-    "ordinary Worker skill disablement withdraws the built-in reference from the installed ACP path",
+    "ordinary Session skill disablement withdraws the built-in reference from the installed ACP path",
 );
 ok(
     dormantBoot.probeResult?.skillRead?.status === 200
@@ -759,7 +759,7 @@ ok(
 );
 ok(
     packedSkills.get("/_plurnk/skills/find-skills.md") === undefined,
-    "no bundled discovery skill is materialized into the packed Worker",
+    "no bundled discovery skill is materialized into the packed Session",
 );
 ok(
     dormantBoot.probeResult?.skillCatalog?.status === 200
@@ -769,15 +769,15 @@ ok(
 );
 ok(
     packedSkills.get("/_plurnk/tools/plurnk/skills.json")?.includes("plurnk (skills)") === true,
-    "the packed Worker learns Skills management from the generated family tool, not a bundled skill",
+    "the packed Session learns Skills management from the generated family tool, not a bundled skill",
 );
 const startsAfterActivation = markerCount(mcpStartMarker);
 const coldRestart = await bootStart(dormantMcpEnv);
 ok(
     coldRestart.listening === true
         && markerCount(mcpStartMarker) === startsAfterActivation
-        && !/MCP server .* unavailable during worker activation/u.test(coldRestart.stderr),
-    "restart leaves previously activated worker integrations cold until fresh demand",
+        && !/MCP server .* unavailable during session activation/u.test(coldRestart.stderr),
+    "restart leaves previously activated session integrations cold until fresh demand",
 );
 
 const boot = await bootStart({
@@ -801,13 +801,13 @@ const searchBoot = await bootStart({
 }, async (address) => {
     const workspace = await acpAction(address, "workspace.create", { name: "installed-fulltext" });
     await acpAction(address, "op.parse", {
-        text: "````EDIT (worker:///search.md)\nA reliable connection supports native search.\n````",
+        text: "````EDIT (workspace:///search.md)\nA reliable connection supports native search.\n````",
     }, workspace.name);
     const found = await acpAction(address, "op.parse", {
-        text: "````FIND (worker:///*.md) ~\"reliable connection\"````",
+        text: "````FIND (workspace:///*.md) ~\"reliable connection\"````",
     }, workspace.name);
     const locations = await acpAction(address, "op.parse", {
-        text: "````FIND (worker:///search.md) ~\"reliable connection\"````",
+        text: "````FIND (workspace:///search.md) ~\"reliable connection\"````",
     }, workspace.name);
     return { found: found.results[0], locations: locations.results[0] };
 });
@@ -815,7 +815,7 @@ ok(
     searchBoot.listening === true
         && searchBoot.probeError === undefined
         && searchBoot.probeResult?.found?.status === 200
-        && searchBoot.probeResult?.found?.results?.[0]?.[0]?.path === "worker:///search.md"
+        && searchBoot.probeResult?.found?.results?.[0]?.[0]?.path === "workspace:///search.md"
         && searchBoot.probeResult?.locations?.results?.[0]?.matched === "reliable connection",
     "the packed daemon serves FTS5 resources and exact source matches without a model",
 );

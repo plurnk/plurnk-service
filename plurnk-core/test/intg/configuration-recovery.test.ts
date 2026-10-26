@@ -5,7 +5,7 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Problems, type Notice, type OperationResult } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { makeMockResponse, userText } from "./_mock.ts";
 import { waitFor } from "./_rpc.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
@@ -39,7 +39,7 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     }));
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `constructor-repair-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+    const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````brokenfixture\ninspect\n````\n\n````healthyfixture\ninspect\n````"),
         makeMockResponse("````SEND [200]\nThe healthy executor worked; the other needs its endpoint configured.\n````"),
@@ -54,7 +54,7 @@ test("{§configuration-repair-path} a misconfigured installed executor leaves it
     t.after(daemon.subscribeToEvents((_id, method, params) => {
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);
     }));
-    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect both executor outcomes." });
+    const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect both executor outcomes." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
     assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
     assert.deepEqual(ran, ["healthyfixture"]);
@@ -77,7 +77,7 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
     });
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `inline-repair-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+    const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeMockResponse("````sh\nprintf inline-still-works\n````"),
         makeMockResponse("````SEND [200]\nThe inline program worked.\n````"),
@@ -89,7 +89,7 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
     t.after(daemon.subscribeToEvents((_id, method, params) => {
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);
     }));
-    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Run an inline program." });
+    const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Run an inline program." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
     assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
     assert.match(userText(provider.received[1]), /inline-still-works/u);
@@ -98,7 +98,7 @@ test("{§configuration-repair-path} invalid scratch configuration does not block
 for (const [key, invocation] of [
     ["PLURNK_SERVICE_EXEC_CONCURRENCY", "sh"],
     ["PLURNK_SERVICE_EXEC_PROBE_TIMEOUT_MS", "sh"],
-    ["PLURNK_SERVICE_EXEC_SCRATCH", "sh (worker:///program.sh)"],
+    ["PLURNK_SERVICE_EXEC_SCRATCH", "sh (workspace:///program.sh)"],
 ] as const) {
     test(`{§configuration-repair-path} ${key} refuses the execution without blocking ordinary READ and EDIT`, { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
@@ -107,10 +107,10 @@ for (const [key, invocation] of [
         t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `executor-repair-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+        const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
-            makeMockResponse(`\`\`\`\`${invocation}\nprintf should-not-run\n\`\`\`\`\n\n\`\`\`\`EDIT (worker:///repair.txt)\nrepair remains available\n\`\`\`\``),
-            makeMockResponse("````READ (worker:///repair.txt)\n````"),
+            makeMockResponse(`\`\`\`\`${invocation}\nprintf should-not-run\n\`\`\`\`\n\n\`\`\`\`EDIT (workspace:///repair.txt)\nrepair remains available\n\`\`\`\``),
+            makeMockResponse("````READ (workspace:///repair.txt)\n````"),
             makeMockResponse("````SEND [200]\nOrdinary editing and inspection still work.\n````"),
         ] });
         const daemon = new Daemon({ db, provider });
@@ -121,7 +121,7 @@ for (const [key, invocation] of [
         t.after(daemon.subscribeToEvents((_id, method, params) => {
             if (method === "loop/terminated") ended.push(params as typeof ended[number]);
         }));
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect and repair the configuration." });
+        const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect and repair the configuration." });
         await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
         assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
         assert.equal(provider.received.length, 3);
@@ -149,7 +149,7 @@ for (const key of [
         t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `policy-repair-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+        const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse("````plurnk (env)\n````"),
             makeMockResponse("````SEND [200]\nConfiguration is inspectable.\n````"),
@@ -162,7 +162,7 @@ for (const key of [
         t.after(daemon.subscribeToEvents((_id, method, params) => {
             if (method === "loop/terminated") ended.push(params as typeof ended[number]);
         }));
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the configuration error." });
+        const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect the configuration error." });
         await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
         assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
         assert.match(userText(provider.received[1]), /"family":\s*"env"/u);
@@ -173,7 +173,7 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
     serverProposals(t, "accept");
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `startup-repair-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+    const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
     const configuration = new ConfigurationDiagnostics();
     const key = "PLURNK_HOOKS_ARGS";
     await configuration.capture("hooks", () => { throw new ConfigurationError(key, `${key} must be a JSON array of strings.`); });
@@ -190,7 +190,7 @@ test("{§configuration-repair-path} startup diagnostics reach the model and clie
         if (method === "loop/terminated") ended.push(params as typeof ended[number]);
         if (method === "notice/event") notices.push((params as { notice: Notice }).notice);
     }));
-    const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the environment and report the configuration problem." });
+    const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect the environment and report the configuration problem." });
     await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
     assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
     assert.equal(provider.received.length, 2);
@@ -224,7 +224,7 @@ for (const [family, key, value] of [
         });
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `repair-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "repair", "model");
+        const sessionId = await insertSession(db, workspaceId, null, "repair", "model");
         const provider = new Mock({ contextWindow: 1_000_000, responses: [
             makeMockResponse(`\`\`\`\`plurnk (${family})\n\`\`\`\`\n\n\`\`\`\`plurnk (env)\n\`\`\`\``),
             makeMockResponse("````SEND [200]\nThe configuration error is visible; this agent is still usable.\n````"),
@@ -250,7 +250,7 @@ for (const [family, key, value] of [
             if (method === "notice/event") notices.push((params as { notice: Notice }).notice);
         });
         t.after(unsubscribe);
-        const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the configuration problem, list the environment, and report." });
+        const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect the configuration problem, list the environment, and report." });
         await waitFor(() => ended, (items) => items.some(({ loopId }) => loopId === started.loopId), { timeoutMs: 20_000 });
         assert.equal(ended.find(({ loopId }) => loopId === started.loopId)?.result.status, 200);
         assert.equal(provider.received.length, 2, "a configuration error does not prevent inference or recovery");

@@ -24,7 +24,7 @@ test("{§acp-plurnk-metadata} addressOf formats scheme URIs, file paths, and nul
         addressOf({ scheme: "https", hostname: "example.com", port: 8443, pathname: "/a", query: "b=1", fragment: "top" }),
         "https://example.com:8443/a?b=1#top",
     );
-    assert.equal(addressOf({ scheme: "worker", hostname: null, pathname: "/plan.md" }), "worker:///plan.md");
+    assert.equal(addressOf({ scheme: "workspace", hostname: null, pathname: "/plan.md" }), "workspace:///plan.md");
     assert.equal(addressOf({ scheme: "ops", hostname: "helper", pathname: "/1" }), "ops://helper/1");
     assert.equal(addressOf({ scheme: null, pathname: "src/a.ts", fragment: "stderr" }), "src/a.ts#stderr");
     assert.equal(addressOf({ scheme: null, pathname: null }), null);

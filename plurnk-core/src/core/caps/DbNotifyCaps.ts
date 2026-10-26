@@ -1,6 +1,6 @@
 // Db-backed implementation of the trusted extension notification capability.
 // plurnk-schemes {§capability-ctx}; core {§notifications-stream-event-on-channel-change}.
-// Worker wake belongs to subscriptions.close because only that seam owns the
+// Session wake belongs to subscriptions.close because only that seam owns the
 // complete conclusion context. {§scheme-subscriptions}
 //
 // streamEvent is sync per the cap contract, but the StreamEventPayload's entryId
@@ -38,6 +38,6 @@ export default class DbNotifyCaps implements NotifyCaps {
         const entry = await CapsResolve.entry(this.#ctx, this.#scheme, this.#authority, pathname);
         if (entry === null) return;
         const target = renderAddress({ scheme: this.#scheme, authority: this.#authority, pathname });
-        notify(this.#ctx.workspaceId, { entryId: entry.entryId, workerId: this.#ctx.workerId, target, channel, state, contentLength });
+        notify(this.#ctx.workspaceId, { entryId: entry.entryId, sessionId: this.#ctx.sessionId, target, channel, state, contentLength });
     }
 }

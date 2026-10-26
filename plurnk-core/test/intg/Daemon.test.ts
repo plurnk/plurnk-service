@@ -1,9 +1,9 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { ownSession, TEST_OWNER } from "./_approval.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { rpcCall, subscribeNotifications, connect, withDaemon, waitFor, runLoopToTerminal, HARNESS_WAIT_MS } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { insertWorkspace, insertWorker, insertLoop, insertTurn, openMigrated } from "./_db.ts";
+import { insertWorkspace, insertSession, insertLoop, insertTurn, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import HostPaths from "../../src/core/HostPaths.ts";
@@ -16,7 +16,7 @@ import type { RuntimeRegistration, Executor } from "@plurnk/plurnk-execs";
 import type { HostSetupSeam } from "../../src/server/ModuleHost.ts";
 import Dsl from "./dsl.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 import {
     Validator,
     type ApplicationActionContext,
@@ -166,8 +166,9 @@ test("{§manifest-client-display} {§mimetype-client-display} Daemon composes de
                 { kind: "scheme", scheme: "note", display: {} },
                 { kind: "scheme", scheme: "ops", display: {} },
                 { kind: "scheme", scheme: "reasoning", display: {} },
+                { kind: "scheme", scheme: "session", display: {} },
                 { kind: "scheme", scheme: "skill", display: {} },
-                { kind: "scheme", scheme: "worker", display: {} },
+                { kind: "scheme", scheme: "workspace", display: {} },
             ],
         );
         assert.deepEqual(
@@ -276,7 +277,7 @@ test("{§module-action-registration} Daemon: module actions register once during
         await daemon.start();
         // {§functionality-scope} Core families and the discovered default modules register beside the
         // module's own action.
-        const families = ["workspace.skills.", "workspace.members.", "worker.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp."];
+        const families = ["workspace.skills.", "workspace.members.", "session.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp."];
         assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !families.some((prefix) => name.startsWith(prefix))), [{
             name: "example.inspect",
             scope: "daemon",
@@ -287,7 +288,7 @@ test("{§module-action-registration} Daemon: module actions register once during
             daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith("workspace.skills.")),
             ["workspace.skills.add", "workspace.skills.disable", "workspace.skills.discover", "workspace.skills.enable", "workspace.skills.list", "workspace.skills.remove", "workspace.skills.replace"],
         );
-        for (const scope of ["worker", "workspace"]) {
+        for (const scope of ["session", "workspace"]) {
             assert.deepEqual(
                 daemon.listModuleActions().filter(({ name }) => name.startsWith(`${scope}.env.`)).map((action) => ({ name: action.name, scope: action.scope })),
                 ["add", "disable", "discover", "enable", "list", "remove", "replace"].map((verb) => ({ name: `${scope}.env.${verb}`, scope })),
@@ -332,7 +333,7 @@ test("{§module-action-registration} passive scoped actions validate identities 
         seam.registerWorkspaceCapabilityProvider("passive fixture", {
             activate: () => { activations++; }, deactivate: () => undefined,
         });
-        for (const scope of ["workspace", "worker"] as const) seam.registerModuleAction({
+        for (const scope of ["workspace", "session"] as const) seam.registerModuleAction({
             name: `${scope}.passive`, scope, residency: "none",
             inputSchema: MODULE_INPUT_SCHEMA, outputSchema: MODULE_OUTPUT_SCHEMA,
             handler: async () => { calls++; return { inspected: true }; },
@@ -341,9 +342,9 @@ test("{§module-action-registration} passive scoped actions validate identities 
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const workspaceId = await insertWorkspace(db, "passive-actions");
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-    for (const scope of ["workspace", "worker"] as const) {
-        const context = scope === "workspace" ? { scope, workspaceId } : { scope, workspaceId, workerId };
+    const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+    for (const scope of ["workspace", "session"] as const) {
+        const context = scope === "workspace" ? { scope, workspaceId } : { scope, workspaceId, sessionId };
         assert.deepEqual(await daemon.invokeModuleAction(`${scope}.passive`, {}, context), { inspected: true });
         const problem = await rejectedProblem(() => daemon.invokeModuleAction(`${scope}.passive`, {}, { ...context, workspaceId: 999_999 }));
         assert.equal(problem.status, 404);
@@ -359,9 +360,9 @@ test("{§actor-boundary-client-operations} Daemon: workspace Functionality is sh
     const tag = "workspacecap";
     const workspaceId = await insertWorkspace(db, `workspace-functionality-${crypto.randomUUID()}`);
     const peerWorkspaceId = await insertWorkspace(db, `peer-functionality-${crypto.randomUUID()}`);
-    const firstWorkerId = await insertWorker(db, workspaceId, null, "first", "model");
-    const secondWorkerId = await insertWorker(db, workspaceId, null, "second", "model");
-    const peerWorkerId = await insertWorker(db, peerWorkspaceId, null, "peer", "model");
+    const firstSessionId = await insertSession(db, workspaceId, null, "first", "model");
+    const secondSessionId = await insertSession(db, workspaceId, null, "second", "model");
+    const peerSessionId = await insertSession(db, peerWorkspaceId, null, "peer", "model");
     await db.workspace_module_state_put.run({
         workspace_id: workspaceId, namespace_owner: owner, state: JSON.stringify({ source: "workspace" }),
     });
@@ -401,9 +402,9 @@ test("{§actor-boundary-client-operations} Daemon: workspace Functionality is sh
             });
         },
     };
-    // A person's client operation acting for one of the workspace's workers ({§actor-boundary-client-operations}).
-    const dispatch = async (daemon: Daemon, id: number, workerId: number) => (await daemon.dispatchClientAction({
-        workspaceId: id, actor: TEST_OWNER, contextWorkerId: workerId, statements: [Dsl.buildExec({ runtime: tag, command: "fixture" })],
+    // A person's client operation acting for one of the workspace's sessions ({§actor-boundary-client-operations}).
+    const dispatch = async (daemon: Daemon, id: number, sessionId: number) => (await daemon.dispatchClientAction({
+        workspaceId: id, actor: TEST_OWNER, contextSessionId: sessionId, statements: [Dsl.buildExec({ runtime: tag, command: "fixture" })],
     }))[0];
     const daemon = new Daemon({ db, provider: null });
     assert.throws(() => daemon.registerWorkspaceCapabilityProvider("incomplete fixture",
@@ -415,26 +416,26 @@ test("{§actor-boundary-client-operations} Daemon: workspace Functionality is sh
         await daemon.attachWorkspace({ workspaceId });
         assert.deepEqual(activated, [], "boot and attachment are passive");
 
-        assert.equal((await dispatch(daemon, workspaceId, firstWorkerId)).status, 200);
-        assert.equal((await dispatch(daemon, workspaceId, secondWorkerId)).status, 200);
-        assert.equal((await dispatch(daemon, peerWorkspaceId, peerWorkerId)).status, 200);
+        assert.equal((await dispatch(daemon, workspaceId, firstSessionId)).status, 200);
+        assert.equal((await dispatch(daemon, workspaceId, secondSessionId)).status, 200);
+        assert.equal((await dispatch(daemon, peerWorkspaceId, peerSessionId)).status, 200);
         assert.deepEqual(activated, [workspaceId, peerWorkspaceId], "one activation per workspace");
         assert.deepEqual(executions, [workspaceId, workspaceId, peerWorkspaceId]);
 
         await activeSetupSeam().replaceWorkspaceCapabilities({
             workspaceId, namespaceOwner: owner, state: { detached: true }, runtimes: [],
         });
-        for (const workerId of [firstWorkerId, secondWorkerId]) {
-            assert.equal((await dispatch(daemon, workspaceId, workerId)).status, 400,
-                "withdrawal changes the tool surface in this workspace, whichever worker an operation acts for");
+        for (const sessionId of [firstSessionId, secondSessionId]) {
+            assert.equal((await dispatch(daemon, workspaceId, sessionId)).status, 400,
+                "withdrawal changes the tool surface in this workspace, whichever session an operation acts for");
         }
-        assert.equal((await dispatch(daemon, peerWorkspaceId, peerWorkerId)).status, 200,
+        assert.equal((await dispatch(daemon, peerWorkspaceId, peerSessionId)).status, 200,
             "a different workspace keeps its independent environment");
         assert.deepEqual(await activeSetupSeam().readWorkspaceModuleState(workspaceId, owner), { detached: true });
 
         await assert.rejects(() => activeSetupSeam().replaceWorkspaceCapabilities({
             workspaceId, namespaceOwner: owner, state: { corrupted: true },
-            runtimes: [{ ...registration(workspaceId), decl: { ...registration(workspaceId).decl, name: "worker" } }],
+            runtimes: [{ ...registration(workspaceId), decl: { ...registration(workspaceId).decl, name: "session" } }],
         }), /reserved/);
         assert.deepEqual(await activeSetupSeam().readWorkspaceModuleState(workspaceId, owner), { detached: true },
             "a rejected snapshot cannot mutate durable state");
@@ -448,11 +449,11 @@ test("{§actor-boundary-client-operations} Daemon: workspace Functionality is sh
         activated.length = 0;
         await restored.start();
         assert.deepEqual(activated, [], "restart does not hydrate dormant workspaces");
-        for (const workerId of [firstWorkerId, secondWorkerId]) {
-            assert.equal((await dispatch(restored, workspaceId, workerId)).status, 400,
+        for (const sessionId of [firstSessionId, secondSessionId]) {
+            assert.equal((await dispatch(restored, workspaceId, sessionId)).status, 400,
                 "every operation in the workspace sees the restored withdrawal");
         }
-        assert.equal((await dispatch(restored, peerWorkspaceId, peerWorkerId)).status, 200);
+        assert.equal((await dispatch(restored, peerWorkspaceId, peerSessionId)).status, 200);
         assert.deepEqual(activated, [workspaceId, peerWorkspaceId]);
     } finally {
         await restored.stop();
@@ -460,10 +461,10 @@ test("{§actor-boundary-client-operations} Daemon: workspace Functionality is sh
     }
 });
 
-test("{§module-workspace-provider} Daemon: concurrent worker demands share one Functionality activation", async () => {
+test("{§module-workspace-provider} Daemon: concurrent session demands share one Functionality activation", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-concurrent-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const activationStarted = Promise.withResolvers<void>();
     const releaseActivation = Promise.withResolvers<void>();
     let activations = 0;
@@ -488,7 +489,7 @@ test("{§module-workspace-provider} Daemon: concurrent worker demands share one 
             });
             seam.registerModuleAction({
                 name: "capability.probe",
-                scope: "worker",
+                scope: "session",
                 residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -504,13 +505,13 @@ test("{§module-workspace-provider} Daemon: concurrent worker demands share one 
         const first = daemon.invokeModuleAction(
             "capability.probe",
             {},
-            { scope: "worker", workspaceId, workerId },
+            { scope: "session", workspaceId, sessionId },
         );
         await activationStarted.promise;
         const second = daemon.invokeModuleAction(
             "capability.probe",
             {},
-            { scope: "worker", workspaceId, workerId },
+            { scope: "session", workspaceId, sessionId },
         );
         releaseActivation.resolve();
         assert.deepEqual(await Promise.all([first, second]), [
@@ -524,11 +525,11 @@ test("{§module-workspace-provider} Daemon: concurrent worker demands share one 
             await daemon.invokeModuleAction(
                 "capability.probe",
                 {},
-                { scope: "worker", workspaceId, workerId },
+                { scope: "session", workspaceId, sessionId },
             ),
             { ready: true },
         );
-        assert.equal(activations, 1, "the activated worker remains warm");
+        assert.equal(activations, 1, "the activated session remains warm");
     } finally {
         releaseActivation.resolve();
         await daemon.stop();
@@ -550,10 +551,10 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-residency-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const activations: number[] = [];
     const deactivations: number[] = [];
-    let retainWorker: (() => () => void) | null = null;
+    let retainSession: (() => () => void) | null = null;
     const retainedWork: { release: (() => void) | null } = { release: null };
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule({
@@ -561,7 +562,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
             seam.registerWorkspaceCapabilityProvider("residency capability fixture", {
                 activate: async (context) => {
                     activations.push(context.workspaceId);
-                    retainWorker = context.retain;
+                    retainSession = context.retain;
                     await seam.replaceWorkspaceCapabilities({
                         workspaceId: context.workspaceId,
                         namespaceOwner: "residency capability fixture",
@@ -575,14 +576,14 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
             });
             seam.registerModuleAction({
                 name: "capability.residency-probe",
-                scope: "worker",
+                scope: "session",
                 residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
                 handler: async (params) => {
                     if (params.hold === true) {
-                        if (retainWorker === null) throw new Error("provider retention was unavailable");
-                        retainedWork.release = retainWorker();
+                        if (retainSession === null) throw new Error("provider retention was unavailable");
+                        retainedWork.release = retainSession();
                     }
                     return { ready: true };
                 },
@@ -599,7 +600,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
             await daemon.invokeModuleAction(
                 "capability.residency-probe",
                 { hold: true },
-                { scope: "worker", workspaceId, workerId },
+                { scope: "session", workspaceId, sessionId },
             ),
             { ready: true },
         );
@@ -616,7 +617,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
             await daemon.invokeModuleAction(
                 "capability.residency-probe",
                 {},
-                { scope: "worker", workspaceId, workerId },
+                { scope: "session", workspaceId, sessionId },
             ),
             { ready: true },
         );
@@ -629,7 +630,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
     }
 });
 
-test("{§module-workspace-residency-facet} failed worker Functionality deactivation remains resident for the retry owner", async (t) => {
+test("{§module-workspace-residency-facet} failed session Functionality deactivation remains resident for the retry owner", async (t) => {
     const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
     const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
     process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
@@ -643,7 +644,7 @@ test("{§module-workspace-residency-facet} failed worker Functionality deactivat
 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-failed-cool-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const daemon = new Daemon({ db, provider: null });
     let activations = 0;
     let deactivations = 0;
@@ -658,7 +659,7 @@ test("{§module-workspace-residency-facet} failed worker Functionality deactivat
             });
             seam.registerModuleAction({
                 name: "capability.failed-cooling-probe",
-                scope: "worker",
+                scope: "session",
                 residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -672,18 +673,18 @@ test("{§module-workspace-residency-facet} failed worker Functionality deactivat
         await daemon.invokeModuleAction(
             "capability.failed-cooling-probe",
             {},
-            { scope: "worker", workspaceId, workerId },
+            { scope: "session", workspaceId, sessionId },
         );
         await waitFor(() => [deactivations], ([count]) => count === 1);
         await daemon.invokeModuleAction(
             "capability.failed-cooling-probe",
             {},
-            { scope: "worker", workspaceId, workerId },
+            { scope: "session", workspaceId, sessionId },
         );
         assert.equal(
             activations,
             1,
-            "a rejected deactivation does not falsely evict and reactivate the worker",
+            "a rejected deactivation does not falsely evict and reactivate the session",
         );
     } finally {
         await daemon.stop();
@@ -691,16 +692,16 @@ test("{§module-workspace-residency-facet} failed worker Functionality deactivat
     }
 });
 
-test("{§module-lifecycle} Daemon first Functionality demand reconciles generated skills for an existing worker", async () => {
+test("{§module-lifecycle} Daemon first Functionality demand reconciles generated skills for an existing session", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `boot-docs-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const daemon = new Daemon({ db, provider: null });
     daemon.registerModule({
         setup: (seam) => {
             seam.registerModuleAction({
                 name: "docs.probe",
-                scope: "worker",
+                scope: "session",
                 residency: "required",
                 inputSchema: MODULE_INPUT_SCHEMA,
                 outputSchema: MODULE_OUTPUT_SCHEMA,
@@ -711,7 +712,7 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
     try {
         await daemon.start();
         assert.deepEqual(
-            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/plurnk/%" }),
+            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "workspace", prefix: "/_plurnk/plurnk/%" }),
             [],
             "dormant boot does not rewrite workspace documentation",
         );
@@ -722,15 +723,15 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
             "attachment does not launch semantic derivation",
         );
         assert.deepEqual(
-            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/plurnk/%" }),
+            await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: "workspace", prefix: "/_plurnk/plurnk/%" }),
             [],
             "attachment remains passive",
         );
         assert.deepEqual(
-            await daemon.invokeModuleAction("docs.probe", {}, { scope: "worker", workspaceId, workerId }),
+            await daemon.invokeModuleAction("docs.probe", {}, { scope: "session", workspaceId, sessionId }),
             { ready: true },
         );
-        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "worker", prefix: "/_plurnk/plurnk/%" });
+        const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "workspace", prefix: "/_plurnk/plurnk/%" });
         assert.ok(docs.length > 0, "capability demand publishes the current installed skills surface into an existing workspace");
         assert.equal(
             docs.some(({ pathname }) => pathname === "/_plurnk/plurnk/log.md" || pathname === "/_plurnk/plurnk/prompt.md"),
@@ -739,18 +740,18 @@ test("{§module-lifecycle} Daemon first Functionality demand reconciles generate
         );
         const generated = await db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             authority: "",
             pathname: docs[0].pathname,
         });
-        assert.ok(generated !== undefined, "activation publication belongs to the addressed worker");
+        assert.ok(generated !== undefined, "activation publication belongs to the addressed session");
     } finally {
         await daemon.stop();
         await db.close();
     }
 });
 
-test("{§methods-workspace-create} workspace.create returns id+name, mints no worker, and emits notification", async () => {
+test("{§methods-workspace-create} workspace.create returns id+name, mints no session, and emits notification", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -767,7 +768,7 @@ test("{§methods-workspace-create} workspace.create returns id+name, mints no wo
 
             const workspaceList = await db.test_list_workspaces.all<{ name: string }>();
             assert.ok(workspaceList.some((s) => s.name === "alpha"));
-            assert.deepEqual(await daemon.listWorkers(result.id), [], "creating a workspace mints no worker");
+            assert.deepEqual(await daemon.listSessions(result.id), [], "creating a workspace mints no session");
         } finally { ws.close(); }
     });
 });
@@ -837,8 +838,8 @@ test("{§methods-workspace-attach} read-only selection uses exactly the ID, lite
                     error instanceof OperationFailureError && error.result.status === 404 && (error.result.problem?.type ?? "").endsWith("workspace-not-found"));
             }
             assert.deepEqual(await daemon.listWorkspaces(), before);
-            assert.deepEqual(await daemon.listWorkers(folder.workspaceId), []);
-            assert.deepEqual(await daemon.listWorkers(literal.workspaceId), []);
+            assert.deepEqual(await daemon.listSessions(folder.workspaceId), []);
+            assert.deepEqual(await daemon.listSessions(literal.workspaceId), []);
             assert.deepEqual(events, [], "selection emits no creation or activation events");
             await daemon.renameWorkspace(folder.workspaceId, "renamed-selection");
             await assert.rejects(daemon.attachWorkspace({ projectRoot }), (error: unknown) =>
@@ -975,7 +976,7 @@ test("{§workspace-name} a numeric folder basename produces a path name, retaini
 test("{§workspace-name} an existing numeric name remains listed, attachable and renameable without changing identity", async () => {
     await withDaemon(null, async (db, daemon) => {
         const workspaceId = await insertWorkspace(db, "42");
-        const { workerId } = await daemon.createWorker({ workspaceId, name: "alice" });
+        const { sessionId } = await daemon.createSession({ workspaceId, name: "alice" });
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === workspaceId)?.name, "42");
         assert.equal((await daemon.attachWorkspace({ workspaceId })).workspaceName, "42");
         assert.equal((await daemon.attachWorkspace({ name: "42" })).workspaceId, workspaceId,
@@ -984,7 +985,7 @@ test("{§workspace-name} an existing numeric name remains listed, attachable and
         assert.deepEqual(await daemon.renameWorkspace(workspaceId, "renamed"), { id: workspaceId, name: "renamed" });
         const attached = await daemon.attachWorkspace({ workspaceId });
         assert.deepEqual([attached.workspaceId, attached.workspaceName, attached.projectRoot], [workspaceId, "renamed", null]);
-        assert.ok((await daemon.listWorkers(workspaceId)).some(({ id, name }) => id === workerId && name === "alice"));
+        assert.ok((await daemon.listSessions(workspaceId)).some(({ id, name }) => id === sessionId && name === "alice"));
     });
 });
 
@@ -1052,10 +1053,10 @@ test("{§workspace-name} a root spelled with '.' or '..' derives the name of the
     });
 });
 
-test("{§workspace-name} a workspace already carrying a refused spelling stays listed and attachable and is renamed like any other, keeping its id, folder and workers", async () => {
+test("{§workspace-name} a workspace already carrying a refused spelling stays listed and attachable and is renamed like any other, keeping its id, folder and sessions", async () => {
     await withDaemon(null, async (db, daemon) => {
         const legacyId = await insertWorkspace(db, "old/../name");
-        const { workerId } = await daemon.createWorker({ workspaceId: legacyId, name: "kept" });
+        const { sessionId } = await daemon.createSession({ workspaceId: legacyId, name: "kept" });
         assert.equal((await daemon.listWorkspaces()).find(({ id }) => id === legacyId)?.name, "old/../name", "enumeration hides nothing");
         const attached = await daemon.attachWorkspace({ workspaceId: legacyId });
         assert.equal(attached.workspaceName, "old/../name", "it is attached under the name it carries");
@@ -1065,7 +1066,7 @@ test("{§workspace-name} a workspace already carrying a refused spelling stays l
         assert.deepEqual(renamed, { id: legacyId, name: "old/name" }, "the same workspace under an admitted name");
         const after = await daemon.attachWorkspace({ workspaceId: legacyId });
         assert.equal(after.projectRoot, attached.projectRoot, "its folder is untouched");
-        assert.ok((await daemon.listWorkers(legacyId)).some(({ id }) => id === workerId), "its workers are kept");
+        assert.ok((await daemon.listSessions(legacyId)).some(({ id }) => id === sessionId), "its sessions are kept");
     });
 });
 
@@ -1111,7 +1112,7 @@ test("{§methods-workspace-attach} workspace.attach binds to an existing workspa
                 assert.equal(result.id, existing?.id);
                 assert.equal(result.name, "existing");
             }
-            assert.deepEqual(await daemon.listWorkers(existing!.id), [], "binding a workspace, from any number of connections, mints no worker");
+            assert.deepEqual(await daemon.listSessions(existing!.id), [], "binding a workspace, from any number of connections, mints no session");
         } finally { first.close(); second.close(); }
     });
 });
@@ -1162,19 +1163,19 @@ test("{§methods} providers.list returns parsed aliases with active marker", asy
         } finally { ws.close(); }
     });
 });
-test("{§application-worker-observation} workspace.workers lists workers in the workspace, most-recent first", async () => {
+test("{§application-session-observation} workspace.sessions lists sessions in the workspace, most-recent first", async () => {
     await withDaemon(null, async (db, _daemon, addr) => {
-        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "list-workers" });
-        await db.test_workers_insert.run({ workspace_id: workspace?.id, name: "first" });
-        await db.test_workers_insert.run({ workspace_id: workspace?.id, name: "second" });
+        const workspace = await db.test_insert_workspace.get<{ id: number }>({ name: "list-sessions" });
+        await db.test_sessions_insert.run({ workspace_id: workspace?.id, name: "first" });
+        await db.test_sessions_insert.run({ workspace_id: workspace?.id, name: "second" });
         const ws = await connect(addr);
         try {
-            const response = await rpcCall(ws, 1, "workspace.workers", { id: workspace?.id });
-            const result = response.result as { workers: Array<{ id: number; name: string; kind: string; lifecycle: string }> };
-            assert.equal(result.workers.length, 2);
-            assert.deepEqual(result.workers.map((r) => r.name).toSorted(), ["first", "second"]);
-            // {§application-worker-observation} — a worker with no parent and no loop is an idle root (#523).
-            assert.deepEqual(result.workers.map((r) => [r.kind, r.lifecycle]), [["root", "idle"], ["root", "idle"]]);
+            const response = await rpcCall(ws, 1, "workspace.sessions", { id: workspace?.id });
+            const result = response.result as { sessions: Array<{ id: number; name: string; kind: string; lifecycle: string }> };
+            assert.equal(result.sessions.length, 2);
+            assert.deepEqual(result.sessions.map((r) => r.name).toSorted(), ["first", "second"]);
+            // {§application-session-observation} — a session with no parent and no loop is an idle root (#523).
+            assert.deepEqual(result.sessions.map((r) => [r.kind, r.lifecycle]), [["root", "idle"], ["root", "idle"]]);
         } finally { ws.close(); }
     });
 });
@@ -1218,16 +1219,16 @@ test("{§methods-event-subscribe} the client-interface seam — subscribeToEvent
 test("{§proposal-list} the client-interface seam does not manufacture a resolver from an ownerless durable row", async () => {
     await withDaemon(null, async (db, daemon, _addr) => {
         const workspaceId = await insertWorkspace(db, `prop-seam-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "p");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "model", source: null, model_call_id: null, op: "EDIT",
-            scheme: "worker", username: null, password: null, hostname: null, port: null,
+            scheme: "workspace", username: null, password: null, hostname: null, port: null,
             pathname: "/x", query: null, fragment: null, lineMarker: null,
-            tx: "````EDIT (worker:///x)\nbody\n````", mimetype_tx: "text/vnd.plurnk",
+            tx: "````EDIT (workspace:///x)\nbody\n````", mimetype_tx: "text/vnd.plurnk",
             rx: JSON.stringify({ status: 202 }), mimetype_rx: "application/json",
             status_rx: 202, weight: 0, state: "proposed", outcome: null, attrs: "{}",
         });
@@ -1242,7 +1243,7 @@ test("{§proposal-list} the client-interface seam does not manufacture a resolve
 });
 
 test("{§tokenomics-window-partition} the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law", async () => {
-    // The loop-control hook: the module supplies only workspace/worker/prompt; runLoop fills in the provider
+    // The loop-control hook: the module supplies only workspace/session/prompt; runLoop fills in the provider
     // and the law-file system prompt (core's), fires the drain via the unified inject, and returns. The
     // outcome arrives on the event source, not a socket. `cancelDrain` (already public) is the cancel hook.
     // A window that comfortably holds the packet: this test drives a loop to CONCLUSION and asserts
@@ -1261,7 +1262,7 @@ test("{§tokenomics-window-partition} the client-interface seam — runLoop driv
             daemon.subscribeToEvents((_s, method, params) => { events.push({ method, params }); });
 
             assert.deepEqual(
-                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "worker", prefix: "/_plurnk/plurnk/%" }),
+                await db.test_entries_by_scheme_prefix.all({ workspace_id: created.id, scheme: "workspace", prefix: "/_plurnk/plurnk/%" }),
                 [],
                 "workspace creation remains passive until real work arrives",
             );
@@ -1271,32 +1272,32 @@ test("{§tokenomics-window-partition} the client-interface seam — runLoop driv
                 "workspace creation does not launch semantic derivation",
             );
 
-            // {§machine-processes} — loops run in a model worker; the runtime actor, where a person's client
+            // {§machine-processes} — loops run in a model session; the runtime actor, where a person's client
             // operations journal ({§connection-lifecycle}), is refused loudly as a loop home.
-            const runtimeWorkerId = await daemon.ensureRuntimeWorker(created.id);
+            const runtimeSessionId = await daemon.ensureRuntimeSession(created.id);
             const runtimeProblem = await rejectedProblem(() => daemon.runLoop({
                 workspaceId: created.id,
-                workerId: runtimeWorkerId,
+                sessionId: runtimeSessionId,
                 prompt: "go",
             }));
-            assert.equal(runtimeProblem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
+            assert.equal(runtimeProblem.type, "https://problems.plurnk.xyz/daemon/session/model-session-required");
             assert.equal(runtimeProblem.status, 409);
-            assert.equal(runtimeProblem.workerId, runtimeWorkerId);
-            // {§worker-model-selection} — the model, reasoning, and spawn-model controls are model-worker
+            assert.equal(runtimeProblem.sessionId, runtimeSessionId);
+            // {§session-model-selection} — the model, reasoning, and spawn-model controls are model-session
             // surfaces: the runtime actor is refused before any policy row is initialized.
             for (const [surface, call] of [
-                ["worker.model.get", () => daemon.readWorkerModel({ workspaceId: created.id, workerId: runtimeWorkerId })],
-                ["worker.model.set", () => daemon.setWorkerModel({ workspaceId: created.id, workerId: runtimeWorkerId, selector: "mock/mocktest" })],
-                ["worker.effort.get", () => daemon.readWorkerEffort({ workspaceId: created.id, workerId: runtimeWorkerId })],
-                ["worker.effort.set", () => daemon.setWorkerEffort({ workspaceId: created.id, workerId: runtimeWorkerId, effort: "low" })],
-                ["worker.child.set", () => daemon.setWorkerSpawnModel({ workspaceId: created.id, workerId: runtimeWorkerId, selector: null })],
+                ["session.model.get", () => daemon.readSessionModel({ workspaceId: created.id, sessionId: runtimeSessionId })],
+                ["session.model.set", () => daemon.setSessionModel({ workspaceId: created.id, sessionId: runtimeSessionId, selector: "mock/mocktest" })],
+                ["session.effort.get", () => daemon.readSessionEffort({ workspaceId: created.id, sessionId: runtimeSessionId })],
+                ["session.effort.set", () => daemon.setSessionEffort({ workspaceId: created.id, sessionId: runtimeSessionId, effort: "low" })],
+                ["session.child.set", () => daemon.setSessionSpawnModel({ workspaceId: created.id, sessionId: runtimeSessionId, selector: null })],
             ] as const) {
                 const refused = await rejectedProblem(call);
-                assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required", `${surface} refuses a non-model worker`);
+                assert.equal(refused.type, "https://problems.plurnk.xyz/daemon/session/model-session-required", `${surface} refuses a non-model session`);
                 assert.equal(refused.status, 409);
             }
-            const modelWorkerId = await namedModelWorker(daemon, created.id, "main");
-            const res = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go" });
+            const modelSessionId = await namedModelSession(daemon, created.id, "main");
+            const res = await daemon.runLoop({ workspaceId: created.id, sessionId: modelSessionId, prompt: "go" });
             assert.equal(res.action, "enqueued_new_loop", "runLoop enqueued a fresh loop");
             assert.ok(res.loopId > 0, "runLoop returned the new loop id");
 
@@ -1308,13 +1309,13 @@ test("{§tokenomics-window-partition} the client-interface seam — runLoop driv
             assert.equal((terminals[0].params as { result: { status: number } }).result.status, 200, "the loop runLoop started ran to conclusion (200) — driven and observed through the seam, no socket");
 
             // The first-turn feature holds on the seam path: Functionality activation materialized
-            // the teaching skills into the model worker before packet assembly.
-            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "worker", prefix: "/_plurnk/plurnk/%" });
+            // the teaching skills into the model session before packet assembly.
+            const docs = await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: created.id, scheme: "workspace", prefix: "/_plurnk/plurnk/%" });
             assert.ok(docs.length > 0);
-            const docEdits = (await db.test_log_entries_by_worker_op_full.all<{
+            const docEdits = (await db.test_log_entries_by_session_op_full.all<{
                 tx: string;
                 origin: string;
-            }>({ worker_id: runtimeWorkerId, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
+            }>({ session_id: runtimeSessionId, op: "EDIT" })).filter(({ origin }) => origin === "_plurnk");
             assert.ok(docEdits.length > 0, "documentation publication dispatches structural EDIT statements");
             for (const { tx } of docEdits) {
                 const statement = JSON.parse(tx) as unknown;
@@ -1323,17 +1324,17 @@ test("{§tokenomics-window-partition} the client-interface seam — runLoop driv
                 assert.equal(position?.column, 0);
                 assert.ok((position?.line ?? 0) > 0, "generated EDIT carries its honest position in the admitted turnOps source");
             }
-            const publicationRows = async () => (await db.test_log_entries_by_worker.all<{
+            const publicationRows = async () => (await db.test_log_entries_by_session.all<{
                 op: string;
                 pathname: string | null;
                 status_rx: number;
                 origin: string;
-            }>({ worker_id: runtimeWorkerId })).filter(({ origin, pathname }) =>
+            }>({ session_id: runtimeSessionId })).filter(({ origin, pathname }) =>
                 origin === "_plurnk"
                 && (pathname === "/_plurnk/AGENTS.md" || pathname?.startsWith("/_plurnk/skills/") === true));
             const publishedCount = (await publicationRows()).length;
 
-            const second = await daemon.runLoop({ workspaceId: created.id, workerId: modelWorkerId, prompt: "go again" });
+            const second = await daemon.runLoop({ workspaceId: created.id, sessionId: modelSessionId, prompt: "go again" });
             const secondTerminals = await waitFor(
                 () => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === second.loopId),
                 (ts) => ts.length > 0,
@@ -1342,8 +1343,8 @@ test("{§tokenomics-window-partition} the client-interface seam — runLoop driv
             assert.equal((secondTerminals[0].params as { result: { status: number } }).result.status, 200, "reattaching to the workspace runs normally");
 
             const afterTwoLoops = await publicationRows();
-            assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat unchanged worker skills publication");
-            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "worker skills publication produces no error rows");
+            assert.equal(afterTwoLoops.length, publishedCount, "model loops never repeat unchanged session skills publication");
+            assert.equal(afterTwoLoops.filter((row) => row.op === "EDIT" && row.status_rx >= 400).length, 0, "session skills publication produces no error rows");
         } finally { ws.close(); }
     });
 });
@@ -1360,10 +1361,10 @@ test("{§methods-op-mirror} the client-interface seam — dispatchClientAction r
             const operate = async (statement: PlurnkStatement) =>
                 (await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [statement] }))[0];
 
-            // WRITE then READ worker:///x through the seam — a positive roundtrip proving dispatch + journal.
-            const wrote = await operate(Dsl.buildEdit({ target: "worker:///x", content: "seam" }));
+            // WRITE then READ workspace:///x through the seam — a positive roundtrip proving dispatch + journal.
+            const wrote = await operate(Dsl.buildEdit({ target: "workspace:///x", content: "seam" }));
             assert.equal(wrote.status, 201, "the client EDIT created the entry through the seam (201)");
-            const read = await operate(Dsl.buildRead({ target: "worker:///x" }));
+            const read = await operate(Dsl.buildRead({ target: "workspace:///x" }));
             assert.equal(read.status, 200);
             assert.equal(read.content, "seam", "the value roundtripped — the op executed through the engine, not a shadow path");
 
@@ -1373,12 +1374,12 @@ test("{§methods-op-mirror} the client-interface seam — dispatchClientAction r
     });
 });
 
-test("{§connection-lifecycle} {§actor-boundary-client-operations} one client operation owns every statement in one loop of the runtime worker, attributed to its person", async () => {
+test("{§connection-lifecycle} {§actor-boundary-client-operations} one client operation owns every statement in one loop of the runtime session, attributed to its person", async () => {
     await withDaemon(null, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-action-journal" })).result as { id: number };
-            const heard: Array<{ workerId: number; loopId: number }> = [];
+            const heard: Array<{ sessionId: number; loopId: number }> = [];
             const order: string[] = [];
             daemon.subscribeToEvents((_s, method) => { if (method === "log/entry") order.push("entry"); });
             const operation = (actor: string, statements: PlurnkStatement[]) => daemon.dispatchClientAction({
@@ -1387,15 +1388,15 @@ test("{§connection-lifecycle} {§actor-boundary-client-operations} one client o
             });
 
             const results = await operation("test://primary", [
-                Dsl.buildEdit({ target: "worker:///x", content: "one action" }),
-                Dsl.buildRead({ target: "worker:///x" }),
+                Dsl.buildEdit({ target: "workspace:///x", content: "one action" }),
+                Dsl.buildRead({ target: "workspace:///x" }),
             ]);
             assert.deepEqual(results.map((result) => result.status), [201, 200]);
             assert.equal(heard.length, 1, "the operation announced exactly one loop");
             assert.deepEqual(order, ["loop", "entry", "entry"], "the loop is announced before any statement runs");
-            const [{ workerId, loopId }] = heard;
-            const runtime = await daemon.readWorker({ workspaceId: created.id, identity: { id: workerId } });
-            assert.equal(runtime?.origin, "_plurnk", "the operation journals in the workspace's runtime worker");
+            const [{ sessionId, loopId }] = heard;
+            const runtime = await daemon.readSession({ workspaceId: created.id, identity: { id: sessionId } });
+            assert.equal(runtime?.origin, "_plurnk", "the operation journals in the workspace's runtime session");
             assert.equal(runtime?.name, "_plurnk");
 
             const turns = await db.test_list_turns_in_loop.all<{ sequence: number; producer: string; kind: string }>({ loop_id: loopId });
@@ -1405,55 +1406,55 @@ test("{§connection-lifecycle} {§actor-boundary-client-operations} one client o
                 "each statement is a distinct ordered client operation turn in the one loop",
             );
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 200, "the loop closes 200 when the operation succeeds");
-            const rows = (await db.test_log_entries_by_worker.all<{ loop_id: number; origin: string; source: string | null }>({ worker_id: workerId }))
+            const rows = (await db.test_log_entries_by_session.all<{ loop_id: number; origin: string; source: string | null }>({ session_id: sessionId }))
                 .filter((row) => row.loop_id === loopId);
             assert.equal(rows.length, 2);
             assert.deepEqual(rows.map(({ origin, source }) => [origin, source]), [["client", null], ["client", null]],
                 "every row the operation writes is a client-origin act, not an arrival");
             const promptSource = async (id: number) =>
-                (await daemon.listWorkerLoops({ workspaceId: created.id, workerId })).find((loop) => loop.id === id)?.promptSource;
+                (await daemon.listSessionLoops({ workspaceId: created.id, sessionId })).find((loop) => loop.id === id)?.promptSource;
             assert.equal(await promptSource(loopId), "test://primary", "the operation's loop names its person");
 
-            // A second person's operation is its own loop in the same runtime worker, attributed to that person.
-            await operation("test://secondary", [Dsl.buildRead({ target: "worker:///x" })]);
+            // A second person's operation is its own loop in the same runtime session, attributed to that person.
+            await operation("test://secondary", [Dsl.buildRead({ target: "workspace:///x" })]);
             assert.equal(heard.length, 2);
-            assert.equal(heard[1].workerId, workerId, "every person's operation journals in the one runtime worker");
+            assert.equal(heard[1].sessionId, sessionId, "every person's operation journals in the one runtime session");
             assert.notEqual(heard[1].loopId, loopId, "each operation owns its own loop");
             assert.equal(await promptSource(heard[1].loopId), "test://secondary");
-            assert.deepEqual((await daemon.listWorkers(created.id)).map(({ origin }) => origin), ["_plurnk"],
-                "client operations mint no worker beyond the runtime worker");
+            assert.deepEqual((await daemon.listSessions(created.id)).map(({ origin }) => origin), ["_plurnk"],
+                "client operations mint no session beyond the runtime session");
         } finally { ws.close(); }
     });
 });
 
 test("{§methods-log-read} the client-interface seam — readLog returns a workspace's journal, ownership-verified", async () => {
     // The module's primary render input. Seeded here via the dispatch seam, read back via readLog, and the
-    // cross-workspace invariant proven: a workspace reads only its own workers (core holds it, not the module).
+    // cross-workspace invariant proven: a workspace reads only its own sessions (core holds it, not the module).
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-read" })).result as { id: number };
-            await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "worker:///x", content: "read me" })] });
+            await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "workspace:///x", content: "read me" })] });
 
-            const entries = await daemon.readLog({ workspaceId: created.id, workerId: await daemon.ensureRuntimeWorker(created.id) });
+            const entries = await daemon.readLog({ workspaceId: created.id, sessionId: await daemon.ensureRuntimeSession(created.id) });
             assert.ok(entries.length >= 1, "readLog returned the workspace's journal entries");
             assert.ok(entries.some((e) => e.op === "EDIT"), "the client EDIT is in the journal the seam read");
 
             const other = (await rpcCall(ws, 2, "workspace.create", { name: "seam-read-other" })).result as { id: number };
-            const otherWorker = await daemon.ensureRuntimeWorker(other.id);
+            const otherSession = await daemon.ensureRuntimeSession(other.id);
             const problem = await rejectedProblem(() => daemon.readLog({
                 workspaceId: created.id,
-                workerId: otherWorker,
+                sessionId: otherSession,
             }));
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/session/workspace-mismatch");
             assert.equal(problem.status, 409);
             assert.equal(problem.actualWorkspaceId, other.id);
         } finally { ws.close(); }
     });
 });
 
-test("{§methods} the client-interface seam — metadata reads surface providers, workspaces, workers, and constraints", async () => {
-    // The render surface beyond the journal: providers+budget, workspaces, workers, and the constraint overlay.
+test("{§methods} the client-interface seam — metadata reads surface providers, workspaces, sessions, and constraints", async () => {
+    // The render surface beyond the journal: providers+budget, workspaces, sessions, and the constraint overlay.
     const mock = new Mock({ contextWindow: 8192, responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
@@ -1467,12 +1468,12 @@ test("{§methods} the client-interface seam — metadata reads surface providers
             assert.equal(active.alias, "mocktest");
             assert.equal(typeof active.inputCapacity, "number", "the active alias carries resolved input capacity");
 
-            // workspaces + workers — the created workspace and its model worker are present.
+            // workspaces + sessions — the created workspace and its model session are present.
             const workspaces = await daemon.listWorkspaces();
             assert.ok(workspaces.some((s) => s.id === created.id), "listWorkspaces includes the created workspace");
-            const modelWorkerId = await namedModelWorker(daemon, created.id, "main");
-            const workers = await daemon.listWorkers(created.id);
-            assert.deepEqual(workers.map(({ id }) => id), [modelWorkerId], "listWorkers returns the workspace's workers");
+            const modelSessionId = await namedModelSession(daemon, created.id, "main");
+            const sessions = await daemon.listSessions(created.id);
+            assert.deepEqual(sessions.map(({ id }) => id), [modelSessionId], "listSessions returns the workspace's sessions");
 
             // prompts — a thin delegation; assert the wiring resolves cleanly.
             const prompts = await daemon.listPrompts(created.id);
@@ -1504,9 +1505,9 @@ test("{§methods-workspace-create} {§methods-workspace-attach} the client-inter
         assert.deepEqual(
             Object.keys(attached).toSorted(),
             ["projectLabel", "projectRoot", "workspaceId", "workspaceName"],
-            "{§methods-rebind}: attach does not fabricate a bound-worker or action-loop binding",
+            "{§methods-rebind}: attach does not fabricate a bound-session or action-loop binding",
         );
-        assert.deepEqual(await daemon.listWorkers(env.workspaceId), [], "neither creation nor attachment mints a worker");
+        assert.deepEqual(await daemon.listSessions(env.workspaceId), [], "neither creation nor attachment mints a session");
 
         // rename — mutations return the applied value; a name collision is refused. (No root
         // mutation on the seam: the workspace pointer is set at workspace.create or never.)
@@ -1526,12 +1527,12 @@ test("{§methods-entry-read} the client-interface seam — readEntry returns an 
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-entry" })).result as { id: number };
-            await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "worker:///x", content: "hello world" })] });
-            // A client reads entries from the perspective of a worker of its workspace.
-            const reader = await namedModelWorker(daemon, created.id, "main");
+            await daemon.dispatchClientAction({ workspaceId: created.id, actor: TEST_OWNER, statements: [Dsl.buildEdit({ target: "workspace:///x", content: "hello world" })] });
+            // A client reads entries from the perspective of a session of its workspace.
+            const reader = await namedModelSession(daemon, created.id, "main");
 
             // full shape — the written content is on one of the entry's channels.
-            const entry = (await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///x" })).entry!;
+            const entry = (await daemon.readEntry({ workspaceId: created.id, sessionId: reader, target: "workspace:///x" })).entry!;
             const found = Object.entries(entry.channels).find(([, c]) => c.content.includes("hello"));
             assert.ok(found !== undefined, "readEntry returns the entry's channels with content");
             const [channel, chan] = found;
@@ -1539,17 +1540,17 @@ test("{§methods-entry-read} the client-interface seam — readEntry returns an 
             assert.equal(chan.contentLength, 11);
 
             // {§methods-entry-read}: an offset returns only that channel's remaining content.
-            const sliced = (await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///x", channel, offset: 6 })).entry!;
+            const sliced = (await daemon.readEntry({ workspaceId: created.id, sessionId: reader, target: "workspace:///x", channel, offset: 6 })).entry!;
             assert.equal(sliced.channels[channel].content, "world", "the incremental read returns only the delta from the offset");
             assert.equal(sliced.channels[channel].contentLength, 11, "contentLength is the full length — the next poll resumes from there");
 
             // a missing entry is 404; an offset without a channel is refused.
-            const missing = await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///nope" });
+            const missing = await daemon.readEntry({ workspaceId: created.id, sessionId: reader, target: "workspace:///nope" });
             assert.equal(missing.status, 404);
             assert.ok("problem" in missing);
             assert.equal(missing.problem.type, "https://problems.plurnk.xyz/daemon/entry/entry-not-found");
-            assert.equal(missing.problem.target, "worker:///nope");
-            const offset = await daemon.readEntry({ workspaceId: created.id, workerId: reader, target: "worker:///x", offset: 3 });
+            assert.equal(missing.problem.target, "workspace:///nope");
+            const offset = await daemon.readEntry({ workspaceId: created.id, sessionId: reader, target: "workspace:///x", offset: 3 });
             assert.equal(offset.status, 400);
             assert.ok("problem" in offset);
             assert.equal(offset.problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
@@ -1573,7 +1574,7 @@ test("{§methods-entry-read} the client-interface seam — readEntry returns an 
             });
             const network = await daemon.readEntry({
                 workspaceId: created.id,
-                workerId: reader,
+                sessionId: reader,
                 target: "https://example.org:8443/x?b=2&a=1&a=3#body",
             });
             assert.equal(network.status, 200);
@@ -1582,7 +1583,7 @@ test("{§methods-entry-read} the client-interface seam — readEntry returns an 
 
             const userinfo = await daemon.readEntry({
                 workspaceId: created.id,
-                workerId: reader,
+                sessionId: reader,
                 target: "https://alice:secret@example.org:8443/x?b=2&a=1&a=3",
             });
             assert.equal(userinfo.status, 400);
@@ -1593,47 +1594,47 @@ test("{§methods-entry-read} the client-interface seam — readEntry returns an 
     });
 });
 
-test("{§application-worker-observation} the client-interface seam — forkWorker branches a worker's log, ownership + name invariants held", async () => {
+test("{§application-session-observation} the client-interface seam — forkSession branches a session's log, ownership + name invariants held", async () => {
     const mock = new Mock({ contextWindow: viableWindow(), responses: [makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = (await rpcCall(ws, 1, "workspace.create", { name: "seam-fork" })).result as { id: number };
-            // A model worker with a completed loop to branch.
-            const { finalStatus, modelWorkerId } = await runLoopToTerminal(ws, 2, { prompt: "branch me" });
+            // A model session with a completed loop to branch.
+            const { finalStatus, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "branch me" });
             assert.equal(finalStatus, 200);
-            const sourceWorker = modelWorkerId!;
+            const sourceSession = modelSessionId!;
 
-            const branch = await daemon.forkWorker({ workspaceId: created.id, workerId: sourceWorker, name: "My_branch" });
-            assert.ok(branch.workerId > 0 && branch.workerId !== sourceWorker, "forkWorker created a new worker");
-            assert.equal(branch.parentWorkerId, sourceWorker, "the branch is lineaged to its parent");
-            assert.equal(branch.workerName, "My_branch");
-            // {§application-worker-observation} — the directory says how it was minted (#523).
-            const observed = await daemon.readWorker({ workspaceId: created.id, identity: { id: branch.workerId } });
+            const branch = await daemon.forkSession({ workspaceId: created.id, sessionId: sourceSession, name: "My_branch" });
+            assert.ok(branch.sessionId > 0 && branch.sessionId !== sourceSession, "forkSession created a new session");
+            assert.equal(branch.parentSessionId, sourceSession, "the branch is lineaged to its parent");
+            assert.equal(branch.sessionName, "My_branch");
+            // {§application-session-observation} — the directory says how it was minted (#523).
+            const observed = await daemon.readSession({ workspaceId: created.id, identity: { id: branch.sessionId } });
             assert.equal(observed?.kind, "fork");
             // A fork inherits its parent's loops by snapshot, so its latest loop is the completed one it forked from.
             assert.equal(observed?.lifecycle, "completed");
-            const parent = await daemon.readWorker({ workspaceId: created.id, identity: { id: sourceWorker } });
+            const parent = await daemon.readSession({ workspaceId: created.id, identity: { id: sourceSession } });
             assert.equal(parent?.kind, "root");
 
-            // invariants: the runtime actor's name and a foreign worker are both refused.
-            await assert.rejects(() => daemon.forkWorker({ workspaceId: created.id, workerId: sourceWorker, name: "_plurnk" }), /must match \[A-Za-z0-9\]\[A-Za-z0-9_-\]\{0,62\}/);
-            const invalidName = await rejectedProblem(() => daemon.forkWorker({
+            // invariants: the runtime actor's name and a foreign session are both refused.
+            await assert.rejects(() => daemon.forkSession({ workspaceId: created.id, sessionId: sourceSession, name: "_plurnk" }), /must match \[A-Za-z0-9\]\[A-Za-z0-9_-\]\{0,62\}/);
+            const invalidName = await rejectedProblem(() => daemon.forkSession({
                 workspaceId: created.id,
-                workerId: sourceWorker,
+                sessionId: sourceSession,
                 name: "_invalid",
             }));
-            assert.equal(invalidName.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
+            assert.equal(invalidName.type, "https://problems.plurnk.xyz/daemon/session/name-invalid");
             assert.equal(invalidName.status, 400);
             assert.equal(invalidName.name, "_invalid");
             assert.equal(invalidName.retryable, false);
             const other = (await rpcCall(ws, 3, "workspace.create", { name: "seam-fork-other" })).result as { id: number };
-            const otherWorker = await namedModelWorker(daemon, other.id, "main");
-            const problem = await rejectedProblem(() => daemon.forkWorker({
+            const otherSession = await namedModelSession(daemon, other.id, "main");
+            const problem = await rejectedProblem(() => daemon.forkSession({
                 workspaceId: created.id,
-                workerId: otherWorker,
+                sessionId: otherSession,
             }));
-            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
+            assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/session/workspace-mismatch");
             assert.equal(problem.status, 409);
             assert.equal(problem.actualWorkspaceId, other.id);
         } finally { ws.close(); }
@@ -1660,7 +1661,7 @@ test("{§extension-namespace-arbitration} the module setup seam registers a live
 
             // one-name-one-owner arbitration flows through the seam: a dup and a reserved name fail-hard.
             await assert.rejects(() => daemon.registerRuntime(fakeRegistration("seamtag")), /already/i, "a dup tag is rejected");
-            await assert.rejects(() => daemon.registerRuntime(fakeRegistration("worker")), /reserved/i, "a reserved built-in name is rejected");
+            await assert.rejects(() => daemon.registerRuntime(fakeRegistration("session")), /reserved/i, "a reserved built-in name is rejected");
         } finally { ws.close(); }
     });
 });
@@ -2104,12 +2105,12 @@ test("{§module-failure} a module that acquires resources during setup is closed
     }
 });
 
-test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a person's client operations share workspace Functionality and journal in the runtime worker", async () => {
+test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a person's client operations share workspace Functionality and journal in the runtime session", async () => {
     const db = await openMigrated();
     const owner = "attached Functionality test module";
     const tag = "attachedcap";
     const workspaceId = await insertWorkspace(db, `attached-functionality-${crypto.randomUUID()}`);
-    const modelWorkerId = await insertWorker(db, workspaceId, null, "primary", "model");
+    const modelSessionId = await insertSession(db, workspaceId, null, "primary", "model");
     await db.workspace_module_state_put.run({
         workspace_id: workspaceId,
         namespace_owner: owner,
@@ -2148,52 +2149,52 @@ test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a perso
         await daemon.start();
         await daemon.attachWorkspace({ workspaceId });
 
-        // The runtime belongs to the workspace; the operation belongs to the person who acted, here for the model worker.
+        // The runtime belongs to the workspace; the operation belongs to the person who acted, here for the model session.
         const [attached] = await daemon.dispatchClientAction({
             workspaceId,
             actor: TEST_OWNER,
-            contextWorkerId: modelWorkerId,
-            statements: [Dsl.buildExec({ runtime: tag, command: "acting for the model worker" })],
+            contextSessionId: modelSessionId,
+            statements: [Dsl.buildExec({ runtime: tag, command: "acting for the model session" })],
         });
         assert.equal(attached.status, 200);
         assert.deepEqual(activated, [workspaceId], "residency is acquired for the workspace");
         assert.deepEqual(executions, [workspaceId], "the shared runtime ran");
-        const runtimeWorkerId = await daemon.ensureRuntimeWorker(workspaceId);
-        const clientRows = (await db.test_log_entries_by_worker.all<{ origin: string; loop_id: number }>({ worker_id: runtimeWorkerId }))
+        const runtimeSessionId = await daemon.ensureRuntimeSession(workspaceId);
+        const clientRows = (await db.test_log_entries_by_session.all<{ origin: string; loop_id: number }>({ session_id: runtimeSessionId }))
             .filter(({ origin }) => origin === "client");
-        assert.equal(clientRows.length, 1, "the client operation journals in the runtime worker");
-        const operationLoop = (await daemon.listWorkerLoops({ workspaceId, workerId: runtimeWorkerId }))
+        assert.equal(clientRows.length, 1, "the client operation journals in the runtime session");
+        const operationLoop = (await daemon.listSessionLoops({ workspaceId, sessionId: runtimeSessionId }))
             .find(({ id }) => id === clientRows[0].loop_id);
         assert.equal(operationLoop?.promptSource, TEST_OWNER, "the operation's loop names its person");
-        const modelRows = await db.test_log_entries_by_worker.all<{ origin: string }>({ worker_id: modelWorkerId });
+        const modelRows = await db.test_log_entries_by_session.all<{ origin: string }>({ session_id: modelSessionId });
         assert.equal(
             modelRows.some(({ origin }) => origin === "client"),
             false,
-            "no client row enters the log of the model worker the person acted for",
+            "no client row enters the log of the model session the person acted for",
         );
 
-        // Acting for no worker uses the same environment.
+        // Acting for no session uses the same environment.
         const [unattached] = await daemon.dispatchClientAction({
             workspaceId,
             actor: TEST_OWNER,
-            statements: [Dsl.buildExec({ runtime: tag, command: "acting for no worker" })],
+            statements: [Dsl.buildExec({ runtime: tag, command: "acting for no session" })],
         });
-        assert.equal(unattached.status, 200, "an operation acting for no worker can use the workspace runtime");
+        assert.equal(unattached.status, 200, "an operation acting for no session can use the workspace runtime");
         assert.deepEqual(executions, [workspaceId, workspaceId]);
 
-        // The worker an operation acts for must be a model worker of the workspace.
+        // The session an operation acts for must be a model session of the workspace.
         const foreignWorkspace = await insertWorkspace(db, `attached-foreign-${crypto.randomUUID()}`);
-        const foreignWorker = await insertWorker(db, foreignWorkspace, null, "elsewhere", "model");
+        const foreignSession = await insertSession(db, foreignWorkspace, null, "elsewhere", "model");
         await assert.rejects(
             () => daemon.dispatchClientAction({
                 workspaceId,
                 actor: TEST_OWNER,
-                contextWorkerId: foreignWorker,
+                contextSessionId: foreignSession,
                 statements: [Dsl.buildExec({ runtime: tag, command: "cross-workspace" })],
             }),
             (error: unknown) => {
                 assert.ok(error instanceof OperationFailureError);
-                assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/workspace-mismatch");
+                assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/session/workspace-mismatch");
                 return true;
             },
         );
@@ -2201,12 +2202,12 @@ test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a perso
             () => daemon.dispatchClientAction({
                 workspaceId,
                 actor: TEST_OWNER,
-                contextWorkerId: runtimeWorkerId,
+                contextSessionId: runtimeSessionId,
                 statements: [Dsl.buildExec({ runtime: tag, command: "acting for the runtime" })],
             }),
             (error: unknown) => {
                 assert.ok(error instanceof OperationFailureError);
-                assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
+                assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/session/model-session-required");
                 return true;
             },
         );

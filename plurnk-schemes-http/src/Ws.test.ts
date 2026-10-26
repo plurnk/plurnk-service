@@ -78,7 +78,7 @@ const fakeSocket = () => {
 
 interface CtxOverrides {
     readonly workspaceId?: number;
-    readonly workerId?: number;
+    readonly sessionId?: number;
     readonly write?: EntryCaps["write"];
     readonly setState?: ChannelCaps["setState"];
     readonly streamEvent?: NotifyCaps["streamEvent"];
@@ -172,7 +172,7 @@ const makeCtx = (overrides: CtxOverrides = {}) => {
         },
     };
     const ctx = schemeCtx({
-        workspaceId: overrides.workspaceId ?? 1, workerId: overrides.workerId ?? 1,
+        workspaceId: overrides.workspaceId ?? 1, sessionId: overrides.sessionId ?? 1,
         entries, channels, notify, projection, subscriptions,
         interactions: { request: async () => ({ action: "cancel" }) },
     });
@@ -645,17 +645,17 @@ test("{§ws-lifecycle} READ: duplicate canonical workspace address reuses its re
     }
 });
 
-test("{§ws-lifecycle}: workers share acquisition, input and KILL while other workspaces stay independent", async () => {
+test("{§ws-lifecycle}: sessions share acquisition, input and KILL while other workspaces stay independent", async () => {
     const sockets = [fakeSocket(), fakeSocket()];
     let connects = 0;
     const seed = Promise.withResolvers<void>();
     const ws = new Ws(() => sockets[connects++]);
-    const firstCtx = makeCtx({ workspaceId: 1, workerId: 11, write: async () => {
+    const firstCtx = makeCtx({ workspaceId: 1, sessionId: 11, write: async () => {
         await seed.promise;
         return { status: 201, created: true, entryId: 1 };
     } });
-    const secondCtx = makeCtx({ workspaceId: 1, workerId: 12 });
-    const foreignCtx = makeCtx({ workspaceId: 2, workerId: 13 });
+    const secondCtx = makeCtx({ workspaceId: 1, sessionId: 12 });
+    const foreignCtx = makeCtx({ workspaceId: 2, sessionId: 13 });
     const target = wss(PUB, "/feed");
     let duplicateSettled = false;
     const first = prepareRepresentation(ws, readStmt(target), firstCtx.ctx);

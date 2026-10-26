@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { statement } from "./reasoning-fixture.ts";
@@ -18,10 +18,10 @@ const said = (content: string): MockResponse => ({ assistant: { content, reasoni
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `terminal-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "alice");
-    const loopId = await insertLoop(db, workerId, 1, "What is two plus two?");
+    const sessionId = await insertSession(db, workspaceId, null, "alice");
+    const loopId = await insertLoop(db, sessionId, 1, "What is two plus two?");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    return { db, engine, workspaceId, workerId, loopId };
+    return { db, engine, workspaceId, sessionId, loopId };
 };
 
 const problemOf = (result: { result: { problem?: Record<string, unknown> } }) => {
@@ -30,7 +30,7 @@ const problemOf = (result: { result: { problem?: Record<string, unknown> } }) =>
 };
 
 test("{§terminal-evidence}: a strike threshold crossed by unfenced prose keeps its 500 and cites what was said", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100_000, responses: [
             said("Let me think about this."),
@@ -38,7 +38,7 @@ test("{§terminal-evidence}: a strike threshold crossed by unfenced prose keeps 
             said("The answer is four."),
         ] });
         const loop = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         const problem = problemOf(loop);
@@ -57,7 +57,7 @@ test("{§terminal-evidence}: a strike threshold crossed by unfenced prose keeps 
 
         // And the citation is not a dead link.
         const cited = await clientRead(engine, db, {
-            workspaceId, workerId,
+            workspaceId, sessionId,
             statement: statement(`\`\`\`\`READ (${problem.unconcluded as string})\`\`\`\``),
         });
         assert.equal(cited.status, 200);
@@ -67,7 +67,7 @@ test("{§terminal-evidence}: a strike threshold crossed by unfenced prose keeps 
 });
 
 test("{§terminal-evidence}: a terminal whose last turn acted carries no `unconcluded` at all", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Two empty turns strike, then a turn that performs a real operation — and the ceiling ends
         // the loop there. Nothing was left unconcluded, so nothing is cited.
@@ -77,7 +77,7 @@ test("{§terminal-evidence}: a terminal whose last turn acted carries no `unconc
             said("````NOTE\nchecked\n````"),
         ] });
         const loop = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 3, maxStrikes: 10,
+            provider, workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 10,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         const problem = problemOf(loop);
@@ -88,14 +88,14 @@ test("{§terminal-evidence}: a terminal whose last turn acted carries no `unconc
 });
 
 test("{§terminal-evidence}: the turn ceiling cites an unconcluded last turn too", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100_000, responses: [
             said("````NOTE\nworking\n````"),
             said("I believe the answer is four."),
         ] });
         const loop = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 2, maxStrikes: 10,
+            provider, workspaceId, sessionId, loopId, maxTurns: 2, maxStrikes: 10,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         const problem = problemOf(loop);
@@ -106,12 +106,12 @@ test("{§terminal-evidence}: the turn ceiling cites an unconcluded last turn too
 });
 
 test("{§empty-turn}: an empty turn's fingerprint is its text — saying the same thing IS a cycle", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const same = said("I am thinking about it.");
         const provider = new Mock({ contextWindow: 100_000, responses: [same, same, same] });
         const loop = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         const problem = problemOf(loop);
@@ -123,12 +123,12 @@ test("{§empty-turn}: an empty turn's fingerprint is its text — saying the sam
 });
 
 test("{§engine-rails}: repeated reasoning-only responses are not reported as repeated operations", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const same: MockResponse = { assistant: { content: "", reasoning: "Considering the next step.", finishReason: "stop" }, assistantRaw: null };
         const provider = new Mock({ contextWindow: 100_000, responses: [same, same, same] });
         const loop = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(loop.result.status, 508, "the cycle and strike threshold remain enforced");
@@ -142,12 +142,12 @@ test("{§engine-rails}: repeated reasoning-only responses are not reported as re
 // responses are no repetition, whether the cut left nothing to admit or exhausted every emission attempt.
 for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "````READ (src/a", 9]] as const) {
     test(`{§output-allowance-notice} {§engine-rails}: responses the output allowance cut ${shape} cross as the allowance, never a cycle`, async () => {
-        const { db, engine, workspaceId, workerId, loopId } = await setup();
+        const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
             const cut: MockResponse = { assistant: { content, reasoning: "Considering the next step.", finishReason: "length" }, assistantRaw: null };
             const provider = new Mock({ contextWindow: 100_000, responses: Array.from({ length: calls }, () => cut) });
             const loop = await engine.runLoop({
-                provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+                provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
                 messages: [{ role: "user", content: "What is two plus two?" }],
             });
             const problem = problemOf(loop);
@@ -161,13 +161,13 @@ for (const [shape, content, calls] of [["before any text", "", 3], ["inside an o
 }
 
 test("{§engine-rails}: a threshold crossed by failed operations still says operations failed", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        // A READ of a worker that does not exist is a hard operation failure, three turns running.
-        const bad = said("````READ (worker://nobody/1)````");
+        // A READ of a session that does not exist is a hard operation failure, three turns running.
+        const bad = said("````READ (session://nobody/1)````");
         const provider = new Mock({ contextWindow: 100_000, responses: [bad, bad, bad] });
         const loop = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         const problem = problemOf(loop);
@@ -186,9 +186,9 @@ test("{§terminal-evidence}: the citation reaches the parent, the reader best pl
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `terminal-parent-${crypto.randomUUID()}`);
-        const parent = await insertWorker(db, workspaceId, null, "lead");
+        const parent = await insertSession(db, workspaceId, null, "lead");
         const parentLoop = await insertLoop(db, parent, 1, "Have the reviewer look at the draft.");
-        const child = await insertWorker(db, workspaceId, parent, "reviewer");
+        const child = await insertSession(db, workspaceId, parent, "reviewer");
         const childLoop = await insertLoop(db, child, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
@@ -199,16 +199,16 @@ test("{§terminal-evidence}: the citation reaches the parent, the reader best pl
                 said("A few notes are forming."),
                 said("The draft is sound but the second section drifts."),
             ] }),
-            workspaceId, workerId: child, loopId: childLoop, maxTurns: 10, maxStrikes: 3,
+            workspaceId, sessionId: child, loopId: childLoop, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "Review the draft." }],
         });
 
         const turn = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````NOTE\nchecking\n````", reasoning: null } }] }),
-            messages: [], workspaceId, workerId: parent, loopId: parentLoop,
+            messages: [], workspaceId, sessionId: parent, loopId: parentLoop,
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-        const observed = logEntries(packet).find(({ source, path }) => source === "worker://reviewer" && path === "ops://reviewer/1");
+        const observed = logEntries(packet).find(({ source, path }) => source === "session://reviewer" && path === "ops://reviewer/1");
         assert.ok(observed !== undefined, "the child's termination reaches its parent");
 
         const rendered = JSON.stringify(observed);
@@ -218,15 +218,15 @@ test("{§terminal-evidence}: the citation reaches the parent, the reader best pl
 });
 
 test("{§terminal-evidence}: an empty completion reply resolves the message without replacing the earlier answer", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100_000, responses: [said("````SEND\nThe answer is four.\n````"), said("````SEND [200]\n````")] });
         const loop = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 3,
             messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(loop.result.status, 200, "{§message-completion} resolves the request before the rail can rule");
-        const answer = await clientRead(engine, db, { workspaceId, workerId, statement: statement("````READ (ops://alice/1)````") });
+        const answer = await clientRead(engine, db, { workspaceId, sessionId, statement: statement("````READ (ops://alice/1)````") });
         assert.ok("content" in answer);
         assert.equal(answer.content, "The answer is four.", "and the loop's own address is the answer, not a citation");
     } finally { await db.close(); }

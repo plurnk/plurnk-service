@@ -3,9 +3,9 @@ import StoredPacket from "../core/StoredPacket.ts";
 import { SqlRiteSync } from "@possumtech/sqlrite";
 import type {
     DigestEvidence, EvidenceRows, ErrorEvidence, PacketEvidence, TurnRow,
-    WorkspaceRow, WorkerRow, LoopRow, TurnAttemptRow, InferenceCallRow, ModelCallRow,
+    WorkspaceRow, SessionRow, LoopRow, TurnAttemptRow, InferenceCallRow, ModelCallRow,
     ProviderRequestRow, LogRow, EditRow, EmissionRow, ReasoningRow, LogCurationEffectRow,
-    WorkerRollupRow, OpMixRow, ExecutionEnvironmentRow, SearchStateRow, DerivationStateRow,
+    SessionRollupRow, OpMixRow, ExecutionEnvironmentRow, SearchStateRow, DerivationStateRow,
     DispositionCountRow, DispositionRow, StorageRow, StorageTableRow,
 } from "@plurnk/plurnk-digest";
 import PacketWire from "../core/packet-wire.ts";
@@ -84,7 +84,7 @@ export default class EvidenceReader implements DigestEvidence {
         );
         const rows = {
             workspaces: db.digest_workspaces.all<WorkspaceRow & { project_root: string | null }>(),
-            workers: db.digest_workers.all<WorkerRow>(),
+            sessions: db.digest_sessions.all<SessionRow>(),
             loops: db.digest_loops.all<LoopRow>(),
             turns: db.digest_turns.all<Omit<TurnRow, "packetEchoes">>(),
             inferenceCalls: db.digest_inference_calls.all<InferenceCallRow>(),
@@ -96,8 +96,8 @@ export default class EvidenceReader implements DigestEvidence {
             emissionRows: db.digest_emissions.all<EmissionRow>(),
             reasoningRows: db.digest_reasonings.all<ReasoningRow>(),
             curationEffects: db.digest_curation_effects.all<LogCurationEffectRow>(),
-            workerRollupRows: db.digest_worker_rollups.all<WorkerRollupRow>(),
-            opMixRows: db.digest_worker_op_mix.all<OpMixRow>(),
+            sessionRollupRows: db.digest_session_rollups.all<SessionRollupRow>(),
+            opMixRows: db.digest_session_op_mix.all<OpMixRow>(),
             environmentRows: db.digest_execution_environments.all<ExecutionEnvironmentRow>(),
             searchState: db.digest_channel_search_state.get<SearchStateRow>(),
             derivationState: db.digest_derivation_state.get<DerivationStateRow>(),
@@ -109,7 +109,7 @@ export default class EvidenceReader implements DigestEvidence {
         if (rows.storage === undefined) throw new Error("the database reported no storage facts");
         if (rows.searchState === undefined || rows.derivationState === undefined) throw new Error("search aggregate returned no row");
         const roots = new Map(rows.workspaces.map(({ id, project_root }) => [id, project_root]));
-        const workerRoots = new Map(rows.workers.map(({ id, workspace_id }) => [id, roots.get(workspace_id) ?? null]));
+        const sessionRoots = new Map(rows.sessions.map(({ id, workspace_id }) => [id, roots.get(workspace_id) ?? null]));
         return {
             ...rows,
             storage: rows.storage, searchState: rows.searchState, derivationState: rows.derivationState,
@@ -117,7 +117,7 @@ export default class EvidenceReader implements DigestEvidence {
             // outside its operations, whether that text became NOTEs beside them or the turn's outside source.
             turns: rows.turns.map((turn) => ({ ...turn, packetEchoes: EvidenceReader.#echoes(turn.program) + FabricatedLog.echoes(turn.outside ?? "") })),
             logEntries: rows.logEntries.map(({ target_tx, ...row }) => ({
-                ...row, target: renderTarget(row, workerRoots.get(row.worker_id) ?? null, authoredPath(target_tx)),
+                ...row, target: renderTarget(row, sessionRoots.get(row.session_id) ?? null, authoredPath(target_tx)),
                 ...(decisions.has(row.id) ? { proposalDecision: decisions.get(row.id) } : {}),
             })),
             providerRequests: rows.providerRequests.map((row) => {

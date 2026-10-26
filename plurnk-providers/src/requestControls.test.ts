@@ -58,7 +58,7 @@ for (const streaming of [true, false]) {
         t.after(() => mock.restoreAll());
         const bodies = captureBodies(openAiReply);
         const provider = nativeProvider("openai", "gpt-4.1", { serviceTier: "priority", topLogprobs: 3, streaming });
-        const result = await provider.generate({ workerId: "w", messages: [{ role: "user", content: "hello" }] });
+        const result = await provider.generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
         assert.equal(result.assistant.content, "ok");
         assert.equal(bodies.length, 1);
         assert.equal(bodies[0].service_tier, "priority", "the tier rides the SDK's documented option");
@@ -71,7 +71,7 @@ for (const streaming of [true, false]) {
 test("{§provider-request-controls} logprobs count 0 asks for the chosen token only", async (t) => {
     t.after(() => mock.restoreAll());
     const bodies = captureBodies(openAiReply);
-    await nativeProvider("openai", "gpt-4.1", { topLogprobs: 0, streaming: false }).generate({ workerId: "w", messages: [{ role: "user", content: "hello" }] });
+    await nativeProvider("openai", "gpt-4.1", { topLogprobs: 0, streaming: false }).generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
     assert.equal(bodies[0].logprobs, true);
     assert.equal(bodies[0].top_logprobs, 0, "no alternative tokens are requested");
 });
@@ -88,7 +88,7 @@ for (const [provider, model, tier] of [
         t.after(() => mock.restoreAll());
         const bodies = captureBodies(() => new Response("{}", { status: 500 }));
         await nativeProvider(provider, model, { serviceTier: tier, streaming: false })
-            .generate({ workerId: "w", messages: [{ role: "user", content: "hello" }] })
+            .generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] })
             .catch(() => undefined);
         assert.equal(bodies.length, 1, "one request was serialized");
         assert.match(JSON.stringify(bodies[0]), new RegExp(`"(service_tier|serviceTier)":"${tier}"`, "u"));
@@ -103,7 +103,7 @@ test("{§provider-request-controls} a control the SDK does not document is named
     const bodies = captureBodies(() => new Response("{}", { status: 500 }));
     for (let i = 0; i < 2; i++) nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2, streaming: false });
     await nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2, streaming: false })
-        .generate({ workerId: "w", messages: [{ role: "user", content: "hello" }] })
+        .generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] })
         .catch(() => undefined);
     const named = warned.filter((line) => line.startsWith("PLURNK_REQUEST_CONTROL_UNSUPPORTED"));
     assert.equal(named.length, 2, "one warning per control, once per process");
@@ -135,7 +135,7 @@ test("{§provider-request-controls} the catalog route carries the operator's tie
         PLURNK_PROVIDERS_TOP_LOGPROBS: "2",
     }), "gpt-4.1-mini");
     assert.ok(provider);
-    await provider.generate({ workerId: "w-1", messages: [{ role: "user", content: "hello" }] });
+    await provider.generate({ sessionId: "w-1", messages: [{ role: "user", content: "hello" }] });
     assert.equal(bodies[0].service_tier, "priority");
     assert.equal(bodies[0].logprobs, true);
     assert.equal(bodies[0].top_logprobs, 2);

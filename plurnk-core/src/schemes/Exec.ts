@@ -53,8 +53,8 @@ interface ExecAttrs {
     resourceSource?: string; // complete authored non-file resource address, resolved through ordinary READ at apply time
     // {§exec-lifetime} — `[{"lifetime": …}]`, one field, absent = loop-bound.
     timeoutSec?: number;    // a duration: kill the spawn at the deadline (504).
-    turnScoped?: boolean;   // "turn": reaped at the worker's next pre-turn, never surviving into the subsequent turn.
-    detached?: boolean;     // "detached": the spawn outlives its loop — never bound to the loop's teardown, nobody's obligation; KILL, the worker's total reap, and daemon shutdown still end it.
+    turnScoped?: boolean;   // "turn": reaped at the session's next pre-turn, never surviving into the subsequent turn.
+    detached?: boolean;     // "detached": the spawn outlives its loop — never bound to the loop's teardown, nobody's obligation; KILL, the session's total reap, and daemon shutdown still end it.
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
@@ -141,7 +141,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return this.#scratch ??= new ExecScratch(process.env, hostPaths);
     }
 
-    #activeAborts = new Map<number, { workspaceId: number; workerId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean }>();
+    #activeAborts = new Map<number, { workspaceId: number; sessionId: number; turnId: number; pathname: string; runtime: string; effect: Effect; controller: AbortController; detached: boolean }>();
     #activeSpawns = new Map<number, Promise<SchemeResult>>();
 
     async idle(): Promise<void> {
@@ -153,12 +153,12 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         await this.idle();
     }
 
-    // Whether the worker has an in-flight spawn (a background exec). The daemon
+    // Whether the session has an in-flight spawn (a background exec). The daemon
     // reads this only for loop.cancel's cancelled=true/false answer — the
-    // teardown itself rides the worker's cancellation scope (the spawn's
+    // teardown itself rides the session's cancellation scope (the spawn's
     // ctx.signal), so even a spawn registering after the cancel self-aborts.
-    hasActiveSpawns(workerId: number): boolean {
-        for (const { workerId: r, detached } of this.#activeAborts.values()) if (r === workerId && !detached) return true;
+    hasActiveSpawns(sessionId: number): boolean {
+        for (const { sessionId: r, detached } of this.#activeAborts.values()) if (r === sessionId && !detached) return true;
         return false;
     }
 
@@ -168,18 +168,18 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         for (const { controller, detached } of this.#activeAborts.values()) if (detached) controller.abort(ExecAbort.teardownReason());
     }
 
-    // {§worker-optimistic-settlement} — wait on exactly the spawns initiated by
+    // {§session-optimistic-settlement} — wait on exactly the spawns initiated by
     // this turn, ending immediately when all settle and never extending the
     // opportunity to streams inherited from an earlier turn.
     async settleTurnSpawns(
-        workerId: number,
+        sessionId: number,
         turnId: number,
         timeoutMs: number,
         signal?: AbortSignal,
     ): Promise<boolean> {
         signal?.throwIfAborted();
         const pending = [...this.#activeAborts.entries()]
-            .filter(([, active]) => active.workerId === workerId && active.turnId === turnId && !active.detached)
+            .filter(([, active]) => active.sessionId === sessionId && active.turnId === turnId && !active.detached)
             .map(([subscriptionId]) => {
                 const spawn = this.#activeSpawns.get(subscriptionId);
                 if (spawn === undefined) {
@@ -197,8 +197,8 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     // {§exec-hold-until-concluded} — match active spawns against the
     // operator's runtime or runtime:effect hold selectors.
-    hasActiveHoldSpawns(workerId: number, holdSet: ReadonlySet<string>): boolean {
-        for (const { workerId: r, runtime, effect } of this.#activeAborts.values()) if (r === workerId && (holdSet.has(runtime) || holdSet.has(`${runtime}:${effect}`))) return true;
+    hasActiveHoldSpawns(sessionId: number, holdSet: ReadonlySet<string>): boolean {
+        for (const { sessionId: r, runtime, effect } of this.#activeAborts.values()) if (r === sessionId && (holdSet.has(runtime) || holdSet.has(`${runtime}:${effect}`))) return true;
         return false;
     }
 
@@ -218,7 +218,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const core = this.coreContext(ctx);
         for (const [subscriptionId, entry] of this.#activeAborts) {
             if (entry.workspaceId === core.workspaceId && entry.pathname === pathname && (scheme === "exec" || entry.runtime === scheme)) {
-                if (core.writer === "model") this.liveSubscriptions().asked(subscriptionId, core.workerId);
+                if (core.writer === "model") this.liveSubscriptions().asked(subscriptionId, core.sessionId);
                 entry.controller.abort(ExecAbort.killReason(null));
                 if (!await this.liveSubscriptions().cancel(subscriptionId)) {
                     throw new Error(`Active execution subscription ${subscriptionId} has no cancellation owner.`);
@@ -358,7 +358,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 "scheme:exec",
                 "executor-not-registered",
                 400,
-                `No executor or MCP service named \`${runtime}\` is registered for this worker.`,
+                `No executor or MCP service named \`${runtime}\` is registered for this session.`,
                 {},
                 {
                     requestedRuntime: runtime,
@@ -395,7 +395,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             // {§executor-blank-invocation} No target: every enabled target's fence. An unknown one: the document listing them.
             const recovery = availableTargets.length === 0 ? {}
                 : exactTarget === null ? { recovery: registry.tools.map((tool) => ToolResources.fence(runtime, tool.invocation, tool.target)).join("\n\n") }
-                    : { recovery: `Select a target from worker://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.` };
+                    : { recovery: `Select a target from workspace://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.` };
             return Results.failure(
                 "scheme:exec",
                 exactTarget === null ? "target-required" : "target-not-registered",
@@ -508,10 +508,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             resourceSource = null;
         }
 
-        // {§exec-target-documentation} — the generated reference under worker:///_plurnk/ describes a
+        // {§exec-target-documentation} — the generated reference under workspace:///_plurnk/ describes a
         // runtime; it is never a program. Realizing it as a temporary script fails where the runtime
         // cannot see the host's temporary directory, and runs markdown where it can.
-        if (resourceSource !== null && execTarget?.kind === "url" && execTarget.scheme === "worker"
+        if (resourceSource !== null && execTarget?.kind === "url" && execTarget.scheme === "workspace"
             && isGeneratedPathname(PathSyntax.decodeParens(execTarget.pathname ?? ""))) {
             return Exec.#refuse(
                 runtime,
@@ -833,10 +833,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }): Promise<{ subscriptionId: number; controller: AbortController; lifecycle: LiveSubscription }> {
         const { core, attrs, resolved, runtime, body, target, pathname, entryId, effect } = args;
         const subscriptionId = await ChannelWrite.openSubscription(core.db, {
-            workerId: core.workerId, entryId, scheme: runtime,
+            sessionId: core.sessionId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
             turnScoped: attrs.turnScoped === true, // {§exec-lifetime} — "turn" is reaped at the next pre-turn
-            detached: attrs.detached === true, // {§worker-obligations} — "detached" is nobody's obligation
+            detached: attrs.detached === true, // {§session-obligations} — "detached" is nobody's obligation
             publishedChannel: resolved.executor.publishedChannel,
             source: attrs.coordinate === undefined ? undefined
                 : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,
@@ -845,10 +845,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const controller = new AbortController();
         let detachParent = (): void => {};
         // {§exec-lifetime} — a detached spawn outlives the loop: it never binds to the loop's teardown;
-        // only KILL, the worker's total reap, and daemon shutdown end it.
+        // only KILL, the session's total reap, and daemon shutdown end it.
         if (core.signal !== undefined && attrs.detached !== true) {
             const parent = core.signal;
-            // {§worker-lifecycle-exec-epoch-bound}
+            // {§session-lifecycle-exec-epoch-bound}
             // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
             // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
             // teardown — a 202-graceful loop lets its spawns outlive, never firing this — so
@@ -862,11 +862,11 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             detachParent = (): void => parent.removeEventListener("abort", onParentAbort);
             if (parent.aborted) controller.abort(ExecAbort.teardownReason());
         }
-        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, workerId: core.workerId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true });
+        this.#activeAborts.set(subscriptionId, { workspaceId: core.workspaceId, sessionId: core.sessionId, turnId: core.turnId, pathname, runtime, effect, controller, detached: attrs.detached === true });
         const lifecycle = new LiveSubscription({
             db: core.db, registry: this.liveSubscriptions(),
             identity: {
-                workspaceId: core.workspaceId, workerId: core.workerId, entryId,
+                workspaceId: core.workspaceId, sessionId: core.sessionId, entryId,
                 target: `${runtime}://${pathname}`, subscriptionId, scheme: runtime, ...attrs.coordinate,
             },
             handle: { cancel: () => controller.abort(ExecAbort.teardownReason()) },
@@ -876,7 +876,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 this.#activeAborts.delete(subscriptionId);
                 this.#activeSpawns.delete(subscriptionId);
             },
-            notify: core.streamEventNotify, wake: core.wakeWorkerNotify,
+            notify: core.streamEventNotify, wake: core.wakeSessionNotify,
         });
         return { subscriptionId, controller, lifecycle };
     }
@@ -909,7 +909,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const owner = owners[0];
         // The tool's own document, where its family publishes it ({§tools-resource-materialization}).
         const root = executors.entry(owner, core.workspaceId)?.resourcesPath ?? "/plurnk";
-        const contract = `worker://${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.json`)}`;
+        const contract = `workspace://${generatedPathname(`${root}/${owner}/${ToolResources.targetSegment(program)}.json`)}`;
         return Results.failure(
             "scheme:exec",
             "program-is-a-tool",
@@ -936,10 +936,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         tempPath: string | null;
     }): Promise<SchemeResult> {
         const { runtime, body, cwd, target, metadata, ctx, pathname, entryId, lifecycle, signal, controller, timeoutSec, tempPath, coordinate } = opts;
-        // {§functionality-model-projection} — a Core-owned manager acts for the invoking Worker. The
-        // framework's ExecArgs carries no Worker identity, so Core binds it here, at the operation.
+        // {§functionality-model-projection} — a Core-owned manager acts for the invoking Session. The
+        // framework's ExecArgs carries no Session identity, so Core binds it here, at the operation.
         const executor = opts.executor instanceof FunctionalityManager
-            ? opts.executor.forContext(ctx.workspaceId, ctx.workerId)
+            ? opts.executor.forContext(ctx.workspaceId, ctx.sessionId)
             : opts.executor;
         const db = ctx.db;
         // an execution's `<T>` — kill the spawn after T seconds. unref'd so a pending timer never
@@ -990,7 +990,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 : await EnvFunctionality.resolve(
                     db,
                     ctx.workspaceId,
-                    ctx.workerId,
+                    ctx.sessionId,
                     undefined,
                     ctx.hostPaths,
                 );
@@ -1011,11 +1011,11 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     },
                     env: composed.env,  // SPEC {§exec} {§exec-env-scoped}
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
-                        producerWorkerId: ctx.workerId,
+                        producerSessionId: ctx.sessionId,
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,
                     })),
                     setState: (channel, state: ChannelState) => enqueue(() => ChannelWrite.setChannelState(db, {
-                        producerWorkerId: ctx.workerId,
+                        producerSessionId: ctx.sessionId,
                         entryId, channel, state, notify: ctx.streamEventNotify, coordinate,
                     })),
                     emit: (event) => ctx.pushNotice?.(event),

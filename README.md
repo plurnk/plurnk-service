@@ -2,7 +2,7 @@
 
 The runtime behind [Plurnk](https://github.com/plurnk/plurnk): a model-facing
 operation language, searchable resources, persistent context, and cooperating
-workers. Use local or hosted models through the same environment.
+sessions. Use local or hosted models through the same environment.
 
 **To use Plurnk, start with the [terminal client](https://github.com/plurnk/plurnk#get-started).**
 This repository owns the daemon, language contracts, and bundled extensions.
@@ -14,7 +14,7 @@ This repository owns the daemon, language contracts, and bundled extensions.
 - The model controls its context and workflow through composable operations.
 - Files, tool results, messages, and reasoning have addresses the model can inspect.
 - Globs, regex, full text, structured queries, and symbol relationships share a pattern interface.
-- Workers delegate and communicate within a persistent workspace, independent of a client session.
+- Sessions delegate and communicate within a persistent workspace, independent of a client session.
 
 ## Architecture
 

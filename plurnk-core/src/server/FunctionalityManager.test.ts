@@ -209,15 +209,15 @@ test("{§functionality-model-projection} an empty body defaults to list; a non-J
 });
 
 // {§functionality-scope} — the published manager closes over the coordinator; Core binds the invoking
-// workspace and worker per operation, and the binding is never retained.
-test("{§functionality-model-projection} Core binds the invoking worker at the operation; the published manager stays workspace-wide", async () => {
+// workspace and session per operation, and the binding is never retained.
+test("{§functionality-model-projection} Core binds the invoking session at the operation; the published manager stays workspace-wide", async () => {
     invocations.length = 0;
     identities.length = 0;
     const manager = new FunctionalityManager({ family: "fx", workspaceId: 1, coordinator, inputSchemas });
     assert.equal((await manager.run(args("fx", "").args)).status, 200);
-    assert.equal((await manager.forWorker(7).run(args("fx", "").args)).status, 200);
+    assert.equal((await manager.forSession(7).run(args("fx", "").args)).status, 200);
     assert.equal((await manager.run(args("fx", "").args)).status, 200);
-    assert.deepEqual(identities, [{ workspaceId: 1 }, { workspaceId: 1, workerId: 7 }, { workspaceId: 1 }],
-        "the bound instance names its worker; the published instance never does");
-    assert.deepEqual(manager.forWorker(7).toolRegistry().tools.map(({ target }) => target), ["fx"], "binding changes the identity, not the teaching");
+    assert.deepEqual(identities, [{ workspaceId: 1 }, { workspaceId: 1, sessionId: 7 }, { workspaceId: 1 }],
+        "the bound instance names its session; the published instance never does");
+    assert.deepEqual(manager.forSession(7).toolRegistry().tools.map(({ target }) => target), ["fx"], "binding changes the identity, not the teaching");
 });

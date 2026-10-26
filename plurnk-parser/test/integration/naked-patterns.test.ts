@@ -31,8 +31,8 @@ test("{§naked-pattern}: `^` claims the regex dialect without slashes, and a tra
 test("{§naked-pattern}: a sigil-less glob or literal on the heading line is the matcher on FIND, READ and KILL, silently", () => {
     for (const [source, raw] of [
         ["```FIND (src/**/*.ts) TODO\n```\n", "TODO"],
-        ["```FIND (worker:///) *.test.ts <!-- the suites -->\n```\n", "*.test.ts"],
-        ["```READ (worker:///a.md) bats <!-- lines naming bats -->\n```\n", "bats"],
+        ["```FIND (workspace:///) *.test.ts <!-- the suites -->\n```\n", "*.test.ts"],
+        ["```READ (workspace:///a.md) bats <!-- lines naming bats -->\n```\n", "bats"],
         ["```KILL (log:///1/**) stale receipt\n```\n", "stale receipt"],
     ] as const) {
         const { op, diagnostics: notes } = one(source);
@@ -41,21 +41,21 @@ test("{§naked-pattern}: a sigil-less glob or literal on the heading line is the
         assert.equal(op.body, null);
         assert.equal(PlurnkParser.stringify([op]), source.trimEnd(), "the bare form is the rendered form");
     }
-    assert.equal(one("````FIND (worker:///) *.test.ts <!-- the suites -->\n````\n").op.aside, "the suites");
+    assert.equal(one("````FIND (workspace:///) *.test.ts <!-- the suites -->\n````\n").op.aside, "the suites");
 });
 
 test("{§naked-pattern}: on EDIT a heading-line sigil is the matcher and the lines beneath are the replacement; plain heading text stays the body", () => {
-    const replace = one("````EDIT (worker:///a.txt) /foo/\nbar\nbaz\n````\n");
+    const replace = one("````EDIT (workspace:///a.txt) /foo/\nbar\nbaz\n````\n");
     assert.deepEqual(replace.diagnostics, []);
     assert.deepEqual(replace.op.matcher, { dialect: "regex", raw: "/foo/", pattern: "foo", flags: "" });
     assert.equal(replace.op.body, "bar\nbaz");
-    assert.equal(PlurnkParser.stringify([replace.op]), "```EDIT (worker:///a.txt) /foo/\nbar\nbaz\n```");
+    assert.equal(PlurnkParser.stringify([replace.op]), "```EDIT (workspace:///a.txt) /foo/\nbar\nbaz\n```");
     const remove = one("````EDIT (books.xml) //book[price > 35.00] <!-- an empty body removes each match -->\n````\n");
     assert.deepEqual(remove.diagnostics, []);
     assert.deepEqual(remove.op.matcher, { dialect: "xpath", raw: "//book[price > 35.00]" });
     assert.equal(remove.op.body, null);
     assert.equal(remove.op.aside, "an empty body removes each match");
-    const literal = one("````EDIT (worker:///a.txt) hello\n````\n");
+    const literal = one("````EDIT (workspace:///a.txt) hello\n````\n");
     assert.equal(literal.op.matcher, null);
     assert.equal(literal.op.body, "hello", "EDIT heading-line text without a sigil is the replacement it always was");
     assert.match(literal.diagnostics[0]?.message ?? "", /body text was on the OP line/u);

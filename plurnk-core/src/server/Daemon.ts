@@ -26,13 +26,13 @@ import DrainSupervisor, { type DrainInjectionArgs, type DrainInjectionResult } f
 import MessageAbandonment from "./MessageAbandonment.ts";
 import Retention, { retentionPolicy } from "./Retention.ts";
 import TurnDispositionHandler from "../core/TurnDispositionHandler.ts";
-import { Validator, isRecord, isSafeInteger, type ApplicationWorkerOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationWorkerIdentity, type ApplicationWorkerProjection, type ApplicationWorkerQuery, type ApplicationWorkerHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationWorkerCreation, type WorkerOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type ApplicationSessionOverview, type ClientDisplayCapabilities, type FunctionalityPreparationActivity, type CapabilityProjection, type ClientInteractionProjection, type ClientInteractionResolution, type ApplicationLoopProjection, type ApplicationGauge, type ApplicationSessionIdentity, type ApplicationSessionProjection, type ApplicationSessionQuery, type ApplicationSessionHiding, type ApplicationWorkspaceHiding, type ClientEntryChannel, type ModelCatalogPage, type ModelCatalogQuery, type ModelRoute, type Notice, type ProposalProjection, type Effort, type PlurnkStatement, type RollbackReport, type ApplicationOwnerIdentity, type ApplicationSessionCreation, type SessionOwner, type ApplicationMessage, type ApplicationInboxMessage, type MessageResource, type CapabilityPolicy, type ClientEnvelope, type FunctionalityFamilyHandle, type ProposalResolution } from "@plurnk/plurnk-contracts";
 import LogEntry from "./logEntry.ts";
 import type HttpListener from "./HttpListener.ts";
 import Credentials from "./Credentials.ts";
-import Envelope, { projectWorkerRow, type WorkspaceEnvelope, type WorkspaceRow } from "./envelope.ts";
-import WorkerReferences from "./WorkerReferences.ts";
-import WorkerOverview from "./WorkerOverview.ts";
+import Envelope, { projectSessionRow, type WorkspaceEnvelope, type WorkspaceRow } from "./envelope.ts";
+import SessionReferences from "./SessionReferences.ts";
+import SessionOverview from "./SessionOverview.ts";
 import Places, { type PlaceGates } from "./Places.ts";
 import ClientInput from "./client-input.ts";
 import WorkspacePlugins from "./WorkspacePlugins.ts";
@@ -51,8 +51,8 @@ import Fork from "../core/fork.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import { Knob } from "@plurnk/plurnk-meta";
 import ProposalPolicies from "../core/ProposalPolicies.ts";
-import WorkerOwners from "../core/WorkerOwners.ts";
-import RuntimeWorker from "../core/RuntimeWorker.ts";
+import SessionOwners from "../core/SessionOwners.ts";
+import RuntimeSession from "../core/RuntimeSession.ts";
 import { contentWeight } from "../core/content-weight.ts";
 import MessageResources from "../core/MessageResources.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
@@ -62,7 +62,7 @@ import type { ApplicationPort, HttpRouteHandler, HttpUpgradeHandler } from "@plu
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import WorkspaceGate from "../core/WorkspaceGate.ts";
 import StopDeadline from "../core/StopDeadline.ts";
-import { WorkerNameConflictError } from "../core/WorkerName.ts";
+import { SessionNameConflictError } from "../core/SessionName.ts";
 import WorkspaceResidency from "./WorkspaceResidency.ts";
 import type { DaemonModule, ModuleActionContext, ModuleActionDescriptor, ModuleActionRegistration } from "@plurnk/plurnk-modules";
 import type { RuntimeRegistration } from "@plurnk/plurnk-execs";
@@ -72,7 +72,7 @@ import type { HostFunctionalityAdapter, HostSetupSeam, WorkspaceCapabilityProvid
 import Functionality from "./Functionality.ts";
 import { observed, observedSync } from "../observe/spans.ts";
 import { daemonFailure } from "./daemon-results.ts";
-import WorkerModels, { type EffortSource } from "./WorkerModels.ts";
+import SessionModels, { type EffortSource } from "./SessionModels.ts";
 import ClientReads from "./ClientReads.ts";
 import MessageDelivery from "./MessageDelivery.ts";
 import DaemonModules from "./DaemonModules.ts";
@@ -132,7 +132,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #modules: DaemonModules;
     // {§connection-lifecycle} — the client operations in flight: their loops, scopes and settlement.
     readonly #clientOperations: ClientOperations;
-    // {§methods-loop-run} {§machine-processes} — a message's delivery to a worker: the loop it starts or continues.
+    // {§methods-loop-run} {§machine-processes} — a message's delivery to a session: the loop it starts or continues.
     readonly #delivery: MessageDelivery;
     #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
@@ -144,7 +144,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // module (plurnk-acp) subscribes and fans out to its OWN clients; core emits, never owns
     // client transport or connection state.
     #eventSubscribers = new Set<(workspaceId: number | null, method: string, params: unknown) => void>();
-    readonly #workerModels: WorkerModels;
+    readonly #sessionModels: SessionModels;
     readonly #reads: ClientReads;
     readonly #storage: WorkspaceStorage;
     readonly #configuration: ConfigurationDiagnostics;
@@ -191,10 +191,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         if (this.#provider !== null && bootSpec !== null) {
             ProviderInstantiate.registerInstance(this.#provider, bootSpec);
         }
-        this.#workspaceGate = new WorkspaceGate(async (workerId, rootWorkerId) => {
-            const row = await this.#db.worker_lineage_contains.get<{ member: number }>({
-                worker_id: workerId,
-                root_worker_id: rootWorkerId });
+        this.#workspaceGate = new WorkspaceGate(async (sessionId, rootSessionId) => {
+            const row = await this.#db.session_lineage_contains.get<{ member: number }>({
+                session_id: sessionId,
+                root_session_id: rootSessionId });
             return row !== undefined;
         });
         // {§module-workspace-residency} — residency, activation/cooling, and
@@ -217,8 +217,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             registerWorkspaceCapabilityProvider: (owner, capabilities) => this.registerWorkspaceCapabilityProvider(owner, capabilities),
             readWorkspaceModuleState: (workspaceId, owner) => this.readWorkspaceModuleState(workspaceId, owner),
             replaceWorkspaceCapabilities: (replacement, options) => this.replaceWorkspaceCapabilities(replacement, options),
-            readWorkerModuleState: (workerId, owner) => this.#residency.readWorkerModuleState(workerId, owner),
-            replaceWorkerModuleState: (workerId, owner, state) => this.#residency.replaceWorkerModuleState(workerId, owner, state),
+            readSessionModuleState: (sessionId, owner) => this.#residency.readSessionModuleState(sessionId, owner),
+            replaceSessionModuleState: (sessionId, owner, state) => this.#residency.replaceSessionModuleState(sessionId, owner, state),
             withWorkspaceGate: (workspaceId, owner, gate, run, signal) => this.#residency.exclusively(workspaceId, owner, gate, run, signal),
             atWorkspaceBoundary: (workspaceId, run) => this.#workspaceGate.atBoundary(workspaceId, run),
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
@@ -227,17 +227,17 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // {§members-functionality} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
-        // {§env-functionality} — Core's own family: the environment a Worker's commands run in.
-        // {§env-scheme} — the family's face: reads project the dispatching Worker's effective
-        // environment, writes go through the family's own admission at the Worker's layer. The runtime
-        // worker keeps none: its environment is the workspace's ({§actor-boundary-client-operations}).
+        // {§env-functionality} — Core's own family: the environment a Session's commands run in.
+        // {§env-scheme} — the family's face: reads project the dispatching Session's effective
+        // environment, writes go through the family's own admission at the Session's layer. The runtime
+        // session keeps none: its environment is the workspace's ({§actor-boundary-client-operations}).
         this.#functionality.register(new EnvFunctionality(
             EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath, this.#hostPaths),
             new EnvScheme(
-                (workspaceId, workerId) => EnvFunctionality.resolve(this.#db, workspaceId, workerId, undefined, this.#hostPaths),
+                (workspaceId, sessionId) => EnvFunctionality.resolve(this.#db, workspaceId, sessionId, undefined, this.#hostPaths),
                 (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
-                async (workspaceId, workerId) => (await this.#db.runtime_worker_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id === workerId
-                    ? "workspace" : "worker",
+                async (workspaceId, sessionId) => (await this.#db.runtime_session_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id === sessionId
+                    ? "workspace" : "session",
             ),
             this.#hostPaths,
         ));
@@ -253,9 +253,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             operationEventNotify: (workspaceId, event) => this.#broadcast({ workspaceId }, "operation/event", event),
             reasoningEventNotify: (workspaceId, event) => this.notifyReasoningEvent(workspaceId, event),
             outsideEventNotify: (workspaceId, event) => this.notifyOutsideEvent(workspaceId, event),
-            wakeWorkerNotify: (payload) => this.#drains.notifyWakeWorker(payload),
-            injectWorker: (args) => this.#delivery.injectWorker(args),
-            withWorkspaceTurn: (workspaceId, workerId, run, signal) => this.#workspaceGate.withTurn(workspaceId, workerId, run, signal),
+            wakeSessionNotify: (payload) => this.#drains.notifyWakeSession(payload),
+            injectSession: (args) => this.#delivery.injectSession(args),
+            withWorkspaceTurn: (workspaceId, sessionId, run, signal) => this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
             // {§functionality-hotload} — skills and plugins change out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
@@ -263,10 +263,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 await this.#functionality.refreshChanged({ workspaceId });
                 return [...this.configurationNotices(), ...this.#functionality.configurationNotices(workspaceId), ...this.#plugins.notices(workspaceId)];
             },
-            // worker:// KILL (terminate) — cancel the addressed worker subtree and
+            // session:// KILL (terminate) — cancel the addressed session subtree and
             // tear down its held streams before the operation completes.
-            cancelWorker: async (workerId, reason) => this.#drains.cancelWorkerTree(workerId, reason),
-            // {§membership-auto-add} — a READ or FIND admits what it reached for as the Worker's own
+            cancelSession: async (sessionId, reason) => this.#drains.cancelSessionTree(sessionId, reason),
+            // {§membership-auto-add} — a READ or FIND admits what it reached for as the Session's own
             // definition; the members scope's refusal admits nothing and is not a failure of the read.
             admitMembers: async (identity, files) => {
                 try {
@@ -284,11 +284,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#drains = new DrainSupervisor({
             db,
             // {§message-abandonment} — the daemon answers, 499, what an ended loop left unanswered.
-            completeAbandonedMessages: (workspaceId, workerId, loopId, status) =>
-                MessageAbandonment.complete(this.#engine, this.#db, workspaceId, workerId, loopId, status),
+            completeAbandonedMessages: (workspaceId, sessionId, loopId, status) =>
+                MessageAbandonment.complete(this.#engine, this.#db, workspaceId, sessionId, loopId, status),
             lifecycle: this.#lifecycle,
             injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress, opener) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress, opener),
-            assertInjectionCompatibility: (args) => this.#workerModels.assertInjectionCompatibility(args),
+            assertInjectionCompatibility: (args) => this.#sessionModels.assertInjectionCompatibility(args),
             runLoop: (args) => this.#runDrainLoop(args),
             loopUsage: (loopId) => this.#engine.loopUsage(loopId),
             loopAttributions: (loopId) => this.#engine.loopAttributions(loopId),
@@ -296,7 +296,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
             subscriptionConcluded: (subscriptionId) => this.#engine.subscriptionConcluded(subscriptionId),
             reapLoopStreams: (loopId) => this.#engine.reapLoopStreams(loopId),
-            hasActiveStreams: (workerId) => this.#workerHasActiveStreams(workerId),
+            hasActiveStreams: (sessionId) => this.#sessionHasActiveStreams(sessionId),
             readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"), // {§card-read-per-wake}
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
@@ -314,21 +314,21 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             const { workspaceId, ...interaction } = event;
             this.#broadcast({ workspaceId }, "loop/interaction", interaction);
         });
-        this.#workerModels = new WorkerModels({
+        this.#sessionModels = new SessionModels({
             db: this.#db,
             provider: this.#provider,
-            policyChanged: (workerId) => this.#announceWorkerPolicy(workerId),
-            workerCurationOverflow: (workerId, selectedProvider) => this.#engine.workerCurationOverflow(workerId, selectedProvider),
+            policyChanged: (sessionId) => this.#announceSessionPolicy(sessionId),
+            sessionCurationOverflow: (sessionId, selectedProvider) => this.#engine.sessionCurationOverflow(sessionId, selectedProvider),
         });
         this.#delivery = new MessageDelivery({
-            db, workerModels: this.#workerModels, mimetypes: this.#mimetypes,
+            db, sessionModels: this.#sessionModels, mimetypes: this.#mimetypes,
             inject: (args) => this.inject(args),
         });
         this.#reads = new ClientReads({ db: this.#db, engine: this.#engine, workspaceGate: this.#workspaceGate, residency: this.#residency });
         this.#clientOperations = new ClientOperations({
             db, engine: this.#engine, residency: this.#residency, workspaceGate: this.#workspaceGate,
-            assertModelWorker: (workspaceId, workerId) => this.#workerModels.assertModelWorker(workspaceId, workerId),
-            assertWorkerOwned: (workspaceId, workerId) => this.#assertWorkerOwned(workspaceId, workerId),
+            assertModelSession: (workspaceId, sessionId) => this.#sessionModels.assertModelSession(workspaceId, sessionId),
+            assertSessionOwned: (workspaceId, sessionId) => this.#assertSessionOwned(workspaceId, sessionId),
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                 this.#broadcast({ workspaceId }, "log/entry", { entry });
@@ -338,22 +338,22 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
     // The drain callback is the final provider/model boundary. Every admission path, including boot recovery,
     // terminates here.
-    async #runDrainLoop({ workspaceId, workerId, loopId, maxTurns, prompt, systemPrompt, signal, onSettled }: DrainRunLoopArgs): Promise<DrainRunLoopResult> {
+    async #runDrainLoop({ workspaceId, sessionId, loopId, maxTurns, prompt, systemPrompt, signal, onSettled }: DrainRunLoopArgs): Promise<DrainRunLoopResult> {
         // The drain callback is the final provider/model boundary. Every
         // admission path, including boot recovery, terminates here.
-        await this.#workerModels.assertModelWorker(workspaceId, workerId);
+        await this.#sessionModels.assertModelSession(workspaceId, sessionId);
         const releaseCapabilities = await this.#residency.acquire(workspaceId);
         try {
-            // Worker settings can change while Functionality remains
-            // resident. Reconcile the worker-private discovery surface
+            // Session settings can change while Functionality remains
+            // resident. Reconcile the session-private discovery surface
             // at the same pre-inference boundary used for activation.
             await this.#residency.reconcile(workspaceId);
-            const { provider: loopProvider, childProvider } = await this.#workerModels.providersForLoop(loopId);
+            const { provider: loopProvider, childProvider } = await this.#sessionModels.providersForLoop(loopId);
             return await this.#engine.runLoop({
                 provider: loopProvider,
                 childProvider,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 maxTurns,
                 messages: [
@@ -378,18 +378,18 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return () => { this.#eventSubscribers.delete(handler); };
     }
 
-    async registerWorkerOwner(workspaceId: number, owner: WorkerOwner): Promise<void> {
-        const id = ClientInput.assertId("registerWorkerOwner", "workspaceId", workspaceId);
-        await WorkerOwners.register(this.#db, id, owner);
+    async registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void> {
+        const id = ClientInput.assertId("registerSessionOwner", "workspaceId", workspaceId);
+        await SessionOwners.register(this.#db, id, owner);
     }
 
-    async claimWorkerOwner(args: { workspaceId: number; workerId: number; owner: string }): Promise<WorkerOwner> {
-        const workspaceId = ClientInput.assertId("claimWorkerOwner", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("claimWorkerOwner", "workerId", args.workerId);
-        const worker = await this.readWorker({ workspaceId, identity: { id: workerId } });
-        if (worker === null) throw daemonFailure("worker:owner", "worker-not-found", 404,
-            `Worker ${workerId} does not belong to workspace ${workspaceId}.`, { workspaceId, workerId });
-        return WorkerOwners.claim(this.#db, workspaceId, workerId, args.owner);
+    async claimSessionOwner(args: { workspaceId: number; sessionId: number; owner: string }): Promise<SessionOwner> {
+        const workspaceId = ClientInput.assertId("claimSessionOwner", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("claimSessionOwner", "sessionId", args.sessionId);
+        const session = await this.readSession({ workspaceId, identity: { id: sessionId } });
+        if (session === null) throw daemonFailure("session:owner", "session-not-found", 404,
+            `Session ${sessionId} does not belong to workspace ${workspaceId}.`, { workspaceId, sessionId });
+        return SessionOwners.claim(this.#db, workspaceId, sessionId, args.owner);
     }
 
     // {§methods-proposal-resolve} — proposal HITL. A transport module reads the stopped-world
@@ -405,10 +405,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const checkedLogEntryId = ClientInput.assertId("resolveProposal", "logEntryId", logEntryId);
         const checkedResolution = ClientInput.assertProposalResolution("resolveProposal", resolution);
         const workspaceId = ClientInput.assertId("resolveProposal", "workspaceId", owner.workspaceId);
-        const pending = await this.#db.worker_owner_for_proposal.get<{ workspaceId: number; owner: string }>({ log_entry_id: checkedLogEntryId });
+        const pending = await this.#db.session_owner_for_proposal.get<{ workspaceId: number; owner: string }>({ log_entry_id: checkedLogEntryId });
         if (pending !== undefined && (pending.workspaceId !== workspaceId || pending.owner !== owner.address)) {
             throw daemonFailure("proposal:resolution", "owner-mismatch", 403,
-                "Only the worker's owner may resolve this proposal.", { logEntryId: checkedLogEntryId });
+                "Only the session's owner may resolve this proposal.", { logEntryId: checkedLogEntryId });
         }
         await this.#engine.resolveProposal(checkedLogEntryId, checkedResolution, owner.address);
     }
@@ -445,14 +445,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         await this.#engine.resolveClientInteraction(checkedInteractionId, checkedResolution, respondent, message);
     }
 
-    async readMessages(args: { workspaceId: number; workerId: number; loopId?: number }): Promise<ApplicationMessage[]> {
-        await this.#workerModels.assertModelWorker(args.workspaceId, args.workerId);
+    async readMessages(args: { workspaceId: number; sessionId: number; loopId?: number }): Promise<ApplicationMessage[]> {
+        await this.#sessionModels.assertModelSession(args.workspaceId, args.sessionId);
         return MessageResources.read(this.#db, args);
     }
 
-    // {§methods-worker-inbox}
-    async readInbox(args: { workspaceId: number; workerId: number }): Promise<ApplicationInboxMessage[]> {
-        await this.#workerModels.assertModelWorker(args.workspaceId, args.workerId);
+    // {§methods-session-inbox}
+    async readInbox(args: { workspaceId: number; sessionId: number }): Promise<ApplicationInboxMessage[]> {
+        await this.#sessionModels.assertModelSession(args.workspaceId, args.sessionId);
         return MessageResources.inbox(this.#db, args);
     }
 
@@ -462,18 +462,18 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return await MessageResources.admission(this.#db, workspaceId, args.address, args.body);
     }
 
-    // {§methods-loop-run} — a message delivered to a worker drives or steers its loop: the delivery's owner resolves
-    // the worker's model and the card and injects into the drain; the port's entry point delegates.
-    runLoop(args: { workspaceId: number; workerId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
+    // {§methods-loop-run} — a message delivered to a session drives or steers its loop: the delivery's owner resolves
+    // the session's model and the card and injects into the drain; the port's entry point delegates.
+    runLoop(args: { workspaceId: number; sessionId: number; loopId?: number; prompt: string; source?: string; messageAddress?: string; attachments?: readonly MessageResource[]; envelope?: Readonly<Record<string, unknown>>; maxTurns?: number; openPaths?: string[]; selector?: string; childSelector?: string | null }): Promise<SchemeResult & { action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; turnSeq?: number }> {
         return this.#delivery.runLoop(args);
     }
 
-    async ensureRuntimeWorker(workspaceId: number): Promise<number> {
-        const checked = ClientInput.assertId("worker.ensure-runtime", "workspaceId", workspaceId);
+    async ensureRuntimeSession(workspaceId: number): Promise<number> {
+        const checked = ClientInput.assertId("session.ensure-runtime", "workspaceId", workspaceId);
         if (await this.#db.envelope_get_workspace.get({ id: checked }) === undefined) {
-            throw daemonFailure("worker:owner", "workspace-not-found", 404, `Workspace ${checked} does not exist.`);
+            throw daemonFailure("session:owner", "workspace-not-found", 404, `Workspace ${checked} does not exist.`);
         }
-        return RuntimeWorker.ensure(this.#db, checked);
+        return RuntimeSession.ensure(this.#db, checked);
     }
 
     async readWorkspaceCapabilities(args: { workspaceId: number }): Promise<CapabilityProjection> {
@@ -501,52 +501,52 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         });
     }
 
-    // {§worker-model-selection} {§worker-effort} — the worker's durable model, effort and spawn override are
-    // WorkerModels' to read and set; the port's entry points delegate.
-    readWorkerModel(args: { workspaceId: number; workerId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
-        return this.#workerModels.readWorkerModel(args);
+    // {§session-model-selection} {§session-effort} — the session's durable model, effort and spawn override are
+    // SessionModels' to read and set; the port's entry points delegate.
+    readSessionModel(args: { workspaceId: number; sessionId: number }): Promise<{ model: ModelRoute | null; spawnModel: ModelRoute | null }> {
+        return this.#sessionModels.readSessionModel(args);
     }
 
-    setWorkerModel(args: { workspaceId: number; workerId: number; selector: string; effort?: unknown }): Promise<ModelRoute> {
-        return this.#workerModels.setWorkerModel(args);
+    setSessionModel(args: { workspaceId: number; sessionId: number; selector: string; effort?: unknown }): Promise<ModelRoute> {
+        return this.#sessionModels.setSessionModel(args);
     }
 
-    readWorkerEffort(args: { workspaceId: number; workerId: number }): Promise<{ effort: Effort | null; source: EffortSource; supportedEfforts: readonly Effort[] }> {
-        return this.#workerModels.readWorkerEffort(args);
+    readSessionEffort(args: { workspaceId: number; sessionId: number }): Promise<{ effort: Effort | null; source: EffortSource; supportedEfforts: readonly Effort[] }> {
+        return this.#sessionModels.readSessionEffort(args);
     }
 
-    setWorkerEffort(args: { workspaceId: number; workerId: number; effort: unknown }): Promise<{ effort: Effort; source: "explicit"; supportedEfforts: readonly Effort[] }> {
-        return this.#workerModels.setWorkerEffort(args);
+    setSessionEffort(args: { workspaceId: number; sessionId: number; effort: unknown }): Promise<{ effort: Effort; source: "explicit"; supportedEfforts: readonly Effort[] }> {
+        return this.#sessionModels.setSessionEffort(args);
     }
 
-    setWorkerSpawnModel(args: { workspaceId: number; workerId: number; selector: string | null }): Promise<ModelRoute | null> {
-        return this.#workerModels.setWorkerSpawnModel(args);
+    setSessionSpawnModel(args: { workspaceId: number; sessionId: number; selector: string | null }): Promise<ModelRoute | null> {
+        return this.#sessionModels.setSessionSpawnModel(args);
     }
 
-    async #assertWorkerOwned(workspaceId: number, workerId: number): Promise<void> {
-        const owner = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
+    async #assertSessionOwned(workspaceId: number, sessionId: number): Promise<void> {
+        const owner = await this.#db.envelope_get_session_by_id.get<{ workspace_id: number }>({ id: sessionId });
         if (owner === undefined) {
             throw daemonFailure(
-                "daemon:worker",
-                "worker-not-found",
+                "daemon:session",
+                "session-not-found",
                 404,
-                `Worker ${workerId} does not exist.`,
-                { workerId },
+                `Session ${sessionId} does not exist.`,
+                { sessionId },
             );
         }
         if (owner.workspace_id !== workspaceId) {
             throw daemonFailure(
-                "daemon:worker",
+                "daemon:session",
                 "workspace-mismatch",
                 409,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`,
-                { workerId, workspaceId, actualWorkspaceId: owner.workspace_id },
+                `Session ${sessionId} does not belong to workspace ${workspaceId}.`,
+                { sessionId, workspaceId, actualWorkspaceId: owner.workspace_id },
             );
         }
     }
 
     // {§functionality-model-mutation} — await every queued Functionality
-    // publication (a Worker's accepted mutation publishes at its turn boundary).
+    // publication (a Session's accepted mutation publishes at its turn boundary).
     async settleFunctionality(workspaceId?: number): Promise<void> {
         await this.#functionality.settle(workspaceId);
     }
@@ -556,14 +556,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     }
 
     // {§connection-lifecycle} A person's client operation: one administrative loop in the workspace's runtime
-    // worker, attributed to its actor, reading `log:///` in the worker that person acts for
+    // session, attributed to its actor, reading `log:///` in the session that person acts for
     // ({§actor-boundary-client-operations}). The operations' owner runs it; the port's entry points delegate.
     dispatchClientAction(args: {
         workspaceId: number;
         actor: string;
-        contextWorkerId?: number;
+        contextSessionId?: number;
         statements: PlurnkStatement[];
-        onLoop?: (loop: { workerId: number; loopId: number }) => void;
+        onLoop?: (loop: { sessionId: number; loopId: number }) => void;
     }): Promise<Array<{ status: number; [key: string]: unknown }>> {
         return this.#clientOperations.dispatchClientAction(args);
     }
@@ -575,11 +575,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     // {§methods} — the module's render surface beyond the journal. Thin delegations
     // into core's envelope / membership / provider machinery; the module fans the results into its own views.
     listProviders(): ReturnType<ApplicationPort["listProviders"]> {
-        return this.#workerModels.listProviders();
+        return this.#sessionModels.listProviders();
     }
 
     listModels(query: ModelCatalogQuery): ModelCatalogPage {
-        return this.#workerModels.listModels(query);
+        return this.#sessionModels.listModels(query);
     }
 
     // {§client-display-capabilities} Core composes the installed family
@@ -617,96 +617,96 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     #labelled(envelope: WorkspaceEnvelope): ClientEnvelope {
         return { ...envelope, projectLabel: this.#projectLabel(envelope.projectRoot) };
     }
-    async listWorkers(
+    async listSessions(
         workspaceId: number,
-        query: ApplicationWorkerQuery = {},
-    ): Promise<ApplicationWorkerProjection[]> {
+        query: ApplicationSessionQuery = {},
+    ): Promise<ApplicationSessionProjection[]> {
         const origin = query.origin;
         if (origin !== undefined && !["model", "client", "_plurnk"].includes(origin)) {
             throw daemonFailure(
-                "daemon:worker",
+                "daemon:session",
                 "origin-invalid",
                 400,
-                `Worker origin '${origin}' is invalid.`,
+                `Session origin '${origin}' is invalid.`,
                 { origin, retryable: false },
             );
         }
-        const parentWorkerId = query.parentWorkerId === undefined
+        const parentSessionId = query.parentSessionId === undefined
             ? undefined
-            : query.parentWorkerId === null
+            : query.parentSessionId === null
                 ? null
-                : ClientInput.assertId("workspace.workers", "parentWorkerId", query.parentWorkerId);
-        const hidden = query.hidden === undefined ? undefined : ClientInput.assertFlag("workspace.workers", "hidden", query.hidden);
-        // {§methods-worker-list} — an omitted parent filter must stay absent:
+                : ClientInput.assertId("workspace.sessions", "parentSessionId", query.parentSessionId);
+        const hidden = query.hidden === undefined ? undefined : ClientInput.assertFlag("workspace.sessions", "hidden", query.hidden);
+        // {§methods-session-list} — an omitted parent filter must stay absent:
         // the envelope keys the filter on the property's presence, not its value.
-        return await Envelope.listWorkersForWorkspace(
+        return await Envelope.listSessionsForWorkspace(
             this.#db,
-            ClientInput.assertId("workspace.workers", "workspaceId", workspaceId),
+            ClientInput.assertId("workspace.sessions", "workspaceId", workspaceId),
             {
                 ...(origin === undefined ? {} : { origin }),
-                ...(parentWorkerId === undefined ? {} : { parentWorkerId }),
+                ...(parentSessionId === undefined ? {} : { parentSessionId }),
                 ...(hidden === undefined ? {} : { hidden }) },
         );
     }
 
-    async readWorker(args: {
+    async readSession(args: {
         workspaceId: number;
-        identity: ApplicationWorkerIdentity;
-    }): Promise<ApplicationWorkerProjection | null> {
-        const workspaceId = ClientInput.assertId("worker.read", "workspaceId", args.workspaceId);
+        identity: ApplicationSessionIdentity;
+    }): Promise<ApplicationSessionProjection | null> {
+        const workspaceId = ClientInput.assertId("session.read", "workspaceId", args.workspaceId);
         const hasId = Object.hasOwn(args.identity, "id");
         const hasName = Object.hasOwn(args.identity, "name");
         if (hasId === hasName) {
             throw daemonFailure(
-                "daemon:worker",
+                "daemon:session",
                 "identity-invalid",
                 400,
-                "Worker observation requires exactly one id or name.",
+                "Session observation requires exactly one id or name.",
                 { retryable: false },
             );
         }
-        type Row = Omit<ApplicationWorkerProjection, "lifecycle"> & { workspace_id: number; loopObservations: string };
-        // {§worker-name-minting} — a lookup is no minting door: it resolves any name a listing returns,
-        // the runtime worker's `_plurnk` among them.
+        type Row = Omit<ApplicationSessionProjection, "lifecycle"> & { workspace_id: number; loopObservations: string };
+        // {§session-name-minting} — a lookup is no minting door: it resolves any name a listing returns,
+        // the runtime session's `_plurnk` among them.
         const row = hasId
-            ? await this.#db.envelope_get_worker_by_id.get<Row>({
-                id: ClientInput.assertId("worker.read", "id", args.identity.id) })
-            : await this.#db.envelope_get_worker_by_name.get<Row>({
+            ? await this.#db.envelope_get_session_by_id.get<Row>({
+                id: ClientInput.assertId("session.read", "id", args.identity.id) })
+            : await this.#db.envelope_get_session_by_name.get<Row>({
                 workspace_id: workspaceId,
-                name: ClientInput.assertOptionalName("worker.read", "name", args.identity.name)! });
+                name: ClientInput.assertOptionalName("session.read", "name", args.identity.name)! });
         if (row === undefined || row.workspace_id !== workspaceId) return null;
-        const { workspace_id: _workspaceId, ...projection } = projectWorkerRow(row);
+        const { workspace_id: _workspaceId, ...projection } = projectSessionRow(row);
         return projection;
     }
 
-    // {§methods-worker-accounting}
-    async workerAccounting(args: { workspaceId: number; workerId: number }): Promise<ProviderAccounting> {
-        const workspaceId = ClientInput.assertId("worker.accounting", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.accounting", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        return this.#engine.workerAccounting(workerId);
+    // {§methods-session-accounting}
+    async sessionAccounting(args: { workspaceId: number; sessionId: number }): Promise<ProviderAccounting> {
+        const workspaceId = ClientInput.assertId("session.accounting", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.accounting", "sessionId", args.sessionId);
+        await this.#assertSessionOwned(workspaceId, sessionId);
+        return this.#engine.sessionAccounting(sessionId);
     }
 
-    // {§methods-worker-gauge}
-    async workerGauge(args: { workspaceId: number; workerId: number }): Promise<ApplicationGauge> {
-        const workspaceId = ClientInput.assertId("worker.gauge", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.gauge", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        const latest = await this.#db.application_latest_packet_loop.get<{ id: number }>({ worker_id: workerId });
+    // {§methods-session-gauge}
+    async sessionGauge(args: { workspaceId: number; sessionId: number }): Promise<ApplicationGauge> {
+        const workspaceId = ClientInput.assertId("session.gauge", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.gauge", "sessionId", args.sessionId);
+        await this.#assertSessionOwned(workspaceId, sessionId);
+        const latest = await this.#db.application_latest_packet_loop.get<{ id: number }>({ session_id: sessionId });
         if (latest === undefined) return { curationWeight: null, curationBudget: null, contextTokens: null, contextCapacity: null };
         return Engine.clientGauge(await this.#engine.loopGauge(latest.id));
     }
 
-    async listWorkerLoops(args: {
+    async listSessionLoops(args: {
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
     }): Promise<ApplicationLoopProjection[]> {
-        const workspaceId = ClientInput.assertId("worker.loops", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.loops", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        const rows = await this.#db.application_list_worker_loops.all<{
+        const workspaceId = ClientInput.assertId("session.loops", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.loops", "sessionId", args.sessionId);
+        await this.#assertSessionOwned(workspaceId, sessionId);
+        const rows = await this.#db.application_list_session_loops.all<{
             id: number;
-            workerId: number;
+            sessionId: number;
             sequence: number;
             status: number;
             prompt: string;
@@ -716,12 +716,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             terminalResult: string | null;
             packetCount: number;
             waitUntil: number | null;
-            invocationWorkerId: number | null;
+            invocationSessionId: number | null;
             invocation: string | null;
-        }>({ worker_id: workerId });
+        }>({ session_id: sessionId });
         return rows.map((row) => ({
             id: row.id,
-            workerId: row.workerId,
+            sessionId: row.sessionId,
             sequence: row.sequence,
             status: row.status,
             prompt: row.prompt,
@@ -730,29 +730,29 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             terminatedAt: row.terminatedAt,
             packetCount: row.packetCount,
             waitUntil: row.waitUntil,
-            invocation: row.invocation === null || row.invocationWorkerId === null ? null : { workerId: row.invocationWorkerId, address: row.invocation },
+            invocation: row.invocation === null || row.invocationSessionId === null ? null : { sessionId: row.invocationSessionId, address: row.invocation },
             // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
             terminalResult: row.terminalResult === null ? null : Results.fromRow(row.terminalResult) }));
     }
 
-    // {§methods-worker-overview} The places of the daemon, or of one workspace, with what waits there.
-    async readWorkerOverview(args: { readonly workspaceId?: number; readonly limit: number; readonly excerptChars: number }): Promise<ApplicationWorkerOverview> {
-        const workspaceId = args.workspaceId === undefined ? null : ClientInput.assertId("worker.overview", "workspaceId", args.workspaceId);
+    // {§methods-session-overview} The places of the daemon, or of one workspace, with what waits there.
+    async readSessionOverview(args: { readonly workspaceId?: number; readonly limit: number; readonly excerptChars: number }): Promise<ApplicationSessionOverview> {
+        const workspaceId = args.workspaceId === undefined ? null : ClientInput.assertId("session.overview", "workspaceId", args.workspaceId);
         const { limit, excerptChars } = args;
         if (!isSafeInteger(limit) || limit < 1 || !isSafeInteger(excerptChars) || excerptChars < 1) {
-            throw new TypeError("readWorkerOverview takes a positive limit and excerpt length.");
+            throw new TypeError("readSessionOverview takes a positive limit and excerpt length.");
         }
         if (workspaceId !== null && await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId }) === undefined) {
             throw daemonFailure("daemon:workspace", "workspace-not-found", 404, `Workspace ${workspaceId} does not exist.`, { workspaceId });
         }
-        return await WorkerOverview.read(this.#db, {
+        return await SessionOverview.read(this.#db, {
             workspaceId, limit, excerptChars, projectLabel: (projectRoot) => this.#projectLabel(projectRoot),
             // {§acp-status-descendants} The gates the status tree counts: the pending proposals and client interactions.
             pending: async (id) => [...await this.#engine.pendingProposals(id), ...await this.#engine.pendingClientInteractions(id)],
         });
     }
 
-    // {§methods-workspace-prompts}: root-worker loop seeds, newest-first.
+    // {§methods-workspace-prompts}: root-session loop seeds, newest-first.
     // {§share} — one workspace's share. The daemon names its own database; the caller names an absolute folder.
     async shareWorkspace({ workspaceId, folder }: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.share", "workspaceId", workspaceId);
@@ -761,11 +761,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return await Share.write({ openEvidence: EvidenceReader.open, dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
     }
 
-    listPrompts(workspaceId: number, limit?: number, workerId?: number): Promise<string[]> {
+    listPrompts(workspaceId: number, limit?: number, sessionId?: number): Promise<string[]> {
         const checkedWorkspaceId = ClientInput.assertId("workspace.prompts", "workspaceId", workspaceId);
         const checkedLimit = ClientInput.assertLimit("workspace.prompts", limit);
-        const checkedWorkerId = workerId === undefined ? null : ClientInput.assertId("workspace.prompts", "workerId", workerId);
-        return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1), checkedWorkerId);
+        const checkedSessionId = sessionId === undefined ? null : ClientInput.assertId("workspace.prompts", "sessionId", sessionId);
+        return Envelope.listPromptsForWorkspace(this.#db, checkedWorkspaceId, checkedLimit ?? Knob.integer("PLURNK_SERVICE_PROMPTS_PAGE", 1), checkedSessionId);
     }
     // {§methods-workspace-activate} — the demand a turn makes, without the turn: a cold workspace activates,
     // a concurrent demand shares that activation, and the release leaves it warm under the residency policy.
@@ -857,13 +857,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
     }
 
-    // {§worker-external-reference} The adapter interprets the key; core retains its target by identity.
-    async readWorkerReference(args: Parameters<ApplicationPort["readWorkerReference"]>[0]): Promise<Awaited<ReturnType<ApplicationPort["readWorkerReference"]>>> {
-        return WorkerReferences.read(this.#db, args);
+    // {§session-external-reference} The adapter interprets the key; core retains its target by identity.
+    async readSessionReference(args: Parameters<ApplicationPort["readSessionReference"]>[0]): Promise<Awaited<ReturnType<ApplicationPort["readSessionReference"]>>> {
+        return SessionReferences.read(this.#db, args);
     }
 
-    async ensureWorkerReference(args: Parameters<ApplicationPort["ensureWorkerReference"]>[0]): Promise<Awaited<ReturnType<ApplicationPort["ensureWorkerReference"]>>> {
-        const { binding, created } = await WorkerReferences.ensure(this.#db, args);
+    async ensureSessionReference(args: Parameters<ApplicationPort["ensureSessionReference"]>[0]): Promise<Awaited<ReturnType<ApplicationPort["ensureSessionReference"]>>> {
+        const { binding, created } = await SessionReferences.ensure(this.#db, args);
         if (created) {
             const env = await this.attachWorkspace(binding);
             this.#broadcast("all", "workspace/created", { id: env.workspaceId, name: env.workspaceName, projectRoot: env.projectRoot, projectLabel: env.projectLabel });
@@ -871,12 +871,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return binding;
     }
 
-    async listWorkerReferences({ workspaceId, workerId, namespace }: Parameters<ApplicationPort["listWorkerReferences"]>[0]): Promise<string[]> {
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        return (await this.#db.worker_reference_list.all<{ reference: string }>({ namespace, worker_id: workerId })).map(({ reference }) => reference);
+    async listSessionReferences({ workspaceId, sessionId, namespace }: Parameters<ApplicationPort["listSessionReferences"]>[0]): Promise<string[]> {
+        await this.#assertSessionOwned(workspaceId, sessionId);
+        return (await this.#db.session_reference_list.all<{ reference: string }>({ namespace, session_id: sessionId })).map(({ reference }) => reference);
     }
 
-    rollback(args: { workspaceId: number; workerId: number; actor: string; to: string }): Promise<RollbackReport> {
+    rollback(args: { workspaceId: number; sessionId: number; actor: string; to: string }): Promise<RollbackReport> {
         return this.#clientOperations.rollback(args);
     }
 
@@ -900,14 +900,14 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return hiding;
     }
 
-    // {§methods-worker-hide} {§place-hiding}
-    async setWorkerHidden(args: { readonly workspaceId: number; readonly workerId: number; readonly hidden: boolean }): Promise<ApplicationWorkerHiding> {
-        const workspaceId = ClientInput.assertId("worker.hidden", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.hidden", "workerId", args.workerId);
-        const hidden = ClientInput.assertFlag("worker.hidden", "hidden", args.hidden);
-        const hiding = await Places.setWorkerHidden(this.#db, (id) => this.#placeGates(id), workspaceId, workerId, hidden);
-        // {§notifications-worker-hidden}
-        if (hiding.workerIds.length > 0) this.#broadcast({ workspaceId }, "worker/hidden", hiding);
+    // {§methods-session-hide} {§place-hiding}
+    async setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding> {
+        const workspaceId = ClientInput.assertId("session.hidden", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.hidden", "sessionId", args.sessionId);
+        const hidden = ClientInput.assertFlag("session.hidden", "hidden", args.hidden);
+        const hiding = await Places.setSessionHidden(this.#db, (id) => this.#placeGates(id), workspaceId, sessionId, hidden);
+        // {§notifications-session-hidden}
+        if (hiding.sessionIds.length > 0) this.#broadcast({ workspaceId }, "session/hidden", hiding);
         return hiding;
     }
 
@@ -919,11 +919,11 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         };
     }
 
-    // {§methods-worker-create}: a fresh worker is model-origin, with an empty private log.
-    // {§machine-processes} Workers have independent histories within a shared workspace.
-    async createWorker(args: ApplicationWorkerCreation): Promise<{ workerId: number; workerName: string }> {
-        const workspaceId = ClientInput.assertId("worker.create", "workspaceId", args.workspaceId);
-        const name = ClientInput.assertOptionalWorkerName("worker.create", "name", args.name);
+    // {§methods-session-create}: a fresh session is model-origin, with an empty private log.
+    // {§machine-processes} Sessions have independent histories within a shared workspace.
+    async createSession(args: ApplicationSessionCreation): Promise<{ sessionId: number; sessionName: string }> {
+        const workspaceId = ClientInput.assertId("session.create", "workspaceId", args.workspaceId);
+        const name = ClientInput.assertOptionalSessionName("session.create", "name", args.name);
         const workspace = await this.#db.envelope_get_workspace.get<{ id: number }>({ id: workspaceId });
         if (workspace === undefined) {
             throw daemonFailure(
@@ -934,53 +934,53 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
                 { workspaceId },
             );
         }
-        const parentWorkerId = args.parentWorkerId === undefined ? undefined : ClientInput.assertId("worker.create", "parentWorkerId", args.parentWorkerId);
-        if (parentWorkerId !== undefined) {
-            if (args.owner !== undefined) throw daemonFailure("worker:owner", "child-owner-inherited", 400,
-                "A child inherits its parent's owner.", { workspaceId, parentWorkerId });
-            const parent = await this.readWorker({ workspaceId, identity: { id: parentWorkerId } });
-            if (parent === null) throw daemonFailure("worker:owner", "worker-not-found", 404,
-                `Parent worker ${parentWorkerId} does not belong to workspace ${workspaceId}.`, { workspaceId, parentWorkerId });
+        const parentSessionId = args.parentSessionId === undefined ? undefined : ClientInput.assertId("session.create", "parentSessionId", args.parentSessionId);
+        if (parentSessionId !== undefined) {
+            if (args.owner !== undefined) throw daemonFailure("session:owner", "child-owner-inherited", 400,
+                "A child inherits its parent's owner.", { workspaceId, parentSessionId });
+            const parent = await this.readSession({ workspaceId, identity: { id: parentSessionId } });
+            if (parent === null) throw daemonFailure("session:owner", "session-not-found", 404,
+                `Parent session ${parentSessionId} does not belong to workspace ${workspaceId}.`, { workspaceId, parentSessionId });
         } else if (args.owner !== undefined) {
-            await WorkerOwners.registered(this.#db, workspaceId, args.owner);
+            await SessionOwners.registered(this.#db, workspaceId, args.owner);
         }
-        let worker;
-        try { worker = await Envelope.createModelWorker(this.#db, workspaceId, name, parentWorkerId, args.owner); }
+        let session;
+        try { session = await Envelope.createModelSession(this.#db, workspaceId, name, parentSessionId, args.owner); }
         catch (error) {
-            if (name === undefined || !(error instanceof WorkerNameConflictError)) throw error;
-            throw await this.#workerNameConflict(workspaceId, name);
+            if (name === undefined || !(error instanceof SessionNameConflictError)) throw error;
+            throw await this.#sessionNameConflict(workspaceId, name);
         }
-        return { workerId: worker.id, workerName: worker.name };
+        return { sessionId: session.id, sessionName: session.name };
     }
 
-    // {§methods-worker-create} The claim decides a name, so a request that loses it to another, at any moment, is refused alike.
-    async #workerNameConflict(workspaceId: number, name: string): Promise<Error> {
-        const taken = await this.#db.envelope_get_worker_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
+    // {§methods-session-create} The claim decides a name, so a request that loses it to another, at any moment, is refused alike.
+    async #sessionNameConflict(workspaceId: number, name: string): Promise<Error> {
+        const taken = await this.#db.envelope_get_session_by_name.get<{ id: number; origin: string }>({ workspace_id: workspaceId, name });
         return daemonFailure(
-            "daemon:worker",
+            "daemon:session",
             "name-conflict",
             409,
-            `Worker name '${name}' is already in use in workspace ${workspaceId}${taken === undefined ? "" : ` by a ${taken.origin} worker`}.`,
-            { workspaceId, name, ...(taken === undefined ? {} : { actualOrigin: taken.origin }), recovery: "Choose another worker name.", retryable: false },
+            `Session name '${name}' is already in use in workspace ${workspaceId}${taken === undefined ? "" : ` by a ${taken.origin} session`}.`,
+            { workspaceId, name, ...(taken === undefined ? {} : { actualOrigin: taken.origin }), recovery: "Choose another session name.", retryable: false },
         );
     }
 
-    // {§worker-scheme-fork} — branch a worker's log while sharing its workspace.
-    // Core owns the workspace check and immutable worker-name admission.
-    async forkWorker(args: { workspaceId: number; workerId: number; name?: string }): Promise<{ workerId: number; workerName: string | null; parentWorkerId: number }> {
+    // {§session-scheme-fork} — branch a session's log while sharing its workspace.
+    // Core owns the workspace check and immutable session-name admission.
+    async forkSession(args: { workspaceId: number; sessionId: number; name?: string }): Promise<{ sessionId: number; sessionName: string | null; parentSessionId: number }> {
         const workspaceId = ClientInput.assertId("run.fork", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("run.fork", "workerId", args.workerId);
-        const name = ClientInput.assertOptionalWorkerName("run.fork", "name", args.name);
-        // {§machine-processes-worker-origin} A branch is a model's: only a model worker's log forks.
-        await this.#workerModels.assertModelWorker(workspaceId, workerId);
-        let branchWorkerId;
-        try { branchWorkerId = await Fork.fork(this.#db, workerId, name); }
+        const sessionId = ClientInput.assertId("run.fork", "sessionId", args.sessionId);
+        const name = ClientInput.assertOptionalSessionName("run.fork", "name", args.name);
+        // {§machine-processes-session-origin} A branch is a model's: only a model session's log forks.
+        await this.#sessionModels.assertModelSession(workspaceId, sessionId);
+        let branchSessionId;
+        try { branchSessionId = await Fork.fork(this.#db, sessionId, name); }
         catch (error) {
-            if (name === undefined || !(error instanceof WorkerNameConflictError)) throw error;
-            throw await this.#workerNameConflict(workspaceId, name);
+            if (name === undefined || !(error instanceof SessionNameConflictError)) throw error;
+            throw await this.#sessionNameConflict(workspaceId, name);
         }
-        const branch = await this.#db.envelope_get_worker_by_id.get<{ name: string }>({ id: branchWorkerId });
-        return { workerId: branchWorkerId, workerName: branch?.name ?? null, parentWorkerId: workerId };
+        const branch = await this.#db.envelope_get_session_by_id.get<{ name: string }>({ id: branchSessionId });
+        return { sessionId: branchSessionId, sessionName: branch?.name ?? null, parentSessionId: sessionId };
     }
 
     async registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void> {
@@ -1095,10 +1095,10 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return ExecEnv.withoutOwnSecrets(process.env, this.#hostPaths);
     }
 
-    async readWorkerEnvironment(workspaceId: number, workerId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
-        await this.#assertWorkerOwned(workspaceId, workerId);
+    async readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv> {
+        await this.#assertSessionOwned(workspaceId, sessionId);
         const shared = await EnvFunctionality.workspace(this.#db, workspaceId, this.#hostPaths);
-        const row = await this.#db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
+        const row = await this.#db.session_module_state_get.get<{ state: string }>({ session_id: sessionId, namespace_owner: ENV_OWNER });
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
         return (ambient) => EnvFunctionality.compose(shared(ambient).env, state).env;
     }
@@ -1220,57 +1220,57 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
 
         const orphanSources = await this.#db.recovery_orphan_message_sources.all<{
             loop_id: number;
-            worker_id: number;
+            session_id: number;
             origin: string;
         }>({});
         const invalidOrphan = orphanSources.find(({ origin }) => origin !== "model");
         if (invalidOrphan !== undefined) {
             throw new Error(
-                `Orphaned provider work belongs to ${invalidOrphan.origin} worker ${invalidOrphan.worker_id}; only model workers may enter inference.`,
+                `Orphaned provider work belongs to ${invalidOrphan.origin} session ${invalidOrphan.session_id}; only model sessions may enter inference.`,
             );
         }
         for (const source of orphanSources) {
-            await this.#drains.reconcileOrphanedMessages(source.worker_id, source.loop_id);
+            await this.#drains.reconcileOrphanedMessages(source.session_id, source.loop_id);
         }
 
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
-        const queued = await this.#db.recovery_queued_workers.all<{
-            worker_id: number;
+        const queued = await this.#db.recovery_queued_sessions.all<{
+            session_id: number;
             workspace_id: number;
             origin: string;
         }>({});
         const invalidQueued = queued.find(({ origin }) => origin !== "model");
         if (invalidQueued !== undefined) {
             throw new Error(
-                `Queued provider work belongs to ${invalidQueued.origin} worker ${invalidQueued.worker_id}; only model workers may enter inference.`,
+                `Queued provider work belongs to ${invalidQueued.origin} session ${invalidQueued.session_id}; only model sessions may enter inference.`,
             );
         }
-        const parked = await this.#db.recovery_parked_workers.all<{
-            worker_id: number;
+        const parked = await this.#db.recovery_parked_sessions.all<{
+            session_id: number;
             workspace_id: number;
             origin: string;
         }>({});
         const invalidParked = parked.find(({ origin }) => origin !== "model");
         if (invalidParked !== undefined) {
             throw new Error(
-                `Parked provider work belongs to ${invalidParked.origin} worker ${invalidParked.worker_id}; only model workers may enter inference.`,
+                `Parked provider work belongs to ${invalidParked.origin} session ${invalidParked.session_id}; only model sessions may enter inference.`,
             );
         }
         for (const row of queued) {
             const started = await this.#drains.ensureDrain({
                 workspaceId: row.workspace_id,
-                workerId: row.worker_id,
+                sessionId: row.session_id,
                 systemPrompt });
             started?.drainPromise.catch((err: unknown) => {
                 if (this.#started) {
-                    console.error(`recovered drain failed for worker ${row.worker_id}:`, err);
+                    console.error(`recovered drain failed for session ${row.session_id}:`, err);
                 }
             });
         }
         for (const row of parked) {
             await this.#drains.scheduleWakes(
                 row.workspace_id,
-                row.worker_id,
+                row.session_id,
                 systemPrompt,
             );
         }
@@ -1294,19 +1294,19 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const shutdown = deadline ?? new StopDeadline();
 
         // Stop accepting external work immediately, but do not await listener
-        // closure before cancelling active workers: an SSE connection may itself be
-        // waiting for the worker cancellation that follows.
+        // closure before cancelling active sessions: an SSE connection may itself be
+        // waiting for the session cancellation that follows.
         const modulePhases = this.#modules.beginStop();
         const moduleStop = shutdown.settle("modules stop", () => modulePhases.stop());
 
-        // Drain order: (1) tell the supervisor to abort worker scopes so
+        // Drain order: (1) tell the supervisor to abort session scopes so
         // strike paths don't keep going, (2) await its active drains
         // to completion, (3) drain streaming schemes' background work
         // (exec spawn cleanup, channel writes). Only THEN close the DB
         // upstream — drain queries hit the DB right up until they exit.
-        // Abort every worker's cancellation scope — stops in-flight loops AND the
+        // Abort every session's cancellation scope — stops in-flight loops AND the
         // streams (background execs) linked to them, so idle() doesn't block on
-        // a long-running command. Covers workers whose drain already exited but
+        // a long-running command. Covers sessions whose drain already exited but
         // whose exec is still in flight.
         // Settle the stopped world FIRST: a drain paused at a pending proposal awaits a resolution
         // that will never arrive once clients are gone — allSettled(drains) below would deadlock
@@ -1395,7 +1395,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     /**
      * Emit a transient notice scoped to the workspace containing the loop.
      */
-    notifyNotice(workspaceId: number, payload: { workerId: number | null; loopId: number; notice: Notice }): void {
+    notifyNotice(workspaceId: number, payload: { sessionId: number | null; loopId: number; notice: Notice }): void {
         this.#broadcast({ workspaceId }, "notice/event", payload);
     }
 
@@ -1403,26 +1403,26 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#drains.inject(args);
     }
 
-    cancelDrain(workerId: number, reason: string = "user_cancelled"): boolean {
-        return this.#drains.cancel(workerId, reason);
+    cancelDrain(sessionId: number, reason: string = "user_cancelled"): boolean {
+        return this.#drains.cancel(sessionId, reason);
     }
 
-    async cancelWorker(args: {
+    async cancelSession(args: {
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
         reason?: string;
     }): Promise<void> {
-        const workspaceId = ClientInput.assertId("worker.cancel", "workspaceId", args.workspaceId);
-        const workerId = ClientInput.assertId("worker.cancel", "workerId", args.workerId);
-        await this.#assertWorkerOwned(workspaceId, workerId);
-        await this.#drains.cancelWorkerTree(workerId, args.reason ?? "user_cancelled");
+        const workspaceId = ClientInput.assertId("session.cancel", "workspaceId", args.workspaceId);
+        const sessionId = ClientInput.assertId("session.cancel", "sessionId", args.sessionId);
+        await this.#assertSessionOwned(workspaceId, sessionId);
+        await this.#drains.cancelSessionTree(sessionId, args.reason ?? "user_cancelled");
     }
 
     // Process-local stream activity is supplied to the drain owner through the
     // scheme registry rather than exposing that registry across the boundary.
-    #workerHasActiveStreams(workerId: number): boolean {
+    #sessionHasActiveStreams(sessionId: number): boolean {
         const exec = this.#schemes.get("exec");
-        return exec instanceof Exec && exec.hasActiveSpawns(workerId);
+        return exec instanceof Exec && exec.hasActiveSpawns(sessionId);
     }
 
     // {§methods-event-subscribe} — subscriber failures are transport-local:
@@ -1434,12 +1434,12 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    // {§notifications-worker-policy} A worker's generation policy, as readWorkerModel reads it, to its workspace.
-    async #announceWorkerPolicy(workerId: number): Promise<void> {
-        const workspaceId = (await this.#db.drain_get_worker_workspace.get<{ workspace_id: number }>({ worker_id: workerId }))?.workspace_id;
+    // {§notifications-session-policy} A session's generation policy, as readSessionModel reads it, to its workspace.
+    async #announceSessionPolicy(sessionId: number): Promise<void> {
+        const workspaceId = (await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({ session_id: sessionId }))?.workspace_id;
         if (workspaceId === undefined) return;
-        const { model, spawnModel } = await this.#workerModels.readWorkerModel({ workspaceId, workerId });
-        this.#broadcast({ workspaceId }, "worker/policy", { workerId, model, spawnModel });
+        const { model, spawnModel } = await this.#sessionModels.readSessionModel({ workspaceId, sessionId });
+        this.#broadcast({ workspaceId }, "session/policy", { sessionId, model, spawnModel });
     }
 
     #broadcast(target: NotifyTarget, method: string, params?: unknown): void {

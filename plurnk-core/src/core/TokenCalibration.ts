@@ -19,14 +19,14 @@ export default class TokenCalibration {
     }
 
     // The offset a packet of this loop converts with: the loop's own latest sample from the model, else the
-    // model's most recent sample across any loop or worker, else 0.
+    // model's most recent sample across any loop or session, else 0.
     static async forLoop(db: Db, model: string, loopId: number): Promise<number> {
         if (model.length === 0) throw new TypeError("calibration requires the model name the provider reports");
         const own = await db.engine_calibration_loop_sample.get<CalibrationSample>({ model, loop_id: loopId });
         return TokenCalibration.offset(own ?? await db.engine_calibration_model_sample.get<CalibrationSample>({ model }));
     }
 
-    // The model's most recent offset across any loop or worker, else 0.
+    // The model's most recent offset across any loop or session, else 0.
     static async forModel(db: Db, model: string): Promise<number> {
         if (model.length === 0) throw new TypeError("calibration requires the model name the provider reports");
         return TokenCalibration.offset(await db.engine_calibration_model_sample.get<CalibrationSample>({ model }));

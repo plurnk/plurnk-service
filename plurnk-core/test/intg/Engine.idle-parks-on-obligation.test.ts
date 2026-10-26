@@ -1,5 +1,5 @@
 import { serverProposals } from "./_approval.ts";
-// {§send-idle-turn} {§worker-optimistic-settlement}
+// {§send-idle-turn} {§session-optimistic-settlement}
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -53,11 +53,11 @@ started
                 assert.deepEqual(taskStatuses, [200, 200, 202], "two ordinary notes, then an explicit wait");
                 const parked = await running;
                 assert.equal(parked.result.status, 200, "the loop concludes after the parked turn wakes on the stream's end");
-                const errBefore = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: parked.modelWorkerId! });
+                const errBefore = await db.test_error_rows_for_session.all<{ rx: string }>({ session_id: parked.modelSessionId! });
                 assert.deepEqual(errBefore, [], "valid inventory-only work and waiting produced no errors");
                 const idle = await runLoopToTerminal(ws, 3, { prompt: "sit" });
                 assert.equal(idle.result.status, 200);
-                const errAfter = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: idle.modelWorkerId! });
+                const errAfter = await db.test_error_rows_for_session.all<{ rx: string }>({ session_id: idle.modelSessionId! });
                 assert.deepEqual(errAfter, [], "inventory-only work is also valid without a stream");
                 assert.equal(mock.remaining, 0, "each explicitly supplied inventory was processed");
             } finally { ws.close(); }

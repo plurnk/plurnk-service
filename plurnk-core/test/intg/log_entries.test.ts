@@ -1,22 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, seedEnvelope, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import LogEntry from "../../src/server/logEntry.ts";
 import Turn from "../../src/core/Turn.ts";
 import Fork from "../../src/core/fork.ts";
 
 type SqlValue = string | number | bigint | null;
 
-const minimalLog = async (db: Db, ctx: { workerId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
+const minimalLog = async (db: Db, ctx: { sessionId: number; loopId: number; turnId: number }, overrides: Record<string, SqlValue> = {}): Promise<number> => {
     const params: Record<string, SqlValue> = {
-        worker_id: ctx.workerId, loop_id: ctx.loopId, turn_id: ctx.turnId,
+        session_id: ctx.sessionId, loop_id: ctx.loopId, turn_id: ctx.turnId,
         sequence: 1, origin: "model", op: "EDIT",
         source: null,
         signal: null,
-        scheme: "worker", pathname: "/meaning", port: null, query: null,
+        scheme: "workspace", pathname: "/meaning", port: null, query: null,
         lineMarker: null,
-        tx: "````EDIT (worker:///meaning)\n42\n````", mimetype_tx: "text/x-plurnk",
+        tx: "````EDIT (workspace:///meaning)\n42\n````", mimetype_tx: "text/x-plurnk",
         rx: "", mimetype_rx: "text/plain", status_rx: 201,
         weight: 32, attrs: "{}",
         ...overrides,
@@ -30,10 +30,10 @@ test("{§methods-log-coordinate} fetchLogEntry surfaces loop_seq/turn_seq (ordin
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 3);   // loop ordinal 3
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 3);   // loop ordinal 3
         const turnId = await insertTurn(db, loopId, 2);  // turn ordinal 2
-        const id = await minimalLog(db, { workerId, loopId, turnId }, { tx: JSON.stringify("in"), rx: JSON.stringify("out") });
+        const id = await minimalLog(db, { sessionId, loopId, turnId }, { tx: JSON.stringify("in"), rx: JSON.stringify("out") });
         const wire = await LogEntry.fetchLogEntry(db, id);
         assert.equal(wire.loop_seq, 3, "loop ordinal on the wire");
         assert.equal(wire.turn_seq, 2, "turn ordinal on the wire");
@@ -48,13 +48,13 @@ test("{§methods-log-entry-wire} fetchLogEntry preserves causal source and struc
         const ctx = await seedEnvelope(db, `wire-provenance-${crypto.randomUUID()}`);
         const id = await minimalLog(db, ctx, {
             origin: "_plurnk",
-            source: "worker://researcher",
+            source: "session://researcher",
             attrs: JSON.stringify({ kind: "entry_materialized" }),
             tx: JSON.stringify("in"),
             rx: JSON.stringify("out"),
         });
         const wire = await LogEntry.fetchLogEntry(db, id);
-        assert.equal(wire.source, "worker://researcher");
+        assert.equal(wire.source, "session://researcher");
         assert.deepEqual(wire.attrs, { kind: "entry_materialized" });
     } finally { await db.close(); }
 });
@@ -99,12 +99,12 @@ test("{§validation-topology} log_entries: origin enum", async () => {
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: worker, loop, turn, producer, and model-call ownership are one chain", async () => {
+test("{§validation-topology} log_entries: session, loop, turn, producer, and model-call ownership are one chain", async () => {
     const db = await openMigrated();
     try {
         const first = await seedEnvelope(db, `ws-log-owner-a-${crypto.randomUUID()}`);
-        const secondWorker = await insertWorker(db, first.workspaceId);
-        const secondLoop = await insertLoop(db, secondWorker, 1);
+        const secondSession = await insertSession(db, first.workspaceId);
+        const secondLoop = await insertLoop(db, secondSession, 1);
         const secondTurn = await Turn.open(db, { loopId: secondLoop, producer: "client", kind: "operation" });
 
         await assert.rejects(
@@ -125,10 +125,10 @@ test("{§validation-topology} log_entries: worker, loop, turn, producer, and mod
         assert.ok(modelCall !== undefined);
         await assert.rejects(
             () => db.engine_insert_log_entry.get({
-                worker_id: secondWorker, loop_id: secondLoop, turn_id: secondTurn.id,
+                session_id: secondSession, loop_id: secondLoop, turn_id: secondTurn.id,
                 sequence: 1, origin: "client", source: null, model_call_id: modelCall.id,
                 op: "READ",
-                scheme: "worker", username: null, password: null, hostname: null, port: null,
+                scheme: "workspace", username: null, password: null, hostname: null, port: null,
                 pathname: "/wrong-call", query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: "", mimetype_rx: "text/plain",
                 status_rx: 200, weight: 0, state: "resolved", outcome: null, attrs: "{}",
@@ -263,7 +263,7 @@ test("{§log-history-projection} log_entries: a malformed bound curation plan ro
         }
         assert.equal(
             (await db.test_get_log_folded.get<{ folded: string }>({
-                worker_id: ctx.workerId,
+                session_id: ctx.sessionId,
                 loop_seq: 1,
                 turn_seq: 1,
                 sequence: 1,
@@ -325,7 +325,7 @@ test("{§log-history-projection}: every event receives one projection and inacti
         const targetId = await minimalLog(db, ctx, { sequence: 1 });
         assert.deepEqual(
             await db.test_get_log_projection.get({
-                worker_id: ctx.workerId,
+                session_id: ctx.sessionId,
                 loop_seq: 1,
                 turn_seq: 1,
                 sequence: 1,
@@ -352,7 +352,7 @@ test("{§log-history-projection}: every event receives one projection and inacti
             { id: liveId, activeBefore: 1, activeAfter: 0 },
             { id: targetId, activeBefore: 1, activeAfter: 0 },
         ])), [], "one stale target (already retired) withholds the whole plan");
-        assert.equal((await db.test_get_log_projection.get<{ active: number }>({ worker_id: ctx.workerId, loop_seq: 1, turn_seq: 1, sequence: 2 }))?.active, 1, "the valid target was not touched");
+        assert.equal((await db.test_get_log_projection.get<{ active: number }>({ session_id: ctx.sessionId, loop_seq: 1, turn_seq: 1, sequence: 2 }))?.active, 1, "the valid target was not touched");
         assert.deepEqual(await db.log_apply_projection_plan.all(plan([{ id: liveId, activeBefore: 1, activeAfter: 0 }])), [{ id: liveId }], "alone, the valid target lands");
         assert.equal(
             (await db.test_count_log_entries_by_turn.get<{ n: number }>({ turn_id: ctx.turnId }))?.n,
@@ -392,20 +392,20 @@ test("{§log-history-projection}: curation effects are immutable while their eve
             /log curation effects can only be removed with their containing history/,
         );
         assert.equal(
-            (await db.test_log_curation_effects_by_worker.all({ worker_id: ctx.workerId })).length,
+            (await db.test_log_curation_effects_by_session.all({ session_id: ctx.sessionId })).length,
             1,
             "rejected mutation leaves the exact effect intact",
         );
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: worker_id NOT NULL", async () => {
+test("{§validation-topology} log_entries: session_id NOT NULL", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-norun");
         await assert.rejects(
-            () => db.test_log_entries_insert_no_worker_id.run({ loop_id: ctx.loopId, turn_id: ctx.turnId }),
-            /NOT NULL constraint failed: log_entries\.worker_id/,
+            () => db.test_log_entries_insert_no_session_id.run({ loop_id: ctx.loopId, turn_id: ctx.turnId }),
+            /NOT NULL constraint failed: log_entries\.session_id/,
         );
     } finally { await db.close(); }
 });
@@ -414,7 +414,7 @@ test("{§validation-topology} log_entries: each FK rejection path", async () => 
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-fkpaths");
-        await assert.rejects(() => minimalLog(db, ctx, { worker_id: 99999 }),  /FOREIGN KEY constraint failed/);
+        await assert.rejects(() => minimalLog(db, ctx, { session_id: 99999 }),  /FOREIGN KEY constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { loop_id: 99999 }), /FOREIGN KEY constraint failed/);
         await assert.rejects(() => minimalLog(db, ctx, { turn_id: 99999 }), /FOREIGN KEY constraint failed/);
     } finally { await db.close(); }
@@ -438,7 +438,7 @@ test("{§log-history-projection} log_entries: ON DELETE CASCADE via turn", async
         const remaining = (await db.test_log_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 0);
         assert.deepEqual(
-            await db.test_log_curation_effects_by_worker.all({ worker_id: ctx.workerId }),
+            await db.test_log_curation_effects_by_session.all({ session_id: ctx.sessionId }),
             [],
             "containing-history teardown still cascades immutable effects",
         );
@@ -460,13 +460,13 @@ test("{§emission-row}: the schema admits an emission row only as one born-folde
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `emission-row-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1);
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         const content = "```READ (a.md)\n```";
         const emission = async (overrides: Record<string, SqlValue> = {}): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: turn.id, sequence: 1,
+                session_id: sessionId, loop_id: loopId, turn_id: turn.id, sequence: 1,
                 origin: "_plurnk", source: null, model_call_id: null, op: "READ", signal: null,
                 scheme: "ops", username: null, password: null, hostname: "alice", port: null,
                 pathname: `/1/${turn.sequence}`, query: null, fragment: null, lineMarker: null,
@@ -488,10 +488,10 @@ test("{§emission-row}: the schema admits an emission row only as one born-folde
             [{ initial_folded: "[]" }, "born folded: the emission rides outside its record"],
             [{ rx: JSON.stringify({ status: 200, content: "", mimetype: "text/vnd.plurnk" }) }, "an admitted emission is never empty"],
             [{ pathname: `/1/${turn.sequence + 1}` }, "of its own turn"],
-            [{ hostname: "bob" }, "a row the worker wrote names the worker"],
+            [{ hostname: "bob" }, "a row the session wrote names the session"],
         ];
         for (const [overrides, reason] of shapes) await assert.rejects(() => emission(overrides), refused, reason);
-        await minimalLog(db, { workerId, loopId, turnId: turn.id }, { sequence: 5 });
+        await minimalLog(db, { sessionId, loopId, turnId: turn.id }, { sequence: 5 });
         await assert.rejects(() => emission({ sequence: 3 }), refused, "written before the turn's operations, so never behind one");
         const id = await emission({ sequence: 6 });
         await assert.rejects(() => emission({ sequence: 7 }), /UNIQUE constraint failed: log_entries\.turn_id/, "one announcement per turn");
@@ -504,12 +504,12 @@ test("{§emission-row}: the schema admits an emission row only as one born-folde
         await Turn.recordSource(db, operation.id, "ops", content);
         await assert.rejects(() => emission({ turn_id: operation.id, pathname: `/1/${operation.sequence}` }), refused, "a programmatic turn does not admit an emission");
         await Turn.complete(db, operation.id, 200);
-        const branch = await Fork.fork(db, workerId, "branch");
+        const branch = await Fork.fork(db, sessionId, "branch");
         assert.deepEqual(
-            (await db.test_emission_rows_by_worker.all<{ coordinate: string; hostname: string; pathname: string }>({ worker_id: branch }))
+            (await db.test_emission_rows_by_session.all<{ coordinate: string; hostname: string; pathname: string }>({ session_id: branch }))
                 .map(({ coordinate, hostname, pathname }) => ({ coordinate, hostname, pathname })),
             [{ coordinate: `1/${turn.sequence}/6`, hostname: "alice", pathname: `/1/${turn.sequence}` }],
-            "a fork's inherited copy keeps naming the worker that wrote it",
+            "a fork's inherited copy keeps naming the session that wrote it",
         );
         assert.deepEqual(await db.log_apply_projection_plan.all(plan("[]", 0)), [{ id }], "a whole KILL retires it");
     } finally { await db.close(); }

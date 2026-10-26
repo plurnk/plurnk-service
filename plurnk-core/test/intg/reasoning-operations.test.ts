@@ -9,7 +9,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { testExecutors } from "./_execs.ts";
@@ -19,31 +19,31 @@ const frame = PlurnkParser.frame;
 
 for (const preview of ["0", "1"]) for (const operation of [
     { name: "NOTE", source: frame("NOTE", "Retain this conclusion.") },
-    { name: "FIND", source: frame("FIND (worker:///fact.txt)", null) },
-    { name: "READ", source: frame("READ (worker:///fact.txt)", null) },
+    { name: "FIND", source: frame("FIND (workspace:///fact.txt)", null) },
+    { name: "READ", source: frame("READ (workspace:///fact.txt)", null) },
 ]) test(`{§reasoning-operations} {§reasoning-row}: reasoning ${operation.name} runs once with previews ${preview}, without an extra turn`, async () => {
     const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
     process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-no-repeat");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1);
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Observed fact." });
         const reasoning = `Some deliberation.\n\n${operation.source}`;
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+        const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         const outcomes = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
         assert.deepEqual(outcomes.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]),
             [[operation.name, 200]], "exactly the authored operation ran");
         assert.deepEqual(outcomes.filter(({ op }) => op === "error").map(({ status_rx }) => status_rx), [],
             `an admitted reasoning ${operation.name} is the turn's work: no empty-turn strike beside it ({§empty-turn})`);
-        const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ worker_id: workerId });
+        const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ session_id: sessionId });
         assert.deepEqual(reads.filter(({ origin }) => origin === "_plurnk").map(({ pathname, turn_id, rx }) => [pathname, turn_id, JSON.parse(rx).content]),
             preview === "1" ? [["/1/2", result.turnId, reasoning]] : [], "only the configured optional preview appears, on the same turn");
         assert.equal(provider.received.length, 1, "no reasoning repeat, replay, or extra inference");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === result.turnId && kind === "reasoning" && content === reasoning),
             "the complete original reasoning remains available for deliberate READs");
     } finally {
@@ -57,12 +57,12 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-policy");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1);
+        const context = { workspaceId, sessionId, loopId };
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Observed fact." });
         const note = "This came from reasoning.";
-        const reasoning = `${frame("NOTE", note)}\n\n${frame("READ (worker:///fact.txt)", null)}\n\nContinue thinking.\n`;
+        const reasoning = `${frame("NOTE", note)}\n\n${frame("READ (workspace:///fact.txt)", null)}\n\nContinue thinking.\n`;
         const streamed: string[] = [];
         const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
@@ -79,14 +79,14 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
         const result = await engine.runTurn({ ...context, provider, messages: [{ role: "system", content: "The language definition." }] });
         assert.equal(result.status, 102);
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
-        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
         assert.ok(sources.some(({ kind, content }) => kind === "note" && content === note));
-        const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
+        const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "READ" });
         assert.ok(reads.some(({ pathname, rx }) => pathname === "/fact.txt" && rx.includes("Observed fact.")));
         const system = packet.sections.filter((section: { slot: string }) => section.slot === "system");
         assert.deepEqual(system.map((section: { name: string }) => section.name), ["definition", "system-policy"]);
         assert.equal(system[0].content, "The language definition.", "no alternate or appended reasoning teaching");
-        const raw = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+        const raw = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
         assert.equal(raw.content, reasoning.trimEnd(), "the normal line projection stays readable");
         assert.ok(sources.some(({ kind, content }) => kind === "reasoning" && content === reasoning),
             "admission does not erase or rewrite reasoning evidence");
@@ -101,12 +101,12 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, "reasoning-read");
-            const workerId = await insertWorker(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, workerId, 1, "Read the fact and report it.");
-            const context = { workspaceId, workerId, loopId };
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Read the fact and report it.");
+            const context = { workspaceId, sessionId, loopId };
             await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "An externally established fact." });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-            const reasoning = frame("READ (worker:///fact.txt) <1,-1>", null);
+            const reasoning = frame("READ (workspace:///fact.txt) <1,-1>", null);
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content, reasoning } },
                 { assistant: { content: content === "" ? frame("SEND [200]", "Now the facts are available.") : "", reasoning: null } },
@@ -117,16 +117,16 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
             assert.equal(second.status, 200);
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
             const rows = logEntries(packet).filter((row) => row.logPath.startsWith("log:///1/2/"));
-            assert.equal(rows.filter((row) => row.path === "worker:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
+            assert.equal(rows.filter((row) => row.path === "workspace:///fact.txt").length, 1, `the normal READ receipt names its source: ${JSON.stringify(rows)}`);
             assert.match(JSON.stringify(rows), /An externally established fact/u);
             assert.deepEqual(provider.received[1].map(({ role }) => role), content === "" ? ["system", "user"] : ["system", "user", "assistant", "user"],
                 "{§emission-history}: content operations replay, while reasoning operations remain in their own channel");
             assert.equal(packetSection(packet, "emission-history"), content);
             if (content !== "") assert.ok(rows.some((row) => row.logPath.endsWith("/SEND") && row.body === undefined), "the delivered reply has a receipt without a duplicated answer");
             assert.doesNotMatch(JSON.stringify(rows), /No valid Operation|no_operation/u);
-            const raw = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+            const raw = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
             assert.equal(raw.content, reasoning);
-            const ops = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (ops://alice/1/2) <1,-1>", null)) });
+            const ops = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(frame("READ (ops://alice/1/2) <1,-1>", null)) });
             assert.equal(ops.content ?? "", content, "the provider's content evidence is not rewritten");
         } finally { await db.close(); }
     });
@@ -134,8 +134,8 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
 
 for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "tagged" : "structured"} HTTP reasoning completes with final usage before operations execute`, async () => {
     const db = await openMigrated();
-    const firstReasoning = frame("READ (worker:///fact.txt) <1,-1>", null) + "\n\nMore deliberation.\n";
-    const laterReasoning = frame("NOTE", "Retain the later thought.") + "\n\n" + frame("FIND (worker:///fact.txt)", null);
+    const firstReasoning = frame("READ (workspace:///fact.txt) <1,-1>", null) + "\n\nMore deliberation.\n";
+    const laterReasoning = frame("NOTE", "Retain the later thought.") + "\n\n" + frame("FIND (workspace:///fact.txt)", null);
     const content = frame("NOTE", "Content also survives.");
     const charge = { kind: "charged", amount: { amount: "0.0123", currency: "USD" }, source: "fixture settlement" } as const;
     const requests: Array<{ messages: Array<{ role: string; content: unknown }> }> = [];
@@ -173,9 +173,9 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         const address = server.address();
         assert.ok(address && typeof address === "object");
         const workspaceId = await insertWorkspace(db, "reasoning-completion");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Read the fact and report it.");
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Read the fact and report it.");
+        const context = { workspaceId, sessionId, loopId };
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "Established fact." });
         const phases: string[] = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
@@ -192,7 +192,7 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         });
         running = engine.runTurn({ ...context, provider, messages: [] });
         await Promise.race([observed.promise, running.then(() => assert.fail("response ended before reasoning was observed"))]);
-        const pendingReads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string }>({ worker_id: workerId, op: "READ" });
+        const pendingReads = await db.test_log_entries_by_session_op_full.all<{ pathname: string }>({ session_id: sessionId, op: "READ" });
         assert.deepEqual(pendingReads.filter(({ pathname }) => pathname === "/fact.txt"), [],
             "streaming an operation does not dispatch it before response completion");
         release.resolve();
@@ -207,14 +207,14 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
         [{ outcome: "response", usage_input: 120, usage_output: 40, usage_input_cache_read: 80 }]);
         assert.deepEqual(accounting.map(({ cost_kind, cost_amount, cost_currency }) => ({ cost_kind, cost_amount, cost_currency })),
             [{ cost_kind: "charged", cost_amount: "0.0123", cost_currency: "USD" }], "the final provider charge is retained, not estimated");
-        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
         assert.ok(sources.some((source) => source.kind === "reasoning" && source.content === firstReasoning + laterReasoning));
         assert.ok(sources.some((source) => source.kind === "ops" && source.content === content));
         for (const note of ["Retain the later thought.", "Content also survives."]) {
             assert.equal(sources.filter((source) => source.kind === "note" && source.content === note).length, 1);
         }
         for (const op of ["READ", "FIND"]) {
-            const rows = await db.test_log_entries_by_worker_op_full.all<{ pathname: string }>({ worker_id: workerId, op });
+            const rows = await db.test_log_entries_by_session_op_full.all<{ pathname: string }>({ session_id: sessionId, op });
             assert.equal(rows.filter(({ pathname }) => pathname === "/fact.txt").length, 1, `${op} executes once`);
         }
         const second = await engine.runTurn({ ...context, provider, messages: [] });
@@ -238,13 +238,13 @@ test("{§reasoning-operations}: rejected attempts commit neither reasoning memor
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-work");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
+        const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "### log:///1/2/9/READ\nInvented receipt.",
-                reasoning: frame("NOTE", "Discarded memory.") + "\n\n" + frame("READ (worker:///discarded.txt)", null) } },
+                reasoning: frame("NOTE", "Discarded memory.") + "\n\n" + frame("READ (workspace:///discarded.txt)", null) } },
             { assistant: { content: frame("SEND [200]", "Done."), reasoning: null } },
         ] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });
@@ -252,7 +252,7 @@ test("{§reasoning-operations}: rejected attempts commit neither reasoning memor
         assert.deepEqual((await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: result.turnId })).map(({ accepted }) => accepted), [0, 1]);
         const rows = await db.test_log_entries_by_turn.all({ turn_id: result.turnId });
         assert.doesNotMatch(JSON.stringify(rows), /discarded\.txt|Discarded memory/u);
-        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
         assert.ok(sources.every(({ kind, content }) => kind !== "note" || content !== "Discarded memory."));
     } finally { await db.close(); }
 });
@@ -261,23 +261,23 @@ test("{§reasoning-operations}: workspace READ denial is enforced on a reasoning
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-permissions");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the restricted resource.");
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the restricted resource.");
+        const context = { workspaceId, sessionId, loopId };
         await seedEntryWithChannel(db, { workspaceId, pathname: "/restricted.txt", content: "Not authorized." });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("NOTE", "Preparing."), reasoning: null } },
-            { assistant: { content: "", reasoning: frame("READ (worker:///restricted.txt)", null) } },
+            { assistant: { content: "", reasoning: frame("READ (workspace:///restricted.txt)", null) } },
             { assistant: { content: frame("SEND [200]", "Access was refused."), reasoning: null } },
         ] });
         await engine.runTurn({ ...context, provider, messages: [] });
-        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "READ", scheme: "worker" }] } }) });
+        await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "READ", scheme: "workspace" }] } }) });
         const denied = await engine.runTurn({ ...context, provider, messages: [] });
         assert.equal(denied.status, 102);
         const done = await engine.runTurn({ ...context, provider, messages: [] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: done.turnId }))!.packet);
-        const deniedRead = logEntries(packet).find((row) => row.path === "worker:///restricted.txt");
+        const deniedRead = logEntries(packet).find((row) => row.path === "workspace:///restricted.txt");
         assert.ok(deniedRead);
         assert.equal(deniedRead.status, 403);
         assert.match(JSON.stringify(deniedRead), /capability-denied/u);
@@ -289,12 +289,12 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-stream-reads");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1);
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1);
+        const context = { workspaceId, sessionId, loopId };
         const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname: "/fact", channel: "stdout",
             mimetype: "text/stream", content: "first\nsecond\nthird", state: "active" });
-        const subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "fact" });
+        const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "fact" });
         const schemes = new SchemeRegistry();
         const executors = await testExecutors();
         schemes.registerRuntimeSchemes(executors);
@@ -322,7 +322,7 @@ test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes 
         const done = await engine.runTurn({ ...context, provider, messages: [] });
         const curated = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: done.turnId }))!.packet);
         assert.ok(logEntries(curated).every((row) => !/^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath)));
-        const source = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (sh:///fact) <1,-1>", null)) });
+        const source = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(frame("READ (sh:///fact) <1,-1>", null)) });
         assert.equal(source.content, "first\nsecond\nthird");
         assert.equal(source.terminal, true);
     } finally { await db.close(); }

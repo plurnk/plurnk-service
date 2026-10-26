@@ -24,7 +24,7 @@ const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvel
     const statuses: number[] = [];
     for (const [i, statement] of statements.entries()) {
         const result = await engine.dispatch({
-            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: i + 1, origin: "model",
         });
         statuses.push(result.status);
@@ -37,16 +37,16 @@ test("{§entry-owner} parser roundtrip: EDIT writes the resource", async () => {
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const stmt = parseOne("````EDIT (worker:///countries/france/capital)\nParis\n````") as EditStatement;
+        const stmt = parseOne("````EDIT (workspace:///countries/france/capital)\nParis\n````") as EditStatement;
         const result = await engine.dispatch({
             statement: stmt,
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
         const entry = await db.test_parser_entries_first.get<{ workspace_id: number; scheme: string; pathname: string }>();
         assert.ok((entry?.workspace_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
-        assert.equal(entry?.scheme, "worker");
+        assert.equal(entry?.scheme, "workspace");
         assert.equal(entry?.pathname, "/countries/france/capital");
         const body = await db.test_parser_body_first.get<{ content: string }>();
         assert.equal(body?.content, "Paris");
@@ -61,8 +61,8 @@ test("{§empty-section} parser roundtrip: an empty EDIT section performs a scope
         const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const statements = [
-            parseOne("````EDIT (worker:///scoped-delete)\nalpha\nbeta\ngamma\n````"),
-            parseOne("````EDIT (worker:///scoped-delete) <2>````"),
+            parseOne("````EDIT (workspace:///scoped-delete)\nalpha\nbeta\ngamma\n````"),
+            parseOne("````EDIT (workspace:///scoped-delete) <2>````"),
         ];
 
         assert.deepEqual(await dispatch(engine, env, statements), [201, 200]);
@@ -76,15 +76,15 @@ test("{§op-execution-order} parser roundtrip: multi-statement text parses + dis
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-multi");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const text = `\`\`\`\`EDIT (worker:///a)
+        const text = `\`\`\`\`EDIT (workspace:///a)
 first
 \`\`\`\`
 
-\`\`\`\`EDIT (worker:///b)
+\`\`\`\`EDIT (workspace:///b)
 second
 \`\`\`\`
 
-\`\`\`\`EDIT (worker:///c)
+\`\`\`\`EDIT (workspace:///c)
 third
 \`\`\`\``;
         const statements = parseAll(text);
@@ -106,14 +106,14 @@ test("{§universal-read-composition} parser roundtrip: EDIT followed by READ rea
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
         await engine.dispatch({
-            statement: parseOne("````EDIT (worker:///france)\nThe capital is Paris.\n````"),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: parseOne("````EDIT (workspace:///france)\nThe capital is Paris.\n````"),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
 
         const readResult = await engine.dispatch({
-            statement: parseOne("````READ (worker:///france)````"),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: parseOne("````READ (workspace:///france)````"),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(readResult.status, 200);
@@ -130,7 +130,7 @@ test("{§scheme-address-network} parser roundtrip: HTTP-shape path still decompo
         const stmt = parseOne("````READ (https://en.wikipedia.org/wiki/Paris)````") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await db.test_parser_log_first.get<{ scheme: string; hostname: string | null; pathname: string }>();
@@ -146,14 +146,14 @@ test("{§fence-boundary} parser roundtrip: real DSL preserves serialized query +
         const env = await seedEnvelope(db, "ws-roundtrip-params");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        const stmt = parseOne("````READ (worker:///france?lang=fr#History)````") as ReadStatement;
+        const stmt = parseOne("````READ (workspace:///france?lang=fr#History)````") as ReadStatement;
         await engine.dispatch({
             statement: stmt,
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await db.test_parser_log_first.get<{ scheme: string; hostname: string | null; pathname: string; query: string | null; fragment: string | null }>();
-        assert.equal(log?.scheme, "worker");
+        assert.equal(log?.scheme, "workspace");
         assert.equal(log?.hostname, null);
         assert.equal(log?.pathname, "/france");
         assert.equal(log?.query, "lang=fr");
@@ -168,9 +168,9 @@ const stripVolatile = (stmt: PlurnkStatement): object => {
 };
 
 for (const [header, body] of [
-    ["EDIT (worker:///countries/france/capital)", "Paris"],
-    ["FIND (worker:///users.json) $.name", ""],
-    ["SEND (worker:///result)", "Paris"],
+    ["EDIT (workspace:///countries/france/capital)", "Paris"],
+    ["FIND (workspace:///users.json) $.name", ""],
+    ["SEND (workspace:///result)", "Paris"],
     ["sh", "uname -r"],
 ]) {
     test(`{§fence-boundary} parser: fence length does not change the AST (${header})`, () => {
@@ -182,8 +182,8 @@ for (const [header, body] of [
 }
 
 test("{§fence-closer} parser: a 3-backtick block stays literal in a 4-backtick body", () => {
-    const body = "quoted section:\n```EDIT (worker:///inner)\nhello\n```";
-    const stmts = parseAll(`\`\`\`\`EDIT (worker:///demo)\n${body}\n\`\`\`\``);
+    const body = "quoted section:\n```EDIT (workspace:///inner)\nhello\n```";
+    const stmts = parseAll(`\`\`\`\`EDIT (workspace:///demo)\n${body}\n\`\`\`\``);
     assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
     assert.equal(stmts[0]?.op, "EDIT");
     assert.equal((stmts[0]).body, body);
@@ -192,12 +192,12 @@ test("{§fence-closer} parser: a 3-backtick block stays literal in a 4-backtick 
 // {§unclosed-mutation-yields}: an example inside an EDIT is written with a wider fence; at the
 // EDIT's own width a native heading is an operation, closed or not.
 test("{§unclosed-mutation-yields} parser: an equal-width EDIT heading inside an EDIT body runs; a wider fence holds it as body", () => {
-    const body = "quoted section:\n````EDIT (worker:///inner)\nhello\n````";
-    const bare = parseAll("````EDIT (worker:///demo)\n" + body + "\n````");
+    const body = "quoted section:\n````EDIT (workspace:///inner)\nhello\n````";
+    const bare = parseAll("````EDIT (workspace:///demo)\n" + body + "\n````");
     assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "at equal width the inner heading is a second mutation");
     assert.equal((bare[0] as EditStatement).body, "quoted section:");
     assert.equal((bare[1] as EditStatement).body, "hello");
-    const wider = parseAll("`````EDIT (worker:///demo)\n" + body + "\n`````");
+    const wider = parseAll("`````EDIT (workspace:///demo)\n" + body + "\n`````");
     assert.equal(wider.length, 1, "a wider fence holds the quoted heading as body");
     assert.equal((wider[0] as EditStatement).body, body);
 });

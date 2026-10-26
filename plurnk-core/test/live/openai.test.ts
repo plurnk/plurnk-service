@@ -17,7 +17,7 @@ test("live OpenAI: a multi-turn loop consumes a next-packet READ result and conc
         // Completion after actions is enforced by the runtime, not by the grammar.
         const secret = crypto.randomUUID().slice(0, 8);
         await seedEntry(s.db, s.workspaceId, { pathname: "vault/code.md", content: `the access code is ${secret}` });
-        const userPrompt = "What is the access code stored at worker:///vault/code.md? Tell me in one sentence.";
+        const userPrompt = "What is the access code stored at workspace:///vault/code.md? Tell me in one sentence.";
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { signal: t.signal });
 
         const turns = await Promise.all(turnIds.map(async (turnId) => ({
@@ -49,7 +49,7 @@ test("live OpenAI: a multi-turn loop consumes a next-packet READ result and conc
 test("live OpenAI: a single-shot store-and-reply terminates cleanly", async (t) => {
     const s = await liveWorkspace({ name: `live-smoke-${crypto.randomUUID()}` });
     try {
-        const userPrompt = "What is the capital of France? Store the answer under worker:///france/capital and conclude with the answer.";
+        const userPrompt = "What is the capital of France? Store the answer under workspace:///france/capital and conclude with the answer.";
         const { finalStatus, turnIds, lastContent } = await liveLoop(s, 2, { prompt: userPrompt, maxTurns: 6 }, { signal: t.signal });
 
         assert.equal(finalStatus, 200, `single-shot store-and-reply must conclude successfully; got ${finalStatus}`);
@@ -58,9 +58,9 @@ test("live OpenAI: a single-shot store-and-reply terminates cleanly", async (t) 
 
         const stored = await s.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/france/capital",
-            scheme: "worker",
+            scheme: "workspace",
             name: "body",
         });
-        assert.match(stored?.content ?? "", /\bParis\b/i, "worker:///france/capital contains the answer");
+        assert.match(stored?.content ?? "", /\bParis\b/i, "workspace:///france/capital contains the answer");
     } finally { await s.cleanup(); }
 });

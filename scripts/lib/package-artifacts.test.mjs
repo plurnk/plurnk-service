@@ -99,7 +99,7 @@ test("{§packed-projection} PDF package projection rejects the fixture builder",
 
 test("{§packed-projection} first-party teaching sources are required packed runtime inputs", () => {
     for (const [owner, paths] of [
-        ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/references/extensibility.md", "docs/worker.md", "docs/pattern.md", "docs/delegation.md"]],
+        ["plurnk-meta", ["skills/plurnk/SKILL.md", "skills/plurnk/references/extensibility.md", "docs/session.md", "docs/pattern.md", "docs/delegation.md"]],
         ["plurnk-skills", ["docs/skills.md"]],
         ["plurnk-providers", ["docs/models.md"]],
     ]) {

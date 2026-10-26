@@ -9,7 +9,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { digestStems } from "./_packet.ts";
 
 test("{§emission-history} {§digest-forensic-fidelity}: stored and shared requests preserve interpolated assistant messages byte for byte", async () => {
@@ -18,16 +18,16 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
     const digestDir = join(dir, "digest");
     const frame = PlurnkParser.frame;
     const provider = new Mock({ contextWindow: 100000, responses: [
-        { assistant: { content: frame("EDIT (worker:///memo.md)", "The complete replacement."), reasoning: null } },
-        { assistant: { content: frame("READ (worker:///memo.md)", null), reasoning: null } },
+        { assistant: { content: frame("EDIT (workspace:///memo.md)", "The complete replacement."), reasoning: null } },
+        { assistant: { content: frame("READ (workspace:///memo.md)", null), reasoning: null } },
         { assistant: { content: frame("SEND [200]", "Done."), reasoning: null } },
     ] });
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "interpolated-evidence");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1, "Write and read.");
-        const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1, "Write and read.");
+        const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
         assert.equal(result.result.status, 200);
         assert.equal(provider.received.length, 3);
     } finally { await db.close(); }
@@ -87,12 +87,12 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
         const db = await openMigrated(dbPath);
         try {
             const workspaceId = await insertWorkspace(db, "wire-evidence");
-            const workerId = await insertWorker(db, workspaceId, null, "analyst");
+            const sessionId = await insertSession(db, workspaceId, null, "analyst");
             // A workspace entry, so the workspace survey selects something and the initialization program exists.
-            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
-            const loopId = await insertLoop(db, workerId, 1, "inspect");
+            await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
+            const loopId = await insertLoop(db, sessionId, 1, "inspect");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Inspect." }] });
+            const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Inspect." }] });
             assert.equal(result.result.status, 200);
             assert.equal(result.turnIds.length, 3, "initialization, one empty turn, then the answer");
             const first = result.turnIds[1];

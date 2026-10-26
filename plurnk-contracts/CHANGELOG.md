@@ -38,7 +38,7 @@
   `registerFunctionalityAdapter` infers both from the adapter it registers.
 - 0cee49c: Workspaces and workers hide and show by a durable mark ({§place-hiding}):
   `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
-  {§methods-worker-hide}). A worker's hide covers its subtree as one group;
+  {§methods-session-hide}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group
   and workspace. `listWorkspaces` and `listWorkers` take `hidden` and carry
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
@@ -79,17 +79,17 @@
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
   ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
-  ({§methods-worker-streams}). `stream/event`'s `contentLength` counts Unicode
+  ({§methods-session-streams}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
-  reported ({§notifications-loop-packet}, {§methods-worker-gauge}). AG-UI moves
+  reported ({§notifications-loop-packet}, {§methods-session-gauge}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
   a reattached observer agree ({§acp-state-patches}).
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-worker-overview}, {§worker-finished-reply},
-  {§application-worker-overview}); `excerptOf` is the one list excerpt rule
+  finished first and bounded ({§methods-session-overview}, {§session-finished-reply},
+  {§application-session-overview}); `excerptOf` is the one list excerpt rule
   ({§list-excerpt}). `workspace/renamed` announces a rename
   ({§notifications-workspace-renamed}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding

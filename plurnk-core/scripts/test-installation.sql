@@ -4,13 +4,13 @@
 -- PREP: installation_insert_workspace
 INSERT INTO workspaces (name) VALUES ($name) RETURNING id;
 
--- PREP: installation_insert_worker
-INSERT INTO workers (workspace_id, name, origin)
+-- PREP: installation_insert_session
+INSERT INTO sessions (workspace_id, name, origin)
 VALUES ($workspace_id, $name, 'model') RETURNING id;
 
 -- PREP: installation_insert_loop
-INSERT INTO loops (worker_id, sequence, prompt, max_turns)
-VALUES ($worker_id, 1, $prompt, -1) RETURNING id;
+INSERT INTO loops (session_id, sequence, prompt, max_turns)
+VALUES ($session_id, 1, $prompt, -1) RETURNING id;
 
 -- PREP: installation_insert_turn
 INSERT INTO turns (loop_id, sequence, producer, kind, status)
@@ -27,7 +27,7 @@ VALUES ($turn_id, 'ops', $content);
 SELECT entries.workspace_id, entries.pathname, entry_channels.content
 FROM entries
 JOIN entry_channels ON entry_channels.entry_id = entries.id
-WHERE entries.scheme = 'worker'
+WHERE entries.scheme = 'workspace'
   AND (
     entries.pathname LIKE '/_plurnk/skills/%'
     OR entries.pathname LIKE '/_plurnk/plurnk/%'

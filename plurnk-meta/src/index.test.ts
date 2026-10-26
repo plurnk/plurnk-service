@@ -8,7 +8,7 @@ import Meta, { TEACHING_CORPUS, type ExtensionAttributionContext } from "./index
 
 const attributionContext: ExtensionAttributionContext = {
     workspaceId: "workspace-7",
-    workerId: "worker-11",
+    sessionId: "session-11",
     loop: 2,
     turn: 4,
     attempt: 1,
@@ -21,8 +21,8 @@ test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact im
         skill: "skills/plurnk/SKILL.md",
         skillChapters: { extensibility: "skills/plurnk/references/extensibility.md" },
         docs: {
-            worker: { source: "docs/worker.md", scheme: "worker" },
-            delegation: { source: "docs/delegation.md", scheme: "worker" },
+            session: { source: "docs/session.md", scheme: "session" },
+            delegation: { source: "docs/delegation.md", scheme: "session" },
             pattern: { source: "docs/pattern.md", scheme: null },
         },
     });

@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import Log from "../../src/schemes/Log.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
 import { killStmt, urlPath } from "./_dsl.ts";
@@ -34,14 +34,14 @@ test("{§subscriptions-fold-keeps-subscription} scoped KILL on a streaming exec'
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-fold-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "fold keeps stream");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "fold keeps stream");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(null, "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -57,16 +57,16 @@ test("{§subscriptions-fold-keeps-subscription} scoped KILL on a streaming exec'
         const streaming = await waitForDb(async () => db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entryRow!.id, name: "stdout" }),
             (row) => (row?.content.length ?? 0) > 0 || (row !== undefined && row.state !== "active"));
         assert.equal(streaming?.state, "active", "the process still runs");
-        const scoped = await new Log().kill(killStmt(urlPath("log", "/1/1/1"), { marks: [1, -1] }), makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, writer: "model" }));
+        const scoped = await new Log().kill(killStmt(urlPath("log", "/1/1/1"), { marks: [1, -1] }), makeSchemeCtx({ db, workspaceId, sessionId, loopId, turnId, writer: "model" }));
         assert.equal(scoped.status, 200, "a scoped KILL of the exec log row succeeds");
 
         // The subscription is STILL open — scoped KILL touched body visibility, not the registry.
-        const midSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ worker_id: workerId, entry_id: entryRow!.id });
+        const midSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ session_id: sessionId, entry_id: entryRow!.id });
         assert.equal(midSub?.closed_at, null, "scoped KILL did not cancel the live subscription");
 
         // The stream runs to its own completion, closing 200 (never 499 from the scoped KILL).
         await exec.idle();
-        const endSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null; close_status: number | null }>({ worker_id: workerId, entry_id: entryRow!.id });
+        const endSub = await db.test_get_subscription_by_entry.get<{ closed_at: string | null; close_status: number | null }>({ session_id: sessionId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closes on the spawn's own exit");
         assert.equal(endSub?.close_status, 200, "clean 200 exit, not a 499 cancellation");
     } finally { await db.close(); }

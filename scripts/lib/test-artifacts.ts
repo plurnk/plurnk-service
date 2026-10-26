@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { benchmarksRoot } from "./benchmarks-root.mjs";
 
-// {§test-artifact-retention} — one home for every harness. A live worker, a benchlet run and an
+// {§test-artifact-retention} — one home for every harness. A live session, a benchlet run and an
 // integration suite all write a self-contained directory under PLURNK_BENCHMARKS: the database is
 // born where it lives, and nothing counts, reuses, moves, hides or conditionally sweeps it. The
 // checkout holds source; it never holds run output. The home itself is resolved once, in
@@ -23,7 +23,7 @@ export const testArtifactDirectory = async (lane: string): Promise<string> => {
 };
 
 // {§tier-census} — a real-model tier run is one directory too: the driver stamps PLURNK_TIER_RUN as
-// `<kind>-<stamp>`, every worker the run claims lands inside it, and the census is written beside
-// them. Unstamped (a bare `node --test` on one specimen), a worker lands directly in the home.
+// `<kind>-<stamp>`, every session the run claims lands inside it, and the census is written beside
+// them. Unstamped (a bare `node --test` on one specimen), a session lands directly in the home.
 export const tierRunPath = (run: string | undefined = process.env.PLURNK_TIER_RUN): string | null =>
     run === undefined ? null : join(benchmarksRoot(), `tier-${run}`);

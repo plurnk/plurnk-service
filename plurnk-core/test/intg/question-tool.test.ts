@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER, serverProposals } from "./_approval.ts";
+import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
 // {§question-tool} — the assembled proof: the question executor through the real
 // Exec scheme pauses on the shared client-interaction lifecycle and resumes
 // with the standard ElicitResult in its results channel.
@@ -17,8 +17,8 @@ import { waitForDb, withDaemon } from "./_rpc.ts";
 import { localPath } from "./_dsl.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import { executionAddress } from "./_execs.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 const execStmt = (body: string): ExecStatement => ({
     metadata: null,
@@ -52,9 +52,9 @@ test("{§question-tool}: dispatched plurnk (question) returns the answer", async
     }]);
     try {
         const workspaceId = await insertWorkspace(db, `question-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "question");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "question");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         let logEntryId = -1;
@@ -63,7 +63,7 @@ test("{§question-tool}: dispatched plurnk (question) returns the answer", async
                 message: "Which branch?",
                 requestedSchema: { type: "object", properties: { branch: { type: "string", enum: ["main", "feat/x"] } }, required: ["branch"] },
             })),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => { logEntryId = id; },
         });
 
@@ -120,9 +120,9 @@ Waiting for your answer.
             try {
                 await withDaemon(provider, async (db, daemon) => {
                     const workspace = await daemon.createWorkspace({ name: `question-${timing}-${action}` });
-                    const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
-                    await ownWorker(db, workspace.workspaceId, workerId);
-                    const run = await daemon.runLoop({ workspaceId: workspace.workspaceId, workerId, prompt: "Ask me." });
+                    const sessionId = await namedModelSession(daemon, workspace.workspaceId, "main");
+                    await ownSession(db, workspace.workspaceId, sessionId);
+                    const run = await daemon.runLoop({ workspaceId: workspace.workspaceId, sessionId, prompt: "Ask me." });
                     const pending = await waitForDb(
                         () => daemon.pendingClientInteractions(workspace.workspaceId),
                         (rows) => rows.length === 1,
@@ -163,17 +163,17 @@ Waiting for your answer.
     }
 }
 
-test("{§question-tool}: cancelling the worker concludes a pending question as cancellation, not an executor crash", async () => {
+test("{§question-tool}: cancelling the session concludes a pending question as cancellation, not an executor crash", async () => {
     const provider = new StreamMock({ contextWindow: 100_000, responses: [makeMockResponse(
         "````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````\n````WAIT\nAwaiting an answer.\n````",
     )] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-user-cancel" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        await ownWorker(db, workspaceId, workerId);
-        const run = await daemon.runLoop({ workspaceId, workerId, prompt: "Ask me." });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await ownSession(db, workspaceId, sessionId);
+        const run = await daemon.runLoop({ workspaceId, sessionId, prompt: "Ask me." });
         await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (rows) => rows.length === 1);
-        await daemon.cancelWorker({ workspaceId, workerId, reason: "user_escape" });
+        await daemon.cancelSession({ workspaceId, sessionId, reason: "user_escape" });
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: run.loopId });
         assert.equal(loop?.status, 499);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
@@ -198,9 +198,9 @@ test("{§client-interactions}: KILL ends the question's own waiter without cance
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        await ownWorker(db, workspaceId, workerId);
-        const run = await daemon.runLoop({ workspaceId, workerId, prompt: "Ask, then cancel the question." });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await ownSession(db, workspaceId, sessionId);
+        const run = await daemon.runLoop({ workspaceId, sessionId, prompt: "Ask, then cancel the question." });
         await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }), (row) => row?.status === 200, { timeoutMs: 15_000 });
         assert.equal(provider.remaining, 0);
         assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);

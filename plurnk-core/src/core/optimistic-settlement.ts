@@ -1,4 +1,4 @@
-// One parser for the worker-local optimistic settlement cap used by turn
+// One parser for the session-local optimistic settlement cap used by turn
 // dispatch, completion-wake coalescence, and the parked-stream poll floor.
 // Zero disables both settlement opportunities.
 export const readOptimisticSettlementMs = (env: NodeJS.ProcessEnv = process.env): number => {

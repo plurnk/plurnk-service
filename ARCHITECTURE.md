@@ -25,7 +25,7 @@ flowchart LR
 
 Eight principles govern which exterior standards PLURNK conforms to:
 
-1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and worker graph are the product, not a compatibility gap. So is one shape per concern: one operation syntax, one address shape, and one management grammar (`list | discover | add | replace | enable | disable | remove`) for every family, with proposals the gate on every choice with security or boundary implications and the cascade the home of every operator choice. Each exception to that shape is a permanent tax on the model, the client, and the product.
+1. **UVP first.** Never conform away what users chose Plurnk for; the OP grammar, curated log, packet, and session graph are the product, not a compatibility gap. So is one shape per concern: one operation syntax, one address shape, and one management grammar (`list | discover | add | replace | enable | disable | remove`) for every family, with proposals the gate on every choice with security or boundary implications and the cascade the home of every operator choice. Each exception to that shape is a permanent tax on the model, the client, and the product.
 2. **Right-fit.** Hobbyist-first: an enterprise-grade feature is acceptable only when its cost lands on the party that wants it, never on general adoption.
 3. **Traction.** Count running counterparties today; integration horizon must be shorter than the standard's expected half-life. Sockets stay configurable with no default until a candidate earns it.
 4. **POSIX app identity.** Decades-stable host-ecosystem conventions (XDG, NO_COLOR, man, completions, service units) govern wherever a domain standard is silent. Where a domain standard names its own location for cross-client interoperability, such as `.agents/skills`, PLURNK reads it, and its XDG location beside it holds PLURNK-only entries, which shadow the global ones.
@@ -46,7 +46,7 @@ flowchart LR
     providers["Provider framework"] --> core
     frameworks["Scheme / exec / mimetype frameworks"] --> core
     mcp["MCP host module<br/>tools · resources · prompts · tasks"] --> core
-    schedule["Schedule family<br/>recurring worker messages"] --> core
+    schedule["Schedule family<br/>recurring session messages"] --> core
     hooks["plurnk-hooks<br/>exact command events"] --> core
     core["plurnk-service<br/>composed daemon"]
     core --> acp["plurnk-acp<br/>client interface"]
@@ -74,13 +74,13 @@ package; this root document does not restate their teaching.
 | Scheme framework                                          | `@plurnk/plurnk-schemes` and installed scheme extensions     | [`plurnk-schemes/SPEC.md`](./plurnk-schemes/SPEC.md)                                                           |
 | Executor framework                                        | `@plurnk/plurnk-execs` and installed executor extensions     | [`plurnk-execs/SPEC.md`](./plurnk-execs/SPEC.md)                                                               |
 | Content detection and projection                          | `@plurnk/plurnk-mimetypes` and installed handler packages    | [`plurnk-mimetypes/SPEC.md`](./plurnk-mimetypes/SPEC.md)                                                       |
-| Persistence, workers, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
+| Persistence, sessions, turns, dispatch                     | `@plurnk/plurnk-service`                                     | [`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md)                                                                 |
 | Daemon module contract | `@plurnk/plurnk-modules` | [`plurnk-modules/SPEC.md`](./plurnk-modules/SPEC.md) |
 | OAuth 2.1 authorization server | `@plurnk/plurnk-auth` | [`plurnk-auth/SPEC.md`](./plurnk-auth/SPEC.md) |
 | External WebSocket/HTTP ACP v2 client protocol | `@plurnk/plurnk-acp` | [`plurnk-acp/SPEC.md`](./plurnk-acp/SPEC.md) |
 | Exact-command lifecycle hooks                             | `@plurnk/plurnk-hooks`                                       | [`plurnk-hooks/SPEC.md`](./plurnk-hooks/SPEC.md)                                                               |
 | MCP host/client                                            | `@plurnk/plurnk-mcp`                                         | [`plurnk-mcp/SPEC.md`](./plurnk-mcp/SPEC.md)                                                                   |
-| Scheduled worker messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
+| Scheduled session messages                                | `@plurnk/plurnk-schedule`                                    | [`plurnk-schedule/SPEC.md`](./plurnk-schedule/SPEC.md)                                                         |
 | Forensic reports, snapshots and interviews | `@plurnk/plurnk-digest` | [`plurnk-digest/SPEC.md`](./plurnk-digest/SPEC.md); core supplies canonical evidence interpretation. |
 | CLI, TUI, and web presentation                            | Separate open-client repositories                            | Consume ACP; they do not own daemon scheduling or persisted truth.                                           |
 
@@ -178,7 +178,7 @@ root never contributes code.
 | The log and the packet | The product: the model curates its own context |
 | Proposals | The one consent path for every mutation |
 | The cascade | The only home for a choice |
-| The worker graph | WORK, FORK, WAIT and SEND are the delegation story |
+| The session graph | WORK, FORK, WAIT and SEND are the delegation story |
 | The Functionality coordinator | One management grammar for every family |
 
 ## Vocabulary by audience
@@ -188,12 +188,12 @@ Vocabulary follows the standard of its audience.
 | Layer | Rule |
 | --- | --- |
 | Operator, wire, storage | Use the applicable industry term. Provider quantities follow the OpenAI vocabulary where it is standard: `contextWindow`, `reasoning`, `completion`, `finish_reason`, and usage nouns. |
-| Core lifecycle | Use the exact Workspace → Worker → Loop → Turn → Op hierarchy in {§lifecycle-terms}. An ACP Run or thread is always protocol-qualified. |
+| Core lifecycle | Use the exact Workspace → Session → Loop → Turn → Op hierarchy in {§lifecycle-terms}. An ACP Run or thread is always protocol-qualified. |
 | Model-facing packet | Use the model's training distribution: operations mirror HTTP and shell, while log records use ordinary Markdown headings, strict JSON metadata, and text coordinates. Renaming this vocabulary to internal API terminology would discard useful resonance for a standard the model never sees. |
 
 | PLURNK-native term | Why it is its own |
 | --- | --- |
-| `worker` / `loop` / `turn` | The process hierarchy in {§lifecycle-terms}; unqualified `run` names no internal entity. |
+| `session` / `loop` / `turn` | The process hierarchy in {§lifecycle-terms}; unqualified `run` names no internal entity. |
 | `packet` | The assembled address space, a kernel concept rather than merely a provider request. |
 | `costUsd` | No standard cost field exists; the explicit currency avoids implied units, and the value remains an exact decimal string. |
 | `curationWeight` / `curationBudget` | Explicitly distinguish Core's model-independent context-shaping facts from physical provider tokens. |
@@ -301,7 +301,7 @@ a second home for a choice, and it will eventually disagree with the first.
   and a knob for it is noise that hides the real ones. Mechanism stays in code
   under a name that says what it is.
 - **Rings narrow the same knob.** A narrower scope — an alias, a workspace, a
-  worker, a run — overrides a knob under its own name; it is never a second
+  session, a run — overrides a knob under its own name; it is never a second
   vocabulary. Where an inner ring must be bounded, an outer ring's ceiling knob
   gates the inner default, as `PLURNK_SERVICE_GIT_ALLOWED` gates
   `PLURNK_SERVICE_GIT_AUTO`.
@@ -391,8 +391,8 @@ sequenceDiagram
 
 Core owns packet assembly at `{§packet-assembly}` and durable result handling at
 `{§operation-results}`. Provider, capability, and ACP details remain in their
-own specifications. Approval routes through the worker's durable owner
-({§worker-ownership}), independently of messages and connections. Core's server
+own specifications. Approval routes through the session's durable owner
+({§session-ownership}), independently of messages and connections. Core's server
 policy may settle proposals automatically. Clarification goes to the same owner, but
 only a person can answer it: the owner must be interactive and declare the tool
 ({§client-interaction-routing}). Client convenience and daemon authority are not
@@ -421,7 +421,7 @@ retain those proposal and output paths, but settle before the next operation;
 resident publication hands off the turn's shared workspace lease for exclusive
 publication and reacquires it before continuing ({§functionality-model-mutation}).
 
-Executors are Worker-agnostic by contract: `ExecArgs` carries no Worker
+Executors are Session-agnostic by contract: `ExecArgs` carries no Session
 identity. MCP servers and Functionality managers are published per workspace
 through capability replacement ({§functionality-model-projection}). Invocation
 callbacks retain the submitting operation's causal identity without making
@@ -431,16 +431,16 @@ the submitter the owner of the shared runtime.
 
 | Concern                                 | Authority                                                                                             |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Workspaces, workers, loops, turns, logs | SQLite through core's tagged lifecycle and persistence contracts.                                     |
+| Workspaces, sessions, loops, turns, logs | SQLite through core's tagged lifecycle and persistence contracts.                                     |
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
-| Active worker drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§worker-loop-lifecycle}`. |
-| A worker's model, effort and spawn model | `WorkerModels` owns the durable selection and the loop's immutable route snapshot ({§worker-model-selection}). |
+| Active session drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§session-loop-lifecycle}`. |
+| A session's model, effort and spawn model | `SessionModels` owns the durable selection and the loop's immutable route snapshot ({§session-model-selection}). |
 | Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-discovery}, {§module-http-mounts}). |
-| A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§worker-lifecycle-total-reap}). |
-| A message's delivery to a worker | `MessageDelivery` resolves the worker's model and effort, prepares the message and its source, and injects it into the drain that starts or continues the loop ({§methods-loop-run}, {§machine-processes}). |
+| A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§session-lifecycle-total-reap}). |
+| A message's delivery to a session | `MessageDelivery` resolves the session's model and effort, prepares the message and its source, and injects it into the drain that starts or continues the loop ({§methods-loop-run}, {§machine-processes}). |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
 | Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
-| External conversation identity | The adapter interprets its protocol identifiers; core retains opaque worker references with referential integrity ({§worker-external-reference}). Connections and presentation remain client-interface state. |
+| External conversation identity | The adapter interprets its protocol identifiers; core retains opaque session references with referential integrity ({§session-external-reference}). Connections and presentation remain client-interface state. |
 | A choice of behaviour                   | The owning package's `.env.defaults`, read through the system environment; see Configuration authority. |
 
 ## Data preservation
@@ -458,12 +458,12 @@ of the surrounding filesystem or external services.
 | Packet compositions and call payloads | Retained according to count/age policy. Logical-response and physical-request payloads expire together; request identities and accounting remain, including failures and unknown costs ({§retention-policy}, {§provider-request-evidence}). |
 | Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |
 | Native attachment snapshots | READ, message and packet references retain bytes independently of curation or source deletion. Publication protects in-flight captures; only unreferenced snapshots are collected ({§native-content-lifetime}). |
-| Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§membership-edit-write-revision}, {§file-publication}). Internal commit serialization is not a worker reservation or exclusion of external writers ({§file-commit-serialization}, {§file-external-race}). SQLite commits and backups do not include project files. |
-| Configuration and credentials | Workspace/worker overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-state}, {§schedule-residency}, {§schedule-first-arming}, {§oauth-lifetime}). |
-| Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§worker-lifecycle-restart-recovery}, {§notice-drain-on-read}). |
+| Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§membership-edit-write-revision}, {§file-publication}). Internal commit serialization is not a session reservation or exclusion of external writers ({§file-commit-serialization}, {§file-external-race}). SQLite commits and backups do not include project files. |
+| Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-state}, {§schedule-residency}, {§schedule-first-arming}, {§oauth-lifetime}). |
+| Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§session-lifecycle-restart-recovery}, {§notice-drain-on-read}). |
 | Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share-scope}, {§share-snapshot}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |
 
 Audit claims name the evidence retained and its limits. Logical immutability through Plurnk's APIs
-and database guards is not tamper evidence against a host administrator. Worker and owner addresses
+and database guards is not tamper evidence against a host administrator. Session and owner addresses
 provide application attribution, not proof of a person's identity. A recorded command or remote
 response is evidence of the interaction, not independent verification of every external effect.

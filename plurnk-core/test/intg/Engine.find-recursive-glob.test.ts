@@ -48,7 +48,7 @@ test("{§find-candidate-containment} a body FIND over ~2k members with a handler
                 await rpcCall(ws, 1, "workspace.create", { name: "findglob", projectRoot: root });
                 const outcome = await runLoopToTerminal(ws, 2, { prompt: "find" });
                 assert.equal(outcome.result.status, 200);
-                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: outcome.modelWorkerId! });
+                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: outcome.modelSessionId! });
                 const find = rows.find(({ op }) => op === "FIND");
                 assert.ok(find, "the FIND row exists");
                 assert.notEqual(find.status_rx, 500, `FIND must not 500: ${JSON.parse(find.rx).problem?.detail ?? find.rx.slice(0, 200)}`);

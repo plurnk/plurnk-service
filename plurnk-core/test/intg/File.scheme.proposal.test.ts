@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import { mkdtemp, readFile, writeFile, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { InvalidOperationResultError } from "@plurnk/plurnk-schemes";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { copyStmt, moveStmt, urlPath, localPath } from "./_dsl.ts";
 import { clientRead } from "./_client-read.ts";
 
@@ -64,18 +64,18 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 
 // Set up a temp workspace + a workspace whose project_root points at it.
 // Returns the temp root for body assertions + a cleanup fn.
-const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number }) => Promise<T>): Promise<T> => {
+const withWorkspaceRoot = async <T>(fn: (root: string, ctx: { db: Db; engine: Engine; workspaceId: number; sessionId: number; loopId: number; turnId: number }) => Promise<T>): Promise<T> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-file-test-"));
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `file-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "file edit test");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "file edit test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        return await fn(root, { db, engine, workspaceId, workerId, loopId, turnId });
+        return await fn(root, { db, engine, workspaceId, sessionId, loopId, turnId });
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -123,24 +123,24 @@ test("{§binary-parity}: a deferred byte MOVE cannot remove a source that change
         const schemeCtx = makeSchemeCtx(ctx);
         const original = new Uint8Array([0, 1, 2, 3, 4]);
         const updated = new Uint8Array([0, 9, 9, 3, 4]);
-        assert.equal((await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes: original, mimetype: "image/png" } } }, schemeCtx, "worker")).status, 201);
+        assert.equal((await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes: original, mimetype: "image/png" } } }, schemeCtx, "workspace")).status, 201);
         const pending = deferred<number>();
         const moving = ctx.engine.dispatch({ ...ctx, sequence: 1, origin: "model", onDispatch: pending.resolve,
-            statement: moveStmt(urlPath("worker", "/source.png"), localPath("destination.png"), { marks: [2, 3] }) });
+            statement: moveStmt(urlPath("workspace", "/source.png"), localPath("destination.png"), { marks: [2, 3] }) });
         const id = await pending.promise;
-        assert.equal((await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes: updated, mimetype: "image/png" } } }, schemeCtx, "worker")).status, 200);
+        assert.equal((await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes: updated, mimetype: "image/png" } } }, schemeCtx, "workspace")).status, 200);
         ctx.engine.resolveProposal(id, { decision: "accept" });
         const result = await moving;
         assert.equal(result.status, 409, JSON.stringify(result));
         assert.match(String(result.problem?.type), /\/edit-collision$/);
         assert.deepEqual(await readFile(join(root, "destination.png")), Buffer.from([1, 2]));
-        const read = await EntryCrud.readEntry(source, schemeCtx, "worker");
+        const read = await EntryCrud.readEntry(source, schemeCtx, "workspace");
         assert.equal(read.entry?.channels.body?.content, Buffer.from(updated).toString("base64"));
     });
 });
 
 for (const transfer of [copyStmt, moveStmt]) {
-    const op = transfer(urlPath("worker", "/source"), localPath("destination")).op;
+    const op = transfer(urlPath("workspace", "/source"), localPath("destination")).op;
     for (const target of ["destination.bin", "destination", "destination.unknownext"]) {
         for (const shape of ["whole", "scoped", "empty"] as const) {
             test(`{§copy-destination-mimetype}: ${op} publishes ${shape} bytes at ${target} with the admitted type`, async () => {
@@ -150,10 +150,10 @@ for (const transfer of [copyStmt, moveStmt]) {
                     const bytes = shape === "empty" ? Buffer.alloc(0) : Buffer.from([0, 0xff, 0x80, 42]);
                     assert.equal((await EntryCrud.writeEntry(source, {
                         channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } },
-                    }, schemeCtx, "worker")).status, 201);
+                    }, schemeCtx, "workspace")).status, 201);
                     const pending = Promise.withResolvers<number>();
                     const applying = ctx.engine.dispatch({ ...ctx, sequence: 1, origin: "model", onDispatch: pending.resolve,
-                        statement: transfer(urlPath("worker", "/source"), localPath(target),
+                        statement: transfer(urlPath("workspace", "/source"), localPath(target),
                             shape === "scoped" ? { marks: [2, 3] } : null,
                             shape === "scoped" ? { marks: [0] } : null) });
                     const id = await pending.promise;
@@ -167,7 +167,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                     assert.deepEqual(await readFile(join(root, target)), shape === "scoped" ? bytes.subarray(1, 3) : bytes);
                     const destination = await EntryCrud.readEntry({ authority: "", pathname: target }, schemeCtx, "file");
                     assert.equal(destination.entry?.channels.body?.mimetype, "application/octet-stream");
-                    const remaining = await EntryCrud.readEntry(source, schemeCtx, "worker");
+                    const remaining = await EntryCrud.readEntry(source, schemeCtx, "workspace");
                     if (op === "MOVE" && shape !== "scoped") assert.equal(remaining.status, 404);
                     else assert.equal(remaining.entry?.channels.body?.content,
                         (op === "MOVE" ? Buffer.from([0, 42]) : bytes).toString("base64"));
@@ -180,10 +180,10 @@ for (const transfer of [copyStmt, moveStmt]) {
             const source = { authority: "", pathname: "/source" };
             const schemeCtx = makeSchemeCtx(ctx);
             const bytes = Buffer.from([0, 0xff, 42]);
-            await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } } }, schemeCtx, "worker");
+            await EntryCrud.writeEntry(source, { channels: { body: { content: "", bytes, mimetype: "application/octet-stream" } } }, schemeCtx, "workspace");
             const pending = Promise.withResolvers<number>();
             const applying = ctx.engine.dispatch({ ...ctx, sequence: 1, origin: "model", onDispatch: pending.resolve,
-                statement: transfer(urlPath("worker", "/source"), localPath("destination.bin")) });
+                statement: transfer(urlPath("workspace", "/source"), localPath("destination.bin")) });
             const id = await pending.promise;
             const proposals = await ctx.engine.pendingProposals(ctx.workspaceId);
             assert.equal(proposals.length, 1);
@@ -192,7 +192,7 @@ for (const transfer of [copyStmt, moveStmt]) {
             assert.equal(result.status, 400);
             assert.match(String(result.problem?.type), /\/rejected$/);
             await assert.rejects(readFile(join(root, "destination.bin")), { code: "ENOENT" });
-            assert.equal((await EntryCrud.readEntry(source, schemeCtx, "worker")).entry?.channels.body?.content, bytes.toString("base64"));
+            assert.equal((await EntryCrud.readEntry(source, schemeCtx, "workspace")).entry?.channels.body?.content, bytes.toString("base64"));
         });
     });
 }
@@ -267,7 +267,7 @@ test("{§fs-write-member} file.edit: writes file on accept via applyResolution",
         const stmt = fileEditStmt(target, "hello world\n", fullReplace);
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -305,7 +305,7 @@ test("{§engine-rails} file.edit: a landed source receipt reports parser recover
         const dispatched = ctx.engine.dispatch({
             statement: fileEditStmt(target, "package sample\nfunc broken("),
             workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
+            sessionId: ctx.sessionId,
             loopId: ctx.loopId,
             turnId: ctx.turnId,
             sequence: 1,
@@ -342,7 +342,7 @@ test("{§engine-rails} file.applyResolution: malformed accepted proposal state r
                 makeSchemeCtx({
                     db: ctx.db,
                     workspaceId: ctx.workspaceId,
-                    workerId: ctx.workerId,
+                    sessionId: ctx.sessionId,
                     loopId: ctx.loopId,
                     turnId: ctx.turnId,
                 }),
@@ -369,7 +369,7 @@ test("{§engine-rails} file.edit: an unchanged file is a 304 no-op and never bec
         const result = await ctx.engine.dispatch({
             statement: fileEditStmt(target, original, fullReplace),
             workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
+            sessionId: ctx.sessionId,
             loopId: ctx.loopId,
             turnId: ctx.turnId,
             sequence: 1,
@@ -402,7 +402,7 @@ test("{§proposal-outcome-terse-error} file.edit: rejection leaves file untouche
         const stmt = fileEditStmt(target, "should-not-land\n", fullReplace);
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -442,7 +442,7 @@ test("{§engine-rails} file.edit: creates a new file on accept (target doesn't e
 
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -461,7 +461,7 @@ test("{§edit-result-reviewer-replacement}: reviewer-modified acceptance receipt
         const stmt = fileEditStmt(target, "model proposal\n");
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -494,7 +494,7 @@ test("{§membership-create-parents}: accepted file creation creates missing pare
         const stmt = fileEditStmt(target, "# task\n");
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -520,7 +520,7 @@ test("{§unscoped-edit-create-only} {§edit-marker-required-on-existing}: marker
         // instead (a model syntax slip), so the dispatched statement carries no marker at all.
         const stmt = fileEditStmt(target, "<2>:// AUDIT-OK\nline two");
         const result = await ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "no marker on an existing file is refused outright — never a proposal, never a silent replace");
@@ -536,7 +536,7 @@ test("{§engine-rails} file.edit: refuses traversal escape", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const stmt = fileEditStmt("../escape.txt", "nope\n");
         const result = await ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403);
@@ -557,7 +557,7 @@ test("{§membership} bare target: EDIT(relative/path) routes to file scheme (no 
         const stmt = bareEditStmt(target, "bare-path edit\n", fullReplace);
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -584,14 +584,14 @@ test("{§engine-rails} file.read: reads the materialized entry beside the edit p
         // File.read serves the materialized entry — materialize the content
         // (production's git-membership pass does this), not just a membership marker.
         const writeCtx: PlurnkSchemeContext = {
-            db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
+            db: ctx.db, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId,
             writer: "model", signal: undefined, weigh: (t: string) => t.length,
         };
         await EntryCrud.writeEntry({ authority: "", pathname: target }, { channels: { body: { content: "content\n", mimetype: "text/markdown" } } }, writeCtx, "file");
 
         const stmt = fileReadStmt(target);
         const result = await ctx.engine.dispatch({
-            statement: stmt, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement: stmt, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
@@ -605,13 +605,13 @@ test("{§engine-rails} file.edit: headless workspace (no project_root) → 400",
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `headless-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "headless");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "headless");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const stmt = bareEditStmt("any.txt", "content\n");
         const result = await engine.dispatch({
-            statement: stmt, workspaceId, workerId, loopId, turnId,
+            statement: stmt, workspaceId, sessionId, loopId, turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);

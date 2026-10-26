@@ -4,7 +4,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 
 const turn = (operation: string, op: string | null = "NOTE") => ({
     assistant: { content: op === null ? operation : `${operation}
@@ -18,21 +18,21 @@ for (const identical of [false, true]) {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `cycles-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "Append six lines, then conclude.");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "Append six lines, then conclude.");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const lines = Array.from({ length: 6 }, (_, index) => `completed step ${identical ? "same" : index + 1}`);
             const provider = new Mock({ contextWindow: 100000, responses: [
-                ...lines.map((line) => turn(`\`\`\`\`EDIT (worker:///journal) <-1>
+                ...lines.map((line) => turn(`\`\`\`\`EDIT (workspace:///journal) <-1>
 ${line}
 \`\`\`\``)),
                 turn("````SEND [200]\nAppended all six lines.\n````", null),
             ] });
-            const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
+            const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, 200, JSON.stringify(result.result));
-            const rows = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: workerId });
+            const rows = await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: sessionId });
             assert.deepEqual(rows.filter(({ op }) => op === "EDIT").map(({ status_rx }) => status_rx), [201, 200, 200, 200, 200, 200]);
-            const entry = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "worker", pathname: "/journal" });
+            const entry = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "workspace", pathname: "/journal" });
             assert.ok(entry);
             const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "body" });
             assert.equal(channel?.content.trimEnd(), lines.join("\n"));
@@ -62,8 +62,8 @@ for (const changing of [false, true]) {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `cycles-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "Observe six results.");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "Observe six results.");
             const schemes = new SchemeRegistry();
             const source = new ObservedContent(changing);
             schemes.register("observed-content", source);
@@ -72,7 +72,7 @@ for (const changing of [false, true]) {
                 ...Array.from({ length: 6 }, () => turn("````READ (observed-content:///latest)````", status)),
                 turn("````SEND [200]\nObserved all six results.\n````", null),
             ] });
-            const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
+            const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
             assert.equal(result.result.status, changing ? 200 : 508, JSON.stringify(result.result));
             assert.equal(source.calls, changing ? 6 : 5);
             const reads = (await db.test_log_entries_by_loop.all<{ op: string; scheme: string; rx: string }>({ loop_id: loopId }))
@@ -88,11 +88,11 @@ test("{§engine-cycle-evidence} repeated misses cycle despite unique Problem occ
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cycles-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Read a missing resource.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Read a missing resource.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 7 }, () => turn("````READ (worker:///missing)````")) });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10 });
+        const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 7 }, () => turn("````READ (workspace:///missing)````")) });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10 });
         assert.equal(result.result.status, 508, JSON.stringify(result.result));
         const misses = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId }))
             .filter(({ op, status_rx }) => op === "READ" && status_rx === 404);

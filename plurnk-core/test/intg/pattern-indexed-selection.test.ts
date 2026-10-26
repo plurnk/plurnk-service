@@ -25,7 +25,7 @@ const runtime = async (t: TestContext) => {
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
-        const row = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence });
+        const row = await db.log_read_by_coordinate.get<{ rx: string }>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence });
         assert.ok(row);
         return JSON.parse(row.rx);
     };
@@ -36,17 +36,17 @@ const runtime = async (t: TestContext) => {
 // {§read-pattern} {§graph-relations}
 test("{§kill-pattern} a graph READ selects definitions and references without becoming a FIND", async (t) => {
     const { dispatch } = await runtime(t);
-    const definition = await dispatch("````READ (worker:///resolvers.py) &RoutePattern````");
+    const definition = await dispatch("````READ (workspace:///resolvers.py) &RoutePattern````");
     assert.equal(definition.status, 200);
     assert.equal(definition.content, "class RoutePattern(CheckURLMixin):\n    regex = LocaleRegexDescriptor('_route')");
     assert.deepEqual(definition.lineOrdinals, [1, 2]);
-    const reference = await dispatch("````READ (worker:///resolvers.py) &<RoutePattern````");
+    const reference = await dispatch("````READ (workspace:///resolvers.py) &<RoutePattern````");
     assert.equal(reference.status, 200);
     assert.equal(reference.content, "    return RoutePattern(path)");
     assert.deepEqual(reference.matches.map(({ region }: { region: unknown }) => region), [
         { startLine: 4, startColumn: 12, endLine: 4, endColumn: 24 },
     ]);
-    const find = await dispatch("````FIND (worker:///resolvers.py) &RoutePattern````");
+    const find = await dispatch("````FIND (workspace:///resolvers.py) &RoutePattern````");
     assert.equal(find.status, 200);
     assert.deepEqual(find.results.map(({ region }: { region: unknown }) => region), definition.matches.map(({ region }: { region: unknown }) => region));
 });
@@ -54,7 +54,7 @@ test("{§kill-pattern} a graph READ selects definitions and references without b
 // {§kill-pattern}
 test("{§read-pattern} a full-text KILL removes the highlighted source token rather than its containing line", async (t) => {
     const { dispatch, db } = await runtime(t);
-    const result = await dispatch("````KILL (worker:///resolvers.py) ~LocaleRegexDescriptor````");
+    const result = await dispatch("````KILL (workspace:///resolvers.py) ~LocaleRegexDescriptor````");
     assert.equal(result.status, 200, JSON.stringify(result));
     assert.equal(result.matched, 1);
     const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/resolvers.py", name: "body" });

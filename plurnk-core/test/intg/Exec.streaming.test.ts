@@ -20,7 +20,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { executionAddress, testExecutors } from "./_execs.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
 import { waitForDb } from "./_rpc.ts";
 import { mkdtemp, writeFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -52,14 +52,14 @@ test("{§chunk-accumulation-chunks-accumulate} streaming exec: chunks land in th
         });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-stream-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "streaming test");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "streaming test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(null, "for i in 5 4 3 2 1; do echo $i; sleep 0.5; done"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -132,14 +132,14 @@ test("{§subscriptions-subscription-registry-routes-cancellation} streaming exec
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-stream-sub-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "subscription lifecycle");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "subscription lifecycle");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(null, "for i in 3 2 1; do echo $i; sleep 0.4; done"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -158,7 +158,7 @@ test("{§subscriptions-subscription-registry-routes-cancellation} streaming exec
         assert.equal(streaming?.state, "active", "the process still runs");
         const midSub = await db.test_get_subscription_by_entry.get<{
             closed_at: string | null; close_status: number | null;
-        }>({ worker_id: workerId, entry_id: entryRow!.id });
+        }>({ session_id: sessionId, entry_id: entryRow!.id });
         assert.equal(midSub?.closed_at, null, "subscription is alive during emission");
         assert.equal(midSub?.close_status, null);
 
@@ -166,7 +166,7 @@ test("{§subscriptions-subscription-registry-routes-cancellation} streaming exec
         await exec.idle();
         const endSub = await db.test_get_subscription_by_entry.get<{
             closed_at: string | null; close_status: number | null; close_result: string | null;
-        }>({ worker_id: workerId, entry_id: entryRow!.id });
+        }>({ session_id: sessionId, entry_id: entryRow!.id });
         assert.ok(endSub?.closed_at, "subscription closed after spawn exit");
         assert.equal(endSub?.close_status, 200, "clean exit closes subscription at 200");
         assert.deepEqual(JSON.parse(endSub?.close_result ?? "null"), { status: 200, exitCode: 0 });
@@ -186,14 +186,14 @@ test("{§exec-target-routing} streaming exec: the workspace catalog picks up par
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-stream-idx-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "catalog mid-stream");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "catalog mid-stream");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(null, "for i in 4 3 2 1; do echo $i; sleep 0.4; done"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
@@ -239,14 +239,14 @@ test("{§exec-target-routing} an empty-body 0o644 script target survives accepta
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-file-target-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, dir);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "run the script");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "run the script");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: { metadata: null, runtime: "sh", aside: null, target: { kind: "local", raw: "demo_greet.sh" }, lineMarker: null, body: "", position: { line: 1, column: 1 } },
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         engine.resolveProposal(await idDeferred.promise, { decision: "accept" });

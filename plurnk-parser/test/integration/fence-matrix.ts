@@ -16,7 +16,7 @@ export type Cell = {
 
 const HEAD: Readonly<Record<string, string>> = {
     reply: "SEND [200]", SEND: "SEND", NOTE: "NOTE", BARE: "BARE",
-    EDIT: "EDIT (docs/guide.md) <1,-1>", WORK: "WORK (worker://helper)",
+    EDIT: "EDIT (docs/guide.md) <1,-1>", WORK: "WORK (session://helper)",
 };
 const fence = (width: number, character = "`") => character.repeat(width);
 

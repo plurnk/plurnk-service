@@ -27,11 +27,11 @@ const execFileP = promisify(execFile);
 // cap decides how many actions land. Turn 2 SENDs to terminate (no reliance on
 // maxTurns composition), so the loop ends cleanly either way.
 const twoEdits = () => new Mock({ contextWindow: viableWindow(), responses: [
-    makeMockResponse("````EDIT (worker:///a.md)\naaa\n````\n\n````EDIT (worker:///b.md)\nbbb\n````\n\n````NOTE\ncontinue\n````", 50),
+    makeMockResponse("````EDIT (workspace:///a.md)\naaa\n````\n\n````EDIT (workspace:///b.md)\nbbb\n````\n\n````NOTE\ncontinue\n````", 50),
     makeMockResponse("````SEND [200]\ndone\n````", 50),
 ] });
 const entryId = (db: Db, pathname: string) =>
-    db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname });
+    db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname });
 
 test("{§operator-config} workspace settings.maxCommands min()s the env action cap — tightens, never widens", async () => {
     const prev = process.env.PLURNK_SERVICE_MAX_COMMANDS;
@@ -68,7 +68,7 @@ test("{§operator-config-workspace-max-commands-floor} maxCommands:0 admits WAIT
         process.env.PLURNK_SERVICE_MAX_COMMANDS = "99";
         // WAIT remains available when the command cap admits neither EDIT nor SEND.
         const mock = new Mock({ contextWindow: viableWindow(), responses: [
-            makeMockResponse("````EDIT (worker:///a.md)\naaa\n````\n\n````EDIT (worker:///b.md)\nbbb\n````\n\n````SEND\ndone\n````\n````WAIT\n````", 50),
+            makeMockResponse("````EDIT (workspace:///a.md)\naaa\n````\n\n````EDIT (workspace:///b.md)\nbbb\n````\n\n````SEND\ndone\n````\n````WAIT\n````", 50),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
             const ws = await connect(addr);

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { Lexer } from "marked";
 import Engine from "../../src/core/Engine.ts";
-import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import Daemon from "../../src/server/Daemon.ts";
@@ -12,7 +12,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import { completeStmt, } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { isExecution } from "@plurnk/plurnk-contracts";
@@ -25,36 +25,36 @@ class FixtureEngine extends Engine {
     }
 }
 
-test("{§application-loop-observation} {§application-worker-observation} maintenance preserves work lifecycle and scheduler history", async () => {
+test("{§application-loop-observation} {§application-session-observation} maintenance preserves work lifecycle and scheduler history", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db });
     try {
         const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, "maintenance-status");
         for (const [status, lifecycle] of [[null, "idle"], [100, "queued"], [102, "running"], [202, "parked"], [200, "completed"], [499, "cancelled"], [500, "failed"]] as const) {
-            const workerId = await insertWorker(db, workspaceId, null, `worker-${lifecycle}`, "model");
-            const loopId = status === null ? null : await insertLoop(db, workerId, 1, "do the work");
+            const sessionId = await insertSession(db, workspaceId, null, `session-${lifecycle}`, "model");
+            const loopId = status === null ? null : await insertLoop(db, sessionId, 1, "do the work");
             if (loopId !== null) {
                 await db.test_set_loop_status.run({
                     id: loopId,
                     status,
                     terminal_result: status === 500 || status === 499 ? JSON.stringify(Results.attachInstance(
                         status === 500 ? Results.failure("engine:fixture", "failed", 500, "Work failed.") : Results.failure("engine:fixture", "cancelled", 499, "Work cancelled."),
-                        `worker://worker-${lifecycle}`,
+                        `session://session-${lifecycle}`,
                     ))
                         : status === 200 ? JSON.stringify({ status: 200 }) : null,
                 });
             }
             engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady." }];
             await LoopDocs.materialize(engine, db, workspaceId);
-            const worker = await daemon.readWorker({ workspaceId, identity: { id: workerId } });
-            assert.equal(worker?.lifecycle, lifecycle, "housekeeping does not replace work status");
-            assert.equal((await daemon.listWorkers(workspaceId)).find(({ id }) => id === workerId)?.lifecycle, lifecycle);
-            assert.deepEqual((await daemon.listWorkerLoops({ workspaceId, workerId })).map(({ id }) => id), loopId === null ? [] : [loopId],
+            const session = await daemon.readSession({ workspaceId, identity: { id: sessionId } });
+            assert.equal(session?.lifecycle, lifecycle, "housekeeping does not replace work status");
+            assert.equal((await daemon.listSessions(workspaceId)).find(({ id }) => id === sessionId)?.lifecycle, lifecycle);
+            assert.deepEqual((await daemon.listSessionLoops({ workspaceId, sessionId })).map(({ id }) => id), loopId === null ? [] : [loopId],
                 "status snapshots see work, not administrative housekeeping loops");
-            const loops = await db.test_loop_queue_by_worker.all<{ id: number }>({ worker_id: workerId });
+            const loops = await db.test_loop_queue_by_session.all<{ id: number }>({ session_id: sessionId });
             assert.deepEqual(loops.map(({ id }) => id), loopId === null ? [] : [loopId]);
-            const maintenance = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
+            const maintenance = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
             assert.ok(maintenance);
             const turns = await db.test_list_turns_in_loop.all<{ kind: string }>({ loop_id: maintenance.id });
             assert.deepEqual(turns.map(({ kind }) => kind), ["maintenance"], "maintenance remains ordinary durable history");
@@ -70,14 +70,14 @@ test("{§env-delta-child-termination} generated child documentation is durable w
     try {
         const engine = new FixtureEngine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, "child-docs-conclusion");
-        const parentId = await insertWorker(db, workspaceId, null, "parent");
-        const childId = await insertWorker(db, workspaceId, parentId, "child");
+        const parentId = await insertSession(db, workspaceId, null, "parent");
+        const childId = await insertSession(db, workspaceId, parentId, "child");
         const parentLoopId = await insertLoop(db, parentId, 1, "observe child");
         engine.documents = [{ pathname: "/_plurnk/plurnk/tool.md", content: "# Tool\n\nReady to use." }];
 
         await LoopDocs.materialize(engine, db, workspaceId);
-        assert.equal(await db.test_get_loop_by_worker.get({ worker_id: childId }), undefined);
-        const adminLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
+        assert.equal(await db.test_get_loop_by_session.get({ session_id: childId }), undefined);
+        const adminLoop = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
         assert.ok(adminLoop);
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: adminLoop.id }))?.status, 200,
             "the real maintenance program concluded");
@@ -86,27 +86,27 @@ test("{§env-delta-child-termination} generated child documentation is durable w
             { producer: "_plurnk", kind: "maintenance", status: 200 },
         ]);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: "/_plurnk/plurnk/tool.md", scheme: "worker", name: "body",
+            pathname: "/_plurnk/plurnk/tool.md", scheme: "workspace", name: "body",
         });
         assert.equal(doc?.content, engine.documents[0].content, "the program actually materialized its resource");
         const source = await db.test_log_sequencees_by_turn.all<{ op: string; status_rx: number }>({ turn_id: turns[0].id });
         assert.ok(source.some(({ op, status_rx }) => op === "EDIT" && status_rx === 201), "the source operation receipt remains durable");
-        assert.equal(await db.engine_worker_has_undelivered_child_term.get({ worker_id: parentId }), undefined,
+        assert.equal(await db.engine_session_has_undelivered_child_term.get({ session_id: parentId }), undefined,
             "housekeeping is not an unobserved child result that can wake waiting work or refuse completion");
 
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("Child documentation observed.")] } }] }),
-            workspaceId, workerId: parentId, loopId: parentLoopId,
+            workspaceId, sessionId: parentId, loopId: parentLoopId,
             messages: [{ role: "system", content: "Observe the child." }, { role: "user", content: "continue" }],
         });
         assert.equal(result.status, 200);
-        const rows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: parentId });
-        assert.deepEqual(rows.filter((row) => row.source === "worker://child"), [],
+        const rows = await db.engine_render_log.all<{ source: string | null }>({ session_id: parentId });
+        assert.deepEqual(rows.filter((row) => row.source === "session://child"), [],
             "the parent's real packet path contains no invented child deliverable");
     } finally { await db.close(); }
 });
 
-test("{§schemes-self-doc-materialization} worker documentation materialization removes stale generated entries", async () => {
+test("{§schemes-self-doc-materialization} session documentation materialization removes stale generated entries", async () => {
     const db = await openMigrated();
     try {
         const engine = new FixtureEngine({
@@ -115,10 +115,10 @@ test("{§schemes-self-doc-materialization} worker documentation materialization 
             mimetypes: DEFAULT_MIMETYPES,
         });
         const workspaceId = await insertWorkspace(db, `loop-docs-${crypto.randomUUID()}`);
-        await insertWorker(db, workspaceId);
+        await insertSession(db, workspaceId);
         const entry = (pathname: string) => db.crud_find_workspace_entry.get<{ id: number }>({
             workspace_id: workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             authority: "",
             pathname,
         });
@@ -153,12 +153,12 @@ for (const runtime of ["sh", "js", "python3"]) test(`{§exec-executor-slot}: ins
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         engine.setExecutors(executors);
         const workspaceId = await insertWorkspace(db, `${runtime}-doc-invocations`);
-        await insertWorker(db, workspaceId);
+        await insertSession(db, workspaceId);
         await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: `/_plurnk/plurnk/${runtime}.md`, scheme: "worker", name: "body",
+            pathname: `/_plurnk/plurnk/${runtime}.md`, scheme: "workspace", name: "body",
         });
-        assert.ok(doc, "the installed executor's documentation reaches the worker");
+        assert.ok(doc, "the installed executor's documentation reaches the session");
         const readme = await readFile(new URL("README.md", import.meta.resolve("@plurnk/plurnk-execs-common/package.json")), "utf8");
         const examples = [doc.content, readme].flatMap((content) => Lexer.lex(content)
             .filter((token) => token.type === "code" && token.lang?.split(/[ \t]/)[0] === runtime));
@@ -186,18 +186,18 @@ test("{§schemes-self-doc-materialization} an unchanged generated surface dispat
             mimetypes: DEFAULT_MIMETYPES,
         });
         const workspaceId = await insertWorkspace(db, `loop-docs-idem-${crypto.randomUUID()}`);
-        await insertWorker(db, workspaceId);
+        await insertSession(db, workspaceId);
         engine.documents = [
             { pathname: "/_plurnk/plurnk/stable.md", content: "# Stable" },
         ];
         await LoopDocs.materialize(engine, db, workspaceId);
-        const runtime = await db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
+        const runtime = await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
         assert.ok(runtime !== undefined, "maintenance has its actual runtime actor");
-        const before = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: runtime.id });
+        const before = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: runtime.id });
         assert.ok(before !== undefined, "initial materialization recorded a maintenance loop");
 
         await LoopDocs.materialize(engine, db, workspaceId);
-        const after = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: runtime.id });
+        const after = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: runtime.id });
         assert.equal(after?.id, before?.id, "the unchanged surface re-dispatches nothing — no new _plurnk turn, no 304 churn");
     } finally {
         await db.close();
@@ -210,12 +210,12 @@ test("{§exec-stream-page}: materialized shell documentation demonstrates scoped
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, "shell-doc-stream-read");
-        await insertWorker(db, workspaceId);
+        await insertSession(db, workspaceId);
         await LoopDocs.materialize(engine, db, workspaceId);
         const doc = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-            pathname: "/_plurnk/plurnk/sh.md", scheme: "worker", name: "body",
+            pathname: "/_plurnk/plurnk/sh.md", scheme: "workspace", name: "body",
         });
-        assert.ok(doc, "the installed shell's documentation reaches the worker");
+        assert.ok(doc, "the installed shell's documentation reaches the session");
         const examples = Lexer.lex(doc.content).flatMap((token) =>
             token.type === "code" && token.lang?.startsWith("READ ") ? [token.raw] : []);
         const reads = examples.flatMap((source) => {

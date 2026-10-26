@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { makeMockResponse } from "./_mock.ts";
 
@@ -16,11 +16,11 @@ test("{§tokenomics-window-unpollable-deliberate} null window + no per-alias kno
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unpollable-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const mock = new Mock({ contextWindow: null, responses: [makeMockResponse("````SEND [200]\ndone\n````", 50)] });
-        const result = await engine.runTurn({ provider: mock, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider: mock, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.ok(result.turnId > 0, "the turn builds unbounded — a probe blip degrades to no-cap, never crashes the loop");
         assert.equal((await engine.loopUsage(loopId)).curationBudget, null, "the client sees no invented allowance when physical capacity is unknown");
         // The gauge omits its active maximum; denominator-independent log measurements remain.

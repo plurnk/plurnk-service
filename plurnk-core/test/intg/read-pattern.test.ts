@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { MatcherBody, ReadStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, editStmt, readStmt } from "./_dsl.ts";
@@ -14,11 +14,11 @@ const setup = async (content = "alpha\nTODO one\nbeta\nTODO two\ngamma") => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { producer: "client" });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), content), makeSchemeCtx({ db, workspaceId: env.workspaceId, workerId: env.workerId }));
+    await new Workspace().edit(editStmt(urlPath("workspace", "/notes.md"), content), makeSchemeCtx({ db, workspaceId: env.workspaceId, sessionId: env.sessionId }));
     let sequence = 0;
     const dispatch = (statement: ReadStatement) => {
         sequence += 1;
-        return engine.dispatch({ statement, workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence, origin: "client" });
+        return engine.dispatch({ statement, workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence, origin: "client" });
     };
     return { db, dispatch };
 };
@@ -27,7 +27,7 @@ test("{§read-pattern} READ by pattern renders exactly the matching lines with t
     const { db, dispatch } = await setup();
     try {
         const regex: MatcherBody = { dialect: "regex", raw: "/^TODO/", pattern: "^TODO", flags: "" };
-        const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, regex));
+        const r = await dispatch(readStmt(urlPath("workspace", "/notes.md"), null, regex));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.content, "TODO one\nTODO two");
         assert.deepEqual(r.lineOrdinals, [2, 4], "the lines keep their physical ordinals");
@@ -44,7 +44,7 @@ test("{§read-pattern} READ by pattern renders exactly the matching lines with t
 test("{§read-pattern} a scope bounds the lines a READ pattern may select; matched counts inside it", async () => {
     const { db, dispatch } = await setup();
     try {
-        const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), { marks: [1, 2] }, { dialect: "glob", raw: "TODO" }));
+        const r = await dispatch(readStmt(urlPath("workspace", "/notes.md"), { marks: [1, 2] }, { dialect: "glob", raw: "TODO" }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.content, "TODO one");
         assert.deepEqual(r.lineOrdinals, [2]);
@@ -58,7 +58,7 @@ test("{§read-pattern} a scope bounds the lines a READ pattern may select; match
 test("{§read-pattern} zero matches read as empty (204) with matched 0", async () => {
     const { db, dispatch } = await setup();
     try {
-        const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "glob", raw: "DONE" }));
+        const r = await dispatch(readStmt(urlPath("workspace", "/notes.md"), null, { dialect: "glob", raw: "DONE" }));
         assert.equal(r.status, 204, JSON.stringify(r));
         assert.equal(r.matched, 0);
         assert.equal(r.content, "");
@@ -70,7 +70,7 @@ test("{§markerless-first-page} a whole-resource pattern READ returns every sele
     const lines = Array.from({ length: 40 }, (_, index) => index % 2 === 0 ? `keep ${index + 1}` : `skip ${index + 1}`);
     const { db, dispatch } = await setup(lines.join("\n"));
     try {
-        const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "glob", raw: "keep" }));
+        const r = await dispatch(readStmt(urlPath("workspace", "/notes.md"), null, { dialect: "glob", raw: "keep" }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.matched, 20, "every selected line counts");
         assert.deepEqual(r.lineOrdinals, Array.from({ length: 20 }, (_, index) => index * 2 + 1), "every selected line is returned, at its source ordinal");
@@ -82,7 +82,7 @@ test("{§markerless-first-page} a whole-resource pattern READ returns every sele
 test("{§read-fan-out} a full-text READ returns matching lines and exact token coordinates", async () => {
     const { db, dispatch } = await setup();
     try {
-        const r = await dispatch(readStmt(urlPath("worker", "/notes.md"), null, { dialect: "fts", raw: "~TODO" }));
+        const r = await dispatch(readStmt(urlPath("workspace", "/notes.md"), null, { dialect: "fts", raw: "~TODO" }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.content, "TODO one\nTODO two");
         assert.deepEqual(r.lineOrdinals, [2, 4]);
@@ -99,22 +99,22 @@ test("{§read-fan-out} a pattern READ over a glob fans out into one exact patter
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`, { producer: "client" });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    const ctx = makeSchemeCtx({ db, workspaceId: env.workspaceId, workerId: env.workerId });
+    const ctx = makeSchemeCtx({ db, workspaceId: env.workspaceId, sessionId: env.sessionId });
     try {
         for (const [name, content] of [["pets_dogs.md", "cats\nbut I love dogs.\nfish\nHistorically, dogs have been..."], ["pets_cats.md", "Most cats are afraid of dogs."], ["pets_fish.md", "Fish are quiet."]] as const) {
-            await new Worker().edit(editStmt(urlPath("worker", `/${name}`), content), ctx);
+            await new Workspace().edit(editStmt(urlPath("workspace", `/${name}`), content), ctx);
         }
         let sequence = 0;
         const dispatch = async (statement: ReadStatement) => {
             sequence += 1;
-            const result = await engine.dispatch({ statement, workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence, origin: "client" });
+            const result = await engine.dispatch({ statement, workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence, origin: "client" });
             sequence += ((result.rowsWritten as number | undefined) ?? 1) - 1;
             return result;
         };
         const rows = async () => (await db.test_log_entries_by_loop.all<{ op: string; pathname: string | null; status_rx: number; rx: string; attrs: string; sequence: number }>({ loop_id: env.loopId }))
             .filter((row) => row.op === "READ" || row.op === "FIND").toSorted((a, b) => a.sequence - b.sequence);
 
-        const globTarget = urlPath("worker", "/pets_*.md");
+        const globTarget = urlPath("workspace", "/pets_*.md");
         const grep = await dispatch(readStmt(globTarget, null, { dialect: "regex", raw: "/dogs/i", pattern: "dogs", flags: "i" }));
         assert.equal(grep.status, 200, JSON.stringify(grep));
         assert.equal(grep.rowsWritten, 2, "one receipt per matching path; the fishless file writes none");
@@ -132,26 +132,26 @@ test("{§read-fan-out} a pattern READ over a glob fans out into one exact patter
         const cats = JSON.parse(receipts[0].rx) as { content: string; matched: number };
         assert.deepEqual([cats.content, cats.matched], ["Most cats are afraid of dogs.", 1]);
 
-        const none = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "glob", raw: "hamster" }));
+        const none = await dispatch(readStmt(urlPath("workspace", "/pets_*.md"), null, { dialect: "glob", raw: "hamster" }));
         assert.equal(none.status, 204, JSON.stringify(none));
         assert.equal(none.matched, 0);
         const empty = (await rows()).at(-1)!;
         assert.deepEqual([empty.op, empty.pathname, empty.status_rx], ["READ", "/pets_*.md", 204], "no matching path is one 204 receipt on the authored glob");
 
-        const scoped = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), { marks: [1, 2] }, { dialect: "glob", raw: "dogs" }));
+        const scoped = await dispatch(readStmt(urlPath("workspace", "/pets_*.md"), { marks: [1, 2] }, { dialect: "glob", raw: "dogs" }));
         assert.equal(scoped.status, 200, JSON.stringify(scoped));
         assert.equal(scoped.rowsWritten, 2);
         const scopedDogs = JSON.parse((await rows()).at(-1)!.rx) as { content: string; matched: number };
         assert.deepEqual([scopedDogs.content, scopedDogs.matched], ["but I love dogs.", 1], "the authored scope bounds every fanned-out READ");
 
-        const every = await dispatch(readStmt(urlPath("worker", "/pets_*.md")));
+        const every = await dispatch(readStmt(urlPath("workspace", "/pets_*.md")));
         assert.equal(every.status, 200, JSON.stringify(every));
         assert.equal(every.rowsWritten, 3, "without a pattern every path under the glob is read");
         const previews = (await rows()).slice(-3);
         assert.deepEqual(previews.map(({ op, pathname }) => [op, pathname]), [["READ", "/pets_cats.md"], ["READ", "/pets_dogs.md"], ["READ", "/pets_fish.md"]]);
         assert.equal((JSON.parse(previews[2].rx) as { content: string }).content, "Fish are quiet.", "each path renders its ordinary preview");
 
-        const fullText = await dispatch(readStmt(urlPath("worker", "/pets_*.md"), null, { dialect: "fts", raw: "~dogs" }));
+        const fullText = await dispatch(readStmt(urlPath("workspace", "/pets_*.md"), null, { dialect: "fts", raw: "~dogs" }));
         assert.equal(fullText.status, 200, JSON.stringify(fullText));
         assert.equal(fullText.rowsWritten, 2);
         const fullTextRows = (await rows()).slice(-2);

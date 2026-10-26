@@ -9,12 +9,12 @@ export default class LiveSubscriptions {
     readonly #asked = new Set<number>();
     readonly #conclusions = new Map<number, PromiseWithResolvers<void>>();
 
-    register(subscriptionId: number, handle: SubscriptionHandle, holderWorkerId?: number, reaperLoopId: number | null = null): void {
+    register(subscriptionId: number, handle: SubscriptionHandle, holderSessionId?: number, reaperLoopId: number | null = null): void {
         if (this.#handles.has(subscriptionId)) {
             throw new Error(`live subscription ${subscriptionId} is already registered`);
         }
         this.#handles.set(subscriptionId, handle);
-        if (holderWorkerId !== undefined) this.#holders.set(subscriptionId, holderWorkerId);
+        if (holderSessionId !== undefined) this.#holders.set(subscriptionId, holderSessionId);
         if (reaperLoopId !== null) this.#reapers.set(subscriptionId, reaperLoopId);
     }
 
@@ -26,10 +26,10 @@ export default class LiveSubscriptions {
         this.#asked.delete(subscriptionId);
     }
 
-    // {§stream-asked-stop} — a KILL by the worker that holds the stream names it before cancelling
-    // it, so its conclusion is the stop that worker asked for rather than a cancellation failure.
-    asked(subscriptionId: number, workerId: number): void {
-        if (this.#holders.get(subscriptionId) === workerId) this.#asked.add(subscriptionId);
+    // {§stream-asked-stop} — a KILL by the session that holds the stream names it before cancelling
+    // it, so its conclusion is the stop that session asked for rather than a cancellation failure.
+    asked(subscriptionId: number, sessionId: number): void {
+        if (this.#holders.get(subscriptionId) === sessionId) this.#asked.add(subscriptionId);
     }
 
     wasAsked(subscriptionId: number): boolean {

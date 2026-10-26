@@ -11,7 +11,7 @@ import type { ProviderAccounting, ProviderRequestAccounting } from "@plurnk/plur
 import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
@@ -19,8 +19,8 @@ const execFileP = promisify(execFile);
 
 interface DigestJson {
     workspaces: Array<{ id: number; accounting: ProviderAccounting }>;
-    workers: Array<{ id: number; workspace_id: number; accounting: ProviderAccounting }>;
-    loops: Array<{ id: number; worker_id: number; prompt: string }>;
+    sessions: Array<{ id: number; workspace_id: number; accounting: ProviderAccounting }>;
+    loops: Array<{ id: number; session_id: number; prompt: string }>;
     turns: Array<{ id: number; loop_id: number; accounting: ProviderAccounting }>;
     inference_calls: Array<{
         id: number;
@@ -38,18 +38,18 @@ interface DigestJson {
     }>;
     turn_attempts: Array<{ turn_id: number; model: string }>;
     provider_requests: Array<{ inference_call_id: number; turn_attempt_id: number | null; accounting: ProviderRequestAccounting }>;
-    log_entries: Array<{ worker_id: number; loop_id: number; turn_id: number; target: string | null }>;
+    log_entries: Array<{ session_id: number; loop_id: number; turn_id: number; target: string | null }>;
 }
 
-const seedWorkerEvidence = async (
+const seedSessionEvidence = async (
     db: Db,
     workspaceId: number,
     marker: string,
     ordinal: number,
     op: string,
-): Promise<{ workerId: number; loopId: number; turnId: number }> => {
-    const workerId = await insertWorker(db, workspaceId, null, `worker-${marker}`);
-    const loopId = await insertLoop(db, workerId, 1, `prompt-${marker}`);
+): Promise<{ sessionId: number; loopId: number; turnId: number }> => {
+    const sessionId = await insertSession(db, workspaceId, null, `session-${marker}`);
+    const loopId = await insertLoop(db, sessionId, 1, `prompt-${marker}`);
     const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
     const turnId = turn.id;
     await Turn.recordInference(db, turnId, {
@@ -134,7 +134,7 @@ const seedWorkerEvidence = async (
         parse_errors: "[]",
     });
     await db.engine_insert_log_entry.run({
-        worker_id: workerId,
+        session_id: sessionId,
         loop_id: loopId,
         turn_id: turnId,
         sequence: 1,
@@ -142,7 +142,7 @@ const seedWorkerEvidence = async (
         source: null,
         model_call_id: null,
         op,
-        scheme: "worker",
+        scheme: "workspace",
         username: null,
         password: null,
         hostname: null,
@@ -161,12 +161,12 @@ const seedWorkerEvidence = async (
         outcome: null,
         attrs: "{}",
     });
-    return { workerId, loopId, turnId };
+    return { sessionId, loopId, turnId };
 };
 
 const seedBareEvidence = async (
     db: Db,
-    coordinates: { workerId: number; loopId: number; turnId: number },
+    coordinates: { sessionId: number; loopId: number; turnId: number },
 ): Promise<void> => {
     const modelCall = await db.engine_open_model_call.get<{ id: number }>({
         turn_id: coordinates.turnId,
@@ -210,7 +210,7 @@ const seedBareEvidence = async (
         model: accounting.model,
     });
     await db.engine_insert_log_entry.run({
-        worker_id: coordinates.workerId,
+        session_id: coordinates.sessionId,
         loop_id: coordinates.loopId,
         turn_id: coordinates.turnId,
         sequence: 2,
@@ -283,16 +283,16 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
     const db = await openMigrated(dbPath);
     let workspaceA = 0;
     let workspaceB = 0;
-    let a1: Awaited<ReturnType<typeof seedWorkerEvidence>>;
-    let a2: Awaited<ReturnType<typeof seedWorkerEvidence>>;
-    let b1: Awaited<ReturnType<typeof seedWorkerEvidence>>;
+    let a1: Awaited<ReturnType<typeof seedSessionEvidence>>;
+    let a2: Awaited<ReturnType<typeof seedSessionEvidence>>;
+    let b1: Awaited<ReturnType<typeof seedSessionEvidence>>;
     try {
         workspaceA = await insertWorkspace(db, "digest-workspace-a");
         workspaceB = await insertWorkspace(db, "digest-workspace-b");
-        a1 = await seedWorkerEvidence(db, workspaceA, "a1", 1, "READ");
+        a1 = await seedSessionEvidence(db, workspaceA, "a1", 1, "READ");
         await seedBareEvidence(db, a1);
-        a2 = await seedWorkerEvidence(db, workspaceA, "a2", 2, "EDIT");
-        b1 = await seedWorkerEvidence(db, workspaceB, "b1", 3, "COPY");
+        a2 = await seedSessionEvidence(db, workspaceA, "a2", 2, "EDIT");
+        b1 = await seedSessionEvidence(db, workspaceB, "b1", 3, "COPY");
     } finally {
         await db.close();
     }
@@ -301,7 +301,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
     const { default: EvidenceReader } = await import("@plurnk/plurnk-service/evidence");
     const run = async (
         name: string,
-        selectors: { workerId?: number; workspaceId?: number },
+        selectors: { sessionId?: number; workspaceId?: number },
     ): Promise<{ json: DigestJson; markdown: string; reasoning: string; files: string[] }> => {
         const digestDir = join(dir, name);
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir, ...selectors });
@@ -315,55 +315,55 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
     };
 
     try {
-        const worker = await run("worker", { workerId: a1.workerId });
+        const session = await run("session", { sessionId: a1.sessionId });
         // {§digest-programmatic-surface}: a turn line names its own artifact and the model's own
         // count, so a reader never subtracts harness turns or counts packet files by hand.
-        assert.match(worker.markdown, /^T\d+ \(model turn \d+ · worker-a1-1-1\): producer=model/m);
-        assert.match(worker.markdown, new RegExp(`^T\\d+ \\(model turn \\d+ · worker-a1-1-1\\): producer=model.* outside=${contentWeight("outside-a1")} tok`, "m"),
+        assert.match(session.markdown, /^T\d+ \(model turn \d+ · session-a1-1-1\): producer=model/m);
+        assert.match(session.markdown, new RegExp(`^T\\d+ \\(model turn \\d+ · session-a1-1-1\\): producer=model.* outside=${contentWeight("outside-a1")} tok`, "m"),
             "{§outside-text}: the turn line carries the weight of its outside text");
-        for (const stem of worker.markdown.match(/worker-[a-z0-9]+-\d+-\d+/gu) ?? []) {
-            assert.ok(worker.files.some((file) => file.startsWith(`${stem}.`)), `${stem} names a written artifact`);
+        for (const stem of session.markdown.match(/session-[a-z0-9]+-\d+-\d+/gu) ?? []) {
+            assert.ok(session.files.some((file) => file.startsWith(`${stem}.`)), `${stem} names a written artifact`);
         }
-        assert.deepEqual(worker.json.workspaces.map(({ id }) => id), [workspaceA]);
-        assert.deepEqual(worker.json.workers.map(({ id }) => id), [a1.workerId]);
-        assert.deepEqual(worker.json.loops.map(({ id }) => id), [a1.loopId]);
-        assert.deepEqual(worker.json.turns.map(({ id }) => id), [a1.turnId]);
-        assert.deepEqual(worker.json.inference_calls.map(({ kind }) => kind), ["emission", "bare"]);
-        assert.deepEqual(worker.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
-        assert.deepEqual(worker.json.model_calls.map(({ kind }) => kind), ["emission", "bare"]);
-        assert.ok(worker.json.model_calls[1]?.log_entry_id !== null);
-        assert.deepEqual(worker.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId]);
-        assert.equal(worker.json.provider_requests.length, 3);
-        assert.equal(worker.json.provider_requests[2]?.turn_attempt_id, null);
-        assert.deepEqual(worker.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
-        assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.costUsd), [null]);
-        assert.deepEqual(worker.json.workers.map(({ accounting }) => accounting.knownCostUsd), ["0.001"]);
-        assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.usage), [null]);
-        assert.deepEqual(worker.json.turns.map(({ accounting }) => accounting.knownUsage?.inputTokens), [100]);
-        assert.match(worker.markdown, /prompt-a1/);
-        assert.match(worker.markdown, /Tokens:\s+input=100\+\? output=10\+\? reasoning=1\+\? cache-read=0\+\?/);
-        assert.match(worker.markdown, /Cost:\s+\$0\.001 \+ \? \(incomplete\) \(estimated — catalog rates\)/);
-        assert.match(worker.markdown, /Wire:\s+3 requests · 1 error \(33%\)/);
-        assert.match(worker.markdown, /Op mix:\s+BARE=1 READ=1/);
+        assert.deepEqual(session.json.workspaces.map(({ id }) => id), [workspaceA]);
+        assert.deepEqual(session.json.sessions.map(({ id }) => id), [a1.sessionId]);
+        assert.deepEqual(session.json.loops.map(({ id }) => id), [a1.loopId]);
+        assert.deepEqual(session.json.turns.map(({ id }) => id), [a1.turnId]);
+        assert.deepEqual(session.json.inference_calls.map(({ kind }) => kind), ["emission", "bare"]);
+        assert.deepEqual(session.json.model_calls.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
+        assert.deepEqual(session.json.model_calls.map(({ kind }) => kind), ["emission", "bare"]);
+        assert.ok(session.json.model_calls[1]?.log_entry_id !== null);
+        assert.deepEqual(session.json.turn_attempts.map(({ turn_id }) => turn_id), [a1.turnId]);
+        assert.equal(session.json.provider_requests.length, 3);
+        assert.equal(session.json.provider_requests[2]?.turn_attempt_id, null);
+        assert.deepEqual(session.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId]);
+        assert.deepEqual(session.json.sessions.map(({ accounting }) => accounting.costUsd), [null]);
+        assert.deepEqual(session.json.sessions.map(({ accounting }) => accounting.knownCostUsd), ["0.001"]);
+        assert.deepEqual(session.json.turns.map(({ accounting }) => accounting.usage), [null]);
+        assert.deepEqual(session.json.turns.map(({ accounting }) => accounting.knownUsage?.inputTokens), [100]);
+        assert.match(session.markdown, /prompt-a1/);
+        assert.match(session.markdown, /Tokens:\s+input=100\+\? output=10\+\? reasoning=1\+\? cache-read=0\+\?/);
+        assert.match(session.markdown, /Cost:\s+\$0\.001 \+ \? \(incomplete\) \(estimated — catalog rates\)/);
+        assert.match(session.markdown, /Wire:\s+3 requests · 1 error \(33%\)/);
+        assert.match(session.markdown, /Op mix:\s+BARE=1 READ=1/);
         assert.match(
-            worker.markdown,
+            session.markdown,
             /^Owner: _plurnk$/mu,
-            "the digest projects durable worker ownership",
+            "the digest projects durable session ownership",
         );
-        assert.doesNotMatch(worker.markdown, /\[object Object\]/u);
-        assert.match(worker.reasoning, /reason-a1/);
-        assert.doesNotMatch(`${JSON.stringify(worker.json)}${worker.markdown}${worker.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
-        assert.doesNotMatch(worker.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);
-        assert.ok(worker.files.includes("worker-a1-1-1.user.md"));
-        assert.equal(await readFile(join(dir, "worker", "worker-a1-1-1.user.md"), "utf8"), "input-a1");
-        assert.ok(!worker.files.some((file) => file.startsWith("worker-a2")));
+        assert.doesNotMatch(session.markdown, /\[object Object\]/u);
+        assert.match(session.reasoning, /reason-a1/);
+        assert.doesNotMatch(`${JSON.stringify(session.json)}${session.markdown}${session.reasoning}`, /(?:prompt|reason)-(?:a2|b1)/);
+        assert.doesNotMatch(session.markdown, /(?:\$0\.002000|\$0\.003000|Op mix:\s+(?:EDIT|COPY)=1)/);
+        assert.ok(session.files.includes("session-a1-1-1.user.md"));
+        assert.equal(await readFile(join(dir, "session", "session-a1-1-1.user.md"), "utf8"), "input-a1");
+        assert.ok(!session.files.some((file) => file.startsWith("session-a2")));
 
         const workspace = await run("workspace", { workspaceId: workspaceA });
         assert.deepEqual(workspace.json.workspaces.map(({ id }) => id), [workspaceA]);
-        assert.ok(workspace.json.workers.every(({ workspace_id }) => workspace_id === workspaceA));
+        assert.ok(workspace.json.sessions.every(({ workspace_id }) => workspace_id === workspaceA));
         assert.deepEqual(
-            workspace.json.workers.filter(({ id }) => id === a1.workerId || id === a2.workerId).map(({ id }) => id),
-            [a1.workerId, a2.workerId],
+            workspace.json.sessions.filter(({ id }) => id === a1.sessionId || id === a2.sessionId).map(({ id }) => id),
+            [a1.sessionId, a2.sessionId],
         );
         assert.deepEqual(workspace.json.loops.map(({ id }) => id), [a1.loopId, a2.loopId]);
         assert.deepEqual(workspace.json.turns.map(({ id }) => id), [a1.turnId, a2.turnId]);
@@ -379,8 +379,8 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.equal(workspace.json.workspaces[0]?.accounting.knownCostUsd, "0.003");
         assert.deepEqual(workspace.json.log_entries.map(({ turn_id }) => turn_id), [a1.turnId, a1.turnId, a2.turnId]);
         assert.deepEqual(
-            workspace.json.workers
-                .filter(({ id }) => id === a1.workerId || id === a2.workerId)
+            workspace.json.sessions
+                .filter(({ id }) => id === a1.sessionId || id === a2.sessionId)
                 .map(({ accounting }) => accounting.knownCostUsd),
             ["0.001", "0.002"],
         );
@@ -391,13 +391,13 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
         assert.match(workspace.markdown, /Cost:\s+\$0\.002 \+ \? \(incomplete\) \(charged\)/);
         assert.doesNotMatch(`${JSON.stringify(workspace.json)}${workspace.markdown}${workspace.reasoning}`, /(?:prompt|reason)-b1/);
         assert.doesNotMatch(workspace.markdown, /(?:\$0\.003000|Op mix:\s+COPY=1)/);
-        assert.ok(workspace.files.some((file) => file.startsWith("worker-a1-1-1.")));
-        assert.ok(workspace.files.some((file) => file.startsWith("worker-a2-1-1.")));
-        assert.ok(!workspace.files.some((file) => file.startsWith("worker-b1-")));
+        assert.ok(workspace.files.some((file) => file.startsWith("session-a1-1-1.")));
+        assert.ok(workspace.files.some((file) => file.startsWith("session-a2-1-1.")));
+        assert.ok(!workspace.files.some((file) => file.startsWith("session-b1-")));
 
-        const intersection = await run("intersection", { workerId: b1.workerId, workspaceId: workspaceA });
+        const intersection = await run("intersection", { sessionId: b1.sessionId, workspaceId: workspaceA });
         assert.deepEqual(intersection.json.workspaces, []);
-        assert.deepEqual(intersection.json.workers, []);
+        assert.deepEqual(intersection.json.sessions, []);
         assert.deepEqual(intersection.json.loops, []);
         assert.deepEqual(intersection.json.turns, []);
         assert.deepEqual(intersection.json.inference_calls, []);

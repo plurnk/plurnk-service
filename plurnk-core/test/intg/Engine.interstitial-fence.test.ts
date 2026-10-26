@@ -4,7 +4,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import { testExecutors } from "./_execs.ts";
 
@@ -12,10 +12,10 @@ const FENCE = "`".repeat(4);
 
 const memory = PlurnkParser.frame("NOTE", "Examples reviewed.");
 
-const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, workerId: number, loopId: number, content: string, prompt: string) =>
+const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, sessionId: number, loopId: number, content: string, prompt: string) =>
     await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
         provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }),
-        workspaceId, workerId, loopId, maxTurns: 3, maxStrikes: 3, messages: [{ role: "user", content: prompt }],
+        workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3, messages: [{ role: "user", content: prompt }],
     });
 
 // {§quotation} — an unlabeled fence quotes: an operation inside it is shown, never run. A wider
@@ -24,15 +24,15 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a wi
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interstitial-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Show the examples.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Show the examples.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         await seedEntryWithChannel(db, { workspaceId, pathname: "/quoted.md", content: "Keep this one too." });
         const source = [
             "An unlabeled fence quotes the operation inside it:",
-            "```\n```KILL (worker:///notes.md)```\n```",
+            "```\n```KILL (workspace:///notes.md)```\n```",
             "A wider SEND quotes one too:",
-            "````SEND\n```KILL (worker:///quoted.md)```\n````",
+            "````SEND\n```KILL (workspace:///quoted.md)```\n````",
             memory,
         ].join("\n\n");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -41,7 +41,7 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a wi
                 { assistant: { content: source, reasoning: null } },
                 { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
             ] }),
-            workspaceId, workerId, loopId, maxTurns: 3,
+            workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples." }],
         });
         assert.equal(result.result.status, 200);
@@ -51,15 +51,15 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a wi
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; status_rx: number }>({ turn_id: turnId });
         const model = rows.filter(({ origin, op }) => origin === "model" && op !== null);
         assert.deepEqual(model.map(({ op, status_rx }) => [op, status_rx]), [["NOTE", 200], ["SEND", 200], ["NOTE", 200]]);
-        assert.match(JSON.parse(model[0].tx).body, /^An unlabeled fence quotes[\s\S]*```KILL \(worker:\/\/\/notes\.md\)```[\s\S]*A wider SEND quotes one too:$/u,
+        assert.match(JSON.parse(model[0].tx).body, /^An unlabeled fence quotes[\s\S]*```KILL \(workspace:\/\/\/notes\.md\)```[\s\S]*A wider SEND quotes one too:$/u,
             "the prose and its quoted KILL, one span before the SEND, are the turn's NOTE, literally ({§outside-text})");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
-        assert.equal(JSON.parse(model[1].tx).body.raw, "```KILL (worker:///quoted.md)```", "the quoted heading stayed body under the wider fence");
+        assert.equal(JSON.parse(model[1].tx).body.raw, "```KILL (workspace:///quoted.md)```", "the quoted heading stayed body under the wider fence");
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, source, "/ops stays exact");
-        const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
+        const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "workspace", name: "body" });
         assert.equal(note?.content, "Keep this note.", "the quoted KILL never ran: an unlabeled fence quotes");
-        const quoted = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/quoted.md", scheme: "worker", name: "body" });
+        const quoted = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/quoted.md", scheme: "workspace", name: "body" });
         assert.equal(quoted?.content, "Keep this one too.", "the quoted KILL never ran");
     } finally { await db.close(); }
 });
@@ -68,30 +68,30 @@ test("{§outside-text} {§unfenced-operation}: an unfenced heading is never run,
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `bare-heading-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Show the examples.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Show the examples.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         const notices: Array<{ kind: string; message?: string }> = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-        const source = ["KILL (worker:///notes.md)", PlurnkParser.frame("SEND", "Explained."), memory].join("\n\n");
+        const source = ["KILL (workspace:///notes.md)", PlurnkParser.frame("SEND", "Explained."), memory].join("\n\n");
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: source, reasoning: null } },
                 { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
             ] }),
-            workspaceId, workerId, loopId, maxTurns: 3,
+            workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Show the examples." }],
         });
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-2)! });
         const model = rows.filter(({ origin }) => origin === "model");
         assert.deepEqual(model.map(({ op }) => op), ["SEND", "NOTE"], "the unfenced heading is not response text: never run ({§unfenced-operation})");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string }>({ session_id: sessionId });
         assert.equal(sources.some((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside"), false, "and it is not outside text either: the turn has no outside source");
         assert.equal(JSON.parse(model[0].tx).body.raw, "Explained.", "only the authored SEND is delivered");
         assert.deepEqual(notices.filter(({ kind }) => kind === "parse_advisory").map(({ message }) => message),
             ["Unfenced `KILL` ignored."]);
-        const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
+        const note = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "workspace", name: "body" });
         assert.equal(note?.content, "Keep this note.");
     } finally { await db.close(); }
 });
@@ -100,11 +100,11 @@ test("{§unfenced-operation}: an ignored content heading does not deny a success
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-and-unfenced-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Read the note.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
         const body = "The recovery marker is MARIGOLD-43.";
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: body });
-        const heading = "READ (worker:///notes.md)";
+        const heading = "READ (workspace:///notes.md)";
         const reasoning = PlurnkParser.frame(heading, null);
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
@@ -113,7 +113,7 @@ test("{§unfenced-operation}: an ignored content heading does not deny a success
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "Read the note." }],
         });
         assert.equal(result.result.status, 200);
@@ -127,7 +127,7 @@ test("{§unfenced-operation}: an ignored content heading does not deny a success
         const next = JSON.stringify(provider.received[1]);
         assert.ok(next.includes(body), "the next request contains the successful result");
         assert.ok(next.includes("Unfenced `READ` ignored."), "the same request identifies only the ignored fragment");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "ops")?.content, heading);
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "reasoning")?.content, reasoning);
     } finally { await db.close(); }
@@ -137,14 +137,14 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `send-conclusion-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "How do I run the tests?");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "How do I run the tests?");
         const answer = "The runner is configured in the package root:\n\n```ts\nexport default { timeout: 30_000 };\n```\n\nIt takes about a minute.";
         const notices: Array<{ kind: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: PlurnkParser.frame("SEND [200]", answer), reasoning: "simple question" } }] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 3, maxStrikes: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3,
             messages: [{ role: "user", content: "How do I run the tests?" }],
         });
         assert.equal(result.result.status, 200);
@@ -163,10 +163,10 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `nested-reply-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "How do I read a file?");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "How do I read a file?");
         const answer = "An operation opens with three backticks:\n\n```text\n```READ (notes.md)\n```\n```";
-        const result = await engineRun(db, workspaceId, workerId, loopId,
+        const result = await engineRun(db, workspaceId, sessionId, loopId,
             PlurnkParser.frame("SEND", answer) + "\n\n" + PlurnkParser.frame("SEND [200]", null), "How do I read a file?");
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds.at(-1)! });
@@ -178,15 +178,15 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
 
 // {§empty-turn} {§reasoning-row}
 for (const [label, content, finishReason] of [
-    ["an operation heading outside a fence", "Let me check.\n\nREAD (worker:///notes.md)", "stop"],
+    ["an operation heading outside a fence", "Let me check.\n\nREAD (workspace:///notes.md)", "stop"],
     ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],
 ] as const) {
     test(`{§empty-turn}: ${label} is an empty turn with one strike and an error row, never an answer`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `empty-turn-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "Do the thing.");
             const notices: Array<{ kind: string }> = [];
             const reasoning = Array.from({ length: 120 }, (_, index) => `thinking about it ${index + 1}`).join("\n");
             const provider = new Mock({ contextWindow: 100_000, responses: [
@@ -195,7 +195,7 @@ for (const [label, content, finishReason] of [
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
-                provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3,
+                provider, workspaceId, sessionId, loopId, maxTurns: 4, maxStrikes: 3,
                 messages: [{ role: "user", content: "Do the thing." }],
             });
             assert.equal(result.result.status, 200);
@@ -203,7 +203,7 @@ for (const [label, content, finishReason] of [
             const emptyTurn = result.turnIds[1];
             const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: emptyTurn });
             assert.deepEqual(attempts.map(({ accepted }) => accepted), [1], "admitted on its only attempt");
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "ops")?.content, content);
             assert.equal(sources.find((row) => row.turn_id === emptyTurn && row.kind === "reasoning")?.content, reasoning, "the reasoning source is kept whole at its address");
             assert.deepEqual(notices.filter(({ kind }) => kind === "turn_no_operations"), [], "{§empty-turn} the strike sends no notice");
@@ -228,15 +228,15 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interstitial-privilege-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Do the thing.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Do the thing.");
         const narration = "Let me look at the failing test first.";
         const prose = "The investigation is still in progress.";
         // {§native-tool-calls} — native markup naming a plurnk operation is that operation, whatever the
         // family; a call naming a tool plurnk does not have is read as nothing, so its turn is empty as well as toxic.
         const toxin = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="READ">\n<｜｜DSML｜｜ parameter name="path" string="true">sh:///67f57ccd#stdout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
-        const untranslated = '<tool_call>\n{"name": "read_file", "arguments": {"path": "worker:///notes.md"}}\n</tool_call>';
-        const brokenOp = "Checking the source.\n\nREAD (worker:///notes.md)";
+        const untranslated = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';
+        const brokenOp = "Checking the source.\n\nREAD (workspace:///notes.md)";
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: `${narration}\n\n\`\`\`\`NOTE\nplan\n\`\`\`\``, reasoning: null, finishReason: "stop" } },
             { assistant: { content: prose, reasoning: null, finishReason: "stop" } },
@@ -246,7 +246,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
             { assistant: { content: "````SEND [200]\nDone.\n````", reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Do the thing." }] });
         assert.equal(result.result.status, 200);
         assert.equal(result.turnIds.length, 7, "{§empty-turn} no runtime read-back turn follows an empty turn");
         const [, workingTurn, proseTurn, toxinTurn, untranslatedTurn, brokenTurn] = result.turnIds;
@@ -260,7 +260,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
             [[], [422], [], [422], []],
             "{§empty-turn} each empty turn carries its one error row, toxic or plain; the translated call ran, so its turn is not empty",
         );
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const outsideOf = (turnId: number) => sources.find((row) => row.turn_id === turnId && row.kind === "outside")?.content;
         assert.deepEqual(await notesOf(workingTurn), [narration, "plan"], "narration beside a real operation is the turn's NOTE at its position ({§outside-text})");
         assert.equal(outsideOf(workingTurn), undefined, "beside a fenced operation there is no outside source");
@@ -289,19 +289,19 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `reasoning-only-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "Read the note and answer.");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "Read the note and answer.");
             await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Recorded." });
             const reasoning = "I still need to work out the next action.";
             const notices: Array<{ kind: string }> = [];
             const provider = new Mock({ contextWindow: 100_000, responses: [
-                { assistant: { content: PlurnkParser.frame("READ (worker:///notes.md)", "") + "\n" + PlurnkParser.frame("SEND", "Recorded."), reasoning: null } },
+                { assistant: { content: PlurnkParser.frame("READ (workspace:///notes.md)", "") + "\n" + PlurnkParser.frame("SEND", "Recorded."), reasoning: null } },
                 { assistant: { content: "", reasoning, ...(finishReason === undefined ? {} : { finishReason }) } },
                 { assistant: { content: PlurnkParser.frame("SEND [200]", null), reasoning: null } },
             ] });
             const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice) });
             const result = await engine.runLoop({
-                provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3,
+                provider, workspaceId, sessionId, loopId, maxTurns: 4, maxStrikes: 3,
                 messages: [{ role: "user", content: "Read the note and answer." }],
             });
             assert.equal(result.result.status, 200);
@@ -311,7 +311,7 @@ for (const preview of ["0", "1"]) for (const finishReason of [undefined, "stop",
             const turn = await db.test_get_turn.get<{ status: number; packet: string }>({ id: emptyTurn });
             assert.equal(turn?.status, 102);
             assert.equal(JSON.parse(packetSection(JSON.parse(turn.packet), "messages")).length, 1, "the progress reply has not resolved the original message");
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === emptyTurn && kind === "reasoning")?.content, reasoning);
             const emptyRows = await db.test_log_entries_by_turn.all<{ sequence: number; attrs: string; rx: string }>({ turn_id: emptyTurn });
             const previews = emptyRows.filter(({ attrs }) => JSON.parse(attrs).kind === "reasoning");
@@ -333,20 +333,20 @@ test("{§metadata-ignored}: metadata on a file READ is ignored with a notice and
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `metadata-ignored-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Read the note.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         const notices: Array<{ kind: string; directive?: string; message?: string }> = [];
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; directive?: string; message?: string }) });
-        const source = ['````READ (worker:///notes.md) [{"lines": "1-2"}]', "````", memory].join("\n");
+        const source = ['````READ (workspace:///notes.md) [{"lines": "1-2"}]', "````", memory].join("\n");
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
-            workspaceId, workerId, loopId, messages: [{ role: "user", content: "Read the note." }],
+            workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Read the note." }],
         });
         assert.deepEqual(result.outcomes.filter(({ op }) => op === "READ").map(({ op, status }) => [op, status]), [["READ", 200]], "the READ ran without its metadata");
         const notice = notices.find(({ kind }) => kind === "metadata_ignored");
         assert.ok(notice, "one metadata_ignored notice");
-        assert.equal(notice.message, "READ on 'worker' takes no [metadata]; the READ ran without it.");
+        assert.equal(notice.message, "READ on 'workspace' takes no [metadata]; the READ ran without it.");
         assert.equal(notice.directive, "YOU SHOULD NOT write [metadata] on an operation that takes none.", "{§notice-directive}");
     } finally { await db.close(); }
 });
@@ -355,16 +355,16 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `indented-program-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Read the note.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Read the note.");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Keep this note." });
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            { assistant: { content: "I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE, reasoning: null } },
+            { assistant: { content: "I'll read it now.\n\n    " + FENCE + "READ (workspace:///notes.md)\n    " + FENCE, reasoning: null } },
             { assistant: { content: PlurnkParser.frame("SEND [200]", "It says: Keep this note."), reasoning: null } },
         ] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 4, maxStrikes: 3, messages: [{ role: "user", content: "Read the note." }] });
         assert.equal(result.result.status, 200);
         assert.equal(provider.received.length, 2, "the offset example is not an answer: the model gets another turn");
         // #799: the parser presumes nothing about why a fence is offset. The turn is an empty turn
@@ -375,9 +375,9 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
         const all = await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: id })));
         assert.equal(all.flat().filter(({ origin, op }) => origin === "model" && op === "READ").length, 0, "the offset example never ran");
         assert.equal(all.at(-2)!.some(({ origin, op }) => origin === "model" && op === "NOTE"), false, "the offset example is no row");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside")?.content,
-            "I'll read it now.\n\n    " + FENCE + "READ (worker:///notes.md)\n    " + FENCE, "the offset example is retained literally, never executed");
+            "I'll read it now.\n\n    " + FENCE + "READ (workspace:///notes.md)\n    " + FENCE, "the offset example is retained literally, never executed");
         assert.equal(
             JSON.parse(all.at(-1)!.find(({ origin, op }) => origin === "model" && op === "SEND")!.tx).body.raw,
             "It says: Keep this note.",
@@ -392,15 +392,15 @@ test("{§unfenced-operation} {§empty-turn}: unfenced executor calls draw their 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unfenced-exec-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Build it.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Build it.");
         const notices: Array<{ kind: string; message?: string }> = [];
         const provider = new Mock({ contextWindow: 100_000, responses: ["build", "test", "lint"].map((step) => (
             { assistant: { content: `Running the ${step} step.\n\nsh (${step}.sh)`, reasoning: null, finishReason: "stop" as const } }
         )) });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_id, payload) => notices.push(payload.notice as { kind: string; message?: string }) });
         engine.setExecutors(await testExecutors());
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Build it." }] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Build it." }] });
         assert.equal(result.result.status, 500, "three empty turns cross the strike threshold");
         assert.match(JSON.stringify(result.result), /performed no operation/u, "the terminal names the source");
         assert.equal(result.turnIds.length, 4, "initialization and three empty turns; with no reasoning there is nothing to read back");
@@ -410,7 +410,7 @@ test("{§unfenced-operation} {§empty-turn}: unfenced executor calls draw their 
         assert.equal(notices.filter(({ kind, message }) => kind === "parse_advisory" && message === "Unfenced `sh` ignored.").length, 3, "each turn heard its receipt");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnIds[1] });
         assert.equal(rows.some(({ origin, op }) => origin === "model" && op === "NOTE"), false, "the narration is no row");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === result.turnIds[1] && row.kind === "outside")?.content,
             "Running the build step.", "only the narration is outside text, not the unfenced invocation ({§outside-text})");
     } finally { await db.close(); }

@@ -6,11 +6,11 @@ import { holdChild } from "./_db.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 // A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
 // would not ({§matcher-refusal}).
-const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
+const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
 const response = (dsl: string) => ({
     assistant: { content: dsl, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
@@ -38,9 +38,9 @@ Await results.
             await withDaemon(provider, async (db, daemon) => {
                 let activeDaemon = daemon;
                 const { workspaceId } = await daemon.createWorkspace({ name: `wait-strikes-${wake}` });
-                const workerId = await namedModelWorker(daemon, workspaceId, "main");
+                const sessionId = await namedModelSession(daemon, workspaceId, "main");
                 t.mock.method(provider, "generate", async (args: Parameters<Mock["generate"]>[0]) => {
-                    if (seen.length < 2) await holdChild(db, workspaceId, workerId);
+                    if (seen.length < 2) await holdChild(db, workspaceId, sessionId);
                     seen.push((args as { strikes?: number }).strikes);
                     return generate(args);
                 });
@@ -52,7 +52,7 @@ Await results.
                 let loopId: number | undefined;
                 t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
                     await schedule.apply(this, args);
-                    if (args[1] === workerId) parks[seen.length - 1]?.resolve();
+                    if (args[1] === sessionId) parks[seen.length - 1]?.resolve();
                 });
                 if (wake === "same-drain") {
                     t.mock.method(LoopLifecycle.prototype, "park", async function (this: LoopLifecycle, ...args: Parameters<typeof park>) {
@@ -69,7 +69,7 @@ Await results.
                 t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
                 t.mock.method(performance, "now", () => Date.now());
                 try {
-                    loopId = (await daemon.runLoop({ workspaceId, workerId, prompt: "Perform valid operations after each wait." })).loopId;
+                    loopId = (await daemon.runLoop({ workspaceId, sessionId, prompt: "Perform valid operations after each wait." })).loopId;
                     if (wake !== "same-drain") {
                         for (const parked of parks) {
                             await parked.promise;
@@ -79,7 +79,7 @@ Await results.
                                 activeDaemon = new Daemon({ db, provider });
                                 await activeDaemon.start();
                             } else {
-                                assert.equal((await activeDaemon.runLoop({ workspaceId, workerId, prompt: "Continue." })).loopId, loopId);
+                                assert.equal((await activeDaemon.runLoop({ workspaceId, sessionId, prompt: "Continue." })).loopId, loopId);
                             }
                         }
                     }
@@ -91,7 +91,7 @@ Await results.
                     assert.equal(rows.filter(({ op, status_rx }) => op === "error" && status_rx === 400).length, 3,
                         "each strike corresponds to its preserved concrete failure");
                 } finally {
-                    await activeDaemon.cancelWorker({ workspaceId, workerId });
+                    await activeDaemon.cancelSession({ workspaceId, sessionId });
                     t.mock.timers.reset();
                     if (activeDaemon !== daemon) await activeDaemon.stop();
                 }
@@ -102,13 +102,13 @@ Await results.
 
 test("{§engine-cycle-evidence}: actual parks end repetition windows even when wakes stay in one drain", async (t) => {
     const provider = new Mock({ contextWindow: 100000, responses: [
-        ...Array.from({ length: 6 }, () => response("````READ (worker:///missing)````\n````WAIT\nAwait results.\n````")),
+        ...Array.from({ length: 6 }, () => response("````READ (workspace:///missing)````\n````WAIT\nAwait results.\n````")),
         response("````SEND [200]\nObservation complete.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "wait-cycle-windows" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        const childLoop = await holdChild(db, workspaceId, workerId);
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const childLoop = await holdChild(db, workspaceId, sessionId);
         const finished = Promise.withResolvers<number>();
         const park = LoopLifecycle.prototype.park;
         const finish = LoopLifecycle.prototype.finish;
@@ -129,13 +129,13 @@ test("{§engine-cycle-evidence}: actual parks end repetition windows even when w
             return result;
         });
         try {
-            loopId = (await daemon.runLoop({ workspaceId, workerId, prompt: "Check periodically, then conclude.", maxTurns: 10 })).loopId;
+            loopId = (await daemon.runLoop({ workspaceId, sessionId, prompt: "Check periodically, then conclude.", maxTurns: 10 })).loopId;
             assert.equal(await finished.promise, 200, "unchanged observations separated by real waits are not a spin cycle");
             assert.equal(parks, 6);
             assert.equal(provider.received.length, 7);
             const reads = (await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId }))
                 .filter(({ op }) => op === "READ");
             assert.equal(reads.filter(({ status_rx }) => status_rx === 404).length, 6);
-        } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
+        } finally { await daemon.cancelSession({ workspaceId, sessionId }); }
     });
 });

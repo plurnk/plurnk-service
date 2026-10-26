@@ -5,9 +5,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
 const url = (scheme: string, pathname: string): UrlPath => ({
@@ -25,11 +25,11 @@ test("{§scheme-catalog-aside} [catalog] engine_scheme_catalog_summary tallies d
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `catalog-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        await new Worker().edit(editStmt(url("worker", "a.md"), "alpha beta"), ctx);
-        await new Worker().edit(editStmt(url("worker", "notes/b.md"), "gamma"), ctx);
-        await new Worker().edit(editStmt(url("worker", "notes/deep/c.md"), "delta"), ctx);
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        await new Workspace().edit(editStmt(url("workspace", "a.md"), "alpha beta"), ctx);
+        await new Workspace().edit(editStmt(url("workspace", "notes/b.md"), "gamma"), ctx);
+        await new Workspace().edit(editStmt(url("workspace", "notes/deep/c.md"), "delta"), ctx);
         await seedEntryWithChannel(db, { workspaceId, scheme: "skill", authority: "recipe", pathname: "/SKILL.md", content: "a recipe" });
         await EntryCrud.writeEntry({ authority: "", pathname: "README.md" }, {
             channels: { body: { content: "root", mimetype: "text/markdown" } },
@@ -49,8 +49,8 @@ test("{§scheme-catalog-aside} [catalog] engine_scheme_catalog_summary tallies d
 
         const rows = await db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
         const byScheme = new Map(rows.map((r) => [r.scheme, r]));
-        assert.equal(byScheme.get("worker")?.entries, 3, "three commons entries tallied as distinct");
-        assert.equal(byScheme.get("worker")?.shallow_items, 2, "one root entry plus one notes/** scope form the shallow map");
+        assert.equal(byScheme.get("workspace")?.entries, 3, "three commons entries tallied as distinct");
+        assert.equal(byScheme.get("workspace")?.shallow_items, 2, "one root entry plus one notes/** scope form the shallow map");
         assert.equal(byScheme.get("skill")?.entries, 1, "one skill entry tallied");
         assert.equal(byScheme.get("file")?.entries, 3, "three project entries tallied as distinct");
         assert.equal(byScheme.get("file")?.shallow_items, 2, "one root file plus one src/** scope form the shallow map");
@@ -65,25 +65,25 @@ test("{§scheme-catalog-aside} [catalog] a fenced invocation-form summary lists 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `catalog-aside-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const worker = new Worker();
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        const workspace = new Workspace();
         const targets = Array.from({ length: 30 }, (_, index) => `tool_number_${index + 1}_with_a_long_name`);
         const menu = `\`\`\`\`gitea (${targets.join("|")})\\n\`\`\`\``;
-        await worker.edit(editStmt(url("worker", "menu.md"), `# gitea\n\n## Summary\n\n${menu}\n\n## Tools\n`), ctx);
+        await workspace.edit(editStmt(url("workspace", "menu.md"), `# gitea\n\n## Summary\n\n${menu}\n\n## Tools\n`), ctx);
         const prose = "word ".repeat(120).trim();
-        await worker.edit(editStmt(url("worker", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
+        await workspace.edit(editStmt(url("workspace", "prose.md"), `# prose\n\n## Summary\n\n${prose}\n`), ctx);
         const { default: SearchIndex } = await import("../../src/schemes/_search-index.ts");
         await SearchIndex.maintain(ctx);
-        const listing = await worker.find({
-            metadata: null, op: "FIND", aside: null, target: url("worker", "*"),
+        const listing = await workspace.find({
+            metadata: null, op: "FIND", aside: null, target: url("workspace", "*"),
             lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 1 },
         }, ctx);
         assert.equal(listing.status, 200, JSON.stringify(listing));
         const rows = (listing.results as Array<Array<{ path: string; aside?: string }>>).flat();
-        const menuRow = rows.find(({ path }) => path === "worker:///menu.md");
+        const menuRow = rows.find(({ path }) => path === "workspace:///menu.md");
         assert.equal(menuRow?.aside, menu.replaceAll("\\n", "\n"), "the fenced witness is shown whole, every tool named, its newline restored");
-        const proseRow = rows.find(({ path }) => path === "worker:///prose.md");
+        const proseRow = rows.find(({ path }) => path === "workspace:///prose.md");
         assert.ok(proseRow?.aside !== undefined && Array.from(proseRow.aside).length === 256 && proseRow.aside.endsWith("…"), `prose clips at the bound: ${proseRow?.aside?.length}`);
     } finally { await db.close(); }
 });

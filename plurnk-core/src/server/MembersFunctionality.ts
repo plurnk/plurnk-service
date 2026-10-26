@@ -4,7 +4,7 @@
 // shell-path glob, `!glob` excludes, and the glob is the definition's identity
 // ({§functionality-addressing}): `add` names globs; enable, disable and remove name one. Definitions
 // are workspace desired state and the membership overlay is their projection ({§members-projection})
-// — the one truth every worker sees ({§membership-baseline}). A model's `add` is admitted against
+// — the one truth every session sees ({§membership-baseline}). A model's `add` is admitted against
 // the service ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the
 // workspace.
 import { stat } from "node:fs/promises";
@@ -182,7 +182,7 @@ export const documentName = (glob: string): string =>
     encodeURIComponent(glob).replace(/[!'*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 
 // {§members-projection} — each enabled definition is one generated document under
-// `worker:///_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
+// `workspace:///_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
 // what the glob is, whose it is, and what it resolved to.
 const membersDocument = (definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
     const noun = resolution.effect === "exclude" ? "member" : "file";

@@ -16,7 +16,7 @@ import { WIRE_FLEX_MARGIN, effectiveInputCapacity, effectiveInputWall, effective
 const OVERFLOW_KINDS: ReadonlySet<ProviderErrorKind> = new Set(["network_failure", "rate_limit"]);
 
 // Pool - fronts N INTERCHANGEABLE backends as one Provider. This is CAPACITY, not
-// blend: the mechanism (round-robin across workers, sticky within a worker for
+// blend: the mechanism (round-robin across sessions, sticky within a session for
 // KV-cache reuse, overflow to a healthy sibling) is public and lives here; the
 // blend/escalation DECISION (which SKU, when to switch models) stays the
 // consumer's, one level up, by choosing WHICH pool to call. Backends MUST be
@@ -24,16 +24,16 @@ const OVERFLOW_KINDS: ReadonlySet<ProviderErrorKind> = new Set(["network_failure
 // honest Provider surface instead of pretending N models are one
 // ({§provider-capacity-pool}).
 //
-// Affinity is the load-bearing part. A worker's turns stick to one backend so its
-// stable prompt prefix keeps hitting the same KV cache; scattering a worker across
+// Affinity is the load-bearing part. A session's turns stick to one backend so its
+// stable prompt prefix keeps hitting the same KV cache; scattering a session across
 // backends shreds the prefix cache. It is the same slot-affinity pattern one
-// level up: worker -> slot within a llama-server becomes worker -> backend across a
-// fleet - round-robin ACROSS workers, sticky WITHIN one.
+// level up: session -> slot within a llama-server becomes session -> backend across a
+// fleet - round-robin ACROSS sessions, sticky WITHIN one.
 export default class Pool implements Provider {
     readonly #backends: readonly Provider[];
-    readonly #affinity = new Map<string, number>(); // workerId -> backend index; sticky, LRU-bounded
+    readonly #affinity = new Map<string, number>(); // sessionId -> backend index; sticky, LRU-bounded
     readonly #cap: number;                            // LRU ceiling on the affinity map
-    #next = 0;                                        // round-robin cursor for NEW workers
+    #next = 0;                                        // round-robin cursor for NEW sessions
     readonly #floor: Provider;                        // the min-window backend: the safe context floor
 
     // Optional exact tokenizer: present iff every backend exposes one (same
@@ -54,7 +54,7 @@ export default class Pool implements Provider {
 
         // The exposed window is the SAFE FLOOR across backends (a packet that fits the
         // smallest fits all). Every other capacity fact aggregates independently
-        // below. ANY unknown (null) window makes the pool null - a worker might
+        // below. ANY unknown (null) window makes the pool null - a session might
         // route to it, and the consumer must not improvise a cap
         // ({§model-fact-resolution}).
         const anyUnknown = backends.find((b) => b.contextWindow === null);
@@ -100,7 +100,7 @@ export default class Pool implements Provider {
     get inputCapacity(): number | null { return this.#minimumKnown((provider) => provider.inputCapacity); }
     get inputWall(): number | null { return this.#minimumKnown((provider) => provider.inputWall); }
 
-    // Served id / capabilities aggregate CONSERVATIVELY: a worker could land on any
+    // Served id / capabilities aggregate CONSERVATIVELY: a session could land on any
     // backend, so claim `constrainsOutput` only if EVERY backend does, and
     // `requiresOutputBudget` if ANY does (bring a cap if even one backend needs it).
     get servedModel(): string | undefined {
@@ -220,11 +220,11 @@ export default class Pool implements Provider {
     // --- dispatch ---
 
     async generate(args: Parameters<Provider["generate"]>[0]): Promise<ProviderResponse> {
-        const { workerId, signal } = args;
-        if (workerId === undefined || workerId.length === 0) throw new Error("Pool.generate: workerId is required - affinity keys on it");
+        const { sessionId, signal } = args;
+        if (sessionId === undefined || sessionId.length === 0) throw new Error("Pool.generate: sessionId is required - affinity keys on it");
         const tried = new Set<number>();
         const priorAccounting: ProviderRequestAccounting[] = [];
-        let idx = this.#route(workerId);
+        let idx = this.#route(sessionId);
         for (;;) {
             tried.add(idx);
             try {
@@ -249,20 +249,20 @@ export default class Pool implements Provider {
                     throw err;
                 }
                 priorAccounting.push(...err.accounting);
-                this.#affinity.set(workerId, next); // re-stick: the worker's cache moves with it
+                this.#affinity.set(sessionId, next); // re-stick: the session's cache moves with it
                 idx = next;
             }
         }
     }
 
-    // Route a worker to its affine backend, assigning a fresh one round-robin on
+    // Route a session to its affine backend, assigning a fresh one round-robin on
     // first sight. LRU-bounded so a long-lived daemon's map never grows unbounded -
-    // an evicted-and-returning worker simply re-pins (one cold prefill, worst case).
-    #route(workerId: string): number {
-        const pinned = this.#affinity.get(workerId);
+    // an evicted-and-returning session simply re-pins (one cold prefill, worst case).
+    #route(sessionId: string): number {
+        const pinned = this.#affinity.get(sessionId);
         if (pinned !== undefined) {
-            this.#affinity.delete(workerId); // refresh LRU recency
-            this.#affinity.set(workerId, pinned);
+            this.#affinity.delete(sessionId); // refresh LRU recency
+            this.#affinity.set(sessionId, pinned);
             return pinned;
         }
         const idx = this.#next++ % this.#backends.length;
@@ -270,7 +270,7 @@ export default class Pool implements Provider {
             const oldest = this.#affinity.keys().next();
             if (oldest.done !== true) this.#affinity.delete(oldest.value);
         }
-        this.#affinity.set(workerId, idx);
+        this.#affinity.set(sessionId, idx);
         return idx;
     }
 

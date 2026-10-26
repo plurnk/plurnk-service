@@ -8,11 +8,11 @@ export interface WorkspaceCapabilityIdentity {
 }
 
 // {§functionality-scope} — the identity a verb acts under. Every invocation names the workspace; one
-// that arrives through a Worker (a worker-scoped client action, or any execution) also names
-// that Worker, which a worker-scoped family acts for. Adapters keep seeing the workspace identity.
+// that arrives through a Session (a session-scoped client action, or any execution) also names
+// that Session, which a session-scoped family acts for. Adapters keep seeing the workspace identity.
 export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
-    readonly workerId?: number;
-    readonly scope?: "workspace" | "worker";
+    readonly sessionId?: number;
+    readonly scope?: "workspace" | "session";
 }
 
 // {§functionality-discovery-inputs} — one input of the shared discovery query a family may serve.
@@ -54,8 +54,8 @@ export type FunctionalityOutcome =
     | { readonly state: "authorization-required"; readonly authorization: { readonly url?: string } };
 
 export interface FunctionalityDocument {
-    // Relative to the Worker's generated subtree root; the coordinator prefixes
-    // `worker:///_plurnk/`.
+    // Relative to the Session's generated subtree root; the coordinator prefixes
+    // `workspace:///_plurnk/`.
     readonly pathname: string;
     readonly content: string;
 }
@@ -111,7 +111,7 @@ export interface FunctionalityPrepared<Runtime = never, Snapshot = unknown> {
 
 // How a capability replacement meets the workspace gate: `try` fails 409 while
 // the workspace is held (an explicit client mutation), `wait` queues behind the
-// holder (a Worker's own accepted mutation), `none` publishes inside the gate
+// holder (a Session's own accepted mutation), `none` publishes inside the gate
 // context its demand already holds (activation, turn-admission refresh).
 export type WorkspaceCapabilityGate = "none" | "try" | "wait";
 

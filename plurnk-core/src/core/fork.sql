@@ -1,20 +1,20 @@
--- Fork a worker: branch the log, share the workspace (SPEC {§machine-processes}). The branch's row
--- is claimed by worker_name_claim with fork_snapshot = 1, and that INSERT is the fork: the trigger
+-- Fork a session: branch the log, share the workspace (SPEC {§machine-processes}). The branch's row
+-- is claimed by session_name_claim with fork_snapshot = 1, and that INSERT is the fork: the trigger
 -- below copies the parent's history into the branch inside the same statement
--- ({§worker-fork-trigger}). Only worker, loop, turn and log ids are remapped, by natural key —
--- (worker, sequence) for a loop, (loop, sequence) for a turn, (turn, sequence) for a log row.
+-- ({§session-fork-trigger}). Only session, loop, turn and log ids are remapped, by natural key —
+-- (session, sequence) for a loop, (loop, sequence) for a turn, (turn, sequence) for a log row.
 -- Nothing of the workspace is copied ({§machine-processes-fork-shares-workspace}).
 
--- INIT: workers_fork_copies_history
-DROP TRIGGER IF EXISTS workers_fork_copies_history;
-CREATE TRIGGER workers_fork_copies_history
-AFTER INSERT ON workers
+-- INIT: sessions_fork_copies_history
+DROP TRIGGER IF EXISTS sessions_fork_copies_history;
+CREATE TRIGGER sessions_fork_copies_history
+AFTER INSERT ON sessions
 WHEN NEW.fork_event_boundary IS NOT NULL
 BEGIN
     -- Loops: inherited history, never live work — a non-terminal status is clamped to 200 and
     -- given a plain success result ({§machine-processes-fork-copies-the-log}).
     INSERT INTO loops (
-        worker_id, sequence, status, prompt, model_route_id,
+        session_id, sequence, status, prompt, model_route_id,
         spawn_model_route_id, effort, max_turns, terminal_result
     )
     SELECT NEW.id, l.sequence,
@@ -22,15 +22,15 @@ BEGIN
            l.prompt, l.model_route_id, l.spawn_model_route_id, l.effort, l.max_turns,
            CASE WHEN l.status IN (200, 413, 429, 499, 500, 504, 508) THEN l.terminal_result ELSE '{"status":200}' END
     FROM loops l
-    WHERE l.worker_id = NEW.parent_worker_id
+    WHERE l.session_id = NEW.parent_session_id
     ORDER BY l.id;
 
     -- A forked loop is a new durable resource: a failure result identifies the branch loop.
     UPDATE loops
     SET terminal_result = json_set(terminal_result, '$.problem.instance', 'ops://' || NEW.name || '/' || sequence)
-    WHERE worker_id = NEW.id
+    WHERE session_id = NEW.id
       AND json_extract(terminal_result, '$.problem.instance') =
-          'ops://' || (SELECT name FROM workers WHERE id = NEW.parent_worker_id) || '/' || sequence;
+          'ops://' || (SELECT name FROM sessions WHERE id = NEW.parent_session_id) || '/' || sequence;
 
     -- Turns, loop remapped. Model calls, admission rows and provider requests stay with the
     -- source ({§machine-processes-fork-cost}).
@@ -43,8 +43,8 @@ BEGIN
            t.usage_curation_budget, t.packet, t.finish_reason, t.model, t.meta
     FROM turns t
     JOIN loops ol ON ol.id = t.loop_id
-    JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
-    WHERE ol.worker_id = NEW.parent_worker_id
+    JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence
+    WHERE ol.session_id = NEW.parent_session_id
     ORDER BY t.id;
 
     -- {§packet-items}: a turn's composition is copied; the items are shared by hash.
@@ -53,33 +53,33 @@ BEGIN
     FROM turn_sections ts
     JOIN turns ot ON ot.id = ts.turn_id
     JOIN loops ol ON ol.id = ot.loop_id
-    JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
+    JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence
     JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
-    WHERE ol.worker_id = NEW.parent_worker_id;
+    WHERE ol.session_id = NEW.parent_session_id;
 
     INSERT INTO turn_section_items (turn_id, section, position, item_hash)
     SELECT nt.id, tsi.section, tsi.position, tsi.item_hash
     FROM turn_section_items tsi
     JOIN turns ot ON ot.id = tsi.turn_id
     JOIN loops ol ON ol.id = ot.loop_id
-    JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
+    JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence
     JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
-    WHERE ol.worker_id = NEW.parent_worker_id;
+    WHERE ol.session_id = NEW.parent_session_id;
 
     INSERT INTO turn_sources (turn_id, kind, sequence, content, deep_hash)
     SELECT nt.id, s.kind, s.sequence, s.content, s.deep_hash
     FROM turn_sources s
     JOIN turns ot ON ot.id = s.turn_id
     JOIN loops ol ON ol.id = ot.loop_id
-    JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
+    JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence
     JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
-    WHERE ol.worker_id = NEW.parent_worker_id;
+    WHERE ol.session_id = NEW.parent_session_id;
 
     -- Log rows: durable events with their attribution, as inherited history. Each copied row
     -- passes through the log's own triggers exactly as the original did.
     -- {§methods-invocation} A copied stream observation keeps the publication it records, so it still names its execution.
     INSERT INTO log_entries (
-        worker_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, subscription_publication_id, inherited_history,
+        session_id, loop_id, turn_id, sequence, at, origin, source, ambient_event_id, subscription_publication_id, inherited_history,
         op, signal, scheme, username, password, hostname, port, pathname, query, fragment,
         lineMarker, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, state, outcome, attrs, initial_folded, patch
     )
@@ -89,9 +89,9 @@ BEGIN
     FROM log_entries e
     JOIN turns ot ON ot.id = e.turn_id
     JOIN loops ol ON ol.id = e.loop_id
-    JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
+    JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence
     JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
-    WHERE e.worker_id = NEW.parent_worker_id
+    WHERE e.session_id = NEW.parent_session_id
     ORDER BY e.id;
 
     -- Current projection: membership and folded intervals.
@@ -104,10 +104,10 @@ BEGIN
         JOIN log_entry_projections op ON op.log_entry_id = oe.id
         JOIN turns ot ON ot.id = oe.turn_id
         JOIN loops ol ON ol.id = oe.loop_id
-        JOIN loops nl ON nl.worker_id = NEW.id AND nl.sequence = ol.sequence
+        JOIN loops nl ON nl.session_id = NEW.id AND nl.sequence = ol.sequence
         JOIN turns nt ON nt.loop_id = nl.id AND nt.sequence = ot.sequence
         JOIN log_entries ne ON ne.turn_id = nt.id AND ne.sequence = oe.sequence
-        WHERE oe.worker_id = NEW.parent_worker_id
+        WHERE oe.session_id = NEW.parent_session_id
     ) AS source
     WHERE log_entry_projections.log_entry_id = source.log_entry_id;
 
@@ -121,16 +121,16 @@ BEGIN
     JOIN log_entries oop ON oop.id = ef.operation_log_entry_id
     JOIN turns oopt ON oopt.id = oop.turn_id
     JOIN loops oopl ON oopl.id = oop.loop_id
-    JOIN loops nopl ON nopl.worker_id = NEW.id AND nopl.sequence = oopl.sequence
+    JOIN loops nopl ON nopl.session_id = NEW.id AND nopl.sequence = oopl.sequence
     JOIN turns nopt ON nopt.loop_id = nopl.id AND nopt.sequence = oopt.sequence
     JOIN log_entries nop ON nop.turn_id = nopt.id AND nop.sequence = oop.sequence
     JOIN log_entries otg ON otg.id = ef.target_log_entry_id
     JOIN turns otgt ON otgt.id = otg.turn_id
     JOIN loops otgl ON otgl.id = otg.loop_id
-    JOIN loops ntgl ON ntgl.worker_id = NEW.id AND ntgl.sequence = otgl.sequence
+    JOIN loops ntgl ON ntgl.session_id = NEW.id AND ntgl.sequence = otgl.sequence
     JOIN turns ntgt ON ntgt.loop_id = ntgl.id AND ntgt.sequence = otgt.sequence
     JOIN log_entries ntg ON ntg.turn_id = ntgt.id AND ntg.sequence = otg.sequence
-    WHERE oop.worker_id = NEW.parent_worker_id
+    WHERE oop.session_id = NEW.parent_session_id
     ORDER BY ef.operation_log_entry_id, ef.target_log_entry_id;
 
     -- Named scratch under the source's authority becomes the branch's; a live producer cannot be
@@ -139,8 +139,8 @@ BEGIN
     SELECT NEW.workspace_id, e.scheme, NEW.name, e.pathname, e.attributes
     FROM entries e
     WHERE e.workspace_id = NEW.workspace_id
-      AND e.authority = (SELECT name FROM workers WHERE id = NEW.parent_worker_id)
-      AND e.scheme = 'worker'
+      AND e.authority = (SELECT name FROM sessions WHERE id = NEW.parent_session_id)
+      AND e.scheme = 'session'
       AND NOT EXISTS (SELECT 1 FROM entry_channels c WHERE c.entry_id = e.id AND c.state = 'active')
     ORDER BY e.id;
 
@@ -151,7 +151,7 @@ BEGIN
     JOIN entries ne ON ne.workspace_id = oe.workspace_id AND ne.scheme = oe.scheme
                    AND ne.pathname = oe.pathname AND ne.authority = NEW.name
     WHERE oe.workspace_id = NEW.workspace_id
-      AND oe.authority = (SELECT name FROM workers WHERE id = NEW.parent_worker_id)
-      AND oe.scheme = 'worker'
+      AND oe.authority = (SELECT name FROM sessions WHERE id = NEW.parent_session_id)
+      AND oe.scheme = 'session'
       AND NOT EXISTS (SELECT 1 FROM entry_channels a WHERE a.entry_id = oe.id AND a.state = 'active');
 END;

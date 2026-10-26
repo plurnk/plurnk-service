@@ -1,4 +1,4 @@
-// {§loop-wake-identity} — parked loops of one worker keep their identity under arrivals and
+// {§loop-wake-identity} — parked loops of one session keep their identity under arrivals and
 // cancellation; the waits park on live work the fixture holds.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import { holdChild } from "./_db.ts";
 import Engine from "../../src/core/Engine.ts";
 import { withDaemon, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { admitTogether, namedModelWorker } from "./_workers.ts";
+import { admitTogether, namedModelSession } from "./_sessions.ts";
 
 test("{§loop-wake-identity}: a message's reported and actual receiving loop agree with several parked loops", async (t) => {
     // The waits park on live work the fixture holds; the message is what wakes one of them.
@@ -22,25 +22,25 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
     });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "two-parked-recipients" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        await holdChild(db, workspaceId, workerId);
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await holdChild(db, workspaceId, sessionId);
         try {
             const common = {
-                workspaceId, workerId,
+                workspaceId, sessionId,
                 providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                 effort: "adaptive" as const, systemPrompt: "test system",
             };
-            const accepted = await admitTogether(t, workerId, [
+            const accepted = await admitTogether(t, sessionId, [
                 () => daemon.inject({ ...common, prompt: "First task." }),
                 () => daemon.inject({ ...common, prompt: "Second task." }),
             ]);
             const ids = new Set(accepted.map(({ loopId }) => loopId));
             await waitForDb(
-                async () => (await db.test_loop_queue_by_worker.all<{ id: number; status: number }>({ worker_id: workerId }))
+                async () => (await db.test_loop_queue_by_session.all<{ id: number; status: number }>({ session_id: sessionId }))
                     .filter(({ id }) => ids.has(id)),
                 (loops) => loops.length === 2 && loops.every(({ status }) => status === 202),
             );
-            const delivered = await daemon.runLoop({ workspaceId, workerId, prompt: "A new message." });
+            const delivered = await daemon.runLoop({ workspaceId, sessionId, prompt: "A new message." });
             assert.equal(delivered.loopId, accepted[0]?.loopId, "return and wake the same oldest unfinished loop that owns the message");
             await waitForDb(() => db.test_log_entries_by_loop.all<{ op: string; tx: string }>({ loop_id: delivered.loopId }),
                 (rows) => rows.some(({ op, tx }) => op === "NOTE" && tx.includes("new message reached")));
@@ -48,20 +48,20 @@ test("{§loop-wake-identity}: a message's reported and actual receiving loop agr
             assert.ok(JSON.stringify(provider.received[2]).includes("A new message."));
             assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: accepted[1].loopId }))?.status, 202,
                 "a message does not resume an unrelated wait");
-        } finally { await daemon.cancelWorker({ workspaceId, workerId }); }
+        } finally { await daemon.cancelSession({ workspaceId, sessionId }); }
     });
 });
 
-test("{§worker-lifecycle-no-resurrection}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
+test("{§session-lifecycle-no-resurrection}: a concurrent cancellation leaves no runnable orphan message", async (t) => {
     const provider = new Mock({ contextWindow: 65536, responses: [
         makeMockResponse("````WAIT\nWait.\n````"),
         makeMockResponse("````SEND [200]\nMust not execute the cancelled follow-up.\n````"),
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "cancel-admission-race" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        await holdChild(db, workspaceId, workerId);
-        const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Original task." });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await holdChild(db, workspaceId, sessionId);
+        const accepted = await daemon.runLoop({ workspaceId, sessionId, prompt: "Original task." });
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
         const entered = Promise.withResolvers<void>();
@@ -72,21 +72,21 @@ test("{§worker-lifecycle-no-resurrection}: a concurrent cancellation leaves no 
             await release.promise;
             return inject.apply(this, args);
         });
-        const injection = daemon.runLoop({ workspaceId, workerId, prompt: "Follow-up before cancellation." });
+        const injection = daemon.runLoop({ workspaceId, sessionId, prompt: "Follow-up before cancellation." });
         await entered.promise;
-        const cancellation = daemon.cancelWorker({ workspaceId, workerId });
+        const cancellation = daemon.cancelSession({ workspaceId, sessionId });
         try {
             await lifecycle.status(accepted.loopId);
             release.resolve();
             await Promise.all([injection, cancellation]);
             assert.equal(await lifecycle.status(accepted.loopId), 499);
-            const loops = await db.test_loop_queue_by_worker.all<{ prompt: string; status: number }>({ worker_id: workerId });
+            const loops = await db.test_loop_queue_by_session.all<{ prompt: string; status: number }>({ session_id: sessionId });
             assert.equal(loops.some(({ prompt, status }) => prompt === "Follow-up before cancellation." && status < 200), false,
                 "a concurrent cancel cannot strand a fresh follow-up outside its scope");
             assert.equal(provider.received.length, 1, "the cancelled message was not dispatched");
         } finally {
             release.resolve();
-            await daemon.cancelWorker({ workspaceId, workerId });
+            await daemon.cancelSession({ workspaceId, sessionId });
         }
     });
 });

@@ -92,8 +92,8 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
     };
     const provider = catalogProviderFromEnv("unlisted", declaration, "unknown");
     assert.ok(provider);
-    await provider.generate({ workerId: "wire-test", messages: [{ role: "user", content: "hello" }] });
-    await provider.generate({ workerId: "wire-test", messages: [], maxOutputTokens: 4096 });
+    await provider.generate({ sessionId: "wire-test", messages: [{ role: "user", content: "hello" }] });
+    await provider.generate({ sessionId: "wire-test", messages: [], maxOutputTokens: 4096 });
     assert.equal(bodies[0]?.thinking_budget, 8192);
     assert.equal(bodies[0]?.max_completion_tokens, 32768);
     assert.equal(bodies[0]?.max_tokens, undefined);
@@ -107,7 +107,7 @@ test("{§provider-wire-declaration} configured fields survive the actual compati
     }, "unknown"), /reasoning effort and budget are exclusive/);
     assert.equal(bodies.length, 2, "the conflicting controls cause no inference request");
     const off = catalogProviderFromEnv("unlisted", { ...declaration, PLURNK_PROVIDERS_EFFORT: "off" }, "unknown");
-    await off?.generate({ workerId: "wire-test", messages: [], sampling: { thinking_budget: 100000, enable_thinking: true } });
+    await off?.generate({ sessionId: "wire-test", messages: [], sampling: { thinking_budget: 100000, enable_thinking: true } });
     assert.equal(bodies[2]?.thinking_budget, undefined, "caller sampling cannot smuggle a configured budget field while reasoning is off");
     assert.equal(bodies[2]?.enable_thinking, false);
     assert.throws(() => catalogProviderFromEnv("openai", {
@@ -278,27 +278,27 @@ test("{§provider-effort} Models.dev controls Cloudflare's exact effort vocabula
         PLURNK_PROVIDERS_EFFORT: "low",
     }, "@cf/qwen/qwen3.8-27b");
     assert.deepEqual(low?.supportedEfforts, policiesOver(catalogEffortsOf("cloudflare-workers-ai", "@cf/qwen/qwen3.8-27b")));
-    await low?.generate({ workerId: "cloudflare-low", messages: [{ role: "user", content: "hello" }] });
+    await low?.generate({ sessionId: "cloudflare-low", messages: [{ role: "user", content: "hello" }] });
 
     const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "@cf/qwen/qwen3.8-27b");
-    await adaptive?.generate({ workerId: "cloudflare-adaptive", messages: [{ role: "user", content: "hello" }] });
+    await adaptive?.generate({ sessionId: "cloudflare-adaptive", messages: [{ role: "user", content: "hello" }] });
 
     const nonReasoning = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "@cf/ibm-granite/granite-4.0-h-micro");
     assert.deepEqual(nonReasoning?.supportedEfforts, ["off", "adaptive"]);
-    await nonReasoning?.generate({ workerId: "cloudflare-granite", messages: [{ role: "user", content: "hello" }] });
+    await nonReasoning?.generate({ sessionId: "cloudflare-granite", messages: [{ role: "user", content: "hello" }] });
 
     const ungradedReasoner = catalogProviderFromEnv("cloudflare-workers-ai", {
         ...cloudflareEnv,
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "@cf/zai-org/glm-5.3-flash");
     assert.deepEqual(ungradedReasoner?.supportedEfforts, policiesOver(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash")), "the catalog's vocabulary, exactly");
-    await ungradedReasoner?.generate({ workerId: "cloudflare-ungraded", messages: [{ role: "user", content: "hello" }] });
+    await ungradedReasoner?.generate({ sessionId: "cloudflare-ungraded", messages: [{ role: "user", content: "hello" }] });
 
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", undefined, undefined, fallbackOf(catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"))], "adaptive selects high only when supported; it does not escalate to xhigh");
     assert.throws(
@@ -338,9 +338,9 @@ test("{§provider-effort} an operator-declared effort vocabulary extends Models.
     // Models.dev lists this route as reasoning with no effort vocabulary; the declaration supplies one.
     const low = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_EFFORT: "low" }, "@cf/zai-org/glm-5.3-flash");
     assert.deepEqual(low?.supportedEfforts, policiesOver([...catalogEffortsOf("cloudflare-workers-ai", "@cf/zai-org/glm-5.3-flash"), "low", "medium", "high"]), "the declaration joins the catalog's vocabulary");
-    await low?.generate({ workerId: "declared-low", messages: [{ role: "user", content: "hello" }] });
+    await low?.generate({ sessionId: "declared-low", messages: [{ role: "user", content: "hello" }] });
     const adaptive = catalogProviderFromEnv("cloudflare-workers-ai", { ...declaredEnv, PLURNK_PROVIDERS_EFFORT: "adaptive" }, "@cf/zai-org/glm-5.3-flash");
-    await adaptive?.generate({ workerId: "declared-adaptive", messages: [{ role: "user", content: "hello" }] });
+    await adaptive?.generate({ sessionId: "declared-adaptive", messages: [{ role: "user", content: "hello" }] });
     assert.deepEqual(bodies.map((body) => body.reasoning_effort), ["low", "high"], "a fixed level keeps its name; declared high admits the configured fallback");
     // A declared `none` admits `off` on an effort transport; the catalog's own vocabulary stays in the union.
     const withOff = catalogProviderFromEnv("cloudflare-workers-ai", {
@@ -409,7 +409,7 @@ test("{§provider-effort} official AI SDK provider owns the native request while
 
     const provider = catalogProviderFromEnv("openai", env, "gpt-4.1-mini");
     const result = await provider?.generate({
-        workerId: "worker",
+        sessionId: "session",
         messages: [{ role: "user", content: "hello" }],
         maxOutputTokens: 64,
         sampling: { top_p: 0.8, seed: 7 },
@@ -428,7 +428,7 @@ test("{§provider-effort} official AI SDK provider owns the native request while
     assert.equal(calls[0]?.body.top_p, 0.8);
     assert.equal(calls[0]?.body.seed, 7);
     assert.equal(calls[0]?.body.max_tokens, 64);
-    assert.equal(calls[0]?.body.prompt_cache_key, "worker", "the official OpenAI SDK projects the documented affinity key");
+    assert.equal(calls[0]?.body.prompt_cache_key, "session", "the official OpenAI SDK projects the documented affinity key");
 });
 
 test("{§provider-effort} Cerebras explicit and adaptive reasoning do not invent a token budget", async () => {
@@ -474,7 +474,7 @@ test("{§provider-effort} Cerebras explicit and adaptive reasoning do not invent
             PLURNK_PROVIDERS_EFFORT: policy,
         }, "qwen-3.8-27b");
         const result = await provider?.generate({
-            workerId: "worker",
+            sessionId: "session",
             messages: [{ role: "user", content: "hello" }],
         });
 
@@ -520,7 +520,7 @@ test("{§provider-effort} Meta Muse adaptive reasoning is requested even when th
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "muse-spark-1.2-contributor");
     const result = await provider?.generate({
-        workerId: "worker",
+        sessionId: "session",
         messages: [{ role: "user", content: "hello" }],
     });
 
@@ -562,7 +562,7 @@ test("{§provider-effort} native graded requests use only the supported configur
                 attachment: false, toolCall: false, modalities: { input: ["text"], output: ["text"] },
             },
         });
-        const result = await provider.generate({ workerId: "fallback", messages: [{ role: "user", content: "hello" }] });
+        const result = await provider.generate({ sessionId: "fallback", messages: [{ role: "user", content: "hello" }] });
         assert.equal(result.assistant.content, "ok");
         assert.equal(body?.reasoning_effort, expected, `${fallback || "provider default"} with ${efforts.join(",")}`);
     }
@@ -603,7 +603,7 @@ test("{§provider-effort} Google adaptive reasoning requests and preserves reada
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "gemini-flash-latest");
     const result = await provider?.generate({
-        workerId: "worker",
+        sessionId: "session",
         messages: [{ role: "user", content: "hello" }],
     });
 
@@ -694,7 +694,7 @@ test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinkin
             modalities: { input: ["text", "image"], output: ["text"] },
         },
     });
-    await provider.generate({ workerId: "worker", messages: [{ role: "user", content: "hello" }] });
+    await provider.generate({ sessionId: "session", messages: [{ role: "user", content: "hello" }] });
     assert.equal(request?.reasoning, "provider-default");
     assert.deepEqual(request?.providerOptions, {
         anthropic: { thinking: { type: "adaptive", display: "summarized" } },
@@ -735,10 +735,10 @@ test("{§provider-effort} native provider routes project their documented cache 
             DEEPINFRA_API_KEY: "test-key",
         }, "zai-org/GLM-5.2");
         await provider?.generate({
-            workerId: "deepinfra-worker",
+            sessionId: "deepinfra-session",
             messages: [{ role: "user", content: "hello" }],
         });
-        assert.equal(calls.at(-1)?.body.prompt_cache_key, "deepinfra-worker");
+        assert.equal(calls.at(-1)?.body.prompt_cache_key, "deepinfra-session");
     });
 
     await t.test("OpenRouter carries session affinity and an Anthropic system breakpoint", async () => {
@@ -787,13 +787,13 @@ test("{§provider-effort} native provider routes project their documented cache 
             PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME: "Plurnk",
         }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
         await provider?.generate({
-            workerId: "openrouter-worker",
+            sessionId: "openrouter-session",
             messages: [
                 { role: "system", content: "stable system packet" },
                 { role: "user", content: "changing user packet" },
             ],
         });
-        assert.equal(call?.headers.get("x-session-id"), "openrouter-worker");
+        assert.equal(call?.headers.get("x-session-id"), "openrouter-session");
         assert.equal(call?.headers.get("http-referer"), "https://github.com/plurnk/plurnk-service");
         assert.equal(call?.headers.get("x-openrouter-title"), "Plurnk");
         assert.deepEqual((call?.body.messages as unknown[] | undefined)?.[0], {
@@ -849,12 +849,12 @@ test("{§provider-effort} native provider routes project their documented cache 
             PLURNK_PROVIDERS_EFFORT: "adaptive",
         }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
         await adaptive?.generate({
-            workerId: "openrouter-budget",
+            sessionId: "openrouter-budget",
             messages: [{ role: "user", content: "budgeted" }],
         });
         assert.deepEqual(call?.body.reasoning, { enabled: true, max_tokens: 2048 });
         await adaptive?.generate({
-            workerId: "openrouter-budget",
+            sessionId: "openrouter-budget",
             messages: [{ role: "user", content: "tighter" }],
             maxOutputTokens: 1500,
         });
@@ -870,7 +870,7 @@ test("{§provider-effort} native provider routes project their documented cache 
             PLURNK_PROVIDERS_EFFORT: "low",
         }, "anthropic/claude-sonnet-4.6", `http://127.0.0.1:${address.port}/api/v1`);
         await fixed?.generate({
-            workerId: "openrouter-budget",
+            sessionId: "openrouter-budget",
             messages: [{ role: "user", content: "budgeted" }],
         });
         assert.deepEqual(call?.body.reasoning, { enabled: true, effort: "low" }, "a fixed policy keeps the effort form");
@@ -880,7 +880,7 @@ test("{§provider-effort} native provider routes project their documented cache 
             PLURNK_PROVIDERS_EFFORT: "adaptive",
         }, "z-ai/glm-5.3-flash", `http://127.0.0.1:${address.port}/api/v1`);
         await fallback?.generate({
-            workerId: "openrouter-fallback",
+            sessionId: "openrouter-fallback",
             messages: [{ role: "user", content: "hello" }],
         });
         assert.deepEqual(call?.body.reasoning, { enabled: true, effort: "high" }, "activation does not mask the adaptive effort fallback");
@@ -936,7 +936,7 @@ test("{§provider-monetary-evidence} Models.dev is the only fallback rate table"
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "deepseek-v4-flash");
     assert.notEqual(cataloged, null);
-    const catalogedResponse = await cataloged!.generate({ workerId: "cataloged", messages: [] });
+    const catalogedResponse = await cataloged!.generate({ sessionId: "cataloged", messages: [] });
     const catalogAmount = calculateCostUsdDecimal(catalogedResponse.accounting[0].usage!, catalogRatesOf("deepseek", "deepseek-v4-flash"));
     assert.match(String(catalogAmount), /^0\.0*[1-9]/, "the catalog prices this usage");
     assert.deepEqual(catalogedResponse.accounting[0]?.cost, {
@@ -951,7 +951,7 @@ test("{§provider-monetary-evidence} Models.dev is the only fallback rate table"
         PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "not-in-the-catalog");
-    const uncatalogedResponse = await uncataloged!.generate({ workerId: "uncataloged", messages: [] });
+    const uncatalogedResponse = await uncataloged!.generate({ sessionId: "uncataloged", messages: [] });
     assert.deepEqual(uncatalogedResponse.accounting[0]?.cost, {
         kind: "unknown",
         reason: "Models.dev has no complete rate for this model",
@@ -976,7 +976,7 @@ test("{§provider-effort} #856: catalog implicit-cache pricing composes SDK usag
         PLURNK_PROVIDERS_EFFORT: "adaptive",
     }, "glm-5.3-flash");
     assert.ok(provider);
-    const response = await provider.generate({ workerId: "implicit-cache", messages: [] });
+    const response = await provider.generate({ sessionId: "implicit-cache", messages: [] });
     const usage = response.accounting[0]?.usage;
     assert.deepEqual(usage?.inputTokenDetails, { noCacheTokens: 600, cacheReadTokens: 400, cacheWriteTokens: 0 });
     assert.equal(response.accounting.length, 1);
@@ -1013,7 +1013,7 @@ test("{§operator-cost-override} declared rates overlay the catalog and the sour
         PLURNK_PROVIDERS_EFFORT: "adaptive",
         PLURNK_PROVIDERS_COST: "input=0.22,output=0.66,cacheRead=0.007",
     }, "deepseek-v4-flash");
-    const response = await overridden!.generate({ workerId: "overridden", messages: [] });
+    const response = await overridden!.generate({ sessionId: "overridden", messages: [] });
     const overriddenAmount = calculateCostUsdDecimal(response.accounting[0].usage!, { ...catalogRatesOf("deepseek", "deepseek-v4-flash"), input: 0.22, output: 0.66, cacheRead: 0.007 });
     assert.notEqual(overriddenAmount, calculateCostUsdDecimal(response.accounting[0].usage!, catalogRatesOf("deepseek", "deepseek-v4-flash")), "the override changes the price");
     assert.deepEqual(response.accounting[0]?.cost, {
@@ -1061,7 +1061,7 @@ for (const name of ["deepinfra", "togetherai"]) {
         const credential = lookupProvider(name)!.env[0];
         for (const [policy, wire] of [[effort, effort], ["off", "none"]] as const) {
             const provider = catalogProviderFromEnv(name, withProviderDefaults({ [credential]: "test-key", PLURNK_PROVIDERS_EFFORT: policy }), model)!;
-            await provider.generate({ workerId: "wire", messages: [{ role: "user", content: "hi" }] });
+            await provider.generate({ sessionId: "wire", messages: [{ role: "user", content: "hi" }] });
             assert.equal(bodies.at(-1)?.reasoning_effort, wire);
         }
     });
@@ -1090,7 +1090,7 @@ test("{§openrouter-app-attribution} attribution is the provider's declaration: 
     for (const name of ["openrouter", "standardcompute"]) {
         const model = Object.keys(catalogSnapshot()[name] ?? {})[0];
         const providerEnv = withProviderDefaults({ [lookupProvider(name)!.env[0]]: "test-key" });
-        await catalogProviderFromEnv(name, providerEnv, model)!.generate({ workerId: "w", messages: [{ role: "user", content: "hi" }] });
+        await catalogProviderFromEnv(name, providerEnv, model)!.generate({ sessionId: "w", messages: [{ role: "user", content: "hi" }] });
     }
     const [openrouter, other] = [...seen.values()];
     assert.equal(openrouter?.get("http-referer"), "https://github.com/plurnk/plurnk-service");
@@ -1112,7 +1112,7 @@ test("{§provider-wire-declaration} alibaba: DashScope's inclusive cap, effort, 
     t.after(() => mock.restoreAll());
     for (const reasoning of [{ PLURNK_PROVIDERS_EFFORT: effort }, { PLURNK_PROVIDERS_EFFORT: "adaptive", PLURNK_PROVIDERS_REASONING_BUDGET: "2048" }, { PLURNK_PROVIDERS_EFFORT: "off" }]) {
         await catalogProviderFromEnv("alibaba", withProviderDefaults({ DASHSCOPE_API_KEY: "test-key", ...reasoning }), route)!
-            .generate({ workerId: "w", messages: [{ role: "user", content: "hi" }], maxOutputTokens: 4096 }).catch(() => {});
+            .generate({ sessionId: "w", messages: [{ role: "user", content: "hi" }], maxOutputTokens: 4096 }).catch(() => {});
     }
     const pick = (body: Record<string, unknown>) => ({ max_completion_tokens: body.max_completion_tokens, max_tokens: body.max_tokens, reasoning_effort: body.reasoning_effort, thinking_budget: body.thinking_budget, enable_thinking: body.enable_thinking });
     assert.deepEqual(bodies.map(pick), [
@@ -1139,7 +1139,7 @@ for (const [name, usage, expected] of [
             PLURNK_PROVIDERS_EFFORT: "adaptive",
         }, "glm-5.3-flash");
         assert.ok(provider);
-        const response = await provider.generate({ workerId: "zai-cost", messages: [] });
+        const response = await provider.generate({ sessionId: "zai-cost", messages: [] });
         // ((input − cached) × 0.15 + cached × 0.03 + output × 0.50) / 1e6 at the Models.dev zai rates.
         assert.deepEqual(response.accounting[0]?.cost, {
             kind: "estimated", amount: { amount: expected, currency: "USD" }, source: "Models.dev catalog rates",

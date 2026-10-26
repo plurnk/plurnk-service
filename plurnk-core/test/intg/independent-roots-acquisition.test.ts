@@ -1,11 +1,11 @@
-// {§scheme-entry-matrix}: one workspace resource, independent causal workers.
+// {§scheme-entry-matrix}: one workspace resource, independent causal sessions.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 
@@ -16,7 +16,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-test("{§scheme-entry-matrix} independent root workers share one acquired https representation in their workspace", async () => {
+test("{§scheme-entry-matrix} independent root sessions share one acquired https representation in their workspace", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     await schemes.discoverExternal(process.cwd());
@@ -37,10 +37,10 @@ test("{§scheme-entry-matrix} independent root workers share one acquired https 
     try {
         const workspaceId = await insertWorkspace(db, `independent-roots-${crypto.randomUUID()}`);
         const roots = await Promise.all(["alpha", "beta"].map(async (name) => {
-            const workerId = await insertWorker(db, workspaceId, null, name);
-            const loopId = await insertLoop(db, workerId, 1, "go");
+            const sessionId = await insertSession(db, workspaceId, null, name);
+            const loopId = await insertLoop(db, sessionId, 1, "go");
             const turnId = await insertTurn(db, loopId, 1, 102);
-            return { workerId, loopId, turnId };
+            return { sessionId, loopId, turnId };
         }));
         const dispatch = (root: (typeof roots)[number], statement: PlurnkStatement, sequence: number) =>
             engine.dispatch({ statement, workspaceId, ...root, sequence, origin: "model" });
@@ -67,7 +67,7 @@ test("{§scheme-entry-matrix} independent root workers share one acquired https 
             const reread = await dispatch(root, parseOne("````READ (https://example.org/feed)````"), 3);
             assert.equal(reread.content, bodies[0], "re-reading resolves the same retained entry");
         }
-        assert.equal(served, 1, "a second worker does not re-fetch a fresh workspace representation");
+        assert.equal(served, 1, "a second session does not re-fetch a fresh workspace representation");
     } finally {
         globalThis.fetch = originalFetch;
         await schemes.close();

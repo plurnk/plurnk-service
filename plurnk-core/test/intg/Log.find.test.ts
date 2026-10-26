@@ -1,4 +1,4 @@
-// {§log-uniform-query} — FIND over the worker's log rows, on the SAME source-agnostic primitive every
+// {§log-uniform-query} — FIND over the session's log rows, on the SAME source-agnostic primitive every
 // entry scheme runs ({§find-source-agnostic}). The jumbo forensic: the model ran
 // `FIND(log:///**):/engine/i` six times — a canon-documented gesture — and got a
 // bare 501 from the one scheme that sat outside the universal paradigm. These pin the uniform
@@ -13,7 +13,7 @@ import Log from "../../src/schemes/Log.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { CatalogResource, FindResult } from "../../src/schemes/_entry-find.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { makeSchemeCtx, readLog, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, findStmt } from "./_dsl.ts";
 import { matchLocations } from "./_find.ts";
@@ -22,7 +22,7 @@ const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-
 const editStmt = (pathname: string, content: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null },
+    target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null },
     lineMarker: null, matcher: null, body: content, position: { line: 1, column: 1 },
 });
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
@@ -36,23 +36,23 @@ const paths = (result: FindResult): string[] => resources(result).map(([item]) =
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `logfind-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "test prompt");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "test prompt");
     const turnId = await insertTurn(db, loopId, 1, 200);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     // Three rows: an EDIT ack (JSON dust), a READ result carrying prose, another EDIT.
-    await engine.dispatch({ statement: editStmt("/notes.md", "the engine hums along"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-    await engine.dispatch({ statement: readStmt(urlPath("worker", "/notes.md")), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
-    await engine.dispatch({ statement: editStmt("/other.md", "nothing relevant"), workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model" });
-    return { db, engine, workspaceId, workerId, loopId, turnId };
+    await engine.dispatch({ statement: editStmt("/notes.md", "the engine hums along"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+    await engine.dispatch({ statement: readStmt(urlPath("workspace", "/notes.md")), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
+    await engine.dispatch({ statement: editStmt("/other.md", "nothing relevant"), workspaceId, sessionId, loopId, turnId, sequence: 3, origin: "model" });
+    return { db, engine, workspaceId, sessionId, loopId, turnId };
 };
 
 test("{§log-uniform-query} FIND(log:///**):/regex/ matches log rows by CONTENT — the jumbo gesture works", async () => {
-    const { db, workerId, workspaceId } = await setup();
+    const { db, sessionId, workspaceId } = await setup();
     try {
         const r = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" }),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(r.status, 200, "log speaks the universal FIND");
         const foundPaths = paths(r);
@@ -66,9 +66,9 @@ test("{§log-uniform-query} FIND(log:///**):/regex/ matches log rows by CONTENT 
 });
 
 test("{§log-uniform-query} a body-less FIND(log:///1/1) lists the turn's rows — the hierarchy is the scope", async () => {
-    const { db, workerId, workspaceId } = await setup();
+    const { db, sessionId, workspaceId } = await setup();
     try {
-        const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
+        const r = await new Log().find(findStmt(urlPath("log", "/1/1")), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }));
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 3, "the turn's three rows, catalog-shaped");
         const projected = JSON.parse(r.content!) as Array<Array<Record<string, unknown>>>;
@@ -81,14 +81,14 @@ test("{§log-uniform-query} a body-less FIND(log:///1/1) lists the turn's rows �
 });
 
 test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by their canonical leaves", async () => {
-    const { db, workerId, loopId, turnId, workspaceId } = await setup();
+    const { db, sessionId, loopId, turnId, workspaceId } = await setup();
     try {
         for (const [sequence, kind, content] of [
             [4, "emissionAttempt", "````NOTE\nContinue the task.\n````"],
             [5, "emissionAttempt", "broken output"],
         ] as const) {
             await db.engine_insert_log_entry.get({
-                worker_id: workerId,
+                session_id: sessionId,
                 loop_id: loopId,
                 turn_id: turnId,
                 sequence,
@@ -117,7 +117,7 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
             });
         }
         const log = new Log();
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
         const turn = await log.find({ ...findStmt(urlPath("log", "/1/1")), lineMarker: { marks: [1, -1] } }, ctx);
         assert.ok(paths(turn).includes("log:///1/1/4/attempt"));
         assert.ok(paths(turn).includes("log:///1/1/5/attempt"));
@@ -132,11 +132,11 @@ test("{§log-coordinate-hierarchy}: FIND projects and filters actionless rows by
 });
 
 test("{§log-uniform-query} an exact body-less log FIND returns 404 when the resource does not exist", async () => {
-    const { db, workerId, workspaceId } = await setup();
+    const { db, sessionId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
             findStmt(urlPath("log", "/9/9/9/READ")),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 404);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/log/entry-not-found");
@@ -145,11 +145,11 @@ test("{§log-uniform-query} an exact body-less log FIND returns 404 when the res
 });
 
 test("{§log-uniform-query} an exact log FIND rejects a supplied /OP delimiter that disagrees with an existing row", async () => {
-    const { db, workerId, workspaceId } = await setup();
+    const { db, sessionId, workspaceId } = await setup();
     try {
         const result = await new Log().find(
             findStmt(urlPath("log", "/1/1/1/READ")),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 404);
         assert.equal(result.problem?.target, "log:///1/1/1/READ");
@@ -157,13 +157,13 @@ test("{§log-uniform-query} an exact log FIND rejects a supplied /OP delimiter t
 });
 
 test("{§markerless-first-page} a markerless log FIND returns its first page of rows, every row when they fit; an explicit <1,-1> is the whole", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         for (let sequence = 4; sequence <= 20; sequence++) {
             await engine.dispatch({
                 statement: editStmt(`/entry-${sequence}.md`, `row ${sequence}`),
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 sequence,
@@ -171,7 +171,7 @@ test("{§markerless-first-page} a markerless log FIND returns its first page of 
             });
         }
         const log = new Log();
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
         const whole = await log.find(findStmt(urlPath("log", "/1/1")), ctx);
         assert.equal(whole.results.length, 20);
         assert.equal(whole.range?.total, 20);
@@ -190,10 +190,10 @@ test("{§markerless-first-page} a markerless log FIND returns its first page of 
 });
 
 test("{§log-uniform-query} a single-star log FIND maps one coordinate level without crossing separators", async () => {
-    const { db, workerId, workspaceId } = await setup();
+    const { db, sessionId, workspaceId } = await setup();
     try {
         const log = new Log();
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
 
         const root = await log.find(findStmt(urlPath("log", "/*")), ctx);
         assert.equal(root.status, 200);
@@ -215,13 +215,13 @@ test("{§log-uniform-query} a single-star log FIND maps one coordinate level wit
 });
 
 test("{§log-uniform-query} FIND pagination misses carry the exact result extent", async () => {
-    const { db, workerId, workspaceId } = await setup();
+    const { db, sessionId, workspaceId } = await setup();
     try {
         const statement = {
             ...findStmt(urlPath("log", "/1/1")),
             lineMarker: { marks: [9] as [number] },
         };
-        const r = await new Log().find(statement, makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
+        const r = await new Log().find(statement, makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }));
         assert.equal(r.status, 416);
         assert.deepEqual(r.problem?.range, {
             unit: "resource",
@@ -232,19 +232,19 @@ test("{§log-uniform-query} FIND pagination misses carry the exact result extent
 });
 
 test("{§log-uniform-query} log FIND reports an exact readable region for structural matches", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/data.json", '{\n  "first": 1,\n  "second": 2\n}'),
-            workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
         });
         await engine.dispatch({
-            statement: readStmt(urlPath("worker", "/data.json")),
-            workspaceId, workerId, loopId, turnId, sequence: 5, origin: "model",
+            statement: readStmt(urlPath("workspace", "/data.json")),
+            workspaceId, sessionId, loopId, turnId, sequence: 5, origin: "model",
         });
         const result = await new Log().find(
             findStmt(urlPath("log", "/1/1/5/READ"), { dialect: "jsonpath", raw: "$.second" }),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
         const match = matchLocations(result)[0];
@@ -256,11 +256,11 @@ test("{§log-uniform-query} log FIND reports an exact readable region for struct
 });
 
 test("{§log-uniform-query} FIND(log:///**):/pattern/ — FIND locates matching log entries", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         const result = await engine.dispatch({
             statement: findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/engine hums/", pattern: "engine hums", flags: "" }),
-            workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
         });
         assert.equal(result.status, 200, "FIND locates log entries");
         const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; sequence: number }>({ loop_id: loopId });
@@ -270,11 +270,11 @@ test("{§log-uniform-query} FIND(log:///**):/pattern/ — FIND locates matching 
 });
 
 test("{§log-uniform-query} READ(log://)<1,-1> returns a composed row's complete canonical body", async () => {
-    const { db, workerId, loopId, turnId, workspaceId } = await setup();
+    const { db, sessionId, loopId, turnId, workspaceId } = await setup();
     try {
         const full = Array.from({ length: 30 }, (_, i) => `plan line ${i + 1}`).join("\n");
         await db.engine_insert_log_entry.get({
-            worker_id: workerId,
+            session_id: sessionId,
             loop_id: loopId,
             turn_id: turnId,
             sequence: 4,
@@ -304,7 +304,7 @@ test("{§log-uniform-query} READ(log://)<1,-1> returns a composed row's complete
 
         const result = await readLog(
             { ...readStmt(urlPath("log", "/1/1/4/NOTE")), lineMarker: { marks: [1, -1] } },
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(result.status, 200);
         assert.equal(result.content, full, "READ recovers the complete note text");
@@ -312,16 +312,16 @@ test("{§log-uniform-query} READ(log://)<1,-1> returns a composed row's complete
 });
 
 test("{§log-uniform-query} zero content matches → 204; an unwarmed relation query fails with structured index state", async () => {
-    const { db, workerId, workspaceId } = await setup();
+    const { db, sessionId, workspaceId } = await setup();
     try {
         const none = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "regex", raw: "/absent-phrase-xyz/", pattern: "absent-phrase-xyz", flags: "" }),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(none.status, 204, "a sweep that found nothing steers nothing");
         const sem = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "fts", raw: "~engine" }),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(sem.status, 503, "an advertised matcher is unavailable only while its persistent index is incomplete");
         assert.deepEqual(sem.problem?.search, { state: "incomplete", indexed: 0, total: 3 });
@@ -329,31 +329,31 @@ test("{§log-uniform-query} zero content matches → 204; an unwarmed relation q
 });
 
 test("{§log-uniform-query} full-text and graph FIND over logs use the same persistent derivations as entries", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         await engine.dispatch({
             statement: editStmt("/source.ts", "export function helper() { return 1; }\nexport function caller() { return helper(); }"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 4,
             origin: "model",
         });
         await engine.dispatch({
-            statement: readStmt(urlPath("worker", "/source.ts")),
+            statement: readStmt(urlPath("workspace", "/source.ts")),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 5,
             origin: "model",
         });
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }));
 
         const entryAttachment = await db.test_entry_deep_hash_by_path.get<{ deep_hash: string | null }>({
             workspace_id: workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             pathname: "/notes.md",
         });
         const logAttachment = await db.test_log_deep_hash_by_turn_sequence.get<{ deep_hash: string | null }>({
@@ -373,7 +373,7 @@ test("{§log-uniform-query} full-text and graph FIND over logs use the same pers
         );
         const fulltext = await new Log().find(
             fulltextStatement,
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(fulltext.status, 200);
         assert.ok(paths(fulltext).some((path) => path.includes("/1/1/2/READ")),
@@ -381,7 +381,7 @@ test("{§log-uniform-query} full-text and graph FIND over logs use the same pers
         assert.ok(fulltext.results.length >= 2, "the full-text specimen has multiple ranked log results");
         const secondFulltext = await new Log().find(
             { ...fulltextStatement, lineMarker: { marks: [2] } },
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.deepEqual(
             paths(secondFulltext),
@@ -391,7 +391,7 @@ test("{§log-uniform-query} full-text and graph FIND over logs use the same pers
 
         const graph = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "&<helper" }),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(graph.status, 200);
         assert.ok(paths(graph).some((path) => path.includes("/1/1/5/READ")),
@@ -399,7 +399,7 @@ test("{§log-uniform-query} full-text and graph FIND over logs use the same pers
 
         const graphMiss = await new Log().find(
             findStmt(urlPath("log", "/**"), { dialect: "graph", raw: "&<absentSymbol" }),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES }),
         );
         assert.equal(graphMiss.status, 204, "entry and log relation misses share the universal matcher status");
         assert.deepEqual(graphMiss.results, []);

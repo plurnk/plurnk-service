@@ -18,7 +18,7 @@ import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/scheme-types.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertOperationTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertOperationTurn } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, readStmt, copyStmt, moveStmt, execStmt, sendStmt, noteStmt } from "./_dsl.ts";
 
@@ -97,8 +97,8 @@ const registryEntry = (executor: Executor, literal = false) => ({
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1);
     const turnId = await insertOperationTurn(db, loopId, 1, "client");
     const schemes = new SchemeRegistry();
     schemes.register("write-test", new WritableScheme());
@@ -107,7 +107,7 @@ const setup = async () => {
         ["fixture-tool", registryEntry(fixtureExecutor)],
         ["literal-tool", registryEntry(fixtureExecutor, true)],
     ])));
-    return { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec: schemes.get("exec") as Exec };
+    return { db, workspaceId, sessionId, loopId, turnId, engine, schemes, exec: schemes.get("exec") as Exec };
 };
 
 const policies = (capabilities: CapabilityPolicy = {}, proposals: ProposalPolicy = "review"): { capabilities: CapabilityPolicy; proposals: ProposalPolicy } => ({
@@ -125,14 +125,14 @@ const setPolicies = async (
 };
 
 test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ policy before source preparation", async (t) => {
-    const { db, workspaceId, workerId, loopId, turnId, engine, schemes } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine, schemes } = await setup();
     t.after(() => db.close());
     const source = new TraitSource("attachment-source", ["web"]);
     schemes.register("attachment-source", source);
     await engine.injectIntoLoop(loopId, "Return the resource.", [], undefined, {}, "message://request/attachment");
     await setPolicies(db, workspaceId, policies({ deny: [{ access: "observe", traits: ["web"] }] }));
     const result = await engine.dispatch({
-        workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+        workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         statement: { ...sendStmt(parsePath("message://request/attachment"), "Here is the resource."), metadata: ['{"attachments":["attachment-source:///report"]}'] },
     });
     assert.equal(result.status, 403);
@@ -142,13 +142,13 @@ test("{§send-resource-attachments}: attachment acquisition obeys ordinary READ 
 });
 
 test("{§capability-admission} invalid persisted workspace policy fails at its durable owner before dispatch", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: "invalid" } }) });
         await assert.rejects(
             engine.dispatch({
                 statement: editStmt(urlPath("write-test", "x"), "body"),
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
             }),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
@@ -161,16 +161,16 @@ test("{§capability-admission} invalid persisted workspace policy fails at its d
 });
 
 test("{§capability-admission} one access selector gates every matching mutation shape while observations remain admitted", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({ deny: [{ access: "mutate" }] }));
         let sequence = 0;
         const dispatch = (statement: Parameters<typeof engine.dispatch>[0]["statement"]) =>
-            engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "client" });
+            engine.dispatch({ statement, workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "client" });
         for (const statement of [
             editStmt(localPath("brief.md"), "hello"),
-            copyStmt(urlPath("worker", "note"), localPath("copied.md")),
-            moveStmt(localPath("brief.md"), urlPath("worker", "moved")),
+            copyStmt(urlPath("workspace", "note"), localPath("copied.md")),
+            moveStmt(localPath("brief.md"), urlPath("workspace", "moved")),
         ]) {
             const result = await dispatch(statement);
             assert.equal(result.status, 403);
@@ -185,13 +185,13 @@ test("{§capability-admission} one access selector gates every matching mutation
 });
 
 test("{§capability-admission} a MOVE source requires observation as well as mutation authority", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({ deny: [{ access: "observe", scheme: "file" }] }));
         const result = await engine.dispatch({
-            statement: moveStmt(localPath("secret.txt"), urlPath("worker", "/moved.txt")),
+            statement: moveStmt(localPath("secret.txt"), urlPath("workspace", "/moved.txt")),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -205,39 +205,39 @@ test("{§capability-admission} a MOVE source requires observation as well as mut
 });
 
 test("{§capability-admission} proposal disposition cannot deny or resurrect a capability", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({}, "reject"));
         const admitted = await engine.dispatch({
-            statement: editStmt(urlPath("worker", "/x"), "body"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            statement: editStmt(urlPath("workspace", "/x"), "body"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(admitted.status, 201, "proposal settlement is downstream of admission");
 
         await setPolicies(db, workspaceId, policies({ deny: [{ operation: "EDIT" }] }, "accept"));
         const denied = await engine.dispatch({
-            statement: editStmt(urlPath("worker", "/y"), "body"),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
+            statement: editStmt(urlPath("workspace", "/y"), "body"),
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "client",
         });
         assert.equal(denied.status, 403, "automatic acceptance cannot restore denied authority");
     } finally { await db.close(); }
 });
 
 test("{§capability-admission} an operation with no external capability demand remains available under an empty only-set", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const { id: turnId } = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
         await setPolicies(db, workspaceId, policies({ only: [] }));
         const result = await engine.dispatch({
             statement: noteStmt("Retained finding."),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(result.status, 200, JSON.stringify(result));
     } finally { await db.close(); }
 });
 
 test("{§capability-admission} unknown routes reach ordinary resolution even under matching capability denials", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await setPolicies(db, workspaceId, policies({ deny: [
             { operation: "READ" },
@@ -245,7 +245,7 @@ test("{§capability-admission} unknown routes reach ordinary resolution even und
         ] }));
         const result = await engine.dispatch({
             statement: readStmt(urlPath("unknown-source", "/item")),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(result.status, 501);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-not-found");
@@ -253,14 +253,14 @@ test("{§capability-admission} unknown routes reach ordinary resolution even und
 
         const runtime = await engine.dispatch({
             statement: execStmt("unknown-runtime", "input", null),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "client",
         });
         assert.equal(runtime.status, 400);
         assert.equal(runtime.problem?.type, "https://problems.plurnk.xyz/scheme/exec/executor-not-registered");
 
         const copy = await engine.dispatch({
-            statement: copyStmt(urlPath("unknown-source", "/item"), urlPath("worker", "/copy")),
-            workspaceId, workerId, loopId, turnId, sequence: 3, origin: "client",
+            statement: copyStmt(urlPath("unknown-source", "/item"), urlPath("workspace", "/copy")),
+            workspaceId, sessionId, loopId, turnId, sequence: 3, origin: "client",
         });
         assert.equal(copy.status, 501);
         assert.equal(copy.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-not-found");
@@ -268,7 +268,7 @@ test("{§capability-admission} unknown routes reach ordinary resolution even und
 
         const source = await engine.dispatch({
             statement: execStmt("fixture-tool", "input", urlPath("unknown-source", "/item")),
-            workspaceId, workerId, loopId, turnId, sequence: 4, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "client",
         });
         assert.equal(source.status, 501);
         assert.equal(source.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-not-found");
@@ -277,16 +277,16 @@ test("{§capability-admission} unknown routes reach ordinary resolution even und
 });
 
 test("{§capability-admission} execution admission precedes every target acquisition shape", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
     try {
         await setPolicies(db, workspaceId, policies({ deny: [{ scheme: "exec" }] }));
-        const targets = [null, localPath("input.txt"), urlPath("file", "/input.txt"), urlPath("worker", "/source"), urlPath("web-source", "/source")];
+        const targets = [null, localPath("input.txt"), urlPath("file", "/input.txt"), urlPath("workspace", "/source"), urlPath("web-source", "/source")];
         for (const [index, target] of targets.entries()) {
             const result = await engine.dispatch({
                 statement: execStmt("fixture-tool", "transform", target),
-                workspaceId, workerId, loopId, turnId, sequence: index + 1, origin: "client",
+                workspaceId, sessionId, loopId, turnId, sequence: index + 1, origin: "client",
             });
             assert.equal(result.status, 403);
             assert.equal(result.problem?.operation, "fixture-tool");
@@ -296,14 +296,14 @@ test("{§capability-admission} execution admission precedes every target acquisi
 });
 
 test("{§capability-admission} a resource-shaped execution target adds its own observe demand", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
     try {
         await setPolicies(db, workspaceId, policies({ deny: [{ traits: ["web"] }] }));
         const result = await engine.dispatch({
             statement: execStmt("fixture-tool", "transform", urlPath("web-source", "/source")),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.scheme, "web-source");
@@ -313,14 +313,14 @@ test("{§capability-admission} a resource-shaped execution target adds its own o
 });
 
 test("{§capability-admission} a literal execution target is a tool identifier, never a resource route", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine, schemes, exec } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine, schemes, exec } = await setup();
     const web = new TraitSource("web-source", ["web"]);
     schemes.register("web-source", web);
     try {
         await setPolicies(db, workspaceId, policies({ deny: [{ traits: ["web"] }] }, "accept"));
         const result = await engine.dispatch({
             statement: execStmt("literal-tool", "{}", urlPath("web-source", "/tool")),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(result.status, 200);
         assert.equal(web.preparations, 0);
@@ -328,7 +328,7 @@ test("{§capability-admission} a literal execution target is a tool identifier, 
 });
 
 test("{§manifest-capability-traits} runtime scheme traits participate in the same selector space", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine, exec } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine, exec } = await setup();
     const interactive: Executor = {
         ...fixtureExecutor,
         runtime: "ask-human",
@@ -347,7 +347,7 @@ test("{§manifest-capability-traits} runtime scheme traits participate in the sa
         await setPolicies(db, workspaceId, policies({ deny: [{ traits: ["interaction"] }] }));
         const denied = await engine.dispatch({
             statement: execStmt("ask-human", "{}", null),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(denied.status, 403);
         assert.equal(denied.problem?.runtime, "ask-human");

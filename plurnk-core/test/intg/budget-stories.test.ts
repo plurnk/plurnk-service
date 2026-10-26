@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 import { completeStmt, urlPath, editStmt, readStmt, noteStmt } from "./_dsl.ts";
 
@@ -29,7 +29,7 @@ const okSends = (n: number): MockResponse[] => Array.from({ length: n }, () => r
 // (that's what makes the next turn fat). It continues — the result is for the next turn
 // and therefore cannot be observed in the emission that requested it.
 const fatReads = (chars: number, n = 1): MockResponse[] =>
-    Array.from({ length: n }, () => response([editStmt(urlPath("worker", "big"), heavy(chars)), readStmt(urlPath("worker", "big")), noteStmt("ok")]));
+    Array.from({ length: n }, () => response([editStmt(urlPath("workspace", "big"), heavy(chars)), readStmt(urlPath("workspace", "big")), noteStmt("ok")]));
 
 const engineAt = (db: Db): Engine => new Engine({ db, schemes: new SchemeRegistry() });
 const ENVELOPE_KEYS = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
@@ -44,11 +44,11 @@ const mockCeiling = (ceiling: number, responses: MockResponse[]): Mock => {
     });
     return m;
 };
-const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number; loopId: number }> => {
+const envelope = async (db: Db): Promise<{ workspaceId: number; sessionId: number; loopId: number }> => {
     const workspaceId = await insertWorkspace(db, `bs-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "go");
-    return { workspaceId, workerId, loopId };
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "go");
+    return { workspaceId, sessionId, loopId };
 };
 const packetOf = async (db: Db, turnId: number): Promise<{ weight: number; assistant?: { ops: unknown[] }; packet: object }> => {
     const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
@@ -62,16 +62,16 @@ const budgetHeadline = (packet: object): { ceiling: number; usage: number; perce
     const ceiling = state.budget;
     return { ceiling, usage, percent: (usage / ceiling) * 100, free: ceiling - usage };
 };
-// Two reference measurements on throwaway workers (deterministic FAT body), so the
+// Two reference measurements on throwaway sessions (deterministic FAT body), so the
 // recovery ceilings track the real assembly and never magic numbers:
 //   floor    = bare scaffolding (turn 1's pre-emission packet, no prior log)
 //   expanded = floor + a fat READ log from the prior turn, all expanded
 const measure = async (db: Db): Promise<{ floor: number; expanded: number }> => {
-    const { workspaceId, workerId, loopId } = await envelope(db);
+    const { workspaceId, sessionId, loopId } = await envelope(db);
     const wide = engineAt(db);
     const provider = new Mock({ contextWindow: WINDOW, responses: [...fatReads(FAT), ...okSends(1)] });
-    const t1 = await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
-    const t2 = await wide.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+    const t1 = await wide.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
+    const t2 = await wide.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
     return { floor: (await packetOf(db, t1.turnId)).weight, expanded: (await packetOf(db, t2.turnId)).weight };
 };
 
@@ -89,11 +89,11 @@ test("{§tokenomics} budget: a READ result renders into the log and weighs on th
 test("{§tokenomics} budget: under the ceiling the turn delivers and the budget reads at or below 100%", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = engineAt(db);
         // A large EDIT with in-progress inventory fits under the wide ceiling.
-        const fatDeliver = [response([editStmt(urlPath("worker", "big"), heavy(FAT)), noteStmt("ok")])];
-        const t = await engine.runTurn({ provider: new Mock({ contextWindow: WINDOW, responses: fatDeliver }), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const fatDeliver = [response([editStmt(urlPath("workspace", "big"), heavy(FAT)), noteStmt("ok")])];
+        const t = await engine.runTurn({ provider: new Mock({ contextWindow: WINDOW, responses: fatDeliver }), workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(t.status, 102, "delivered");
         assert.equal(t.capacityHardStop, false, "no provider-capacity stop under a wide curation budget");
         const { percent } = budgetHeadline((await packetOf(db, t.turnId)).packet);
@@ -105,9 +105,9 @@ test("{§tokenomics} budget: under the ceiling the turn delivers and the budget 
 test("{§context-wall} the irreducible window overflow reports a positive overshoot honestly", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = engineAt(db);
-        const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t = await engine.runTurn({ provider: mockCeiling(TINY, []), workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.status, 413);
         assert.equal(t.producer, "model", "admission failure does not manufacture a recovery producer");
         const problem = t.curationFailure?.problem as { tokens?: number; wall?: number; excess?: number } | undefined;
@@ -124,13 +124,13 @@ test("{§context-wall} the irreducible window overflow reports a positive oversh
 test("{§tokenomics-window-partition} budget: the provider-derived input capacity is the curation ceiling", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         // {§tokenomics-window-partition}: mockCeiling(10) gives context 12 with
         // a total output budget of 2, deriving input capacity 10. The ordinary
         // curation rail reports that exact derived ceiling before provider I/O.
         const provider = mockCeiling(10, okSends(1));
-        const t = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(t.producer, "model");
         const budget = (t.curationFailure?.problem as { budget?: number } | undefined)?.budget;
         assert.equal(budget, 10, "context 12 − total output budget 2 → input capacity 10 ({§context-budget})");
@@ -141,11 +141,11 @@ test("{§tokenomics-window-partition} budget: the provider-derived input capacit
 test("{§context-gauge} below pressure the model-facing gauge omits its largest inventory (#478)", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = engineAt(db);
         const provider = new Mock({ contextWindow: WINDOW, responses: [...fatReads(FAT, 1), ...okSends(1)] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES });
         const budget = packetSection((await packetOf(db, t2.turnId)).packet, "budget");
         const gauge = JSON.parse(budget) as { tokens: number; budget: number; percent: number };
         assert.ok(gauge.tokens < gauge.budget * 0.8, "this composed packet remains below pressure");
@@ -160,16 +160,16 @@ test("{§context-gauge}: a composed packet's largest inventory points to its dom
     const db = await openMigrated();
     try {
         const { expanded } = await measure(db);
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = engineAt(db);
         await engine.runTurn({
             provider: new Mock({ contextWindow: WINDOW, responses: fatReads(FAT) }),
-            workspaceId, workerId, loopId, messages: MESSAGES,
+            workspaceId, sessionId, loopId, messages: MESSAGES,
         });
         const pressureCeiling = Math.ceil(expanded / 0.85);
         const pressured = await engine.runTurn({
             provider: mockCeiling(pressureCeiling, okSends(1)),
-            workspaceId, workerId, loopId, messages: MESSAGES,
+            workspaceId, sessionId, loopId, messages: MESSAGES,
         });
         const stored = await packetOf(db, pressured.turnId);
         const budget = packetSection(stored.packet, "budget");

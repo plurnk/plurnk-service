@@ -1,4 +1,4 @@
-import { ownWorker, serverProposals } from "./_approval.ts";
+import { ownSession, serverProposals } from "./_approval.ts";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -57,7 +57,7 @@ test("{§bulk-resource-targeting} escaped and URL selectors read and edit the in
                 await rpcCall(client, 1, "workspace.create", { name: "literal-globs", projectRoot: root });
                 const loop = await runLoopToTerminal(client, 2, { prompt: "Select the literal names." });
                 assert.equal(loop.result.status, 200);
-                const rows = (await db.engine_render_log.all<{ op: string; origin: string; pathname: string; status_rx: number; rx: string }>({ worker_id: loop.modelWorkerId! }))
+                const rows = (await db.engine_render_log.all<{ op: string; origin: string; pathname: string; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! }))
                     .filter(({ origin }) => origin === "model");
                 assert.deepEqual(rows.filter(({ op }) => op === "READ").map(({ pathname, status_rx }) => ({ pathname, status_rx })),
                     [intended, intended, "a*.txt"].map((pathname) => ({ pathname, status_rx: 200 })));
@@ -89,7 +89,7 @@ class Channels extends CoreSchemeAdapterBase {
     }
 }
 
-const fixture = async (t: TestContext, entries: Record<string, string>, scheme = "worker", producer: "client" | "model" = "client") => {
+const fixture = async (t: TestContext, entries: Record<string, string>, scheme = "workspace", producer: "client" | "model" = "client") => {
     const db = await openMigrated();
     t.after(() => db.close());
     const env = await seedEnvelope(db, `bulk-${crypto.randomUUID()}`, { producer });
@@ -114,7 +114,7 @@ const fixture = async (t: TestContext, entries: Record<string, string>, scheme =
 for (const op of ["EDIT", "KILL"] as const) {
     test(`{§bulk-resource-targeting} ${op} applies a scoped matcher to every selected resource`, async (t) => {
         const { dispatch, content, rows } = await fixture(t, { "/a.txt": "foo one\nfoo two", "/b.txt": "foo three\nfoo four", "/other.md": "foo five" });
-        const target = urlPath("worker", "/@(a|b).txt");
+        const target = urlPath("workspace", "/@(a|b).txt");
         const statement = op === "EDIT" ? editStmt(target, "bar", { marks: [1, 1] }, regex("foo")) : killStmt(target, { marks: [1, 1] }, regex("foo"));
         const result = await dispatch(statement);
         assert.equal(result.status, 200, JSON.stringify(result));
@@ -133,12 +133,12 @@ for (const op of ["EDIT", "KILL"] as const) {
 
     test(`{§bulk-resource-targeting} empty ${op} selection is a single no-effect receipt`, async (t) => {
         const { dispatch, rows, content } = await fixture(t, { "/a.txt": "unchanged" });
-        const target = urlPath("worker", "/missing*.txt");
+        const target = urlPath("workspace", "/missing*.txt");
         const result = await dispatch(op === "EDIT" ? editStmt(target, "new", fullReplace) : killStmt(target));
         assert.equal(result.status, 204, JSON.stringify(result));
         assert.deepEqual((await rows()).map(({ pathname, status_rx }) => [pathname, status_rx]), [["/missing*.txt", 204]]);
         assert.equal(await content("/a.txt"), "unchanged");
-        assert.equal((await dispatch(readStmt(urlPath("worker", "/missing*.txt")))).status, 204, "no literal wildcard resource was created");
+        assert.equal((await dispatch(readStmt(urlPath("workspace", "/missing*.txt")))).status, 204, "no literal wildcard resource was created");
     });
 }
 
@@ -164,8 +164,8 @@ for (const op of ["COPY", "MOVE"] as const) {
             test(`{§bulk-resource-targeting} ${op} ${operand} glob with ${count} matches`, async (t) => {
                 const entries = { "/source.txt": "source\ntail", "/destination.txt": "destination", ...Object.fromEntries(Array.from({ length: count }, (_, i) => [`/match${i}.txt`, operand === "source" ? "source\ntail" : "destination"])) };
                 const { dispatch, content, rows } = await fixture(t, entries);
-                const source = urlPath("worker", operand === "source" ? "/match*.txt" : "/source.txt");
-                const destination = urlPath("worker", operand === "destination" ? "/match*.txt" : "/destination.txt");
+                const source = urlPath("workspace", operand === "source" ? "/match*.txt" : "/source.txt");
+                const destination = urlPath("workspace", operand === "destination" ? "/match*.txt" : "/destination.txt");
                 const result = await dispatch((op === "COPY" ? copyStmt : moveStmt)(source, destination, { marks: [1, 1] }, fullReplace));
                 assert.equal(result.status, count === 1 ? 200 : 400, JSON.stringify(result));
                 if (count !== 1) {
@@ -193,7 +193,7 @@ for (const op of ["EDIT", "KILL"] as const) {
         previewLines(t, 1);
         const entries = { "/a.txt": "a", "/b.txt": "b", "/c.txt": "c", "/nested/d.txt": "d" };
         const { dispatch, content, rows } = await fixture(t, entries);
-        const target = urlPath("worker", "/**/*.txt");
+        const target = urlPath("workspace", "/**/*.txt");
         const result = await dispatch(op === "EDIT" ? editStmt(target, "changed", fullReplace) : killStmt(target));
         assert.ok(result.status < 300, JSON.stringify(result));
         assert.equal(result.rowsWritten, 4);
@@ -205,11 +205,11 @@ for (const op of ["EDIT", "KILL"] as const) {
 for (const failOnOperationError of [false, true]) {
     test(`{§bulk-resource-targeting} anchors remain resource-specific during fan-out; fail-on-error=${failOnOperationError}`, async (t) => {
         const { dispatch, content, rows, engine, env } = await fixture(t, { "/a.txt": "first\nsecond", "/b.txt": "different", "/c.txt": "first\nsecond" });
-        const read = await dispatch(readStmt(urlPath("worker", "/a.txt"), fullReplace));
+        const read = await dispatch(readStmt(urlPath("workspace", "/a.txt"), fullReplace));
         const anchor = (read.lineAnchors as string[])[0];
         const execution = engine.executeAdmittedTurn({
             ...env, origin: "client", source: null, emission: null, fromSequence: 2, failOnOperationError,
-            statements: TurnOps.parseInternal(PlurnkParser.frame(`EDIT (worker:///*.txt) <${anchor}>`, "updated")),
+            statements: TurnOps.parseInternal(PlurnkParser.frame(`EDIT (workspace:///*.txt) <${anchor}>`, "updated")),
         });
         if (failOnOperationError) await assert.rejects(execution, OperationFailureError);
         else await execution;
@@ -226,7 +226,7 @@ for (const op of ["READ", "EDIT", "KILL"] as const) for (const limit of [0, 1, 2
     test(`{§bulk-resource-targeting} ${op} fan-out obeys concrete command limit ${limit}`, async (t) => {
         const entries = { "/a.txt": "a", "/b.txt": "b", "/c.txt": "c" };
         const { engine, env, rows, content } = await fixture(t, entries);
-        const target = urlPath("worker", "/*.txt");
+        const target = urlPath("workspace", "/*.txt");
         const statement = op === "READ" ? readStmt(target) : op === "EDIT" ? editStmt(target, "changed", fullReplace) : killStmt(target);
         await engine.executeAdmittedTurn({ ...env, origin: "client", source: null, emission: null, fromSequence: 1, maxCommands: limit,
             statements: [statement, noteStmt("after targets"), dispositionStmt("WAIT")] });
@@ -250,7 +250,7 @@ for (const decision of ["reject", "drift"] as const) {
         t.after(() => rm(root, { recursive: true, force: true }));
         const { db, env, engine, rows } = await fixture(t, { "a.txt": "a\n", "b.txt": "b\n" }, "file", "model");
         await db.test_set_workspace_project_root.run({ id: env.workspaceId, project_root: root });
-        await ownWorker(db, env.workspaceId, env.workerId);
+        await ownSession(db, env.workspaceId, env.sessionId);
         for (const name of ["a", "b"]) {
             const path = `${name}.txt`;
             await writeFile(join(root, path), `${name}\n`);
@@ -280,23 +280,23 @@ for (const decision of ["reject", "drift"] as const) {
     });
 }
 
-test("{§bulk-resource-targeting} authority selectors mutate entries, never worker actors", async (t) => {
+test("{§bulk-resource-targeting} authority selectors mutate entries, never session actors", async (t) => {
     const { db, env, dispatch } = await fixture(t, {});
     const ids = [];
     for (const authority of ["alpha", "beta"]) ids.push(await seedEntryWithChannel(db, { workspaceId: env.workspaceId, authority, pathname: "/shared.txt", content: authority }));
-    const result = await dispatch(editStmt(parsePath("worker://*/shared.txt"), "updated", fullReplace));
+    const result = await dispatch(editStmt(parsePath("session://*/shared.txt"), "updated", fullReplace));
     assert.equal(result.status, 200, JSON.stringify(result));
     assert.equal(result.rowsWritten, 2);
     for (const id of ids) assert.equal((await db.test_get_channel.get<{ content: string }>({ entry_id: id, name: "body" }))?.content, "updated");
-    const refused = await dispatch(killStmt(parsePath("worker://*")));
+    const refused = await dispatch(killStmt(parsePath("session://*")));
     assert.equal(refused.status, 404, JSON.stringify(refused));
-    assert.match(refused.problem!.type, /\/worker-not-found$/);
+    assert.match(refused.problem!.type, /\/session-not-found$/);
     for (const id of ids) assert.equal((await db.test_get_channel.get<{ content: string }>({ entry_id: id, name: "body" }))?.content, "updated");
 });
 
 test("{§bulk-resource-targeting} mutation patterns retain a receipt for every selected resource", async (t) => {
     const { dispatch, rows, content } = await fixture(t, { "/a.txt": "absent", "/b.txt": "needle", "/c.txt": "absent" });
-    const result = await dispatch(editStmt(urlPath("worker", "/*.txt"), "found", null, regex("needle")));
+    const result = await dispatch(editStmt(urlPath("workspace", "/*.txt"), "found", null, regex("needle")));
     assert.ok(result.status < 300, JSON.stringify(result));
     assert.deepEqual((await rows()).map(({ pathname, status_rx }) => [pathname, status_rx]), [["/a.txt", 204], ["/b.txt", 200], ["/c.txt", 204]]);
     assert.equal(await content("/a.txt"), "absent");
@@ -307,7 +307,7 @@ test("{§bulk-resource-targeting} mutation patterns retain a receipt for every s
 test("{§bulk-resource-targeting} denied mutations neither enumerate nor change their targets", async (t) => {
     const { db, env, dispatch, rows, content } = await fixture(t, { "/a.txt": "original", "/b.txt": "original" });
     await db.test_set_workspace_settings.run({ id: env.workspaceId, settings: JSON.stringify({ capabilities: { deny: [{ operation: "EDIT" }] } }) });
-    const result = await dispatch(editStmt(urlPath("worker", "/*.txt"), "updated", fullReplace));
+    const result = await dispatch(editStmt(urlPath("workspace", "/*.txt"), "updated", fullReplace));
     assert.equal(result.status, 403, JSON.stringify(result));
     assert.match(result.problem!.type, /\/capability-denied$/);
     assert.deepEqual((await rows()).map(({ pathname, status_rx }) => [pathname, status_rx]), [["/*.txt", 403]]);
@@ -326,15 +326,15 @@ for (const op of ["COPY", "MOVE"] as const) {
         assert.equal(await content("/destination.txt"), "body");
         assert.equal(await content("/source.txt", "notes"), op === "COPY" ? "selected" : undefined, "whole-channel MOVE removes only the selected source channel");
         assert.equal(await content("/destination.txt", "notes"), "selected");
-        const created = await dispatch(transfer(urlPath("channels", "/destination*.txt", "notes"), urlPath("worker", "/new.txt")));
+        const created = await dispatch(transfer(urlPath("channels", "/destination*.txt", "notes"), urlPath("workspace", "/new.txt")));
         assert.equal(created.status, 201, JSON.stringify(created));
-        assert.equal((await dispatch(readStmt(urlPath("worker", "/new.txt")))).content, "selected");
+        assert.equal((await dispatch(readStmt(urlPath("workspace", "/new.txt")))).content, "selected");
     });
     test(`{§bulk-resource-targeting} ${op} rejects ambiguity beyond the preview page`, async (t) => {
         previewLines(t, 1);
         const entries = { "/source.txt": "original", "/destination1.txt": "one", "/destination2.txt": "two" };
         const { dispatch, content } = await fixture(t, entries);
-        const result = await dispatch((op === "COPY" ? copyStmt : moveStmt)(urlPath("worker", "/source*.txt"), urlPath("worker", "/destination*.txt")));
+        const result = await dispatch((op === "COPY" ? copyStmt : moveStmt)(urlPath("workspace", "/source*.txt"), urlPath("workspace", "/destination*.txt")));
         assert.equal(result.status, 400, JSON.stringify(result));
         assert.match(result.problem!.type, /\/target-cardinality$/);
         assert.equal(result.problem!.matchingPathCount, 2);

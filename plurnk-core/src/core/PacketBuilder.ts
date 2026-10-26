@@ -1,4 +1,4 @@
-import WorkerOwners from "./WorkerOwners.ts";
+import SessionOwners from "./SessionOwners.ts";
 import type { Notice } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
@@ -6,7 +6,7 @@ import type HostPaths from "./HostPaths.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { GitStatus } from "./git-state.ts";
-import WorkerName from "./WorkerName.ts";
+import SessionName from "./SessionName.ts";
 import { generatedPathname, renderAddress } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
@@ -133,7 +133,7 @@ export default class PacketBuilder {
     #executors: () => ExecutorRegistry | undefined;
     #capabilities: CapabilityResolver;
     readonly #hostPaths: HostPaths | undefined;
-    // {§functionality-documents} — family-generated documents of a Worker's
+    // {§functionality-documents} — family-generated documents of a Session's
     // published Functionality, reconciled with its other reference entries.
     #functionalityDocuments: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }> = () => [];
 
@@ -167,7 +167,7 @@ export default class PacketBuilder {
     // {§packet-stored-shape} — assemble the system/user request before the
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
-        initialMessages, recap = "", workspaceId, workerId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
+        initialMessages, recap = "", workspaceId, sessionId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
         transientOpenLogEntryId = null,
         turnId = null,
     }: {
@@ -175,7 +175,7 @@ export default class PacketBuilder {
         // A non-empty caller value overrides the default Recap source.
         recap?: string;
         gitStatus: GitStatus | null;
-        workspaceId: number; workerId: number; loopId: number;
+        workspaceId: number; sessionId: number; loopId: number;
         // DB-level turn sequence for "look at the previous turn" queries.
         currentTurnSeq: number;
         provider: Provider;
@@ -194,7 +194,7 @@ export default class PacketBuilder {
         // Resource references are discovered through Turn0, not injected. {§schemes-directory}
         const system_definition = compactDefinitionTables(byRole("system"));
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
-        const workerName = await WorkerName.forId(this.#db, workerId);
+        const sessionName = await SessionName.forId(this.#db, sessionId);
         // {§message-arrival}: source addresses survive curation of their log observations.
         const openMessages = await this.#db.engine_open_messages.all<{
             id: number; path: string; key_path: string; source: string | null;
@@ -217,7 +217,7 @@ export default class PacketBuilder {
                 : await readTeachingSource(Paths.defaultRecapTeachingSource);
         const recapContent = PacketWire.renderRecap(recapLines(), recapSource);
         // {§emission-admission}: the definition remains the complete language authority.
-        const log = await this.#buildLog(workerId, transientOpenLogEntryId, turnId);
+        const log = await this.#buildLog(sessionId, transientOpenLogEntryId, turnId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
         // {§context-budget} — one room: the provider's input capacity in curation weight, bounding the
@@ -232,9 +232,9 @@ export default class PacketBuilder {
         const inject = await readPacketInject(this.#hostPaths); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(this.#hostPaths); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
         // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
-        // READ (LoopDocs → worker:///_plurnk/AGENTS.md), not the system prompt.
-        // Child-orientation ({§child-orientation}): the live things this worker holds — open streams +
-        // unconcluded child workers — surfaced every turn as `{status, path}` JSON pointers (same shape
+        // READ (LoopDocs → workspace:///_plurnk/AGENTS.md), not the system prompt.
+        // Child-orientation ({§child-orientation}): the live things this session holds — open streams +
+        // unconcluded child sessions — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. These two
         // sections always render, `[]` when empty: the model decides wait-or-complete on them, so
@@ -242,7 +242,7 @@ export default class PacketBuilder {
         const openChannels = await this.#db.engine_child_streams_open.all<{
             scheme: string; authority: string; pathname: string; publication_id: number; channel: string;
             lines: number; bytes: number; reported: number; opened_at: string; output_changed_at: string | null;
-        }>({ worker_id: workerId });
+        }>({ session_id: sessionId });
         // {§child-orientation}: one clock snapshot for the packet's live inventory.
         const now = Date.now();
         const secondsSince = (timestamp: string): number => Math.max(0, Math.floor((now - Date.parse(timestamp)) / 1000));
@@ -256,17 +256,17 @@ export default class PacketBuilder {
                 ...channels.map((c) => `${c.channel} ${c.lines} lines (+${Math.max(0, c.bytes - c.reported)} bytes)`),
             ].join("; "),
         }));
-        const childWorkers = (await this.#db.engine_child_workers_live.all<{ name: string; status: number }>({ worker_id: workerId }))
-            .map((r) => ({ status: r.status, path: `worker://${r.name}` }));
-        // {§worker-obligations} — the messages this worker sent that await completion, the third thing it holds.
-        const sentMessages = (await this.#db.engine_sent_messages_open.all<{ path: string; status: number }>({ worker_id: workerId }))
+        const childSessions = (await this.#db.engine_child_sessions_live.all<{ name: string; status: number }>({ session_id: sessionId }))
+            .map((r) => ({ status: r.status, path: `session://${r.name}` }));
+        // {§session-obligations} — the messages this session sent that await completion, the third thing it holds.
+        const sentMessages = (await this.#db.engine_sent_messages_open.all<{ path: string; status: number }>({ session_id: sessionId }))
             .map((r) => ({ status: r.status, path: r.path }));
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
-        // streams and space ({§worker-read-scope}, #394). The parent rides the `## Worker` identity
-        // block; a root worker states `"parent": null` rather than omitting it.
-        const parentRow = await this.#db.engine_parent_worker.get<{ name: string; status: number }>({ worker_id: workerId });
-        const parentPath = parentRow === undefined ? null : `worker://${parentRow.name}`;
-        const owner = await WorkerOwners.forLoop(this.#db, loopId);
+        // streams and space ({§session-read-scope}, #394). The parent rides the `## Session` identity
+        // block; a root session states `"parent": null` rather than omitting it.
+        const parentRow = await this.#db.engine_parent_session.get<{ name: string; status: number }>({ session_id: sessionId });
+        const parentPath = parentRow === undefined ? null : `session://${parentRow.name}`;
+        const owner = await SessionOwners.forLoop(this.#db, loopId);
         // {§fs-namespace} Receipt directories are relative to the workspace project root.
         const workspaceRow = await this.#db.envelope_get_workspace.get<{ project_root: string | null }>({ id: workspaceId });
         // {§emission-history}: the emission row selects the program; durable receipt ordinals
@@ -328,20 +328,20 @@ export default class PacketBuilder {
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
             // {§context-gauge} — the model's word for curation weight is tokens; this is never provider admission.
             { name: "budget", slot: "user", header: "Context", content: budgetReadout },
-            // {§packet-current-turn} — the Worker block names who the actor is, whose child it is, and the
+            // {§packet-current-turn} — the Session block names who the actor is, whose child it is, and the
             // coordinate this packet's response becomes — the one fact the sources cannot state about
-            // themselves (which `reasoning://<worker>/L/T` is the model's own). It changes every turn, so it
+            // themselves (which `reasoning://<session>/L/T` is the model's own). It changes every turn, so it
             // never precedes the log.
-            // {§packet-current-turn} — and whose worker it is: the approval owner, with whether a person
+            // {§packet-current-turn} — and whose session it is: the approval owner, with whether a person
             // attends it, so nobody-can-answer is a stated fact rather than an inference from a missing tool.
-            { name: "worker", slot: "user", header: "Worker", content: JSON.stringify({
-                path: `worker://${workerName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq,
+            { name: "session", slot: "user", header: "Session", content: JSON.stringify({
+                path: `session://${sessionName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq,
                 owner: { address: owner.address, interactive: owner.interactive },
             }) },
-            // child-orientation: the work this worker holds open — its child workers, its open streams and the
+            // child-orientation: the work this session holds open — its child sessions, its open streams and the
             // messages it awaits — beside the messages it owes. Terse pointers (the path is the actionable
             // address the model READs, SENDs to, or KILLs), never advice. {§child-orientation}
-            { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childWorkers, childStreams, sentMessages) },
+            { name: "work", slot: "user", header: "Open Work", content: PacketWire.renderOpenWork(childSessions, childStreams, sentMessages) },
             // The open arrivals this turn owes, as pointers; bodies arrive through their inbound SEND rows
             // ({§message-arrival}).
             { name: "messages", slot: "user", header: "Open Messages", content: prompt },
@@ -443,23 +443,23 @@ export default class PacketBuilder {
         return { weight, budget, excess: weight - budget };
     }
 
-    // {§worker-model-selection} — measure the worker's current curated context against a candidate
-    // provider's budget before admitting a model switch. Null when the worker has not yet built a
+    // {§session-model-selection} — measure the session's current curated context against a candidate
+    // provider's budget before admitting a model switch. Null when the session has not yet built a
     // packet or the candidate model's input capacity is unknown.
-    async workerCurationOverflow(workerId: number, provider: Provider): Promise<CurationOverflow | null> {
+    async sessionCurationOverflow(sessionId: number, provider: Provider): Promise<CurationOverflow | null> {
         if (provider.inputCapacity === null) return null;
-        const latest = await this.#db.engine_worker_latest_packet.get<{
+        const latest = await this.#db.engine_session_latest_packet.get<{
             workspace_id: number;
             loop_id: number;
             packet: string;
-        }>({ worker_id: workerId });
+        }>({ session_id: sessionId });
         if (latest === undefined) return null;
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: turns.packet is a stored RequestPacket
         const stored = JSON.parse(latest.packet) as RequestPacket;
         const packet = await this.buildRequestPacket({
             initialMessages: [{ role: "system", content: PacketWire.sectionContent(stored, "definition") }],
             workspaceId: latest.workspace_id,
-            workerId,
+            sessionId,
             loopId: latest.loop_id,
             currentTurnSeq: 1,
             provider,
@@ -514,15 +514,15 @@ export default class PacketBuilder {
     // Snapshot is taken at packet build (pre-dispatch this turn), so it
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
-    async #buildLog(workerId: number, transientOpenLogEntryId: number | null, turnId: number | null) {
-        // SPEC {§packet-terms}: workers own log entries — log is the worker's history,
-        // not the loop's. Span all loops in the worker so the model sees
+    async #buildLog(sessionId: number, transientOpenLogEntryId: number | null, turnId: number | null) {
+        // SPEC {§packet-terms}: sessions own log entries — log is the session's history,
+        // not the loop's. Span all loops in the session so the model sees
         // earlier loops' work as its own memory.
         //
         // User prompts are first-class actionless log entries written by
         // runTurn. They surface naturally in this query without synthetic
         // EDIT/READ delivery rows.
-        const rows = await this.#db.engine_render_log.all<StoredLogRow>({ worker_id: workerId, turn_id: turnId });
+        const rows = await this.#db.engine_render_log.all<StoredLogRow>({ session_id: sessionId, turn_id: turnId });
         return rows.map((r) => PacketWire.entryView(r, transientOpenLogEntryId));
     }
 }

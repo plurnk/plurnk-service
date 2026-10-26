@@ -149,8 +149,8 @@ export default class AiSdkRequestBody {
         }
     }
 
-    // Per-worker slot affinity: the consumer passes which worker this is; the
-    // provider owns WHICH slot serves it. Sticky per workerId, round-robin across
+    // Per-session slot affinity: the consumer passes which session this is; the
+    // provider owns WHICH slot serves it. Sticky per sessionId, round-robin across
     // new runs (distinct runs → distinct slots while slots last), LRU-bounded
     // bookkeeping so a long-lived daemon never grows the map unboundedly —
     // an evicted-and-returning run simply re-pins, worst case one cold prefill.
@@ -202,9 +202,9 @@ export default class AiSdkRequestBody {
     }
 
 
-    slotBody(workerId: string): Record<string, unknown> {
+    slotBody(sessionId: string): Record<string, unknown> {
         if (!this.#supportsSlotPinning || this.#slotCount === null || this.#slotCount < 1) return {};
-        let slot = this.#runSlots.get(workerId);
+        let slot = this.#runSlots.get(sessionId);
         if (slot === undefined) {
             slot = this.#nextSlot++ % this.#slotCount;
             if (this.#runSlots.size >= this.#slotCount * 8) {
@@ -212,16 +212,16 @@ export default class AiSdkRequestBody {
                 if (oldest.done !== true) this.#runSlots.delete(oldest.value);
             }
         } else {
-            this.#runSlots.delete(workerId); // re-insert to refresh LRU recency
+            this.#runSlots.delete(sessionId); // re-insert to refresh LRU recency
         }
-        this.#runSlots.set(workerId, slot);
+        this.#runSlots.set(sessionId, slot);
         return { id_slot: slot };
     }
 
 
 
     requestProviderOptions(
-        workerId: string,
+        sessionId: string,
         nativeReasoningBudget: number | null,
         declaredOptions?: AiSdkProviderOptions,
     ): AiSdkProviderOptions | undefined {
@@ -249,7 +249,7 @@ export default class AiSdkRequestBody {
         }
         if (this.#cacheAffinity?.target === "provider-option") {
             const { provider, name } = this.#cacheAffinity;
-            options[provider] = { ...options[provider], [name]: workerId };
+            options[provider] = { ...options[provider], [name]: sessionId };
         }
         return Object.keys(options).length === 0 ? undefined : options;
     }

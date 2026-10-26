@@ -9,18 +9,18 @@ PRAGMA wal_checkpoint(TRUNCATE);
 -- PREP: test_insert_workspace
 INSERT INTO workspaces (name) VALUES ($name) RETURNING id;
 
--- PREP: test_insert_worker
-INSERT INTO workers (workspace_id, name, parent_worker_id, origin)
-VALUES ($workspace_id, $name, $parent_worker_id, $origin)
+-- PREP: test_insert_session
+INSERT INTO sessions (workspace_id, name, parent_session_id, origin)
+VALUES ($workspace_id, $name, $parent_session_id, $origin)
 RETURNING id;
 
 -- PREP: test_insert_loop
-INSERT INTO loops (worker_id, sequence, prompt, max_turns)
-VALUES ($worker_id, $sequence, $prompt, -1) RETURNING id;
+INSERT INTO loops (session_id, sequence, prompt, max_turns)
+VALUES ($session_id, $sequence, $prompt, -1) RETURNING id;
 
 -- PREP: test_insert_queued_loop
-INSERT INTO loops (worker_id, sequence, prompt, status, max_turns)
-VALUES ($worker_id, $sequence, $prompt, 100, -1) RETURNING id;
+INSERT INTO loops (session_id, sequence, prompt, status, max_turns)
+VALUES ($session_id, $sequence, $prompt, 100, -1) RETURNING id;
 
 -- PREP: test_get_loop_claimed_at
 SELECT claimed_at FROM loops WHERE id = $id;
@@ -70,7 +70,7 @@ FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
+WHERE l.session_id = $session_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: test_get_log_projection
 SELECT le.id, projection.active, projection.folded
@@ -78,12 +78,12 @@ FROM log_entries le
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id
+WHERE l.session_id = $session_id
   AND l.sequence = $loop_seq
   AND t.sequence = $turn_seq
   AND le.sequence = $sequence;
 
--- PREP: test_log_curation_effects_by_worker
+-- PREP: test_log_curation_effects_by_session
 SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
        effect.active_before, effect.active_after,
        effect.folded_before, effect.folded_after,
@@ -93,7 +93,7 @@ SELECT effect.operation_log_entry_id, effect.target_log_entry_id,
 FROM log_curation_effects effect
 JOIN log_entries operation ON operation.id = effect.operation_log_entry_id
 JOIN log_entries target ON target.id = effect.target_log_entry_id
-WHERE operation.worker_id = $worker_id
+WHERE operation.session_id = $session_id
 ORDER BY effect.operation_log_entry_id, effect.target_log_entry_id;
 
 -- PREP: test_get_loop_status
@@ -114,10 +114,10 @@ WHERE loop_id = $loop_id ORDER BY ordinal;
 -- {§message-arrival}: the loop's initial message, with the address a client gave it.
 SELECT source, address FROM loop_messages WHERE loop_id = $loop_id AND ordinal = 1;
 
--- PREP: test_messages_by_worker
+-- PREP: test_messages_by_session
 SELECT m.id, m.loop_id, m.ordinal, m.source, m.body, m.open_paths, m.log_entry_id
 FROM loop_messages m JOIN loops l ON l.id = m.loop_id
-WHERE l.worker_id = $worker_id ORDER BY m.id;
+WHERE l.session_id = $session_id ORDER BY m.id;
 -- PREP: test_get_turn
 -- {§packet-items}: the packet assembled, as every whole-packet reader sees it.
 SELECT id, loop_id, sequence, producer, kind, status, completed_at,
@@ -235,7 +235,7 @@ SELECT state, producer_result FROM entry_channels
 WHERE entry_id = $entry_id AND name = $name;
 
 -- PREP: test_get_subscription
-SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
+SELECT id, session_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
 FROM subscriptions WHERE id = $id;
 
 -- PREP: test_subscription_reassign_source
@@ -248,8 +248,8 @@ JOIN subscriptions s ON s.id = sp.subscription_id
 WHERE le.id = $id;
 
 -- PREP: test_get_subscription_by_entry
-SELECT id, worker_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
-FROM subscriptions WHERE worker_id = $worker_id AND entry_id = $entry_id;
+SELECT id, session_id, entry_id, scheme, handle, closed_at, close_status, close_result, channel_results
+FROM subscriptions WHERE session_id = $session_id AND entry_id = $entry_id;
 
 -- PREP: test_count_active_subscriptions
 SELECT COUNT(*) AS n FROM subscriptions WHERE closed_at IS NULL;
@@ -264,7 +264,7 @@ WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS N
 
 -- PREP: test_exec_close_status_by_workspace
 -- The close_status the registry recorded for a workspace's most-recently-closed
--- stream of a scheme — proves the registry-routed reap ({§worker-lifecycle-total-reap})
+-- stream of a scheme — proves the registry-routed reap ({§session-lifecycle-total-reap})
 -- closed the subscription at 499, not just that a notification fired.
 SELECT s.close_status FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
@@ -310,12 +310,12 @@ JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE le.turn_id = $turn_id
 ORDER BY le.sequence;
 
--- PREP: test_log_entries_by_worker
+-- PREP: test_log_entries_by_session
 SELECT id, ambient_event_id, op, pathname, scheme, sequence, turn_id, loop_id, status_rx, origin, source
-FROM log_entries WHERE worker_id = $worker_id ORDER BY id;
+FROM log_entries WHERE session_id = $session_id ORDER BY id;
 
 -- PREP: test_log_entries_by_loop
--- The model loop's own entries, independent of which worker owns it
+-- The model loop's own entries, independent of which session owns it
 -- ({§connection-lifecycle}), so a test queries by the loopId it holds.
 -- origin is the writer tier (model | client | _plurnk) — lets a test assert an engine foist
 -- (origin='_plurnk') vs a model op without a second query.
@@ -327,18 +327,18 @@ JOIN log_entry_projections projection ON projection.log_entry_id = le.id
 WHERE le.loop_id = $loop_id
 ORDER BY le.id;
 
--- PREP: test_get_worker_id_by_loop
--- Resolve which worker owns a loop — model loops belong to model workers.
-SELECT worker_id FROM loops WHERE id = $loop_id;
+-- PREP: test_get_session_id_by_loop
+-- Resolve which session owns a loop — model loops belong to model sessions.
+SELECT session_id FROM loops WHERE id = $loop_id;
 
--- PREP: test_worker_lineage
--- A worker's workspace + fork parent — for proving a fork is a new worker in the same workspace.
-SELECT workspace_id, parent_worker_id FROM workers WHERE id = $id;
+-- PREP: test_session_lineage
+-- A session's workspace + fork parent — for proving a fork is a new session in the same workspace.
+SELECT workspace_id, parent_session_id FROM sessions WHERE id = $id;
 
--- PREP: test_get_log_rx_by_worker_op
+-- PREP: test_get_log_rx_by_session_op
 -- Forensic read-back for read-only ops in live tests: the latest rx the engine
--- recorded for a given op in a worker (e.g. what a READ<L> actually sliced).
-SELECT rx FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id DESC LIMIT 1;
+-- recorded for a given op in a session (e.g. what a READ<L> actually sliced).
+SELECT rx FROM log_entries WHERE session_id = $session_id AND op = $op ORDER BY id DESC LIMIT 1;
 
 -- PREP: test_count_log_entries
 SELECT COUNT(*) AS n FROM log_entries;
@@ -361,8 +361,8 @@ UPDATE entries SET updated_at = $updated_at WHERE id = $entry_id;
 -- PREP: test_entry_updated_at
 SELECT updated_at FROM entries WHERE id = $entry_id;
 
--- PREP: test_count_log_entries_by_worker
-SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id;
+-- PREP: test_count_log_entries_by_session
+SELECT COUNT(*) AS n FROM log_entries WHERE session_id = $session_id;
 
 -- PREP: test_get_entry_by_id
 SELECT e.workspace_id, e.scheme, e.authority, e.pathname
@@ -387,18 +387,18 @@ SELECT status_rx FROM log_entries WHERE turn_id = $turn_id AND op = $op;
 -- PREP: test_delete_entry
 DELETE FROM entries WHERE id = $id;
 
--- PREP: test_delete_worker
-DELETE FROM workers WHERE id = $id;
+-- PREP: test_delete_session
+DELETE FROM sessions WHERE id = $id;
 
 -- PREP: test_count_subscriptions_for_entry
 SELECT COUNT(*) AS n FROM subscriptions WHERE entry_id = $entry_id;
 
--- PREP: test_count_subscriptions_for_worker
-SELECT COUNT(*) AS n FROM subscriptions WHERE worker_id = $worker_id;
+-- PREP: test_count_subscriptions_for_session
+SELECT COUNT(*) AS n FROM subscriptions WHERE session_id = $session_id;
 
--- PREP: test_latest_subscription_for_worker
+-- PREP: test_latest_subscription_for_session
 SELECT entry_id, close_status FROM subscriptions
-WHERE worker_id = $worker_id
+WHERE session_id = $session_id
 ORDER BY id DESC
 LIMIT 1;
 
@@ -434,15 +434,15 @@ SELECT scheme FROM entries ORDER BY scheme;
 
 -- PREP: test_invalid_subscription_only_closed_at
 -- Used to verify the closed_at + close_status pairing CHECK constraint.
-INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, closed_at)
-VALUES ($worker_id, $entry_id, 'sse', 'h', '2026-01-01T00:00:00Z');
+INSERT INTO subscriptions (session_id, entry_id, scheme, handle, closed_at)
+VALUES ($session_id, $entry_id, 'sse', 'h', '2026-01-01T00:00:00Z');
 
 -- PREP: test_invalid_subscription_only_close_status
-INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, close_status)
-VALUES ($worker_id, $entry_id, 'sse', 'h', 200);
+INSERT INTO subscriptions (session_id, entry_id, scheme, handle, close_status)
+VALUES ($session_id, $entry_id, 'sse', 'h', 200);
 
 -- PREP: test_first_log_entry
-SELECT id, worker_id, origin, op, status_rx FROM log_entries
+SELECT id, session_id, origin, op, status_rx FROM log_entries
 WHERE origin = 'client'
 ORDER BY id LIMIT 1;
 
@@ -455,15 +455,15 @@ WHERE e.pathname = $pathname AND ec.name = 'body';
 -- PREP: test_list_workspaces
 SELECT name FROM workspaces;
 
--- PREP: test_get_loop_by_worker
-SELECT id FROM loops WHERE worker_id = $worker_id LIMIT 1;
+-- PREP: test_get_loop_by_session
+SELECT id FROM loops WHERE session_id = $session_id LIMIT 1;
 
--- PREP: test_count_loops_by_worker
-SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id;
+-- PREP: test_count_loops_by_session
+SELECT COUNT(*) AS n FROM loops WHERE session_id = $session_id;
 
--- PREP: test_loop_queue_by_worker
+-- PREP: test_loop_queue_by_session
 SELECT id, sequence, status, prompt
-FROM loops WHERE worker_id = $worker_id
+FROM loops WHERE session_id = $session_id
 ORDER BY sequence;
 
 -- PREP: test_list_channel_names
@@ -477,8 +477,8 @@ SELECT e.scheme, e.pathname
 FROM entries e WHERE e.workspace_id = $workspace_id
 ORDER BY e.scheme, e.pathname;
 
--- PREP: test_count_log_entries_worker_origin
-SELECT COUNT(*) AS n FROM log_entries WHERE worker_id = $worker_id AND origin = $origin;
+-- PREP: test_count_log_entries_session_origin
+SELECT COUNT(*) AS n FROM log_entries WHERE session_id = $session_id AND origin = $origin;
 
 -- PREP: test_fts_search
 SELECT e.pathname FROM derivation_fts f
@@ -490,18 +490,18 @@ ORDER BY e.pathname;
 
 
 -- PREP: test_all_loops
-SELECT id, worker_id, model_route_id, spawn_model_route_id, effort, status FROM loops ORDER BY id;
+SELECT id, session_id, model_route_id, spawn_model_route_id, effort, status FROM loops ORDER BY id;
 
--- PREP: test_workers_with_parent
--- Deterministic topology identity: real child workers, their names, and their parent edge.
-SELECT id, name, parent_worker_id, origin FROM workers ORDER BY id;
+-- PREP: test_sessions_with_parent
+-- Deterministic topology identity: real child sessions, their names, and their parent edge.
+SELECT id, name, parent_session_id, origin FROM sessions ORDER BY id;
 
--- PREP: test_workers_with_model
--- {§worker-model-selection} — every worker's durable model and persistent spawn override.
-SELECT id, name, model_route_id, spawn_model_route_id, effort FROM workers ORDER BY id;
+-- PREP: test_sessions_with_model
+-- {§session-model-selection} — every session's durable model and persistent spawn override.
+SELECT id, name, model_route_id, spawn_model_route_id, effort FROM sessions ORDER BY id;
 
 -- PREP: test_edit_states
--- {§worker-ownership} — a delegated child's EDIT settles through its inherited owner.
+-- {§session-ownership} — a delegated child's EDIT settles through its inherited owner.
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets
@@ -523,9 +523,9 @@ SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
 -- Set the workspaces.settings JSON bag (client open-context) for a test.
 UPDATE workspaces SET settings = $settings WHERE id = $id;
 
--- PREP: test_open_subscription_for_worker
--- ($worker_id unused: the honesty tests' db holds exactly one spawn)
-SELECT s.id FROM subscriptions s WHERE s.closed_at IS NULL AND $worker_id IS NOT NULL LIMIT 1;
+-- PREP: test_open_subscription_for_session
+-- ($session_id unused: the honesty tests' db holds exactly one spawn)
+SELECT s.id FROM subscriptions s WHERE s.closed_at IS NULL AND $session_id IS NOT NULL LIMIT 1;
 
 -- PREP: test_entries_by_scheme_prefix
 SELECT e.id, e.pathname
@@ -594,20 +594,20 @@ SELECT attrs FROM log_entries WHERE turn_id = $turn_id AND op = $op ORDER BY id 
 -- Cursor-contract fixture: two occurrences may deliberately share an arbitrary
 -- wall-clock stamp. Delivery identity must come from the ambient event, not `at`.
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, at, origin, op,
+    session_id, loop_id, turn_id, sequence, at, origin, op,
     scheme, pathname, tx, mimetype_tx, rx, mimetype_rx, status_rx
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, $at, 'model', 'EDIT',
-    'worker', $pathname, '', 'text/plain', $rx, 'application/json', 201
+    $session_id, $loop_id, $turn_id, $sequence, $at, 'model', 'EDIT',
+    'workspace', $pathname, '', 'text/plain', $rx, 'application/json', 201
 )
 RETURNING id;
 
--- PREP: test_log_entries_by_worker_op
-SELECT hostname, pathname, source, weight, attrs FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
+-- PREP: test_log_entries_by_session_op
+SELECT hostname, pathname, source, weight, attrs FROM log_entries WHERE session_id = $session_id AND op = $op ORDER BY id;
 
 -- PREP: test_model_source_rows
 SELECT id, turn_id, sequence, op, attrs FROM log_entries
-WHERE worker_id = $worker_id
+WHERE session_id = $session_id
   AND op IS NULL
   AND json_extract(attrs, '$.kind') = 'emissionAttempt'
 ORDER BY id;
@@ -616,7 +616,7 @@ ORDER BY id;
 SELECT s.turn_id, s.kind, s.sequence, s.content, s.model_call_id, s.deep_hash,
        t.producer, l.sequence AS loop_seq, t.sequence AS turn_seq
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id
+WHERE l.session_id = $session_id
 ORDER BY l.sequence, t.sequence, s.kind, s.sequence;
 
 -- PREP: test_count_entries_by_scheme
@@ -631,22 +631,22 @@ FROM subscription_publications
 WHERE subscription_id = $id
 ORDER BY channel;
 
--- PREP: test_log_entries_by_worker_op_signal
-SELECT signal FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
+-- PREP: test_log_entries_by_session_op_signal
+SELECT signal FROM log_entries WHERE session_id = $session_id AND op = $op ORDER BY id;
 
--- PREP: test_log_entries_by_worker_op_full
+-- PREP: test_log_entries_by_session_op_full
 SELECT scheme, hostname, pathname, fragment, tx, rx, mimetype_rx, status_rx, attrs, origin
-FROM log_entries WHERE worker_id = $worker_id AND op = $op ORDER BY id;
+FROM log_entries WHERE session_id = $session_id AND op = $op ORDER BY id;
 
--- PREP: test_error_rows_for_worker
-SELECT rx, weight FROM log_entries WHERE worker_id = $worker_id AND op = 'error';
+-- PREP: test_error_rows_for_session
+SELECT rx, weight FROM log_entries WHERE session_id = $session_id AND op = 'error';
 
--- PREP: test_disposition_rows_for_worker
-SELECT rx, tx, status_rx FROM log_entries WHERE worker_id = $worker_id AND op = 'WAIT' AND origin = 'model' ORDER BY id;
+-- PREP: test_disposition_rows_for_session
+SELECT rx, tx, status_rx FROM log_entries WHERE session_id = $session_id AND op = 'WAIT' AND origin = 'model' ORDER BY id;
 
--- PREP: test_workers_by_workspace
-SELECT id, name, origin, parent_worker_id
-FROM workers WHERE workspace_id = $workspace_id ORDER BY id;
+-- PREP: test_sessions_by_workspace
+SELECT id, name, origin, parent_session_id
+FROM sessions WHERE workspace_id = $workspace_id ORDER BY id;
 
 -- PREP: test_first_turn_for_loop
 SELECT packet FROM turn_packets WHERE loop_id = $loop_id ORDER BY sequence LIMIT 1;
@@ -667,7 +667,7 @@ SELECT COUNT(*) n FROM log_entries WHERE op = $op;
 UPDATE workspaces SET project_root = $project_root WHERE id = $id;
 
 -- PREP: test_list_loops_all
-SELECT id, worker_id, status, terminated_at, terminal_result, terminated_by FROM loops ORDER BY id;
+SELECT id, session_id, status, terminated_at, terminal_result, terminated_by FROM loops ORDER BY id;
 
 -- PREP: test_get_entry_attributes
 SELECT e.attributes
@@ -702,8 +702,8 @@ FROM entries e WHERE e.workspace_id = $workspace_id AND e.pathname = $pathname;
 SELECT e.pathname
 FROM entries e WHERE e.workspace_id = $workspace_id AND e.scheme = 'file';
 
--- PREP: test_first_worker_for_ws
-SELECT id FROM workers WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1;
+-- PREP: test_first_session_for_ws
+SELECT id FROM sessions WHERE workspace_id = $workspace_id ORDER BY id LIMIT 1;
 
 -- PREP: test_last_log_row
 SELECT pathname, tx FROM log_entries WHERE loop_id = $loop_id ORDER BY id DESC LIMIT 1;
@@ -741,7 +741,7 @@ FROM entries e WHERE e.workspace_id = $workspace_id AND e.pathname = $pathname;
 
 -- PREP: test_entries_by_coordinate_workspaces
 -- Every owner holding one textual coordinate, with its body — the
--- {§scheme-entry-matrix} isolation probe for independent Workers.
+-- {§scheme-entry-matrix} isolation probe for independent Sessions.
 SELECT e.id, e.workspace_id, ec.content
 FROM entries e
 LEFT JOIN entry_channels ec ON ec.entry_id = e.id AND ec.name = 'body'
@@ -750,25 +750,25 @@ WHERE e.scheme = $scheme
   AND e.pathname = $pathname
 ORDER BY e.workspace_id;
 
--- PREP: test_first_packet_turn_by_worker_name
--- The first packet-bearing turn of the named worker's loops (the child's first model turn).
+-- PREP: test_first_packet_turn_by_session_name
+-- The first packet-bearing turn of the named session's loops (the child's first model turn).
 SELECT t.id
-FROM turns t JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
+FROM turns t JOIN loops l ON l.id = t.loop_id JOIN sessions w ON w.id = l.session_id
 WHERE w.workspace_id = $workspace_id AND w.name = $name AND t.packet IS NOT NULL
 ORDER BY t.id LIMIT 1;
 
--- PREP: test_children_of_worker
--- {§worker-spawn-prompt-resource} tests: every child of a worker, live or concluded, by name.
-SELECT id, name FROM workers WHERE parent_worker_id = $worker_id ORDER BY id;
+-- PREP: test_children_of_session
+-- {§session-spawn-prompt-resource} tests: every child of a session, live or concluded, by name.
+SELECT id, name FROM sessions WHERE parent_session_id = $session_id ORDER BY id;
 
 -- PREP: test_fork_loops
--- A worker's loops as a fork copies them ({§worker-fork-trigger}).
+-- A session's loops as a fork copies them ({§session-fork-trigger}).
 SELECT id, sequence, status, prompt, model_route_id, spawn_model_route_id,
        effort, max_turns, terminal_result
-FROM loops WHERE worker_id = $worker_id ORDER BY id;
+FROM loops WHERE session_id = $session_id ORDER BY id;
 
 -- PREP: test_fork_log_entries
--- A worker's log rows with their current projection, as a fork copies them.
+-- A session's log rows with their current projection, as a fork copies them.
 SELECT id, loop_id, turn_id, sequence, at, origin, source, op, signal,
        ambient_event_id,
        scheme, username, password, hostname, port, pathname, query, fragment,
@@ -778,19 +778,19 @@ SELECT id, loop_id, turn_id, sequence, at, origin, source, op, signal,
        projection.folded AS projection_folded
 FROM log_entries
 JOIN log_entry_projections projection ON projection.log_entry_id = log_entries.id
-WHERE worker_id = $worker_id
+WHERE session_id = $session_id
 ORDER BY id;
 
 -- PREP: test_fork_scratch_entries
--- A worker's named scratch with its liveness, as a fork selects it.
+-- A session's named scratch with its liveness, as a fork selects it.
 SELECT e.id, e.scheme, e.authority, e.pathname, e.attributes,
        EXISTS (
            SELECT 1 FROM entry_channels c
            WHERE c.entry_id = e.id AND c.state = 'active'
        ) AS active
 FROM entries e
-JOIN workers w ON w.workspace_id = e.workspace_id AND w.name = e.authority
-WHERE w.id = $worker_id AND e.scheme IN ('worker', 'prompt')
+JOIN sessions w ON w.workspace_id = e.workspace_id AND w.name = e.authority
+WHERE w.id = $session_id AND e.scheme IN ('session', 'prompt')
 ORDER BY e.id;
 
 -- PREP: test_insert_log_curation_effect
@@ -822,13 +822,13 @@ SELECT COUNT(*) AS n FROM turn_sections WHERE turn_id = $turn_id;
 UPDATE turns SET completed_at = $completed_at WHERE id = $id;
 
 -- PREP: test_open_subscription_detached
--- {§worker-obligations} witnesses: an open stream, detached or not, on an entry of the worker's.
-INSERT INTO subscriptions (worker_id, entry_id, scheme, handle, detached)
-VALUES ($worker_id, $entry_id, 'sh', 'sh: sleep', $detached)
+-- {§session-obligations} witnesses: an open stream, detached or not, on an entry of the session's.
+INSERT INTO subscriptions (session_id, entry_id, scheme, handle, detached)
+VALUES ($session_id, $entry_id, 'sh', 'sh: sleep', $detached)
 RETURNING id;
 
 -- PREP: test_close_subscription
--- {§worker-obligations} witnesses: settle a stream with a plain success.
+-- {§session-obligations} witnesses: settle a stream with a plain success.
 UPDATE subscriptions
 SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), close_status = 200, close_result = '{"status":200}', channel_results = '{}'
 WHERE id = $id;
@@ -844,15 +844,15 @@ ORDER BY id DESC LIMIT 1;
 SELECT COUNT(*) AS n, SUM(length(content)) AS bytes FROM contents;
 
 -- PREP: test_loop_termination_events
-SELECT rx FROM ambient_events WHERE kind = 'loop_termination' AND recipient_worker_id = $recipient_worker_id ORDER BY id;
--- PREP: test_edit_rows_by_worker
--- {§digest-edit-census}: a worker's model-authored EDITs with the scope and pattern they authored.
+SELECT rx FROM ambient_events WHERE kind = 'loop_termination' AND recipient_session_id = $recipient_session_id ORDER BY id;
+-- PREP: test_edit_rows_by_session
+-- {§digest-edit-census}: a session's model-authored EDITs with the scope and pattern they authored.
 SELECT id, pathname, status_rx, lineMarker AS line_marker,
        CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
-FROM log_entries WHERE worker_id = $worker_id AND op = 'EDIT' AND origin = 'model' ORDER BY id;
+FROM log_entries WHERE session_id = $session_id AND op = 'EDIT' AND origin = 'model' ORDER BY id;
 
--- PREP: test_emission_rows_by_worker
--- {§emission-row}: a worker's emission announcements with their coordinates and projection state.
+-- PREP: test_emission_rows_by_session
+-- {§emission-row}: a session's emission announcements with their coordinates and projection state.
 SELECT l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
        le.origin, le.op, le.scheme, le.hostname, le.pathname, le.attrs, le.rx, le.initial_folded,
        projection.active, projection.folded
@@ -860,21 +860,21 @@ FROM log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 JOIN log_entry_projections projection ON projection.log_entry_id = le.id
-WHERE le.worker_id = $worker_id AND json_extract(le.attrs, '$.kind') = 'emission'
+WHERE le.session_id = $session_id AND json_extract(le.attrs, '$.kind') = 'emission'
 ORDER BY le.id;
 
 -- PREP: test_turn_sources_by_turn
 SELECT kind, content FROM turn_sources WHERE turn_id = $turn_id ORDER BY kind;
 
 -- PREP: test_open_message_from
--- {§worker-obligations}: the newest message a named worker sent in a workspace that has no completion yet.
+-- {§session-obligations}: the newest message a named session sent in a workspace that has no completion yet.
 SELECT m.path FROM message_sources m
 WHERE m.workspace_id = $workspace_id AND m.source = $source
   AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
 ORDER BY m.id DESC LIMIT 1;
 
 -- PREP: test_message_completions_from
--- {§message-completion}: the completions of a named worker's messages, with who authored each completing row.
+-- {§message-completion}: the completions of a named session's messages, with who authored each completing row.
 SELECT c.status, le.origin FROM message_completions c
 JOIN message_sources m ON m.id = c.message_id
 JOIN log_entries le ON le.id = c.response_id
@@ -882,7 +882,7 @@ WHERE m.workspace_id = $workspace_id AND m.source = $source
 ORDER BY c.message_id ASC;
 
 -- EXEC: test_refuse_recovery_turn_settlement
--- {§worker-lifecycle-restart-recovery}: fail after the loop transition, inside durable settlement.
+-- {§session-lifecycle-restart-recovery}: fail after the loop transition, inside durable settlement.
 CREATE TRIGGER test_refuse_recovery_turn_settlement
 BEFORE UPDATE OF completed_at ON turns
 WHEN NEW.status = 500

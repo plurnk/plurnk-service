@@ -11,10 +11,10 @@ import Turn from "../../src/core/Turn.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import type { Executor } from "@plurnk/plurnk-execs";
-import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
+import type { WakeSessionPayload } from "../../src/core/ChannelWrite.ts";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import { completeStmt, execStmt, dispositionStmt } from "./_dsl.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { waitFor } from "./_rpc.ts";
@@ -24,13 +24,13 @@ const wire = async (run: Executor["run"]) => {
     const tag = `honesty${++wireN}`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
-    const wakes: WakeWorkerPayload[] = [];
+    const wakes: WakeSessionPayload[] = [];
     const notices: Notice[] = [];
     const engine = new Engine({
         db,
         schemes,
         mimetypes: DEFAULT_MIMETYPES,
-        wakeWorkerNotify: (p) => { wakes.push(p); },
+        wakeSessionNotify: (p) => { wakes.push(p); },
         noticeNotify: (_workspaceId, payload) => { notices.push(payload.notice); },
     });
     engine.setExecutors(await testExecutors());
@@ -49,23 +49,23 @@ const wire = async (run: Executor["run"]) => {
         glyph: "?", summary: "Conclude fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, details: "", available: true, detail: undefined,
     } as never);
     const workspaceId = await insertWorkspace(db, `honesty-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "honesty test");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "honesty test");
     await engine.runTurn({
         provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```NOTE\nInspect execution results.\n```", reasoning: null } }] }),
-        workspaceId, workerId, loopId, messages: [],
+        workspaceId, sessionId, loopId, messages: [],
     });
     notices.length = 0;
     const { id: turnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
-    return { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices };
+    return { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes, notices };
 };
 
 test("{§executor-results} a rejecting driver still concludes its stream with an exact Problem, never an open corpse", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => {
+    const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes } = await wire(async () => {
         throw new Error("Invalid URL");
     });
     try {
-        const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
         const concluded = await waitFor(() => wakes, (w) => w.length > 0, { timeoutMs: 4000 });
         assert.equal(concluded[0].result.status, 500, "the rejected execution concluded as a FAILURE, not an open subscription");
@@ -75,12 +75,12 @@ test("{§executor-results} a rejecting driver still concludes its stream with an
 
 for (const reported of [{ status: 500, exitCode: 1 }, { status: 102 }, { status: 202 }, { status: 200, content: "not a producer field" }]) {
     test(`{§executor-results} invalid executor result ${JSON.stringify(reported)} becomes a durable terminal failure`, async () => {
-        const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => reported as never);
+        const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes } = await wire(async () => reported as never);
         try {
             const started = await engine.dispatch({
                 statement: execStmt(tag, "go"),
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 sequence: 1,
@@ -111,7 +111,7 @@ test("{§notice-level} an executor notice with explicit severity crosses the ext
         completed: 1,
         total: 2,
     } as const satisfies Notice;
-    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {
+    const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {
         emit(notice);
         return { status: 200 };
     });
@@ -119,7 +119,7 @@ test("{§notice-level} an executor notice with explicit severity crosses the ext
         const started = await engine.dispatch({
             statement: execStmt(tag, "go"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -136,7 +136,7 @@ test("{§notice-level} an executor notice with explicit severity crosses the ext
 test("{§notice-level} a runtime-JavaScript notice without severity fails at the extension boundary with its cause", async (t) => {
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
-    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {
+    const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {
         emit({
             source: "exec:honesty",
             kind: "progress",
@@ -148,7 +148,7 @@ test("{§notice-level} a runtime-JavaScript notice without severity fails at the
         const started = await engine.dispatch({
             statement: execStmt(tag, "go"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -169,14 +169,14 @@ test("{§notice-level} a runtime-JavaScript notice without severity fails at the
 });
 
 test("{§executor-results} a driver resolving 200 under abort is replaced by a 499 Problem — service truth outranks the claim", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire((args) => new Promise((res) => {
+    const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes } = await wire((args) => new Promise((res) => {
         // The 0.3.3-class liar: hangs until aborted, then claims success.
         args.signal.addEventListener("abort", () => res({ status: 200, exitCode: 0 }), { once: true });
     }));
     try {
-        const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        const result = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         assert.equal(result.status, 200, `the spawn started; got ${result.status}`);
-        const sub = await db.test_open_subscription_for_worker.get<{ id: number }>({ worker_id: workerId });
+        const sub = await db.test_open_subscription_for_session.get<{ id: number }>({ session_id: sessionId });
         assert.ok(sub !== undefined, "the spawn's subscription is open");
         await engine.cancelSubscription(sub.id);
         const concluded = await waitFor(() => wakes.filter((w) => w.result !== undefined), (w) => w.length > 0, { timeoutMs: 4000 });
@@ -192,7 +192,7 @@ for (const rejection of ["signal reason", "AbortError", "unrelated error"] as co
         // The classification under test is of a rejection the executor raises on abort, so the
         // cancellation waits for the run to begin: an earlier one concludes before any run.
         const running = Promise.withResolvers<void>();
-        const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(({ signal }) => new Promise((_resolve, reject) => {
+        const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes } = await wire(({ signal }) => new Promise((_resolve, reject) => {
             signal.addEventListener("abort", () => reject(rejection === "signal reason"
                 ? signal.reason
                 : rejection === "AbortError"
@@ -201,9 +201,9 @@ for (const rejection of ["signal reason", "AbortError", "unrelated error"] as co
             running.resolve();
         }));
         try {
-            const started = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+            const started = await engine.dispatch({ statement: execStmt(tag, "go"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
             assert.equal(started.status, 200);
-            const sub = await db.test_open_subscription_for_worker.get<{ id: number }>({ worker_id: workerId });
+            const sub = await db.test_open_subscription_for_session.get<{ id: number }>({ session_id: sessionId });
             assert.ok(sub);
             await running.promise;
             await engine.cancelSubscription(sub.id);
@@ -223,7 +223,7 @@ for (const specimen of [
     { label: "empty failure", content: "", status: 500 },
 ] as const) {
     test(`{§exec-stream-page} a completed but unobserved ${specimen.label} keeps a same-turn wait alive for its next-packet terminal observation`, async () => {
-        const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async (args) => {
+        const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes } = await wire(async (args) => {
             if (specimen.content !== "") args.write("results", specimen.content);
             return specimen.status === 200
                 ? { status: 200, exitCode: 0 }
@@ -239,7 +239,7 @@ for (const specimen of [
         try {
             const started = await engine.dispatch({
                 statement: execStmt(tag, "go"),
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             });
             assert.equal(started.status, 200);
             await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
@@ -247,7 +247,7 @@ for (const specimen of [
 
             const waited = await engine.dispatch({
                 statement: dispositionStmt("WAIT", "waiting"),
-                workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
             });
             assert.equal(
                 waited.status,
@@ -256,14 +256,14 @@ for (const specimen of [
             );
             const completed = await engine.executeAdmittedTurn({
                 statements: [completeStmt()], source: null, emission: null,
-                workspaceId, workerId, loopId, turnId, fromSequence: 3, origin: "model",
+                workspaceId, sessionId, loopId, turnId, fromSequence: 3, origin: "model",
             });
             assert.equal(completed.status, 102, "closed but unobserved: the completion defers to the next packet");
             assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "message completion is delivered while the loop still observes results");
             const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
                 content: "", reasoning: null,
             } }] });
-            const observed = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            const observed = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
             assert.equal(observed.status, 200);
             const packet = JSON.stringify(provider.received[0]);
             assert.match(packet, /terminal/, "even an empty stream has an observable terminal result");
@@ -274,17 +274,17 @@ for (const specimen of [
 }
 
 test("{§send-premature-terminate}: an earlier turn's completed stream is identified without inventing a current operation", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId, tag, wakes } = await wire(async () => ({ status: 200 }));
+    const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes } = await wire(async () => ({ status: 200 }));
     try {
         assert.equal((await engine.dispatch({
-            statement: execStmt(tag, "go"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            statement: execStmt(tag, "go"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         })).status, 200);
         await waitFor(() => wakes, (events) => events.length > 0, { timeoutMs: 4000 });
         await Turn.complete(db, turnId, 102);
         const { id: nextTurnId } = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         const completed = await engine.executeAdmittedTurn({
             statements: [completeStmt()], source: null, emission: null,
-            workspaceId, workerId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId: nextTurnId, fromSequence: 1, origin: "model",
         });
         assert.equal(completed.status, 102);
         assert.deepEqual(completed.outcomes, [{ op: "SEND", status: 200, problemType: null }], "the earlier execution is not invented in this program");

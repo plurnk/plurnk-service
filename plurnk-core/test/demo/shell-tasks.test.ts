@@ -29,7 +29,7 @@ interface DemoOpts {
 }
 
 const runShellDemo = async ({ label, prompt, expected, signal }: DemoOpts): Promise<void> => {
-    // Sandbox execution's cwd to a throwaway temp dir — the model workers shell commands (and,
+    // Sandbox execution's cwd to a throwaway temp dir — the model sessions shell commands (and,
     // when blind to its output, redirects them to files); without a project_root they'd
     // default to the daemon's cwd and land in the live repo. {§exec-env-scoped}
     const sandbox = await mkdtemp(join(tmpdir(), "plurnk-demo-"));

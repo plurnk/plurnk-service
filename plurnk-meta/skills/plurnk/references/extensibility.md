@@ -38,7 +38,7 @@ before it cannot do:
 
 Skills and MCP servers are definitions. The `plurnk` runtime (`skills` and
 `mcp` tools) adds, replaces, enables, disables and removes them in the current workspace,
-and `worker:///_plurnk/tools/plurnk/skills.json` and `mcp.json` show each
+and `workspace:///_plurnk/tools/plurnk/skills.json` and `mcp.json` show each
 definition's form. A definition needs no restart; an extension loads only when
 the daemon starts.
 

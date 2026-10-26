@@ -1,11 +1,11 @@
-// Worker documentation projections of the shared workspace environment.
+// Session documentation projections of the shared workspace environment.
 // Reconcile on reader demand and after workspace Functionality changes. Two private sets run through
-// an ordinary `_plurnk` turn in the addressed worker ({§actor-boundary-doc-injection}):
-//   1. the project AGENTS.md at worker:///_plurnk/AGENTS.md and AGENTS.local.md at
-//      worker:///_plurnk/AGENTS.local.md — Engine.runTurn foists their READs at turn 0
+// an ordinary `_plurnk` turn in the addressed session ({§actor-boundary-doc-injection}):
+//   1. the project AGENTS.md at workspace:///_plurnk/AGENTS.md and AGENTS.local.md at
+//      workspace:///_plurnk/AGENTS.local.md — Engine.runTurn foists their READs at turn 0
 //      ({§turn0-agents-stunt}, {§turn0-local-instructions});
 //   2. the exact current scheme and executable-tool reference set under
-//      worker:///_plurnk/plurnk/ and worker:///_plurnk/tools/ — discovered by the
+//      workspace:///_plurnk/plurnk/ and workspace:///_plurnk/tools/ — discovered by the
 //      turn-0 FIND surveys ({§schemes-self-doc-materialization},
 //      {§tools-resource-materialization}).
 import { createHash } from "node:crypto";
@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { generatedPathname } from "../core/plurnk-uri.ts";
 import type Engine from "../core/Engine.ts";
 import type { Db } from "../core/Db.ts";
-import RuntimeWorker from "../core/RuntimeWorker.ts";
+import RuntimeSession from "../core/RuntimeSession.ts";
 import {
     UNKNOWN_POSITION,
     type ParsedPath,
@@ -60,8 +60,8 @@ export default class LoopDocs {
     static #target(pathname: string): ParsedPath {
         return {
             kind: "url",
-            raw: `worker://${pathname}`,
-            scheme: "worker",
+            raw: `workspace://${pathname}`,
+            scheme: "workspace",
             username: null,
             password: null,
             hostname: null,
@@ -88,7 +88,7 @@ export default class LoopDocs {
 
     static async #materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
         // {§turn0-agents-stunt} — the project's AGENTS.md becomes one
-        // shared worker:///_plurnk/AGENTS.md entry, read at turn 0.
+        // shared workspace:///_plurnk/AGENTS.md entry, read at turn 0.
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
         });
@@ -153,7 +153,7 @@ export default class LoopDocs {
             });
         }
 
-        await DispatchAsPlurnk.dispatch(engine, db, workspaceId, await RuntimeWorker.ensure(db, workspaceId), statements);
+        await DispatchAsPlurnk.dispatch(engine, db, workspaceId, await RuntimeSession.ensure(db, workspaceId), statements);
         byWorkspace.set(workspaceId, signature);
         LoopDocs.#signatures.set(db, byWorkspace);
     }

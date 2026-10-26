@@ -4,14 +4,14 @@ import assert from "node:assert/strict";
 import type { UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
@@ -26,13 +26,13 @@ test("{§derivation-dedup-parallel} changed resources report one aggregate deriv
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `progress-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const seed = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        for (const name of ["a.md", "b.md", "c.md"]) await new Worker().edit(editStmt(url(name), `content for ${name} with words to index`), seed);
+        const sessionId = await insertSession(db, workspaceId);
+        const seed = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        for (const name of ["a.md", "b.md", "c.md"]) await new Workspace().edit(editStmt(url(name), `content for ${name} with words to index`), seed);
 
         type Tel = { source?: string; kind?: string; message?: string; pathname?: string; completed?: number; total?: number };
         const events: Tel[] = [];
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events.push(e as Tel) }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes, pushNotice: (e) => events.push(e as Tel) }));
 
         const progress = events.filter((e) => e.source === "engine:derivation" && e.kind === "search_progress");
         assert.ok(progress.length > 0, "a 3-entry corpus pass emits a visible lifecycle");
@@ -43,8 +43,8 @@ test("{§derivation-dedup-parallel} changed resources report one aggregate deriv
         // A single changed entry is still real work and therefore has one coherent
         // lifecycle. Replaceable buffering keeps this from becoming packet history.
         const events2: Tel[] = [];
-        await new Worker().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, pushNotice: (e) => events2.push(e as Tel) }));
+        await new Workspace().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes, pushNotice: (e) => events2.push(e as Tel) }));
         assert.deepEqual(
             events2.filter((e) => e.kind === "search_progress").map((e) => (e as { phase?: string }).phase),
             ["preparing", "complete"],
@@ -61,8 +61,8 @@ test("{§derivation-exhaustive} [#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `excluded-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
         const identical = '{"name":"x","version":"24.18.0","packages":{"":{"deps":{"y":"1.0.0"}}}}';
         const pathname = "/repo/dist/index.json";
         await EntryCrud.writeEntry({ authority: "", pathname }, {
@@ -71,7 +71,7 @@ test("{§derivation-exhaustive} [#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only
         await EntryCrud.writeEntry({ authority: "", pathname }, {
             channels: { body: { content: identical, mimetype: "application/json" } },
         }, ctx, "https");
-        await new Worker().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
+        await new Workspace().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
         await SearchIndex.maintain(ctx);
         const fileEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "file", pathname });
         const httpsEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname });
@@ -99,12 +99,12 @@ test("{§derivation-dedup-parallel}: the pump admits smallest-first without skip
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `sort-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
         const whale = Array.from({ length: 120 }, (_, i) => `whale line ${i}: substantial prose about topic ${i} with enough words to chunk`).join("\n");
-        await new Worker().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
-        await new Worker().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
-        await new Worker().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
+        await new Workspace().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
+        await new Workspace().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
+        await new Workspace().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
         await SearchIndex.maintain(ctx);
         const order = await db.test_artifact_insertion_order.all<{ pathname: string; first_rowid: number }>({});
         const byPath = new Map(order.map((o) => [o.pathname, o.first_rowid]));

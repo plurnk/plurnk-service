@@ -37,7 +37,7 @@ export default class EntrySend {
             {},
             {
                 // {§send-target-recipient}
-                recovery: "To reply, SEND to an Open Message address or omit the target. SEND (worker://<name>) sends a new message.",
+                recovery: "To reply, SEND to an Open Message address or omit the target. SEND (session://<name>) sends a new message.",
                 retryable: false,
             },
         ); // {§send-dispatch-entry-schemes-501}

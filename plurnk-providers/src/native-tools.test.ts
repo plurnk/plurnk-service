@@ -205,7 +205,7 @@ test("{§provider-native-tools-disabled} Ollama keeps its probe unmodified and d
         }), "fixture", { baseUrl: "http://fixture.test" });
         assert.deepEqual(bodies.at(-1), { model: "fixture" });
         for (const callKind of ["emission", "bare"] as const) {
-            const result = await provider.generate({ workerId: "fixture", messages: request.messages, callKind });
+            const result = await provider.generate({ sessionId: "fixture", messages: request.messages, callKind });
             assert.equal(result.assistant.content, "answer");
             assertToolFree(bodies.at(-1)!, "chat");
         }

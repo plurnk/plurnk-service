@@ -34,14 +34,14 @@ to the command.
 | `PreToolUse` | `operation/event`, `phase=started` | One model/client operation enters dispatch, before capability/proposal admission. |
 | `PostToolUse` | `operation/event`, `phase=settled`, status below 400 | That dispatch settled; a started executor may still be running. |
 | `PostToolUseFailure` | `operation/event`, `phase=settled`, status at least 400 | That dispatch returned a failure, retaining its exact result. |
-| `Stop` | `loop/terminated` | One worker loop terminated, including failure or cancellation; parking is not termination. |
+| `Stop` | `loop/terminated` | One session loop terminated, including failure or cancellation; parking is not termination. |
 | `Notification` | `notice/event` | The existing notice, with its producer's message and severity. |
 | `PermissionRequest` | `loop/proposal` with client disposition, or `loop/interaction` | An operation awaits a client decision/input. Automatically settled proposals are not requests to a person. |
 
 | Field | Source |
 |---|---|
 | `hook_event_name` | Name above. |
-| `session_id` | Owning worker's database ID as a string; absent for workspace-only notices. Not a client connection or a loop ID. |
+| `session_id` | Owning session's database ID as a string; absent for workspace-only notices. Not a client connection or a loop ID. |
 | `cwd` | Operation event's project root, when present. Never inferred from a path operand or substituted with the daemon's directory. |
 | `tool_use_id` | `turnId/sequence` for operation events; stable across start and settlement, unique within this database. |
 | `tool_name` | Operation keyword or executor runtime; a runtime's target remains in `tool_input`. Interaction requests retain their declared tool name. |

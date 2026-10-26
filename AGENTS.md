@@ -19,7 +19,7 @@ extensions included in the default installation. The terminal client is a separa
 | A choice: a limit, a default, a posture | Each package's `.env.defaults`; `ARCHITECTURE.md` § Configuration authority is the law. The real-model layers, highest first: the shell, `plurnk-core/.env.test`, `$XDG_CONFIG_HOME/plurnk/.env`, the defaults, the floor ({§environment-layers}; `scripts/lib/environment.mjs` is the code). |
 | A model | `PLURNK_MODEL_<alias>=<provider>/<model>` declared once in `$XDG_CONFIG_HOME/plurnk/.env`; `PLURNK_MODEL=<alias>` selects one per run, or standing in that file (`plurnk-aliases/SPEC.md`; provider ids in `plurnk-models`). Credentials live in the login shell, which `scripts/operator-environment.sh` carries into every real-model run. |
 | A real-model run | From `plurnk-core`: `npm run test:live`, `npm run test:demo`, their `--help` for the one-specimen forms; `npm run candidate` at the root for the whole platform ({§candidate-pinned-runtime}). |
-| A run's evidence | `$PLURNK_BENCHMARKS/tier-<live\|demo>-<stamp>/census.md` and each worker's `digest/` ({§tier-census}; the digest's files in `plurnk-digest/README.md`); `npm run tier:history -w @plurnk/plurnk-service` ledgers every run; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy it takes itself ({§share}). The database is evidence; the digest is the diagnostic interface. |
+| A run's evidence | `$PLURNK_BENCHMARKS/tier-<live\|demo>-<stamp>/census.md` and each session's `digest/` ({§tier-census}; the digest's files in `plurnk-digest/README.md`); `npm run tier:history -w @plurnk/plurnk-service` ledgers every run; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy it takes itself ({§share}). The database is evidence; the digest is the diagnostic interface. |
 | The deterministic tiers | `test:lint`, `test:unit`, `test:intg` per package, booted by `plurnk-core/test/setup.ts` (a fake `mocktest` provider on fixture-scaled reserves, never a real model). |
 | A release | `npm run changeset` with the change; `npm run release:version`, `release:check`, `release:publish`, `release:finalize` ({§package-release-contract}, {§release-finalization}); `CONTRIBUTING.md` § Release has the procedure. |
 | The bench | The `plurnk-bench` checkout beside this one; read `../plurnk-bench/deepswe/README.md` before launching anything, and never reconstruct its invocation from memory. |
@@ -56,7 +56,7 @@ extensions included in the default installation. The terminal client is a separa
 
 ## Package ownership
 
-- `plurnk-core` owns daemon lifecycle, persistence, workspaces, workers, loops,
+- `plurnk-core` owns daemon lifecycle, persistence, workspaces, sessions, loops,
   packet assembly, and orchestration.
 - `plurnk-contracts` owns the model-facing language contract, the AST and
   shared types and schemas, runtime-neutral Problems, operation results, Notices,

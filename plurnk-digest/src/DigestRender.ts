@@ -10,7 +10,7 @@ import {
 } from "@plurnk/plurnk-providers";
 import { Validator, isRecord, type OperationResult, type ProblemDetails, isExecutionOp } from "@plurnk/plurnk-contracts";
 import type {
-    WorkerRow,
+    SessionRow,
     LoopRow,
     TurnRow,
     ProviderRequestRow,
@@ -134,7 +134,7 @@ export default class DigestRender {
     }
 
     // {§exec-env-scoped} — the environment a spawn received, as recorded on its row: host names by
-    // name, the Worker's own values, inherited values by their source, masked names. Host values
+    // name, the Session's own values, inherited values by their source, masked names. Host values
     // stay in digest.json. Part of the rendered line, so spawns under different environments never
     // collapse into one group.
     static envLine(env: unknown): string | null {
@@ -147,7 +147,7 @@ export default class DigestRender {
             if (record.source === "host") host.push(name);
             else if (record.source === "masked") rest.push(`${name} (masked${from === null ? "" : ` by ${from}`})`);
             else if (record.source === "workspace") rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (workspace)`);
-            else rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (${from === null ? "worker" : `from ${from}`})`);
+            else rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (${from === null ? "session" : `from ${from}`})`);
         }
         const parts = [...(host.length === 0 ? [] : [`host ${host.join(",")}`]), ...rest];
         return `env: ${parts.length === 0 ? "(empty)" : parts.join(" · ")}`;
@@ -157,8 +157,8 @@ export default class DigestRender {
     static #environmentOf(le: LogRow, m: DigestModel): unknown {
         const stream = DigestRender.#renderStream(le);
         if (stream === null) return undefined;
-        const worker = m.workersById.get(le.worker_id);
-        return worker === undefined ? undefined : m.environments.get(`${worker.workspace_id}:${stream}`);
+        const session = m.sessionsById.get(le.session_id);
+        return session === undefined ? undefined : m.environments.get(`${session.workspace_id}:${stream}`);
     }
 
     static #renderOpLine(le: LogRow, label: string = le.op ?? "source artifact", environment?: unknown): string {
@@ -302,29 +302,29 @@ export default class DigestRender {
         return "column";
     }
 
-    static #editCensusCache = new WeakMap<DigestModel, { byWorker: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> }>();
+    static #editCensusCache = new WeakMap<DigestModel, { bySession: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> }>();
 
-    // {§digest-edit-census}: per worker, every model EDIT by authored form and status, and the
-    // revisits — an EDIT of a path the same worker edited within its previous two model turns.
-    static #editCensus(m: DigestModel): { byWorker: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> } {
+    // {§digest-edit-census}: per session, every model EDIT by authored form and status, and the
+    // revisits — an EDIT of a path the same session edited within its previous two model turns.
+    static #editCensus(m: DigestModel): { bySession: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> } {
         const cached = DigestRender.#editCensusCache.get(m);
         if (cached !== undefined) return cached;
-        const loopWorker = new Map(m.loops.map((loop) => [loop.id, loop.worker_id]));
-        // A worker's model turns in order; the ordinal is the distance the revisit window counts in.
+        const loopSession = new Map(m.loops.map((loop) => [loop.id, loop.session_id]));
+        // A session's model turns in order; the ordinal is the distance the revisit window counts in.
         const ordinal = new Map<number, number>();
-        const perWorker = new Map<number, number>();
+        const perSession = new Map<number, number>();
         for (const turn of [...m.turns].toSorted((a, b) => a.id - b.id)) {
             if (turn.producer !== "model") continue;
-            const workerId = loopWorker.get(turn.loop_id);
-            if (workerId === undefined) throw new TypeError(`turn ${turn.id} has no loop in scope`);
-            const next = (perWorker.get(workerId) ?? 0) + 1;
-            perWorker.set(workerId, next);
+            const sessionId = loopSession.get(turn.loop_id);
+            if (sessionId === undefined) throw new TypeError(`turn ${turn.id} has no loop in scope`);
+            const next = (perSession.get(sessionId) ?? 0) + 1;
+            perSession.set(sessionId, next);
             ordinal.set(turn.id, next);
         }
-        const byWorker = new Map<number, EditCensus>();
+        const bySession = new Map<number, EditCensus>();
         const formById = new Map<number, EditForm>();
         const revisitById = new Set<number>();
-        for (const [workerId, rows] of m.editRowsByWorker) {
+        for (const [sessionId, rows] of m.editRowsBySession) {
             const census: EditCensus = { edits: 0, refused: 0, revisits: 0, forms: Object.fromEntries(EDIT_FORMS.map((form) => [form, 0])) };
             const lastEdited = new Map<string, number>();
             for (const row of rows) {
@@ -341,9 +341,9 @@ export default class DigestRender {
                     lastEdited.set(row.pathname, at);
                 }
             }
-            byWorker.set(workerId, census);
+            bySession.set(sessionId, census);
         }
-        const result = { byWorker, formById, revisitById };
+        const result = { bySession, formById, revisitById };
         DigestRender.#editCensusCache.set(m, result);
         return result;
     }
@@ -540,11 +540,11 @@ export default class DigestRender {
         return `  ↳ wire: ${parts.join(", ")}`;
     }
 
-    static #renderWorkerShape(worker: WorkerRow, m: DigestModel): string {
-        // every worker has exactly one rollup row — digest_worker_rollups is FROM workers
-        const roll = m.workerRollups.get(worker.id)!;
-        const opMix = (m.opMixByWorker.get(worker.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
-        const requests = m.requestsByWorker.get(worker.id) ?? [];
+    static #renderSessionShape(session: SessionRow, m: DigestModel): string {
+        // every session has exactly one rollup row — digest_session_rollups is FROM sessions
+        const roll = m.sessionRollups.get(session.id)!;
+        const opMix = (m.opMixBySession.get(session.id) ?? []).map((o) => `${o.op}=${o.n}`).join(" ");
+        const requests = m.requestsBySession.get(session.id) ?? [];
         const accounting = DigestRender.#accounting(requests);
         const usageStr = requests.length === 0
             ? "no provider requests"
@@ -583,19 +583,19 @@ export default class DigestRender {
             `Tokens:     ${usageStr}`,
             `Cost:       ${costStr}${kindStr}${usagelessStr}`,
             `Wire:       ${wireStr}`,
-            `Room:       ${DigestRender.#renderRoom(worker, m)}`,
+            `Room:       ${DigestRender.#renderRoom(session, m)}`,
             `Op mix:     ${opMix.length > 0 ? opMix : "(no ops)"}`,
-            `EDITs:      ${DigestRender.#renderEditCensus(DigestRender.#editCensus(m).byWorker.get(worker.id))}`,
-            `Emissions:  ${DigestRender.#renderEmissions(worker, m)}`,
-            `Reasonings: ${DigestRender.#renderReasonings(worker, m)}`,
+            `EDITs:      ${DigestRender.#renderEditCensus(DigestRender.#editCensus(m).bySession.get(session.id))}`,
+            `Emissions:  ${DigestRender.#renderEmissions(session, m)}`,
+            `Reasonings: ${DigestRender.#renderReasonings(session, m)}`,
         ].join("\n");
     }
 
     // {§digest-room-line} — the room in provider tokens: the largest budget the model was shown, at its
     // request's own ratio, against the capacity; the wall's estimate against the provider's count; and the
     // requests the estimate put under the wall while the count was over it.
-    static #renderRoom(worker: WorkerRow, m: DigestModel): string {
-        const measured = DigestRender.#roomMeasures(worker, m);
+    static #renderRoom(session: SessionRow, m: DigestModel): string {
+        const measured = DigestRender.#roomMeasures(session, m);
         if (measured.length === 0) return "(no measured requests)";
         const room = Math.max(...measured.map(({ weight, budget, count, capacity }) => budget * count / weight / capacity));
         const errors = measured.map(({ estimate, count }) => (estimate - count) / count);
@@ -607,9 +607,9 @@ export default class DigestRender {
 
     // One measure per packet-bearing inference turn whose request records a known capacity and wall and a
     // provider count: the exact preflight measurement, else the reported input.
-    static #roomMeasures(worker: WorkerRow, m: DigestModel): Array<{ weight: number; budget: number; capacity: number; wall: number; count: number; estimate: number }> {
+    static #roomMeasures(session: SessionRow, m: DigestModel): Array<{ weight: number; budget: number; capacity: number; wall: number; count: number; estimate: number }> {
         const measures = [];
-        for (const loop of m.loopsByWorker.get(worker.id) ?? []) {
+        for (const loop of m.loopsBySession.get(session.id) ?? []) {
             for (const turn of m.turnsByLoop.get(loop.id) ?? []) {
                 if (turn.kind !== "inference" || turn.has_packet !== 1) continue;
                 const packet = m.evidence.packet(turn).packet;
@@ -634,20 +634,20 @@ export default class DigestRender {
     }
 
     // {§emission-row} — announced, retired by the model, and echoed back as headings in its own text.
-    static #renderEmissions(worker: WorkerRow, m: DigestModel): string {
-        const rows = m.emissionRows.filter((row) => row.worker_id === worker.id);
+    static #renderEmissions(session: SessionRow, m: DigestModel): string {
+        const rows = m.emissionRows.filter((row) => row.session_id === session.id);
         const killed = rows.filter((row) => row.active === 0).length;
-        const echoes = (m.loopsByWorker.get(worker.id) ?? [])
+        const echoes = (m.loopsBySession.get(session.id) ?? [])
             .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
             .reduce((sum, turn) => sum + turn.packetEchoes, 0);
         return `${rows.length} announced · ${killed} killed · ${echoes} header echo${echoes === 1 ? "" : "es"}`;
     }
 
     // {§reasoning-row} — landed, retired by the model, and turns that reasoned.
-    static #renderReasonings(worker: WorkerRow, m: DigestModel): string {
-        const rows = m.reasoningRows.filter((row) => row.worker_id === worker.id);
+    static #renderReasonings(session: SessionRow, m: DigestModel): string {
+        const rows = m.reasoningRows.filter((row) => row.session_id === session.id);
         const killed = rows.filter((row) => row.active === 0).length;
-        const reasonedTurns = (m.loopsByWorker.get(worker.id) ?? [])
+        const reasonedTurns = (m.loopsBySession.get(session.id) ?? [])
             .flatMap((loop) => m.turnsByLoop.get(loop.id) ?? [])
             .filter((turn) => turn.has_reasoning === 1).length;
         if (reasonedTurns === 0 && rows.length === 0) return "(no reasoning)";
@@ -668,7 +668,7 @@ export default class DigestRender {
         const bareCalls = m.modelCalls.filter((call) => call.kind === "bare").length;
         const pendingRequests = m.providerRequests.filter((request) => request.state === "pending").length;
         const packetFailures = m.turns.filter((turn) => m.evidence.packet(turn).packetFailure !== null).length;
-        lines.push(`Workspaces: ${m.workspaces.length}  Workers: ${m.workers.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
+        lines.push(`Workspaces: ${m.workspaces.length}  Sessions: ${m.sessions.length}  Loops: ${m.loops.length}  Turns: ${m.turns.length}  Inference calls: ${m.inferenceCalls.length} (${bareCalls} BARE, ${erroredCalls} errored, ${pendingCalls} open)  Emission attempts: ${m.turnAttempts.length} (${rejectedAttempts} rejected)  Provider requests: ${m.providerRequests.length} (${pendingRequests} open)  Log entries: ${m.logEntries.length}`);
         if (packetFailures > 0) lines.push(`Stored packet failures: ${packetFailures}`);
         lines.push(`Search: channels=${m.search.channel_entries} attached=${m.search.derivation_complete} (indexed=${m.search.indexed} excluded=${m.search.excluded} unsearchable=${m.search.unsearchable} failed=${m.search.failed}) unattached=${m.search.unfinished} artifacts=${m.search.derivation_artifacts_complete} complete/${m.search.derivation_artifacts_building} building`);
         const health = m.loops.map((l) => DigestRender.#loopHealth(l, m));
@@ -683,17 +683,17 @@ export default class DigestRender {
             lines.push(`## Workspace #${workspace.id} — ${workspace.name}`);
             lines.push("");
             lines.push(DigestRender.#cacheLine(m.requestsByWorkspace.get(workspace.id) ?? [], m));
-            const workspaceWorkers = m.workersByWorkspace.get(workspace.id) ?? [];
-            for (const worker of workspaceWorkers) {
+            const workspaceSessions = m.sessionsByWorkspace.get(workspace.id) ?? [];
+            for (const session of workspaceSessions) {
                 lines.push("");
-                lines.push(`### Worker #${worker.id} — ${worker.name}`);
-                lines.push(`Owner: ${worker.owner}`);
+                lines.push(`### Session #${session.id} — ${session.name}`);
+                lines.push(`Owner: ${session.owner}`);
                 lines.push("");
                 lines.push("```");
-                lines.push(DigestRender.#renderWorkerShape(worker, m));
+                lines.push(DigestRender.#renderSessionShape(session, m));
                 lines.push("```");
-                const workerLoops = m.loopsByWorker.get(worker.id) ?? [];
-                for (const loop of workerLoops) {
+                const sessionLoops = m.loopsBySession.get(session.id) ?? [];
+                for (const loop of sessionLoops) {
                     const terminal = DigestRender.#terminalResult(loop);
                     lines.push("");
                     const h = DigestRender.#loopHealth(loop, m);
@@ -735,9 +735,9 @@ export default class DigestRender {
         lines.push("Turn chronology with every provider attempt. Rejected attempts remain explicit forensic evidence.");
         for (const t of m.turns) {
             const loop = m.loopsById.get(t.loop_id);
-            const worker = loop ? m.workersById.get(loop.worker_id) : undefined;
+            const session = loop ? m.sessionsById.get(loop.session_id) : undefined;
             lines.push("");
-            lines.push(`## Worker ${worker?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id}, producer=${t.producer}, kind=${t.kind})`);
+            lines.push(`## Session ${session?.id ?? "?"} / Loop ${loop?.sequence ?? "?"} / Turn ${t.sequence} (id=${t.id}, producer=${t.producer}, kind=${t.kind})`);
             if (t.kind !== "inference") {
                 lines.push("");
                 lines.push("(operation turn; no provider inference)");
@@ -823,7 +823,7 @@ export default class DigestRender {
         const from = `${stem}.request.md`;
         const loop = m.loopsById.get(turn.loop_id)!;
         const siblings = m.turns.filter((row) => row.has_packet === 1
-            && m.loopsById.get(row.loop_id)?.worker_id === loop.worker_id).toSorted((a, b) => a.id - b.id);
+            && m.loopsById.get(row.loop_id)?.session_id === loop.session_id).toSorted((a, b) => a.id - b.id);
         const index = siblings.findIndex(({ id }) => id === turn.id);
         const previous = siblings[index - 1];
         const next = siblings[index + 1];
@@ -913,7 +913,7 @@ export default class DigestRender {
 
     // Per-turn forensic files. turnOps is the source authority; PacketWire
     // reproduces provider request slots, and assistantRaw preserves provider bytes.
-    // {§share-packet-names}: the stem each turn's packet files carry is its log coordinate, worker, loop and
+    // {§share-packet-names}: the stem each turn's packet files carry is its log coordinate, session, loop and
     // turn, as `log:///<loop>/<turn>/…` addresses it; a digest spanning workspaces nests one folder per
     // workspace. Shared with the turn lines so a reader never counts files by hand.
     static #stemCache = new WeakMap<DigestModel, Map<number, string>>();
@@ -937,10 +937,10 @@ export default class DigestRender {
         const taken = new Set<string>();
         for (const turn of m.turns.filter((row) => row.has_packet === 1 || row.program !== null || row.has_reasoning === 1).toSorted((a, b) => a.id - b.id)) {
             const loop = m.loopsById.get(turn.loop_id);
-            const worker = loop === undefined ? undefined : m.workersById.get(loop.worker_id);
-            if (loop === undefined || worker === undefined) throw new TypeError(`turn ${turn.id} has no loop or worker in scope`);
-            const workspace = m.workspaces.find(({ id }) => id === worker.workspace_id);
-            const stem = `${nested ? `${segment(workspace?.name ?? String(worker.workspace_id), worker.workspace_id)}/` : ""}${segment(worker.name, worker.id)}-${loop.sequence}-${turn.sequence}`;
+            const session = loop === undefined ? undefined : m.sessionsById.get(loop.session_id);
+            if (loop === undefined || session === undefined) throw new TypeError(`turn ${turn.id} has no loop or session in scope`);
+            const workspace = m.workspaces.find(({ id }) => id === session.workspace_id);
+            const stem = `${nested ? `${segment(workspace?.name ?? String(session.workspace_id), session.workspace_id)}/` : ""}${segment(session.name, session.id)}-${loop.sequence}-${turn.sequence}`;
             if (taken.has(stem)) throw new TypeError(`two turns share the packet name ${stem}`);
             taken.add(stem);
             stems.set(turn.id, stem);
@@ -1090,16 +1090,16 @@ export default class DigestRender {
                 name: s.name,
                 accounting: DigestRender.#accounting(m.requestsByWorkspace.get(s.id) ?? []),
             })),
-            workers: m.workers.map((r) => ({
+            sessions: m.sessions.map((r) => ({
                 id: r.id,
                 workspace_id: r.workspace_id,
                 name: r.name,
                 owner: r.owner,
-                accounting: DigestRender.#accounting(m.requestsByWorker.get(r.id) ?? []),
-                edit_census: DigestRender.#editCensus(m).byWorker.get(r.id) ?? null,
+                accounting: DigestRender.#accounting(m.requestsBySession.get(r.id) ?? []),
+                edit_census: DigestRender.#editCensus(m).bySession.get(r.id) ?? null,
             })),
             loops: m.loops.map((l) => ({
-                id: l.id, worker_id: l.worker_id, sequence: l.sequence, status: l.status,
+                id: l.id, session_id: l.session_id, sequence: l.sequence, status: l.status,
                 prompt: l.prompt,
                 terminated_by: l.terminated_by,
                 claimed_at: l.claimed_at,
@@ -1193,7 +1193,7 @@ export default class DigestRender {
                 ...(request.payloads_retired_at == null ? {} : { payloadsRetiredAt: request.payloads_retired_at }),
             })),
             log_entries: m.logEntries.map((le) => ({
-                id: le.id, worker_id: le.worker_id, loop_id: le.loop_id,
+                id: le.id, session_id: le.session_id, loop_id: le.loop_id,
                 turn_id: le.turn_id, sequence: le.sequence, origin: le.origin,
                 source: le.source, model_call_id: le.model_call_id,
                 ...(le.inherited_history === undefined ? {} : { inherited_history: le.inherited_history === 1 }),

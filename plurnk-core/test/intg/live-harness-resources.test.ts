@@ -7,7 +7,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { liveWorkspace, seedEntry } from "../_live-harness.ts";
 import { findStmt, readStmt } from "./_dsl.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 import { TEST_OWNER } from "./_approval.ts";
 
 test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and query contracts", async (t) => {
@@ -16,7 +16,7 @@ test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and 
     const inference = t.mock.method(provider, "generate");
     const workspace = await liveWorkspace({ name: "harness-resource-publication" });
     try {
-        const workerId = await namedModelWorker(workspace.daemon, workspace.workspaceId, "main");
+        const sessionId = await namedModelSession(workspace.daemon, workspace.workspaceId, "main");
         for (const content of ["alpha\nbeta\ngamma", ""]) {
             await t.test(`{§tokenomics-agnostic-ruler} ${content.length === 0 ? "empty" : "nonempty"} fixtures have their actual curation weight`, async () => {
                 const entryId = await seedEntry(workspace.db, workspace.workspaceId, {
@@ -51,8 +51,8 @@ test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and 
         });
         await t.test("{§mimetype-query} an HTML fixture answers the live story's XPath through the real dispatcher", async () => {
             const [result] = await workspace.daemon.dispatchClientAction({
-                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
-                statements: [readStmt(parsePath("worker:///page.html"), { marks: [1, -1] }, {
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextSessionId: sessionId,
+                statements: [readStmt(parsePath("workspace:///page.html"), { marks: [1, -1] }, {
                     dialect: "xpath", raw: "//h1",
                 })],
             });
@@ -63,8 +63,8 @@ test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and 
         });
         await t.test("{§readable-channel} ordinary READ keeps the fixture's source text", async () => {
             const [result] = await workspace.daemon.dispatchClientAction({
-                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
-                statements: [readStmt(parsePath("worker:///page.html"), { marks: [1, -1] })],
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextSessionId: sessionId,
+                statements: [readStmt(parsePath("workspace:///page.html"), { marks: [1, -1] })],
             });
             assert.ok(result !== undefined);
             assert.equal(result.status, 200);
@@ -76,8 +76,8 @@ test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and 
                 pathname: "answer.json", content, mimetype: "application/json",
             });
             const [result] = await workspace.daemon.dispatchClientAction({
-                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
-                statements: [readStmt(parsePath("worker:///answer.json"), { marks: [1, -1] }, {
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextSessionId: sessionId,
+                statements: [readStmt(parsePath("workspace:///answer.json"), { marks: [1, -1] }, {
                     dialect: "jsonpath", raw: "$.answer",
                 })],
             });
@@ -91,8 +91,8 @@ test("{§tokenomics-agnostic-ruler} live fixtures obey resource publication and 
                 pathname: "notes.md", content: "Checkpoint retention is working.",
             });
             const [result] = await workspace.daemon.dispatchClientAction({
-                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextWorkerId: workerId,
-                statements: [findStmt(parsePath("worker:///notes.md"), { dialect: "fts", raw: "~checkpoint" })],
+                workspaceId: workspace.workspaceId, actor: TEST_OWNER, contextSessionId: sessionId,
+                statements: [findStmt(parsePath("workspace:///notes.md"), { dialect: "fts", raw: "~checkpoint" })],
             });
             assert.ok(result !== undefined);
             assert.equal(result.status, 200);

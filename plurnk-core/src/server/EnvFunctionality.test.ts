@@ -19,8 +19,8 @@ const FILES = [{
 const adapter = new EnvFunctionality(async () => FILES);
 const identity = { workspaceId: 1 };
 
-test("{§functionality-scope} env defaults to worker scope and supports shared workspace defaults", () => {
-    assert.deepEqual(adapter.scopes, ["worker", "workspace"]);
+test("{§functionality-scope} env defaults to session scope and supports shared workspace defaults", () => {
+    assert.deepEqual(adapter.scopes, ["session", "workspace"]);
     assert.equal(adapter.family, "env");
 });
 
@@ -61,7 +61,7 @@ test("{§exec-env-scoped} reserved names are refused at family admission", async
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
             assert.equal(cause.result.problem.alias, alias);
             assert.equal(cause.result.problem.detail, `'${alias}' is reserved in env entries.`);
-            assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths.");
+            assert.equal(cause.result.problem.recovery, "READ workspace:///_plurnk/tools/plurnk/env.json for supported configuration paths.");
             return true;
         };
         await assert.rejects(() => adapter.admit({ alias, definition: { value: "explicit-value" } }, identity), refused);
@@ -99,9 +99,9 @@ test("{§env-functionality} discover distinguishes an unknown source from a know
     }
 });
 
-test("{§env-functionality} discover projects only what a Worker may set, and matches a declaration's comment", async () => {
+test("{§env-functionality} discover projects only what a Session may set, and matches a declaration's comment", async () => {
     assert.deepEqual((await adapter.discover({}, identity)).map(({ alias }) => alias), ["PAGER"], "plurnk's own names never appear");
-    assert.deepEqual((await adapter.discover({ query: "keypress" }, identity)).map(({ alias }) => alias), ["PAGER"], "a Worker finds a name by what it is for");
+    assert.deepEqual((await adapter.discover({ query: "keypress" }, identity)).map(({ alias }) => alias), ["PAGER"], "a Session finds a name by what it is for");
     assert.deepEqual(await adapter.discover({ query: "PLURNK_WITNESS_KNOB" }, identity), [], "not even by exact name");
     assert.deepEqual(await adapter.discover({ query: "GEMINI_API_KEY" }, identity), [], "MCP credential bindings do not make provider names env-family candidates");
 });
@@ -115,9 +115,9 @@ test("{§env-functionality} available projects what the ceiling admits, enabled,
         const available = await adapter.available(identity);
         assert.deepEqual(available.map(({ alias }) => alias), ["ALPHA_FIRST", "ZED_LAST"], "sorted by name");
         // Values are projected: the ceiling is the security boundary, not this projection, and any
-        // admitted name is already readable by every command the worker runs.
+        // admitted name is already readable by every command the session runs.
         assert.equal(valueOf(available[0].definition), "a");
-        assert.ok(available.every(({ enabled }) => enabled), "an admitted name is enabled until the worker disables it");
+        assert.ok(available.every(({ enabled }) => enabled), "an admitted name is enabled until the session disables it");
     } finally {
         delete process.env.ALPHA_FIRST;
         delete process.env.ZED_LAST;
@@ -143,21 +143,21 @@ test("{§env-functionality} prepare publishes no runtime and marks every enabled
 });
 
 // {§exec-env-scoped} — one rule for the spawn and its record: what the command receives and why.
-test("{§exec-env-scoped} compose applies the Worker's state over the ambient ceiling and records each name's provenance", () => {
+test("{§exec-env-scoped} compose applies the Session's state over the ambient ceiling and records each name's provenance", () => {
     const { env, record } = EnvFunctionality.compose({ PATH: "/usr/bin", CI: "1", TERM: "xterm" }, { version: 1, definitions: {
-        CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" } },
-        TOOLCHAIN: { origin: "worker", enabled: true, definition: { value: "stable" }, inherited: "alice" },
+        CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" } },
+        TOOLCHAIN: { origin: "session", enabled: true, definition: { value: "stable" }, inherited: "alice" },
         CI: { origin: "service", enabled: false, inherited: "alice" },
         TERM: { origin: "service", enabled: true },
-        OFF: { origin: "worker", enabled: false, definition: { value: "x" } },
-        PLURNK_SERVICE_DB_PATH: { origin: "worker", enabled: true, definition: { value: "/tmp/steal.db" } },
+        OFF: { origin: "session", enabled: false, definition: { value: "x" } },
+        PLURNK_SERVICE_DB_PATH: { origin: "session", enabled: true, definition: { value: "/tmp/steal.db" } },
     } });
     assert.deepEqual(env, { PATH: "/usr/bin", TERM: "xterm", CARGO_TARGET_DIR: "/tmp/shared", TOOLCHAIN: "stable" });
     assert.deepEqual(record, {
         PATH: { source: "host", value: "/usr/bin" },
         TERM: { source: "host", value: "xterm" },
-        CARGO_TARGET_DIR: { source: "worker", value: "/tmp/shared" },
-        TOOLCHAIN: { source: "worker", from: "alice", value: "stable" },
+        CARGO_TARGET_DIR: { source: "session", value: "/tmp/shared" },
+        TOOLCHAIN: { source: "session", from: "alice", value: "stable" },
         CI: { source: "masked", from: "alice" },
         OFF: { source: "masked" },
         PLURNK_SERVICE_DB_PATH: { source: "masked" },

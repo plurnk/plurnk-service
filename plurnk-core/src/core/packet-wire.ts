@@ -82,7 +82,7 @@ export interface LogEntryView {
 }
 // A durable operation failure, as PacketBuilder selects it: its status and the coordinate of the row that owns it.
 export interface FailurePointer { readonly status: number; readonly coordinate: string }
-// One thing the worker holds open ({§child-orientation}): its status, the path the model acts on, and a detail.
+// One thing the session holds open ({§child-orientation}): its status, the path the model acts on, and a detail.
 export interface OpenWorkPointer { readonly status: number | string; readonly path: string; readonly detail?: string }
 // {§packet-git-status} The working tree as the packet renders it: the counts, and the paths a snapshot carries with
 // their XY status and, for an untracked path, its membership truth.
@@ -212,13 +212,13 @@ export default class PacketWire {
     }
 
     // The Open Work section ({§child-orientation}) — the OPPOSITE of advice: terse `{status, path}`
-    // JSON pointers (same shape as the errors section) to the live things the worker holds open: its
-    // unconcluded workers and its open streams. The model SEES them each turn and reasons for itself
+    // JSON pointers (same shape as the errors section) to the live things the session holds open: its
+    // unconcluded sessions and its open streams. The model SEES them each turn and reasons for itself
     // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
     // turn, `[]` when empty ({§packet-empty-sections}).
-    static renderOpenWork(workers: readonly OpenWorkPointer[], streams: readonly OpenWorkPointer[], messages: readonly OpenWorkPointer[] = []): string {
-        // {§worker-obligations} — the messages it sent that await completion are the third list it is held on.
-        return `{"workers":${PacketWire.#pointers(workers)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
+    static renderOpenWork(sessions: readonly OpenWorkPointer[], streams: readonly OpenWorkPointer[], messages: readonly OpenWorkPointer[] = []): string {
+        // {§session-obligations} — the messages it sent that await completion are the third list it is held on.
+        return `{"sessions":${PacketWire.#pointers(sessions)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
     }
 
     static #pointers(rows: readonly OpenWorkPointer[]): string {
@@ -499,7 +499,7 @@ export default class PacketWire {
         if (e.origin === "model" || op === "READ" || op === "FIND" || LogEntryProjection.isEmission(e)) return false;
         if (PacketWire.isArrival(e)) {
             const source = typeof e.source === "string" ? e.source : null;
-            return source !== null && source.startsWith("worker://");
+            return source !== null && source.startsWith("session://");
         }
         return true;
     }
@@ -671,14 +671,14 @@ export default class PacketWire {
         const op = typeof e.op === "string" && e.op.length > 0 ? e.op : null;
         const renderedLeaf = LogEntryProjection.leaf(e);
         const path = PacketWire.#entryPath(coordinate, renderedLeaf);
-        // Absence = "model" — the worker's own authorship is the default (#338). An arrival is an
+        // Absence = "model" — the session's own authorship is the default (#338). An arrival is an
         // inbound SEND row the harness published ({§message-causal-source}): its stored origin says
         // nothing, so the row names its sender instead (#706).
         // {§emission-row}: an emission row is stored as the harness's, but names its author.
         const author = LogEntryProjection.isEmission(e) ? e.producer : e.origin;
         if (typeof author === "string" && author !== "model" && !PacketWire.isArrival(e)) meta.origin = author;
-        // {§env-delta-attribution}: render the causal worker address or
-        // subsystem token when present; absence means the owning worker.
+        // {§env-delta-attribution}: render the causal session address or
+        // subsystem token when present; absence means the owning session.
         // {§message-short-identity} an arrival whose source is the transport's own name for it adds
         // nothing to its address; a peer's or an agent's source still shows.
         const attrs = PacketWire.#attrsOf(e);
@@ -735,13 +735,13 @@ export default class PacketWire {
         const operands = paths.filter((candidate) => candidate !== null).map((candidate) => `(${candidate})`).join(" ");
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
             : !paired ? parts.join(" ") : operands.length > 0 ? operands : null;
-        // {§worker-auto-name} The created identity is an outcome, not an authored target.
-        if ((op === "WORK" || op === "FORK") && typeof attrs.worker === "string") {
-            meta.worker = attrs.worker;
-            // {§worker-scheme-spawn} — a WORK that reached a worker the name already held says so.
+        // {§session-auto-name} The created identity is an outcome, not an authored target.
+        if ((op === "WORK" || op === "FORK") && typeof attrs.session === "string") {
+            meta.session = attrs.session;
+            // {§session-scheme-spawn} — a WORK that reached a session the name already held says so.
             if (attrs.delivered === "message") meta.delivered = "message";
         }
-        // {§worker-wait-timing} — the accepted bound, not elapsed time or the current configuration.
+        // {§session-wait-timing} — the accepted bound, not elapsed time or the current configuration.
         if (op === "WAIT" && Object.hasOwn(attrs, "waiting")) {
             const seconds = attrs.waiting;
             if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {

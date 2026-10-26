@@ -17,7 +17,7 @@ import type { ScheduledRule } from "./Scheduler.ts";
 // {§module-seam-slices} — the slices this module uses.
 type SetupSeam = EnvironmentSeam & FunctionalitySeam<never, RuntimeSchemeFacet>;
 
-type StartSeam = Pick<ApplicationPort, "listWorkspaces" | "listWorkers" | "runLoop">;
+type StartSeam = Pick<ApplicationPort, "listWorkspaces" | "listSessions" | "runLoop">;
 
 export interface ModuleOptions extends ScheduleFunctionalityOptions {
     readonly env?: NodeJS.ProcessEnv;

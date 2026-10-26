@@ -9,7 +9,7 @@ import Results, { type SchemeResult } from "./results.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import type StrikeRail from "./StrikeRail.ts";
 import { Knob } from "@plurnk/plurnk-meta";
-import WorkerOwners from "./WorkerOwners.ts";
+import SessionOwners from "./SessionOwners.ts";
 import { type ChatMessage } from "./PacketBuilder.ts";
 import type TurnRunner from "./TurnRunner.ts";
 import { LOOP_TIMEOUT_REASON } from "./TurnRunner.ts";
@@ -35,7 +35,7 @@ type LoopResult = {
 const HOLD_POLL_MS = 150;
 
 // {§exec-hold-until-concluded} The exec scheme's hold probe: its own hook, read where a loop holds.
-const holdsSpawns = (handler: object | undefined): handler is { hasActiveHoldSpawns(workerId: number, holdSet: ReadonlySet<string>): boolean } =>
+const holdsSpawns = (handler: object | undefined): handler is { hasActiveHoldSpawns(sessionId: number, holdSet: ReadonlySet<string>): boolean } =>
     handler !== undefined && "hasActiveHoldSpawns" in handler && typeof handler.hasActiveHoldSpawns === "function";
 
 export default class LoopDriver {
@@ -72,7 +72,7 @@ export default class LoopDriver {
     }
 
     async runLoop({
-        provider, childProvider = provider, messages, recap = "", workspaceId, workerId, loopId,
+        provider, childProvider = provider, messages, recap = "", workspaceId, sessionId, loopId,
         maxTurns = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1),
         maxStrikes = Knob.integer("PLURNK_SERVICE_MAX_STRIKES", 0),
         minCycles = Knob.integer("PLURNK_SERVICE_MIN_CYCLES", 1),
@@ -83,7 +83,7 @@ export default class LoopDriver {
         messages: ChatMessage[];
         // Optional Recap override; packet assembly owns default sourcing.
         recap?: string;
-        workspaceId: number; workerId: number; loopId: number;
+        workspaceId: number; sessionId: number; loopId: number;
         maxTurns?: number;
         maxStrikes?: number;
         minCycles?: number;
@@ -100,7 +100,7 @@ export default class LoopDriver {
         let invalidEmissionRecoveryEntryId: number | null = null;
         let workspaceNotices: readonly Notice[] = [];
         const loopAbort = new AbortController();
-        // Native composition retains worker cancellation for streams surviving a wait
+        // Native composition retains session cancellation for streams surviving a wait
         // without leaving one caller-signal listener per execution segment.
         const executionSignal = signal === undefined ? loopAbort.signal : AbortSignal.any([signal, loopAbort.signal]);
         this.#loopSignals.set(loopId, executionSignal);
@@ -153,7 +153,7 @@ export default class LoopDriver {
                 if (row.status === 100) {
                     // NOT a terminal — a wake re-queued this loop while its own live drain was
                     // between turns (a child concluded in the gap between our 202 write and this
-                    // check, {§worker-lifecycle-wake-requeue-not-terminal}). The wake's intent is KEEP
+                    // check, {§session-lifecycle-wake-requeue-not-terminal}). The wake's intent is KEEP
                     // RUNNING: re-claim atomically and continue — the injected prompt is already
                     // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
                     // as a terminal result with status 100 — the delegation-policy race.
@@ -183,7 +183,7 @@ export default class LoopDriver {
                 if (timedOut()) return await ruleTimeout();
                 executionSignal.throwIfAborted();
 
-                // {§turn-cap-counts-the-tree} — the ceiling is the worker tree's budget of model
+                // {§turn-cap-counts-the-tree} — the ceiling is the session tree's budget of model
                 // calls: this loop's turns, its descendants' turns and every BARE spend it.
                 // The root loop's ceiling is this driver's own argument (the daemon passes the durable
                 // row's value; a direct Engine caller passes its own); a descendant binds the root row's.
@@ -194,7 +194,7 @@ export default class LoopDriver {
                         "engine:rails",
                         "max-turns",
                         429,
-                        `The configured turn ceiling (${ceiling}) is exhausted: ${budget.count} model calls across the worker tree.`,
+                        `The configured turn ceiling (${ceiling}) is exhausted: ${budget.count} model calls across the session tree.`,
                         {},
                         {
                             maximumTurns: ceiling,
@@ -213,23 +213,23 @@ export default class LoopDriver {
                 const holdCapMs = Knob.integer("PLURNK_SERVICE_EXEC_HOLD_MS", 0);
                 if (holdSet.size > 0 && holdCapMs > 0 && holdsSpawns(execHandler)) {
                     const holdStart = Date.now();
-                    while (execHandler.hasActiveHoldSpawns(workerId, holdSet) && Date.now() - holdStart < holdCapMs) {
+                    while (execHandler.hasActiveHoldSpawns(sessionId, holdSet) && Date.now() - holdStart < holdCapMs) {
                         await delay(HOLD_POLL_MS, undefined, { signal: executionSignal });
                     }
                 }
-                const turn = await this.#withWorkspaceTurn(workspaceId, workerId, async () => {
+                const turn = await this.#withWorkspaceTurn(workspaceId, sessionId, async () => {
                     executionSignal.throwIfAborted();
-                    const notices = await this.#workspaceTurnStarting?.({ workspaceId, workerId, loopId }) ?? [];
+                    const notices = await this.#workspaceTurnStarting?.({ workspaceId, sessionId, loopId }) ?? [];
                     if (!isDeepStrictEqual(notices, workspaceNotices)) {
-                        for (const notice of notices) this.#notices.push(workspaceId, workerId, loopId, notice);
+                        for (const notice of notices) this.#notices.push(workspaceId, sessionId, loopId, notice);
                         workspaceNotices = notices;
                     }
                     return observed( // {§observability-boundary}
                         "loop.turn",
-                        { workerId, "loop.id": loopId },
+                        { sessionId, "loop.id": loopId },
                         async (span) => {
                             const t = await this.#runTurn({
-                                provider, childProvider, messages, recap, workspaceId, workerId, loopId, signal: executionSignal, onDispatch, onSettled,
+                                provider, childProvider, messages, recap, workspaceId, sessionId, loopId, signal: executionSignal, onDispatch, onSettled,
                                 turnNumber: modelTurnCount + 1,
                                 invalidEmissionRecoveryEntryId });
                             span.setAttribute("turn.id", t.turnId);
@@ -266,8 +266,8 @@ export default class LoopDriver {
                 if (turn.providerParked) {
                     // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
                     // the loop parks like a [202] wait, spawns outlive it, and the ordinary wake resumes it.
-                    // {§worker-ownership} Without an interactive owner, report the provider failure.
-                    if (!await WorkerOwners.interactive(this.#db, loopId)) {
+                    // {§session-ownership} Without an interactive owner, report the provider failure.
+                    if (!await SessionOwners.interactive(this.#db, loopId)) {
                         if (turn.providerFailure === undefined) {
                             throw new Error("a provider-recovery stop requires its exact failure to conclude");
                         }

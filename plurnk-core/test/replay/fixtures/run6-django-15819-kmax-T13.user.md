@@ -10,23 +10,23 @@
 
 ### log:///1/1/3/FIND → skill://*/SKILL.md · 150
 {"itemsTokenTotal":693,"origin":"_plurnk","range":"1 resource"}
-1:[[{"path":"skill://plurnk/SKILL.md","mimetype":"text/markdown","tokens":693,"lines":22,"aside":"Configure Plurnk, select and tune models, and look up its worker and tool contracts."}]]
+1:[[{"path":"skill://plurnk/SKILL.md","mimetype":"text/markdown","tokens":693,"lines":22,"aside":"Configure Plurnk, select and tune models, and look up its session and tool contracts."}]]
 
-### log:///1/1/4/FIND → worker:///_plurnk/plurnk/*.md · 867
+### log:///1/1/4/FIND → workspace:///_plurnk/plurnk/*.md · 867
 {"itemsTokenTotal":14846,"origin":"_plurnk","range":"8 resources"}
-1:[[{"path":"worker:///_plurnk/plurnk/env.md","mimetype":"text/markdown","tokens":1863,"lines":92,"aside":"```env (list|discover|add|enable|disable|remove) <!-- Read and shape the environment your commands run in -->\\n```"}],
-2:[{"path":"worker:///_plurnk/plurnk/members.md","mimetype":"text/markdown","tokens":2591,"lines":118,"aside":"```members (list|discover|add|enable|disable|remove) <!-- Manage file membership -->\\n```"}],
-3:[{"path":"worker:///_plurnk/plurnk/js.md","mimetype":"text/markdown","tokens":1013,"lines":59,"aside":"```js <!-- Run JavaScript code or scripts with Node.js. -->\\nconsole.log(42)\\n```"}],
-4:[{"path":"worker:///_plurnk/plurnk/python3.md","mimetype":"text/markdown","tokens":473,"lines":33,"aside":"```python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n```"}],
-5:[{"path":"worker:///_plurnk/plurnk/schedule.md","mimetype":"text/markdown","tokens":1744,"lines":83,"aside":"```schedule (list|discover|add|enable|disable|remove) <!-- Manage scheduled messages -->\\n```"}],
-6:[{"path":"worker:///_plurnk/plurnk/sh.md","mimetype":"text/markdown","tokens":1767,"lines":92,"aside":"```sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n```"}],
-7:[{"path":"worker:///_plurnk/plurnk/skills.md","mimetype":"text/markdown","tokens":1692,"lines":80,"aside":"```skills (list|discover|add|enable|disable|remove) <!-- Manage Agent Skills -->\\n```"}],
-8:[{"path":"worker:///_plurnk/plurnk/worker.md","mimetype":"text/markdown","tokens":3703,"lines":133,"aside":"Coordinate workers, request isolated BARE inference, and manage workspace entries."}]]
+1:[[{"path":"workspace:///_plurnk/plurnk/env.md","mimetype":"text/markdown","tokens":1863,"lines":92,"aside":"```env (list|discover|add|enable|disable|remove) <!-- Read and shape the environment your commands run in -->\\n```"}],
+2:[{"path":"workspace:///_plurnk/plurnk/members.md","mimetype":"text/markdown","tokens":2591,"lines":118,"aside":"```members (list|discover|add|enable|disable|remove) <!-- Manage file membership -->\\n```"}],
+3:[{"path":"workspace:///_plurnk/plurnk/js.md","mimetype":"text/markdown","tokens":1013,"lines":59,"aside":"```js <!-- Run JavaScript code or scripts with Node.js. -->\\nconsole.log(42)\\n```"}],
+4:[{"path":"workspace:///_plurnk/plurnk/python3.md","mimetype":"text/markdown","tokens":473,"lines":33,"aside":"```python3 <!-- Run Python 3 code or scripts. -->\\nprint(42)\\n```"}],
+5:[{"path":"workspace:///_plurnk/plurnk/schedule.md","mimetype":"text/markdown","tokens":1744,"lines":83,"aside":"```schedule (list|discover|add|enable|disable|remove) <!-- Manage scheduled messages -->\\n```"}],
+6:[{"path":"workspace:///_plurnk/plurnk/sh.md","mimetype":"text/markdown","tokens":1767,"lines":92,"aside":"```sh <!-- Run POSIX shell commands and scripts. -->\\ngit status --short\\n```"}],
+7:[{"path":"workspace:///_plurnk/plurnk/skills.md","mimetype":"text/markdown","tokens":1692,"lines":80,"aside":"```skills (list|discover|add|enable|disable|remove) <!-- Manage Agent Skills -->\\n```"}],
+8:[{"path":"workspace:///_plurnk/plurnk/session.md","mimetype":"text/markdown","tokens":3703,"lines":133,"aside":"Coordinate sessions, request isolated BARE inference, and manage workspace entries."}]]
 
-### log:///1/1/5/FIND → worker:///_plurnk/tools/*.md · 50
+### log:///1/1/5/FIND → workspace:///_plurnk/tools/*.md · 50
 {"origin":"_plurnk","range":"0 resources"}
 
-### log:///1/1/7/FIND → worker:///_plurnk/members/*.md · 51
+### log:///1/1/7/FIND → workspace:///_plurnk/members/*.md · 51
 {"origin":"_plurnk","range":"0 resources"}
 
 ### log:///1/1/8/FIND → * · 1137
@@ -61,12 +61,12 @@
 28:[{"path":"tests/**","items":2409,"tokens":5957419}],
 29:[{"path":"tox.ini","mimetype":"text/x-ini","tokens":851,"lines":77}]]
 
-### log:///1/1/9/FIND → worker:///* · 107
+### log:///1/1/9/FIND → workspace:///* · 107
 {"aside":"workspace knowledgebase entries","itemsTokenTotal":24470,"origin":"_plurnk","range":"1 resource"}
-1:[[{"path":"worker:///_plurnk/**","items":32,"tokens":24470}]]
+1:[[{"path":"workspace:///_plurnk/**","items":32,"tokens":24470}]]
 
-### log:///1/1/10/FIND → worker://caf7e8bb/* · 66
-{"aside":"worker knowledgebase entries","origin":"_plurnk","range":"0 resources"}
+### log:///1/1/10/FIND → session://caf7e8bb/* · 66
+{"aside":"session knowledgebase entries","origin":"_plurnk","range":"0 resources"}
 
 ### log:///1/1/11/READ → reasoning://caf7e8bb/1/1 · 160
 {"aside":"inspect this turn's reasoning","origin":"_plurnk","range":"5 lines"}
@@ -85,22 +85,22 @@
  5:```FIND (skill://*/SKILL.md) <1,-1>
  6:```
  7:
- 8:```FIND (worker:///_plurnk/plurnk/*.md) <1,-1>
+ 8:```FIND (workspace:///_plurnk/plurnk/*.md) <1,-1>
  9:```
 10:
-11:```FIND (worker:///_plurnk/tools/*.md) <1,-1>
+11:```FIND (workspace:///_plurnk/tools/*.md) <1,-1>
 12:```
 13:
-17:```FIND (worker:///_plurnk/members/*.md) <1,-1>
+17:```FIND (workspace:///_plurnk/members/*.md) <1,-1>
 18:```
 19:
 20:```FIND (*) <!-- project root member files -->
 21:```
 22:
-23:```FIND (worker:///*) <!-- workspace knowledgebase entries -->
+23:```FIND (workspace:///*) <!-- workspace knowledgebase entries -->
 24:```
 25:
-26:```FIND (worker://caf7e8bb/*) <!-- worker knowledgebase entries -->
+26:```FIND (session://caf7e8bb/*) <!-- session knowledgebase entries -->
 27:```
 28:
 29:```READ (reasoning://caf7e8bb/1/1) <1,100> <!-- inspect this turn's reasoning -->
@@ -1149,7 +1149,7 @@
 {"lines":1,"resource":"note://caf7e8bb/1/5/1"}
 1:Fixing inspectdb E304: multiple FKs from one table to the same related model need generated related_name. This checkout is recent (has composite PK introspection + db_collation), so the upstream fix may be newer than my recall — I'll check network for ground truth, else implement my own. First: learn the sh/python3 tool contracts and read the inspectdb test models.
 
-### log:///1/5/2/READ → worker:///_plurnk/plurnk/sh.md · 2268
+### log:///1/5/2/READ → workspace:///_plurnk/plurnk/sh.md · 2268
 {"range":"92 lines"}
 @G6ZTV  1:# sh
 @SqLBa  2:
@@ -1182,7 +1182,7 @@
 @4lAZB 29:`[{"args": ["--release","two words"]}]`: each string is one literal argument,
 @zfs56 30:without shell expansion. The target is a program, never a command and never a
 @FlgYt 31:directory; a target that is not a script is refused before anything runs. The
-@BILYU 32:same options apply to local, `worker://`, and `skill://` script targets across
+@BILYU 32:same options apply to local, `session://`, and `skill://` script targets across
 @xdl10 33:every interpreter.
 @5E8EM 34:
 @15YzT 35:## Environment
@@ -1244,7 +1244,7 @@
 @xXAnA 91:address; `[{"eof": true}]` closes it. The worked example, including newline
 @aRqfy 92:framing, is on `js.md`.
 
-### log:///1/5/3/READ → worker:///_plurnk/plurnk/python3.md · 681
+### log:///1/5/3/READ → workspace:///_plurnk/plurnk/python3.md · 681
 {"range":"33 lines"}
 @x71pE  1:# python3
 @C26Ie  2:
@@ -1896,11 +1896,11 @@
 56:drwxr-xr-x 1 root    root      4096 Sep 27 15:18 ..
 57:-rw-r--r-- 1 nonroot nonroot 922314 Sep 27 15:51 swe_commit.diff
 
-## Worker
-{"path":"worker://caf7e8bb","parent":null,"loop":1,"turn":13}
+## Session
+{"path":"session://caf7e8bb","parent":null,"loop":1,"turn":13}
 
 ## Delegation
-{"workers":[],
+{"sessions":[],
 "streams":[]}
 
 ## Git Status

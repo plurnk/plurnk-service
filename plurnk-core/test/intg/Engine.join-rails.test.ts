@@ -7,27 +7,27 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import TerminalResult from "../../src/core/TerminalResult.ts";
 import { lastReply } from "./_packet.ts";
-import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, sendingOperation } from "./_db.ts";
+import { holdChild, insertLoop, insertSession, insertWorkspace, openMigrated, sendingOperation } from "./_db.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 const response = (content: string) => ({
     assistant: { content, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-const collect = "````READ (worker://child)````\n````WAIT\nCollect the child result.\n````";
+const collect = "````READ (session://child)````\n````WAIT\nCollect the child result.\n````";
 // A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
 // would not ({§matcher-refusal}).
-const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
+const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
 
 for (const priorStrike of [false, true]) {
     test(`{§join-blocking-collect} a complete-loop collect parks without a strike${priorStrike ? " after prior failure" : " at maxStrikes=1"}`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "join-rails");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Collect the child answer.");
-        const childId = await insertWorker(db, workspaceId, workerId, "child");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Collect the child answer.");
+        const childId = await insertSession(db, workspaceId, sessionId, "child");
         const childLoop = await insertLoop(db, childId, 1, "Compute the answer.");
         const provider = new Mock({ contextWindow: 100000, responses: [
             ...(priorStrike ? [response(`${extraSlotCopy}
@@ -40,7 +40,7 @@ Await results.
             response("````SEND [200]\n42\n````"),
         ] });
         const run = () => new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
-            workspaceId, workerId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
+            workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 8, maxStrikes: priorStrike ? 2 : 1,
         });
         const lifecycle = new LoopLifecycle(db);
         const rail = new StrikeRail(db);
@@ -80,13 +80,13 @@ test("{§engine-rails} a valid join does not excuse another operation's contract
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "join-with-failure");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Collect the child answer.");
-    const childId = await insertWorker(db, workspaceId, workerId, "child");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Collect the child answer.");
+    const childId = await insertSession(db, workspaceId, sessionId, "child");
     await insertLoop(db, childId, 1, "Compute the answer.");
     const provider = new Mock({ contextWindow: 100000, responses: [response(`${extraSlotCopy}\n${collect}`)] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
-        workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2, maxStrikes: 1,
+        workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 2, maxStrikes: 1,
     });
     assert.equal(result.result.status, 500);
     assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
@@ -105,21 +105,21 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
     ] });
     await withDaemon(provider, async (db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "join-wake-rails" });
-        const parentId = await namedModelWorker(daemon, workspaceId, "main");
-        const parentWorker = await daemon.readWorker({ workspaceId, identity: { id: parentId } });
-        assert.ok(parentWorker);
-        const { workerId: childId } = await daemon.forkWorker({ workspaceId, workerId: parentId, name: "child" });
+        const parentId = await namedModelSession(daemon, workspaceId, "main");
+        const parentSession = await daemon.readSession({ workspaceId, identity: { id: parentId } });
+        assert.ok(parentSession);
+        const { sessionId: childId } = await daemon.forkSession({ workspaceId, sessionId: parentId, name: "child" });
         const held = await holdChild(db, workspaceId, childId);
         const lifecycle = new LoopLifecycle(db);
         try {
-            const child = await daemon.runLoop({ workspaceId, workerId: childId, prompt: "Wait, then answer.", source: `worker://${parentWorker.name}` });
+            const child = await daemon.runLoop({ workspaceId, sessionId: childId, prompt: "Wait, then answer.", source: `session://${parentSession.name}` });
             await waitForDb(() => lifecycle.status(child.loopId), (status) => status === 202);
-            const parent = await daemon.runLoop({ workspaceId, workerId: parentId, prompt: "Collect the child's answer." });
+            const parent = await daemon.runLoop({ workspaceId, sessionId: parentId, prompt: "Collect the child's answer." });
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 202);
             await lifecycle.finish(held, TerminalResult.success("The held dependency completed."));
-            // {§worker-obligations} main's own operation sends the follow-up, so the reply to it is main's.
+            // {§session-obligations} main's own operation sends the follow-up, so the reply to it is main's.
             const resumed = await daemon.inject({
-                workspaceId, workerId: childId, prompt: "Answer now.", source: `worker://${parentWorker.name}`,
+                workspaceId, sessionId: childId, prompt: "Answer now.", source: `session://${parentSession.name}`,
                 providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" }, effort: "adaptive", systemPrompt: "test system",
                 opener: await sendingOperation(db, parent.loopId),
             });
@@ -144,7 +144,7 @@ test("{§join-blocking-collect} the daemon wakes a collecting parent on actual c
             const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: parent.loopId });
             assert.ok(rows.some(({ op, status_rx }) => op === "READ" && status_rx === 425));
         } finally {
-            await daemon.cancelWorker({ workspaceId, workerId: parentId });
+            await daemon.cancelSession({ workspaceId, sessionId: parentId });
         }
     });
 });

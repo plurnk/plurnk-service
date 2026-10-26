@@ -15,9 +15,9 @@ RETURNING turn_id;
 -- a turn that does not exist (404); a NULL content is an existing turn with no source of this
 -- kind, which reads empty rather than absent.
 SELECT s.content
-FROM turns t JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
+FROM turns t JOIN loops l ON l.id = t.loop_id JOIN sessions w ON w.id = l.session_id
 LEFT JOIN turn_sources s ON s.turn_id = t.id AND s.kind = $kind AND s.sequence = $sequence
-WHERE w.workspace_id = $workspace_id AND w.name = $worker_name
+WHERE w.workspace_id = $workspace_id AND w.name = $session_name
   AND l.sequence = $loop_seq AND t.sequence = $turn_seq
   AND ($kind != 'note' OR s.turn_id IS NOT NULL);
 
@@ -30,19 +30,19 @@ SELECT l.status, l.terminal_result, l.terminated_by,
         FROM log_responses r, json_each(r.rx, '$.answers') a
         WHERE r.loop_id = l.id AND a.value = m.path AND length(trim(r.content, char(9) || char(10) || char(13) || ' ')) > 0
         ORDER BY r.id DESC LIMIT 1) AS answer
-FROM loops l JOIN workers w ON w.id = l.worker_id
+FROM loops l JOIN sessions w ON w.id = l.session_id
 LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
-WHERE w.workspace_id = $workspace_id AND w.name = $worker_name AND l.sequence = $loop_seq;
+WHERE w.workspace_id = $workspace_id AND w.name = $session_name AND l.sequence = $loop_seq;
 
 -- PREP: turn_source_candidates
--- {§loop-answer}: `ops://<worker>/<loop>` is a resource of its own beside each turn's emission, so
--- a FIND over a worker's programs also finds what its loops said.
+-- {§loop-answer}: `ops://<session>/<loop>` is a resource of its own beside each turn's emission, so
+-- a FIND over a session's programs also finds what its loops said.
 SELECT s.turn_id, s.kind, s.sequence, w.name AS authority,
        '/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END AS pathname,
        s.content, s.deep_hash
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id
-JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
-WHERE w.workspace_id = $workspace_id AND ($worker_name IS NULL OR w.name = $worker_name) AND s.kind = $kind
+JOIN loops l ON l.id = t.loop_id JOIN sessions w ON w.id = l.session_id
+WHERE w.workspace_id = $workspace_id AND ($session_name IS NULL OR w.name = $session_name) AND s.kind = $kind
 UNION ALL
 SELECT NULL AS turn_id, 'ops' AS kind, 0 AS sequence, w.name AS authority,
        '/' || l.sequence AS pathname,
@@ -52,9 +52,9 @@ SELECT NULL AS turn_id, 'ops' AS kind, 0 AS sequence, w.name AS authority,
                  ORDER BY r.id DESC LIMIT 1),
                 json_extract(l.terminal_result, '$.content'), '') AS content,
        NULL AS deep_hash
-FROM loops l JOIN workers w ON w.id = l.worker_id
+FROM loops l JOIN sessions w ON w.id = l.session_id
 LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
-WHERE $kind = 'ops' AND w.workspace_id = $workspace_id AND ($worker_name IS NULL OR w.name = $worker_name)
+WHERE $kind = 'ops' AND w.workspace_id = $workspace_id AND ($session_name IS NULL OR w.name = $session_name)
 ORDER BY authority, pathname;
 
 -- PREP: turn_source_derivations
@@ -62,7 +62,7 @@ SELECT s.turn_id, s.kind, s.sequence,
        '/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END AS pathname,
        s.content, s.deep_hash
 FROM turn_sources s JOIN turns t ON t.id = s.turn_id
-JOIN loops l ON l.id = t.loop_id JOIN workers w ON w.id = l.worker_id
+JOIN loops l ON l.id = t.loop_id JOIN sessions w ON w.id = l.session_id
 WHERE w.workspace_id = $workspace_id;
 
 -- PREP: turn_source_attach_derivation

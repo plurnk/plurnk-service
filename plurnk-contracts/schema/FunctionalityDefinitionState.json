@@ -9,8 +9,8 @@
     "properties": {
         "alias": { "type": "string", "minLength": 1 },
         "origin": {
-            "description": "Who owns this definition: the service baseline, the workspace, or one worker. A worker-scoped family (env) owns its definitions per worker, so origin names ownership rather than scope.",
-            "enum": ["service", "workspace", "worker"]
+            "description": "Who owns this definition: the service baseline, the workspace, or one session. A session-scoped family (env) owns its definitions per session, so origin names ownership rather than scope.",
+            "enum": ["service", "workspace", "session"]
         },
         "state": {
             "description": "disabled: available, model-invisible. dormant: enabled without a resident publication. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.",
@@ -22,7 +22,7 @@
             "$ref": "https://schemas.plurnk.xyz/v0/FunctionalityProvenance.json"
         },
         "inherited": {
-            "description": "The Worker this entry was copied from when this Worker was created (WORK or FORK), preserved across generations until this Worker changes the entry. Absent for an entry this Worker set itself. Worker-scoped families only.",
+            "description": "The Session this entry was copied from when this Session was created (WORK or FORK), preserved across generations until this Session changes the entry. Absent for an entry this Session set itself. Session-scoped families only.",
             "type": "string",
             "minLength": 1
         },

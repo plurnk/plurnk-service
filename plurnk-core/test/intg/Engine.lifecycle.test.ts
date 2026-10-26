@@ -7,7 +7,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
 import { lastReply } from "./_packet.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 const frame = PlurnkParser.frame;
 const response = (content: string, reasoning: string | null = null) => ({
@@ -26,11 +26,11 @@ for (const [name, first, detail] of [
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "explicit-lifecycle");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Answer.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Answer.");
         const provider = new Mock({ contextWindow: 100000, responses: [response(first), response(frame("SEND [200]", "Answer."))] });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
-            workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
+            workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 2,
         });
         assert.equal(result.result.status, 200);
         assert.equal(result.result.content, undefined);
@@ -55,15 +55,15 @@ test("{§join-blocking-collect} a not-ready READ continues until an explicit WAI
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "independent-join");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Advance while the child works.");
-    const childId = await insertWorker(db, workspaceId, workerId, "child");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Advance while the child works.");
+    const childId = await insertSession(db, workspaceId, sessionId, "child");
     await insertLoop(db, childId, 1, "Child work.");
     const provider = new Mock({ contextWindow: 100000, responses: [
-        response(frame("READ (worker://child)", "")), response(frame("WAIT", "Await the child.")),
+        response(frame("READ (session://child)", "")), response(frame("WAIT", "Await the child.")),
     ] });
     const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
-        workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 1,
+        workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3, maxStrikes: 1,
     });
     assert.equal(result.result.status, 202);
     assert.equal(provider.received.length, 2);
@@ -76,15 +76,15 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "response-evidence");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Answer, then tidy up.");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Answer, then tidy up.");
         const provider = new Mock({ contextWindow: 100000, responses: [
-            response(`${frame("FIND (worker:///*)", "")}\n${frame("SEND", "The answer.")}`),
-            response(`${frame("KILL (log:///1/2/*/SEND)", "")}\n${cancel ? frame("KILL (worker://alice)", "") : frame("NOTE", "Result observed.")}`),
+            response(`${frame("FIND (workspace:///*)", "")}\n${frame("SEND", "The answer.")}`),
+            response(`${frame("KILL (log:///1/2/*/SEND)", "")}\n${cancel ? frame("KILL (session://alice)", "") : frame("NOTE", "Result observed.")}`),
             response(frame("SEND [200]", "")),
         ] });
         const lifecycle = new LoopLifecycle(db);
-        const result = await new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
+        const result = await new Engine({ db, schemes: new SchemeRegistry(), cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
         assert.equal(result.result.status, status);
         assert.equal(result.result.content, undefined);
         assert.equal(await lastReply(db, loopId), "The answer.");
@@ -92,7 +92,7 @@ for (const [cancel, status] of [[false, 200], [true, 499]] as const) {
         const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number }>({ loop_id: loopId });
         assert.ok(rows.some(({ op, status_rx }) => op === "KILL" && status_rx === 200));
         assert.equal(provider.received.length, cancel ? 2 : 3, "cancellation or completion of all obligations ends the loop");
-        if (cancel) assert.match(result.result.problem?.detail ?? "", /killed via worker/);
+        if (cancel) assert.match(result.result.problem?.detail ?? "", /killed via session/);
         else assert.equal(result.result.problem, undefined);
     });
 }
@@ -101,18 +101,18 @@ test("{§loop-response-messages} a terminal response supersedes earlier delivere
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "response-last-message");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "What is the codename?");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "What is the codename?");
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(`${frame("SEND", "The codename is Bumblebee.")}\n${frame("SEND", "The codename is phoenix.")}`),
         response(frame("SEND [200]", "")),
     ] });
-    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
     assert.equal(result.result.content, undefined);
     assert.equal(await lastReply(db, loopId), "The codename is phoenix.");
     assert.equal((await new LoopLifecycle(db).result(loopId))?.content, undefined);
-    const messages = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId });
+    const messages = await db.message_history.all<{ direction: string; body: string }>({ workspace_id: workspaceId, session_id: sessionId, loop_id: loopId });
     assert.deepEqual(messages.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The codename is Bumblebee.", "The codename is phoenix."]);
 });
 
@@ -120,14 +120,14 @@ test("{§completion-defers-to-results} an observed cleanup failure does not inva
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "cleanup-outcome");
-    const workerId = await insertWorker(db, workspaceId, null, "alice");
-    const loopId = await insertLoop(db, workerId, 1, "Deliver the project brief.");
+    const sessionId = await insertSession(db, workspaceId, null, "alice");
+    const loopId = await insertLoop(db, sessionId, 1, "Deliver the project brief.");
     const brief = "Codename: phoenix. Host: db.internal. TODO: add error handling.";
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(`${frame("SEND", brief)}\n${frame("KILL (reasoning://alice/1/2) <1,-1>", "")}`, "The requested project brief is ready."),
         response(frame("SEND [200]", "")),
     ] });
-    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 4 });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 4 });
     const rows = await db.test_log_entries_by_loop.all<{ op: string; status_rx: number; rx: string }>({ loop_id: loopId });
     const denied = rows.find(({ op }) => op === "KILL");
     assert.equal(denied?.status_rx, 403);
@@ -144,15 +144,15 @@ test("{§loop-response-messages} cancellation preserves delivered messages but n
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "response-cancellation");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Wait after the update.");
-    const childId = await insertWorker(db, workspaceId, workerId, "child");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Wait after the update.");
+    const childId = await insertSession(db, workspaceId, sessionId, "child");
     await insertLoop(db, childId, 1, "Live child work the wait joins.");
     const provider = new Mock({ contextWindow: 100000, responses: [response(`${frame("SEND", "Update delivered.")}\n${frame("WAIT", "Await the child.")}`)] });
-    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 2 });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 2 });
     assert.equal(result.result.status, 202);
     const lifecycle = new LoopLifecycle(db);
-    const cancelled = await lifecycle.cancelTree(workerId, "operator request", true);
+    const cancelled = await lifecycle.cancelTree(sessionId, "operator request", true);
     const own = cancelled.loops.find(({ loopId: id }) => id === loopId);
     assert.ok(own);
     assert.equal(own.result.status, 499);
@@ -167,14 +167,14 @@ for (const [cancel, parentStatus, childStatus] of [[false, 202, 102], [true, 499
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "live-child");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Wait for the delegated result.");
-        const childId = await insertWorker(db, workspaceId, workerId, "child");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Wait for the delegated result.");
+        const childId = await insertSession(db, workspaceId, sessionId, "child");
         const childLoopId = await insertLoop(db, childId, 1, "Finish delegated work.");
         const lifecycle = new LoopLifecycle(db);
-        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
-        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (worker://alice)" : "SEND [200]", cancel ? "" : "Waiting for the delegated result."))] });
-        const result = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
+        const provider = new Mock({ contextWindow: 100000, responses: [response(frame(cancel ? "KILL (session://alice)" : "SEND [200]", cancel ? "" : "Waiting for the delegated result."))] });
+        const result = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
         assert.equal(result.status, parentStatus);
         assert.equal(await lifecycle.status(loopId), parentStatus);
         assert.equal(await lifecycle.status(childLoopId), childStatus);
@@ -185,13 +185,13 @@ test("{§send-response-receipt} an empty SEND leaves an open message unanswered"
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "silent-completion");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Do the work.");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Do the work.");
     const provider = new Mock({ contextWindow: 100000, responses: [response(frame("SEND", ""))] });
-    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
     assert.equal(result.status, 102);
     assert.equal((await db.message_unanswered_count.get({ loop_id: loopId }))?.count, 1);
-    const history = await db.message_history.all<{ direction: string }>({ workspace_id: workspaceId, worker_id: workerId, loop_id: loopId });
+    const history = await db.message_history.all<{ direction: string }>({ workspace_id: workspaceId, session_id: sessionId, loop_id: loopId });
     assert.deepEqual(history.map(({ direction }) => direction), ["inbound"]);
 });
 
@@ -199,13 +199,13 @@ test("{§note-value} writing about failure in NOTE does not declare failure", as
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "notes-not-control");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Try both approaches.");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Try both approaches.");
     const provider = new Mock({ contextWindow: 100000, responses: [
         response(frame("NOTE", "First approach failed.\nTry the second approach.")),
         response(frame("SEND [200]", "Second approach succeeded.")),
     ] });
-    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: 3 });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: 3 });
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 2);
     assert.equal(result.result.content, undefined);

@@ -46,7 +46,7 @@
             "additionalProperties": false,
             "properties": {
                 "scope": {
-                    "enum": ["daemon", "workspace", "worker"]
+                    "enum": ["daemon", "workspace", "session"]
                 },
                 "inputSchema": {
                     "$ref": "#/$defs/jsonSchema"

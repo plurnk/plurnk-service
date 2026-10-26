@@ -1,5 +1,5 @@
 // Install the packed parser and contracts candidates into a clean consumer,
-// then exercise the entrypoint, CLI and browser-Worker bundle ({§parser-build}).
+// then exercise the entrypoint, CLI and browser-Session bundle ({§parser-build}).
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -85,16 +85,16 @@ const assertClean = (label, result) => {
 
 const program = PlurnkParser.frame("NOTE", "smoke");
 assertClean("model turn", PlurnkParser.parse(program));
-const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (worker:///foo)", "body content"));
+const result = PlurnkParser.parseStatements(PlurnkParser.frame("EDIT (workspace:///foo)", "body content"));
 assertClean("statement sequence", result);
 
-const reasoning = PlurnkParser.frame("READ (worker:///fact.txt)", null);
+const reasoning = PlurnkParser.frame("READ (workspace:///fact.txt)", null);
 if (PlurnkParser.parseReasoningOperations(reasoning)[0]?.op !== "READ") {
     throw new Error("reasoning admission is not available from the packed parser");
 }
 const warnings = [];
 const relative = PlurnkParser.parseReasoningOperations(
-    PlurnkParser.frame("READ (worker:///fact.txt) <395,+12>", null),
+    PlurnkParser.frame("READ (workspace:///fact.txt) <395,+12>", null),
     (warning) => warnings.push(warning.message),
 );
 if (JSON.stringify(relative[0]?.lineMarker?.marks) !== "[395,407]"
@@ -117,7 +117,7 @@ if (JSON.stringify(reparsedSelection.items[0]?.statement) !== JSON.stringify(sel
 // The model tier also records free text as text items; the program is its statements.
 const statementsOf = (parsed) => parsed.items.filter((item) => item.kind === "statement").map((item) => item.statement);
 for (const op of ["READ", "FIND"]) {
-    const source = PlurnkParser.frame(op + " (worker:///fact.txt)", "/annotation-not-selection/");
+    const source = PlurnkParser.frame(op + " (workspace:///fact.txt)", "/annotation-not-selection/");
     for (const parsed of [PlurnkParser.parse(source), PlurnkParser.parseStatements(source)]) {
         assertClean("retrieval annotation", parsed);
         const statements = statementsOf(parsed);
@@ -173,7 +173,7 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
 
 // A quoted example rides a wider fence ({§balanced-fences}): the SEND's body holds the literal
 // heading without executing it, and the disposition still follows.
-const literalExample = PlurnkParser.frame("KILL (worker:///notes.md)", null);
+const literalExample = PlurnkParser.frame("KILL (workspace:///notes.md)", null);
 const quoted = PlurnkParser.frame("SEND <!-- literal example -->", literalExample) + "\\n" + program;
 const quotedSend = PlurnkParser.parse(quoted);
 assertClean("wider SEND", quotedSend);
@@ -195,8 +195,8 @@ const item = result.items[0];
 if (item.kind !== "statement") throw new Error("expected statement, got " + item.kind);
 if (item.statement.op !== "EDIT") throw new Error("expected EDIT, got " + item.statement.op);
 
-const dest = parsePath("worker:///archive/draft");
-if (dest?.kind !== "url" || dest.scheme !== "worker" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
+const dest = parsePath("workspace:///archive/draft");
+if (dest?.kind !== "url" || dest.scheme !== "workspace" || dest.pathname !== "/archive/draft") throw new Error("parsePath export not working: " + JSON.stringify(dest));
 
 console.log("OK: the parser is consumable through one installed entrypoint.");
 `);
@@ -218,7 +218,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 export const parse = (input) => PlurnkParser.parse(input);
 `);
     const browserBundle = join(tempDir, "consume-browser.bundle.mjs");
-    process.stdout.write("[smoke] bundling the installed package for a browser Worker...\n");
+    process.stdout.write("[smoke] bundling the installed package for a browser Session...\n");
     await build({
         absWorkingDir: tempDir,
         entryPoints: ["consume-browser.js"],

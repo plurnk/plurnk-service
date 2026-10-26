@@ -64,7 +64,7 @@ export type PackageAttributions = ReadonlyMap<string, ExtensionAttribution>;
 
 export interface ExtensionAttributionContext {
     readonly workspaceId: string;
-    readonly workerId: string;
+    readonly sessionId: string;
     readonly loop: number;
     readonly turn: number;
     readonly attempt: number;
@@ -75,8 +75,8 @@ export interface ExtensionAttributionSource {
 }
 
 const REFERENCE_TEACHING = Object.freeze({
-    worker: Object.freeze({ source: "docs/worker.md", scheme: "worker" }),
-    delegation: Object.freeze({ source: "docs/delegation.md", scheme: "worker" }),
+    session: Object.freeze({ source: "docs/session.md", scheme: "session" }),
+    delegation: Object.freeze({ source: "docs/delegation.md", scheme: "session" }),
     pattern: Object.freeze({ source: "docs/pattern.md", scheme: null }),
 } as const);
 

@@ -12,7 +12,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 
 const TMP_DIR = testArtifactPath("core");
@@ -83,8 +83,8 @@ test("{§digest-cache-ledger}: consecutive requests of a loop carry their shared
     const requestIds: number[] = [];
     try {
         const workspaceId = await insertWorkspace(db, "cache-ledger");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const cacheReads: Array<number | null> = [0, 7, null];
         for (const [index, cacheRead] of cacheReads.entries()) {
             const turnId = await insertPacketTurn(db, loopId, index + 1, packet(index + 1), 200);
@@ -131,13 +131,13 @@ test("{§digest-cache-ledger}: measured cache ratios include first requests, cro
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "cache-boundaries");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const first = await insertLoop(db, workerId, 1, "first");
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const first = await insertLoop(db, sessionId, 1, "first");
         const turn = await insertPacketTurn(db, first, 1, packet(1), 200);
         await recordRequests(db, turn, [{ input: 100, cached: 80 }, { input: 100, cached: 90 }]);
         const changed: DurablePacket = { ...packet(2), sections: [{ name: "system", slot: "system", header: null, content: "A different prompt", weight: 5 }] };
         await recordRequests(db, await insertPacketTurn(db, first, 2, changed, 200), [{ input: 100, cached: 95 }]);
-        const second = await insertLoop(db, workerId, 2, "second");
+        const second = await insertLoop(db, sessionId, 2, "second");
         await recordRequests(db, await insertPacketTurn(db, second, 1, packet(1), 200), [{ input: 100, cached: 99 }]);
         const missing = await db.test_open_inference_turn.get<{ id: number }>({ loop_id: second, sequence: 2 });
         assert.ok(missing);
@@ -175,8 +175,8 @@ test("{§digest-cache-ledger}: BARE usage is measured without borrowing its pare
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "cache-bare");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const turnId = await insertPacketTurn(db, loopId, 1, packet(1), 200);
         await recordRequests(db, turnId, [{ input: 100, cached: 80 }]);
         await recordRequests(db, turnId, [{ input: 20, cached: 5 }], "bare");
@@ -206,8 +206,8 @@ test("{§digest-cache-ledger}: zero and wholly unreported input have no invented
             ["cache-unknown", { input: null, cached: null }],
         ] as const) {
             const workspaceId = await insertWorkspace(db, name);
-            const workerId = await insertWorker(db, workspaceId, null, "analyst");
-            const loopId = await insertLoop(db, workerId, 1, "go");
+            const sessionId = await insertSession(db, workspaceId, null, "analyst");
+            const loopId = await insertLoop(db, sessionId, 1, "go");
             await recordRequests(db, await insertPacketTurn(db, loopId, 1, packet(1), 200), [usage]);
         }
     } finally { await db.close(); }

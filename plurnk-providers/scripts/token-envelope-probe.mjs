@@ -150,7 +150,7 @@ const probeRoute = async ({
         }
         const response = await provider.generate({
             messages: [{ role: "user", content: prompt }],
-            workerId: `token-envelope-probe-${crypto.randomUUID()}`,
+            sessionId: `token-envelope-probe-${crypto.randomUUID()}`,
             signal: AbortSignal.timeout(timeoutMs),
             maxOutputTokens,
             callKind: "bare",

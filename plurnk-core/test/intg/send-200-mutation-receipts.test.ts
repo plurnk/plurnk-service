@@ -9,9 +9,9 @@ import { makeMockResponse } from "./_mock.ts";
 for (const curate of [false, true]) {
     test(`{§completion-defers-to-results}: mutation receipts require observation, including when curated=${curate}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
-        const extra = curate ? "````READ (worker:///notes.md)\n````\n````READ (worker:///notes.md)\n````\n````KILL (log:///**/EDIT)\n````\n" : "";
+        const extra = curate ? "````READ (workspace:///notes.md)\n````\n````READ (workspace:///notes.md)\n````\n````KILL (log:///**/EDIT)\n````\n" : "";
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("````EDIT (worker:///notes.md)\nhello\n````\n" + extra + "````SEND\nWritten.\n````"),
+            makeMockResponse("````EDIT (workspace:///notes.md)\nhello\n````\n" + extra + "````SEND\nWritten.\n````"),
             makeMockResponse("````SEND [200]\n````"),
         ] });
         await withDaemon(mock, async (db, _daemon, addr) => {
@@ -31,7 +31,7 @@ for (const curate of [false, true]) {
                     curate ? [["READ", 200], ["READ", 200], ["KILL", 204], ["SEND", 200], ["SEND", 200]] : [["SEND", 200], ["SEND", 200]],
                     "curation cannot select a same-turn receipt before it is published");
                 assert.match(JSON.stringify(mock.received[1]), /notes\.md/);
-                const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "worker", name: "body" });
+                const entry = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/notes.md", scheme: "workspace", name: "body" });
                 assert.equal(entry?.content, "hello", "both creation and retained content are verified");
             } finally { ws.close(); }
         });

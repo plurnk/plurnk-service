@@ -25,69 +25,69 @@ const locations = (rx: string): number => {
 };
 
 const PROBES: Probe[] = [
-    { target: "worker:///notes.txt", pattern: "/^beta/m", expect: (rx, status) => {
+    { target: "workspace:///notes.txt", pattern: "/^beta/m", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.match(rx, /"matched":"beta"/, "regex carries the matched text");
         assert.equal(locations(rx), 1);
     } },
-    { target: "worker:///notes.txt", pattern: "/gamma/i", expect: (rx, status) => {
+    { target: "workspace:///notes.txt", pattern: "/gamma/i", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.match(rx, /"matched":"GAMMA"/, "regex flags apply");
     } },
-    { target: "worker:///notes.txt", pattern: "alpha*", expect: (rx, status) => {
+    { target: "workspace:///notes.txt", pattern: "alpha*", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.match(rx, /"matched":"alpha line"/, "glob matches the whole line");
     } },
-    { target: "worker:///notes.txt", pattern: "/zeta/", expect: (_rx, status) => {
+    { target: "workspace:///notes.txt", pattern: "/zeta/", expect: (_rx, status) => {
         assert.equal(status, 204, "no selection is 204");
     } },
-    { target: "worker:///docs/guide.md", pattern: "//heading[@level='2']", expect: (rx, status) => {
+    { target: "workspace:///docs/guide.md", pattern: "//heading[@level='2']", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 3, "three level-2 headings");
         assert.match(rx, /"startLine":5/);
         assert.match(rx, /"startLine":10/);
         assert.match(rx, /"startLine":14/);
     } },
-    { target: "worker:///docs/guide.md", pattern: "//heading[text='Testing']", expect: (rx, status) => {
+    { target: "workspace:///docs/guide.md", pattern: "//heading[text='Testing']", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 1);
         assert.match(rx, /"startLine":10/, "the heading's own line is the location");
     } },
-    { target: "worker:///docs/guide.md", pattern: "//heading[@pk:level='1']", expect: (rx, status) => {
+    { target: "workspace:///docs/guide.md", pattern: "//heading[@pk:level='1']", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 1, "the provenance prefix is bound");
     } },
-    { target: "worker:///docs/guide.md", pattern: "//heading[@zz:level='2']", expect: (rx, status) => {
+    { target: "workspace:///docs/guide.md", pattern: "//heading[@zz:level='2']", expect: (rx, status) => {
         assert.equal(status, 400, rx.slice(0, 200));
         assert.match(rx, /xpath/, "the refusal names the dialect");
     } },
-    { target: "worker:///docs/guide.md", pattern: "$..[?(@.type=='heading' && @.level==2)]", expect: (rx, status) => {
+    { target: "workspace:///docs/guide.md", pattern: "$..[?(@.type=='heading' && @.level==2)]", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 3, "jsonpath walks the markdown deep tree");
         assert.match(rx, /"locator":"\$\['children'\]\[8\]","region":\{"startLine":10/, "a structural row keeps its locator and the heading's line");
     } },
-    { target: "worker:///data/config.json", pattern: "$.items[*].name", expect: (rx, status) => {
+    { target: "workspace:///data/config.json", pattern: "$.items[*].name", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 2);
         assert.match(rx, /"locator":"\$\['items'\]\[0\]\['name'\]","region":\{"startLine":1,"startColumn":19,"endLine":1,"endColumn":26\}/, "exact columns of the first value");
         assert.match(rx, /"locator":"\$\['items'\]\[1\]\['name'\]"/);
     } },
-    { target: "worker:///data/config.json", pattern: "//items/name", expect: (rx, status) => {
+    { target: "workspace:///data/config.json", pattern: "//items/name", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 2, "xpath over JSON through the deep-xml projection");
         assert.match(rx, /"locator":"\(\/\/items\/name\)\[1\]","region":\{"startLine":1,"startColumn":19,"endLine":1,"endColumn":26\}/, "xpath rows carry the same exact columns as jsonpath rows");
         assert.match(rx, /"locator":"\(\/\/items\/name\)\[2\]","region":\{"startLine":1,"startColumn":45,"endLine":1,"endColumn":51\}/);
     } },
-    { target: "worker:///data/feed.xml", pattern: "//item[@id='2']", expect: (rx, status) => {
+    { target: "workspace:///data/feed.xml", pattern: "//item[@id='2']", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 1);
         assert.match(rx, /"locator":"\/\/item\[@id='2'\]"/, "xpath over XML keeps its locator");
     } },
-    { target: "worker:///docs/guide.md", pattern: "&Project", expect: (rx, status) => {
+    { target: "workspace:///docs/guide.md", pattern: "&Project", expect: (rx, status) => {
         assert.notEqual(status, 503, `a graph FIND settles the index instead of refusing: ${rx.slice(0, 200)}`);
         assert.ok(status === 200 || status === 204, `graph FIND answers, got ${status}`);
     } },
-    { target: "worker:///data/feed.xml", pattern: "$..id", expect: (rx, status) => {
+    { target: "workspace:///data/feed.xml", pattern: "$..id", expect: (rx, status) => {
         assert.equal(status, 200, rx.slice(0, 200));
         assert.equal(locations(rx), 2, "jsonpath over XML through the deep-json projection (attributes are keys)");
     } },
@@ -96,16 +96,16 @@ const PROBES: Probe[] = [
 test("{§mimetype-query}: every pattern dialect answers the model from one seeded corpus", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const seed = [
-        `\`\`\`\`EDIT (worker:///docs/guide.md)
+        `\`\`\`\`EDIT (workspace:///docs/guide.md)
 ${GUIDE}
 \`\`\`\``,
-        `\`\`\`\`EDIT (worker:///data/config.json)
+        `\`\`\`\`EDIT (workspace:///data/config.json)
 ${CONFIG}
 \`\`\`\``,
-        `\`\`\`\`EDIT (worker:///data/feed.xml)
+        `\`\`\`\`EDIT (workspace:///data/feed.xml)
 ${FEED}
 \`\`\`\``,
-        `\`\`\`\`EDIT (worker:///notes.txt)
+        `\`\`\`\`EDIT (workspace:///notes.txt)
 ${NOTES}
 \`\`\`\``,
     ].join("\n\n");

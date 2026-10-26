@@ -1,13 +1,13 @@
 // {§schedule-delivery} — the timers. One armed occurrence per (workspace, alias); at its instant
-// the message is delivered to the target worker through the application port as an arrival with
-// the source `schedule://<alias>`, joining the worker's live loop or starting one. Then the next
+// the message is delivered to the target session through the application port as an arrival with
+// the source `schedule://<alias>`, joining the session's live loop or starting one. Then the next
 // occurrence arms from now: a late fire delivers once and skips what it missed, never a backlog.
 // A delivery failure disarms the rule and holds its Problem for the outcome; `enable` retries.
 import { MAX_TIMER_MS, Problems, type ProblemDetails } from "@plurnk/plurnk-contracts";
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
-import { targetWorkerName, type ScheduleDefinition } from "./definition.ts";
+import { targetSessionName, type ScheduleDefinition } from "./definition.ts";
 import { nextOccurrence, type ParsedRule } from "./rules.ts";
 
 export interface ScheduledRule {
@@ -17,10 +17,10 @@ export interface ScheduledRule {
 }
 
 export interface DeliveryPort {
-    listWorkers(workspaceId: number): Promise<readonly { readonly id: number; readonly name: string }[]>;
+    listSessions(workspaceId: number): Promise<readonly { readonly id: number; readonly name: string }[]>;
     runLoop(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly prompt: string;
         readonly source: string;
     }): Promise<unknown>;
@@ -228,10 +228,10 @@ export default class Scheduler {
     async #deliver(workspaceId: number, rule: ScheduledRule): Promise<void> {
         const port = this.#port;
         if (port === null) throw new Error("schedule Scheduler is not started");
-        const name = targetWorkerName(rule.definition.target);
-        const worker = (await port.listWorkers(workspaceId)).find((candidate) => candidate.name === name);
-        if (worker === undefined) {
-            throw new ScheduleDeliveryError(problem("target-missing", 404, `No worker named '${name}' exists in this workspace.`, {
+        const name = targetSessionName(rule.definition.target);
+        const session = (await port.listSessions(workspaceId)).find((candidate) => candidate.name === name);
+        if (session === undefined) {
+            throw new ScheduleDeliveryError(problem("target-missing", 404, `No session named '${name}' exists in this workspace.`, {
                 alias: rule.alias,
                 target: rule.definition.target,
                 retryable: true,
@@ -239,7 +239,7 @@ export default class Scheduler {
         }
         await port.runLoop({
             workspaceId,
-            workerId: worker.id,
+            sessionId: session.id,
             prompt: rule.definition.prompt,
             source: `schedule://${encodeURIComponent(rule.alias)}`,
         });

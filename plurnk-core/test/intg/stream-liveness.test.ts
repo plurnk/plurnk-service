@@ -16,10 +16,10 @@ import { readStmt, urlPath } from "./_dsl.ts";
 test("{§exec-stream}: a stream READ carries terminal: false while the command runs and terminal: true once it concluded", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId, turnId } = await seedEnvelope(db, `stream-liveness-${crypto.randomUUID()}`, { producer: "client" });
+        const { workspaceId, sessionId, loopId, turnId } = await seedEnvelope(db, `stream-liveness-${crypto.randomUUID()}`, { producer: "client" });
         const seed = async (pathname: string, content: string, close: boolean): Promise<void> => {
             const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", pathname, channel: "stdout", content, mimetype: "text/stream", state: "active" });
-            const subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: `sh: ${pathname}` });
+            const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: `sh: ${pathname}` });
             if (close) await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200, exitCode: 0 } });
         };
         await seed("/1/1/1/sh", "", false);
@@ -30,7 +30,7 @@ test("{§exec-stream}: a stream READ carries terminal: false while the command r
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
         engine.setExecutors(executors);
         let sequence = 0;
-        const read = (pathname: string) => engine.dispatch({ statement: readStmt(urlPath("sh", pathname), { marks: [1, -1] }), workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "client" });
+        const read = (pathname: string) => engine.dispatch({ statement: readStmt(urlPath("sh", pathname), { marks: [1, -1] }), workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "client" });
         const live = await read("/1/1/1/sh");
         assert.equal(live.status, 204, JSON.stringify(live));
         assert.equal(live.terminal, false, "an empty page on a live stream says the stream is still running");
@@ -40,7 +40,7 @@ test("{§exec-stream}: a stream READ carries terminal: false while the command r
         assert.equal(done.content, "all done");
         const packets = new PacketBuilder({ db, schemes, executors: () => executors });
         const packet = await packets.buildRequestPacket({
-            workspaceId, workerId, loopId, currentTurnSeq: 2,
+            workspaceId, sessionId, loopId, currentTurnSeq: 2,
             provider: new Mock({ contextWindow: 100_000, responses: [] }),
             initialMessages: [], gitStatus: null,
         });

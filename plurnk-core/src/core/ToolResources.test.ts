@@ -95,7 +95,7 @@ test("{§tools-resource-discovery} retains authored non-schema invocations and s
         runtimeDoc,
         /^```gitea \(issue\/read\) <!-- Read one issue and its discussion\. -->\n\{"owner": string, "repo": string, "index": integer\}\n```$/m,
     );
-    assert.doesNotMatch(runtimeDoc, /Schema: worker:/, "no schema is fabricated for authored signatures");
+    assert.doesNotMatch(runtimeDoc, /Schema: session:/, "no schema is fabricated for authored signatures");
     assert.doesNotMatch(runtimeDoc, /```FIND/);
     assert.doesNotMatch(runtimeDoc, /tool_name/, "the runtime document cannot advertise a rejected generic target");
     // A tool's details are a SECTION of the runtime document, its headings demoted.

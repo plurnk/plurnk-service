@@ -1,5 +1,5 @@
-// {§worker-tool-admission} {§owner-interaction-ring} — the question tool on `plurnk` is an ordinary
-// interaction-trait capability: the workspace policy and the asking worker's owner shape both
+// {§session-tool-admission} {§owner-interaction-ring} — the question tool on `plurnk` is an ordinary
+// interaction-trait capability: the workspace policy and the asking session's owner shape both
 // its documentation and its dispatch through the same resolver.
 
 import test from "node:test";
@@ -14,16 +14,16 @@ import CapabilityResolver from "../../src/core/CapabilityResolver.ts";
 import FunctionalityManager, { plurnkRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
 import type Functionality from "../../src/server/Functionality.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { localPath } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 
 const findStatement = (): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
     target: {
-        kind: "url", raw: "worker:///_plurnk/**", scheme: "worker",
+        kind: "url", raw: "workspace:///_plurnk/**", scheme: "workspace",
         username: null, password: null, hostname: null, port: null,
         pathname: "/_plurnk/**", query: null, fragment: null,
     },
@@ -67,29 +67,29 @@ const boot = async (capabilities: CapabilityPolicy = {}) => {
         },
     }]);
     const workspaceId = await insertWorkspace(db, `tool-admission-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     await db.test_set_workspace_settings.run({
         id: workspaceId,
         settings: JSON.stringify({ capabilities }),
     });
     await LoopDocs.materialize(engine, db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 2, "admission");
+    const loopId = await insertLoop(db, sessionId, 2, "admission");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    const dispatch = { workspaceId, workerId, loopId, turnId, origin: "model" as const };
-    // What the worker's FIND of the reserved reference set shows: its paths and its rendered catalog.
+    const dispatch = { workspaceId, sessionId, loopId, turnId, origin: "model" as const };
+    // What the session's FIND of the reserved reference set shows: its paths and its rendered catalog.
     const catalog = async () => {
         const found = await engine.dispatch({ ...dispatch, sequence: 1, statement: findStatement() });
         assert.equal(found.status, 200);
         const paths = (found.results as Array<Array<{ path: string }>>).map((group) => group[0]?.path ?? "");
         return { paths, content: (typeof found.content === "string" ? found.content : "") };
     };
-    return { db, schemes, engine, workspaceId, workerId, dispatch, catalog };
+    return { db, schemes, engine, workspaceId, sessionId, dispatch, catalog };
 };
 
-test("{§worker-tool-admission}: an interaction-denied workspace omits the question tool even for an interactive owner", async () => {
-    const { db, workspaceId, workerId, catalog } = await boot({ deny: [{ traits: ["interaction"] }] });
+test("{§session-tool-admission}: an interaction-denied workspace omits the question tool even for an interactive owner", async () => {
+    const { db, workspaceId, sessionId, catalog } = await boot({ deny: [{ traits: ["interaction"] }] });
     try {
-        await ownWorker(db, workspaceId, workerId);
+        await ownSession(db, workspaceId, sessionId);
         const { paths, content } = await catalog();
         assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
         assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the question tool schema does not exist for the workspace");
@@ -99,12 +99,12 @@ test("{§worker-tool-admission}: an interaction-denied workspace omits the quest
     }
 });
 
-test("{§owner-interaction-ring}: a worker whose interactive owner declares question sees the tool", async () => {
-    const { db, workspaceId, workerId, catalog } = await boot();
+test("{§owner-interaction-ring}: a session whose interactive owner declares question sees the tool", async () => {
+    const { db, workspaceId, sessionId, catalog } = await boot();
     try {
-        await ownWorker(db, workspaceId, workerId);
+        await ownSession(db, workspaceId, sessionId);
         const { paths } = await catalog();
-        assert.ok(paths.some((path) => path.endsWith("/plurnk/question.json")), "the interactive worker sees the question tool");
+        assert.ok(paths.some((path) => path.endsWith("/plurnk/question.json")), "the interactive session sees the question tool");
     } finally {
         await db.close();
     }
@@ -114,14 +114,14 @@ for (const [label, owner] of [
     ["the runtime owner", null],
     ["an owner nobody attends", { tools: ["request_approval", "question"], interactive: false }],
     ["an attended owner that does not declare question", { tools: ["request_approval"], interactive: true }],
-] as const) test(`{§owner-interaction-ring}: a worker owned by ${label} neither sees nor dispatches question`, async () => {
-    const { db, engine, workspaceId, workerId, dispatch, catalog } = await boot();
+] as const) test(`{§owner-interaction-ring}: a session owned by ${label} neither sees nor dispatches question`, async () => {
+    const { db, engine, workspaceId, sessionId, dispatch, catalog } = await boot();
     try {
-        if (owner !== null) await ownWorker(db, workspaceId, workerId, [...owner.tools], owner.interactive);
+        if (owner !== null) await ownSession(db, workspaceId, sessionId, [...owner.tools], owner.interactive);
         const { paths, content } = await catalog();
         assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
         assert.ok(paths.some((path) => path.endsWith("/plurnk/members.json")), "noninteractive plurnk tools remain discoverable");
-        assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the shared reference set hides the tool from this worker");
+        assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")), "the shared reference set hides the tool from this session");
         assert.ok(!content.includes("question.json"), "the rendered catalog agrees with the location list");
         const result = await engine.dispatch({ ...dispatch, sequence: 2, statement: execStatement() });
         assert.equal(result.status, 403);
@@ -141,10 +141,10 @@ test("{§pinned-wording-core}: the owner ring's refusal says why the tool is gon
         "Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.");
 });
 
-test("{§worker-tool-admission}: execution dispatch refuses an interaction-denied question tool", async () => {
-    const { db, engine, workspaceId, workerId, dispatch } = await boot({ deny: [{ traits: ["interaction"] }] });
+test("{§session-tool-admission}: execution dispatch refuses an interaction-denied question tool", async () => {
+    const { db, engine, workspaceId, sessionId, dispatch } = await boot({ deny: [{ traits: ["interaction"] }] });
     try {
-        await ownWorker(db, workspaceId, workerId);
+        await ownSession(db, workspaceId, sessionId);
         const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");
@@ -158,10 +158,10 @@ test("{§worker-tool-admission}: execution dispatch refuses an interaction-denie
     }
 });
 
-test("{§worker-tool-admission}: the interaction access class gates known interactive tools", async () => {
-    const { db, engine, workspaceId, workerId, dispatch } = await boot({ deny: [{ access: "interact" }] });
+test("{§session-tool-admission}: the interaction access class gates known interactive tools", async () => {
+    const { db, engine, workspaceId, sessionId, dispatch } = await boot({ deny: [{ access: "interact" }] });
     try {
-        await ownWorker(db, workspaceId, workerId);
+        await ownSession(db, workspaceId, sessionId);
         const result = await engine.dispatch({ ...dispatch, sequence: 1, statement: execStatement() });
         assert.equal(result.status, 403);
         assert.equal(result.problem?.access, "interact");
@@ -184,10 +184,10 @@ test("{§question-tool}: the executor switch removes plurnk and its teaching", a
     const previous = process.env.PLURNK_EXECS_PLURNK;
     process.env.PLURNK_EXECS_PLURNK = "0";
     try {
-        const { db, engine, schemes, workspaceId, workerId, dispatch, catalog } = await boot();
+        const { db, engine, schemes, workspaceId, sessionId, dispatch, catalog } = await boot();
         try {
-            await ownWorker(db, workspaceId, workerId);
-            assert.equal(schemes.has("plurnk", workerId), false);
+            await ownSession(db, workspaceId, sessionId);
+            assert.equal(schemes.has("plurnk", sessionId), false);
             const { paths } = await catalog();
             assert.ok(paths.some((path) => path.endsWith("/sh.md")), "noninteractive tools remain discoverable");
             assert.ok(!paths.some((path) => path.endsWith("/plurnk/question.json")));

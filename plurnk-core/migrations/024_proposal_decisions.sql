@@ -14,7 +14,7 @@ CREATE TRIGGER proposal_decision_insert
 BEFORE INSERT ON proposal_decisions
 BEGIN
     SELECT CASE WHEN NOT EXISTS (
-        SELECT 1 FROM log_entries le JOIN workers w ON w.id = le.worker_id
+        SELECT 1 FROM log_entries le JOIN sessions w ON w.id = le.session_id
         WHERE le.id = NEW.log_entry_id AND le.state = 'proposed'
           AND (NEW.resolver = '_plurnk' OR NEW.resolver = w.owner)
     ) THEN RAISE(ABORT, 'proposal decision requires a pending operation and its resolving authority') END;

@@ -1,14 +1,14 @@
 // Conformance: plurnk-schemes {§scheme-subscriptions} — the streaming
 // open → notifyChunk → close lifecycle an extension drives against real
 // SQLite: content appends + stream/events, terminal channel state, registry
-// close, worker wake with the summary, and worker abort → signal + handle cancel.
+// close, session wake with the summary, and session abort → signal + handle cancel.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbSubscriptionCaps from "../../src/core/caps/DbSubscriptionCaps.ts";
-import ChannelWrite, { type WakeWorkerPayload, type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import ChannelWrite, { type WakeSessionPayload, type StreamEventPayload } from "../../src/core/ChannelWrite.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import LiveSubscriptions from "../../src/core/LiveSubscriptions.ts";
 import { Results } from "@plurnk/plurnk-schemes";
@@ -17,14 +17,14 @@ test("{§per-entry-channels} DbSubscriptionCaps: open binds + composes abort, no
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-sub-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const streamEvents: StreamEventPayload[] = [];
-        const wakes: WakeWorkerPayload[] = [];
+        const wakes: WakeSessionPayload[] = [];
         const parentAbort = new AbortController();
         const ctx = makeSchemeCtx({
-            db, workspaceId, workerId, signal: parentAbort.signal,
+            db, workspaceId, sessionId, signal: parentAbort.signal,
             streamEventNotify: (_s, e) => streamEvents.push(e),
-            wakeWorkerNotify: (p) => wakes.push(p),
+            wakeSessionNotify: (p) => wakes.push(p),
         });
         const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain", stderr: "text/plain" }, "stdout"), "");
         const liveSubscriptions = new LiveSubscriptions();
@@ -51,16 +51,16 @@ test("{§per-entry-channels} DbSubscriptionCaps: open binds + composes abort, no
         assert.equal((await entries.read("/run")).entry?.channels.stdout.content, "hello world");
         assert.equal((await entries.read("/run")).entry?.channels.stderr.content, "diagnostic", "unpublished auxiliary content is still durable");
         assert.ok(streamEvents.length >= 2, "each chunk fired a stream/event");
-        assert.ok(streamEvents.every((event) => event.workerId === workerId), "stream updates identify their producer");
+        assert.ok(streamEvents.every((event) => event.sessionId === sessionId), "stream updates identify their producer");
 
-        // close(result) → channel terminal, exact result persisted, worker woken with the summary
+        // close(result) → channel terminal, exact result persisted, session woken with the summary
         await subs.close({ status: 200 }, "exit 0; 11 bytes");
         assert.ok(streamEvents.every((event) => event.channel === "stdout"), "only the selected default channel is published");
         const meta = await db.channel_meta.get<{ state: string }>({ entry_id: entryId, channel: "stdout" });
         assert.equal(meta?.state, "closed");
         assert.equal((await entries.read("/run")).entry?.channels.stdout.state, "closed");
         assert.equal(wakes.length, 1);
-        assert.equal(wakes[0].workerId, workerId, "the lifecycle wake still targets the invoking worker");
+        assert.equal(wakes[0].sessionId, sessionId, "the lifecycle wake still targets the invoking session");
         assert.deepEqual(wakes[0].result, { status: 200 });
         assert.equal(wakes[0].summary, "exit 0; 11 bytes");
         assert.equal(wakes[0].target, "exec:///run");
@@ -85,23 +85,23 @@ test("{§per-entry-channels} DbSubscriptionCaps: open binds + composes abort, no
         assert.deepEqual(mixed.entry?.channels.stdout.producerResult, bodyFailure);
         assert.deepEqual(mixed.entry?.channels.stderr.producerResult, { status: 200 });
 
-        // a worker abort propagates to the subscription signal AND force-cancels the handle
+        // a session abort propagates to the subscription signal AND force-cancels the handle
         await entries.write("/run2", { channels: {
             stdout: { content: "", mimetype: "text/plain", state: "active" },
         } });
         const signal2 = await subs.open("/run2", { cancel: () => { cancelCalls += 1; } });
         const entry2 = await entries.read("/run2");
         assert.equal(entry2.status, 200);
-        const sub2 = await db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: workerId });
+        const sub2 = await db.find_open_subscriptions_for_session.all<{ id: number }>({ session_id: sessionId });
         const cancelledId = sub2.at(-1)?.id;
         assert.ok(cancelledId !== undefined);
         parentAbort.abort();
-        assert.equal(signal2.aborted, true, "worker abort propagates to the subscription signal");
-        assert.equal(cancelCalls, 1, "worker abort force-cancels the sibling handle");
+        assert.equal(signal2.aborted, true, "session abort propagates to the subscription signal");
+        assert.equal(cancelCalls, 1, "session abort force-cancels the sibling handle");
         assert.equal(await liveSubscriptions.cancel(cancelledId), true);
         assert.equal(cancelCalls, 1, "the registry reap coalesces with signal cancellation");
-        const cancelledResult = Results.failure("scheme:exec", "cancelled", 499, "The worker cancelled the stream.");
-        await subs.close(cancelledResult, "worker cancelled");
+        const cancelledResult = Results.failure("scheme:exec", "cancelled", 499, "The session cancelled the stream.");
+        await subs.close(cancelledResult, "session cancelled");
         const cancelledRow = await db.test_get_subscription.get<{ close_status: number; close_result: string }>({ id: cancelledId });
         assert.equal(cancelledRow?.close_status, 499, "cancelled settlement is durable 499");
         assert.deepEqual(JSON.parse(cancelledRow?.close_result ?? "null"), cancelledResult);
@@ -116,16 +116,16 @@ test("{§per-entry-channels} DbSubscriptionCaps: open binds + composes abort, no
     } finally { await db.close(); }
 });
 
-test("{§subscriptions-subscription-registry-routes-cancellation} notification failure after durable close still releases ownership and wakes the worker", async () => {
+test("{§subscriptions-subscription-registry-routes-cancellation} notification failure after durable close still releases ownership and wakes the session", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `close-notify-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const failure = new Error("fixture notification failure");
-        const wakes: WakeWorkerPayload[] = [];
+        const wakes: WakeSessionPayload[] = [];
         const ctx = makeSchemeCtx({
-            db, workspaceId, workerId,
-            streamEventNotify: () => { throw failure; }, wakeWorkerNotify: (event) => wakes.push(event),
+            db, workspaceId, sessionId,
+            streamEventNotify: () => { throw failure; }, wakeSessionNotify: (event) => wakes.push(event),
         });
         const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain" }, "stdout"), "");
         const live = new LiveSubscriptions();
@@ -151,9 +151,9 @@ test(`{§subscription-finalization} failed durable closure can retry settlement 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `close-retry-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const wakes: WakeWorkerPayload[] = [];
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, wakeWorkerNotify: (event) => wakes.push(event) });
+        const sessionId = await insertSession(db, workspaceId);
+        const wakes: WakeSessionPayload[] = [];
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, wakeSessionNotify: (event) => wakes.push(event) });
         const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain" }, "stdout"), "");
         const live = new LiveSubscriptions();
         const subscriptions = new DbSubscriptionCaps(ctx, "exec", "", live, "stdout");
@@ -168,9 +168,9 @@ test(`{§subscription-finalization} failed durable closure can retry settlement 
         await assert.rejects(subscription.close({ status: 200 }, "finished"), (cause) => cause === failure);
         await assert.rejects(live.cancel(row.id), (cause) => cause === failure);
         assert.equal(wakes.length, 0, "nothing announces a closure that has not committed");
-        assert.equal((await db.find_open_subscriptions_for_worker.all({ worker_id: workerId })).length, 1);
+        assert.equal((await db.find_open_subscriptions_for_session.all({ session_id: sessionId })).length, 1);
         assert.equal(await live.cancel(row.id), true);
-        assert.equal((await db.find_open_subscriptions_for_worker.all({ worker_id: workerId })).length, 0);
+        assert.equal((await db.find_open_subscriptions_for_session.all({ session_id: sessionId })).length, 0);
         assert.equal(wakes.length, 1);
         assert.deepEqual(wakes[0].result, { status: 200 });
         assert.equal(wakes[0].summary, "finished");
@@ -187,9 +187,9 @@ test("{§subscription-finalization} concurrent close and cancellation share the 
     const release = Promise.withResolvers<void>();
     try {
         const workspaceId = await insertWorkspace(db, `close-concurrent-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const wakes: WakeWorkerPayload[] = [];
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, wakeWorkerNotify: (event) => wakes.push(event) });
+        const sessionId = await insertSession(db, workspaceId);
+        const wakes: WakeSessionPayload[] = [];
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, wakeSessionNotify: (event) => wakes.push(event) });
         const entries = new DbEntryCaps(ctx, "exec", schemeManifest("exec", { stdout: "text/plain" }, "stdout"), "");
         const live = new LiveSubscriptions();
         const subs = new DbSubscriptionCaps(ctx, "exec", "", live, "stdout");

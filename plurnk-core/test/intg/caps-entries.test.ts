@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { readStmt } from "./_dsl.ts";
@@ -14,8 +14,8 @@ test("{§binary-parity} public entry writes retain bytes for ordinary byte READs
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-bytes-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         class Notes { static manifest = schemeManifest("notes"); }
         const caps = new DbEntryCaps(ctx, "notes", Notes.manifest, "");
         const bytes = Uint8Array.from([0, 255, 128, 65]);

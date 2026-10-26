@@ -12,7 +12,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { insertSession, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { httpEntry, mcpFixture, mcpEnvironment } from "./_mcp-config.ts";
@@ -86,9 +86,9 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "mcp-resource-owners" });
-    const alice = await insertWorker(db, workspaceId, null, "alice", "model");
-    await ownWorker(db, workspaceId, alice);
-    const bob = await insertWorker(db, workspaceId, null, "bob", "model");
+    const alice = await insertSession(db, workspaceId, null, "alice", "model");
+    await ownSession(db, workspaceId, alice);
+    const bob = await insertSession(db, workspaceId, null, "bob", "model");
     const action = (operation: string, params: Record<string, unknown>) => daemon.invokeModuleAction(
         `workspace.mcp.${operation}`, params, { scope: "workspace", workspaceId },
     );
@@ -198,8 +198,8 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
             workspaceId: f.workspaceId, actor: TEST_OWNER, statements: [statement(PlurnkParser.frame("shared (snapshot)", "{}"))],
         });
         assert.equal(invoked.status, 200, JSON.stringify(invoked));
-        // The person's operation produced the result in the workspace's runtime worker ({§connection-lifecycle}).
-        const producer = await f.daemon.ensureRuntimeWorker(f.workspaceId);
+        // The person's operation produced the result in the workspace's runtime session ({§connection-lifecycle}).
+        const producer = await f.daemon.ensureRuntimeSession(f.workspaceId);
         const published = await waitForDb(async () => {
             const entries = await f.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({
                 workspace_id: f.workspaceId, scheme: "shared", prefix: "%",
@@ -211,8 +211,8 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
         }, (channel) => channel?.content.includes("/resources/snapshot.txt") === true);
         const address = /<(shared:\/\/[^>]+)>/u.exec(published!.content)?.[1];
         assert.ok(address, published!.content);
-        const settled = await waitForDb(() => f.db.test_latest_subscription_for_worker.get<{ close_status: number | null }>({
-            worker_id: producer,
+        const settled = await waitForDb(() => f.db.test_latest_subscription_for_session.get<{ close_status: number | null }>({
+            session_id: producer,
         }), (subscription) => subscription?.close_status !== null && subscription?.close_status !== undefined);
         assert.equal(settled?.close_status, 200, "the saved result's producer settles successfully before lifecycle changes");
         if (transition === "disabled") {
@@ -233,7 +233,7 @@ for (const transition of ["enabled", "disabled", "removed", "producer-removed", 
             await f.restart();
         }
         assert.match(address, /^shared:\/\/\/[a-f0-9]{8}\/resources\//u);
-        if (transition === "producer-removed") await f.db.test_delete_worker.run({ id: producer });
+        if (transition === "producer-removed") await f.db.test_delete_session.run({ id: producer });
         const result = await f.read(address);
         assert.equal(result.status, 200, JSON.stringify({ address, transition, result }));
         assert.equal(result.content, "alice's saved result");
@@ -253,10 +253,10 @@ test("{§runtime-resource-binding}: MCP resource elicitation and its receipt bel
         `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
         PlurnkParser.frame("SEND [200]", "The resource was read."),
     ]);
-    const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
+    const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, sessionId: f.alice, prompt: "Read Bob's guarded resource." });
     const waiting = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
     const interaction = waiting[0];
-    assert.equal(interaction.workerId, f.alice);
+    assert.equal(interaction.sessionId, f.alice);
     assert.equal(interaction.loopId, run.loopId);
     assert.match(JSON.stringify(interaction), /Read bob's resource/);
     await f.daemon.resolveClientInteraction(interaction.interactionId, {
@@ -275,10 +275,10 @@ test("{§runtime-resource-binding}: cancelling the requester settles its MCP int
     const f = await fixture(t, [
         `${PlurnkParser.frame(`READ (other://${resourcePath(guardedUri)})`, null)}\n\n${step("NOTE")}`,
     ]);
-    const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, workerId: f.alice, prompt: "Read Bob's guarded resource." });
+    const run = await f.daemon.runLoop({ workspaceId: f.workspaceId, sessionId: f.alice, prompt: "Read Bob's guarded resource." });
     const pending = await waitForDb(() => f.daemon.pendingClientInteractions(f.workspaceId), (items) => items.length === 1);
-    assert.equal(pending[0].workerId, f.alice);
-    await f.daemon.cancelWorker({ workspaceId: f.workspaceId, workerId: f.alice, reason: "resource reader cancelled" });
+    assert.equal(pending[0].sessionId, f.alice);
+    await f.daemon.cancelSession({ workspaceId: f.workspaceId, sessionId: f.alice, reason: "resource reader cancelled" });
     const lifecycle = new LoopLifecycle(f.db);
     await waitForDb(() => lifecycle.status(run.loopId), (status) => status === 499);
     assert.deepEqual(await f.daemon.pendingClientInteractions(f.workspaceId), []);
@@ -288,4 +288,4 @@ test("{§runtime-resource-binding}: cancelling the requester settles its MCP int
     await f.cool();
     assert.equal(f.provider.received.length, 1);
 });
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { ownSession, TEST_OWNER } from "./_approval.ts";

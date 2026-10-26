@@ -82,7 +82,7 @@ interface FindAddress {
     readonly scope?: PathScope;
     // File keys are relative to this directory; other schemes have no filesystem base.
     readonly pathBase?: string;
-    // {§worker-tool-admission} — per-asker visibility: a candidate is dropped
+    // {§session-tool-admission} — per-asker visibility: a candidate is dropped
     // when this predicate returns false. Counts and weights stay consistent
     // because the filter runs before matching and rendering.
     readonly visible?: (pathname: string) => boolean | Promise<boolean>;

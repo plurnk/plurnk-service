@@ -1,12 +1,12 @@
-// {§place-hiding} Hiding and showing workspaces and workers: a durable mark, never a deletion.
-import type { ApplicationWorkerHiding, ApplicationWorkspaceHiding } from "@plurnk/plurnk-contracts";
+// {§place-hiding} Hiding and showing workspaces and sessions: a durable mark, never a deletion.
+import type { ApplicationSessionHiding, ApplicationWorkspaceHiding } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { daemonFailure } from "./daemon-results.ts";
 
-// The gates of one workspace, each naming the worker that waits on it.
+// The gates of one workspace, each naming the session that waits on it.
 export type PlaceGates = (workspaceId: number) => Promise<{
-    readonly proposals: ReadonlyArray<{ readonly workerId: number }>;
-    readonly questions: ReadonlyArray<{ readonly workerId: number }>;
+    readonly proposals: ReadonlyArray<{ readonly sessionId: number }>;
+    readonly questions: ReadonlyArray<{ readonly sessionId: number }>;
 }>;
 
 interface LiveWork {
@@ -20,23 +20,23 @@ const WORK: ReadonlyArray<readonly [keyof LiveWork, string]> = [
     ["loops", "live loop"], ["streams", "open stream"], ["proposals", "pending proposal"], ["questions", "pending question"],
 ];
 
-// The workers a call marked or cleared, in id order.
+// The sessions a call marked or cleared, in id order.
 const ids = (rows: ReadonlyArray<{ readonly id: number }>): number[] => rows.map(({ id }) => id).toSorted((a, b) => a - b);
 
 const described = (live: LiveWork): string => WORK.filter(([key]) => live[key] > 0)
     .map(([key, what]) => `${live[key]} ${what}${live[key] === 1 ? "" : "s"}`).join(", ");
 
 export default class Places {
-    // What the scope holds, a worker and every worker beneath it, or every worker of the workspace.
-    static async #liveWork(db: Db, gates: PlaceGates, workspaceId: number, workerId: number | null): Promise<LiveWork> {
-        const scope = await db.place_scope.all<{ workerId: number; loops: number; streams: number }>({ workspace_id: workspaceId, worker_id: workerId });
-        const covered = new Set(scope.map((row) => row.workerId));
+    // What the scope holds, a session and every session beneath it, or every session of the workspace.
+    static async #liveWork(db: Db, gates: PlaceGates, workspaceId: number, sessionId: number | null): Promise<LiveWork> {
+        const scope = await db.place_scope.all<{ sessionId: number; loops: number; streams: number }>({ workspace_id: workspaceId, session_id: sessionId });
+        const covered = new Set(scope.map((row) => row.sessionId));
         const pending = await gates(workspaceId);
         return {
             loops: scope.reduce((sum, row) => sum + row.loops, 0),
             streams: scope.reduce((sum, row) => sum + row.streams, 0),
-            proposals: pending.proposals.filter((gate) => covered.has(gate.workerId)).length,
-            questions: pending.questions.filter((gate) => covered.has(gate.workerId)).length,
+            proposals: pending.proposals.filter((gate) => covered.has(gate.sessionId)).length,
+            questions: pending.questions.filter((gate) => covered.has(gate.sessionId)).length,
         };
     }
 
@@ -68,25 +68,25 @@ export default class Places {
         }
     }
 
-    static async setWorkerHidden(db: Db, gates: PlaceGates, workspaceId: number, workerId: number, hidden: boolean): Promise<ApplicationWorkerHiding> {
+    static async setSessionHidden(db: Db, gates: PlaceGates, workspaceId: number, sessionId: number, hidden: boolean): Promise<ApplicationSessionHiding> {
         const mark = async () => {
-            const row = await db.place_worker_mark.get<{ hidden_at: string | null }>({ workspace_id: workspaceId, worker_id: workerId });
-            if (row === undefined) throw daemonFailure("daemon:worker", "worker-not-found", 404,
-                `Worker ${workerId} does not belong to workspace ${workspaceId}.`, { workspaceId, workerId });
+            const row = await db.place_session_mark.get<{ hidden_at: string | null }>({ workspace_id: workspaceId, session_id: sessionId });
+            if (row === undefined) throw daemonFailure("daemon:session", "session-not-found", 404,
+                `Session ${sessionId} does not belong to workspace ${workspaceId}.`, { workspaceId, sessionId });
             return row.hidden_at;
         };
         if (!hidden) {
             await mark();
-            const shown = await db.place_worker_show.all<{ id: number }>({ workspace_id: workspaceId, worker_id: workerId });
-            return { id: workerId, hidden_at: null, workerIds: ids(shown) };
+            const shown = await db.place_session_show.all<{ id: number }>({ workspace_id: workspaceId, session_id: sessionId });
+            return { id: sessionId, hidden_at: null, sessionIds: ids(shown) };
         }
         for (;;) {
             const before = await mark();
-            if (before !== null) return { id: workerId, hidden_at: before, workerIds: [] };
-            Places.#refuse("daemon:worker", await Places.#liveWork(db, gates, workspaceId, workerId),
-                `Worker ${workerId} and the workers beneath it hold`, { workspaceId, workerId });
-            const rows = await db.place_worker_hide.all<{ id: number; hidden_at: string }>({ workspace_id: workspaceId, worker_id: workerId });
-            if (rows.length > 0) return { id: workerId, hidden_at: rows[0].hidden_at, workerIds: ids(rows) };
+            if (before !== null) return { id: sessionId, hidden_at: before, sessionIds: [] };
+            Places.#refuse("daemon:session", await Places.#liveWork(db, gates, workspaceId, sessionId),
+                `Session ${sessionId} and the sessions beneath it hold`, { workspaceId, sessionId });
+            const rows = await db.place_session_hide.all<{ id: number; hidden_at: string }>({ workspace_id: workspaceId, session_id: sessionId });
+            if (rows.length > 0) return { id: sessionId, hidden_at: rows[0].hidden_at, sessionIds: ids(rows) };
         }
     }
 }

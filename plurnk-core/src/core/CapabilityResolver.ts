@@ -9,7 +9,7 @@ import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import CapabilityPolicies from "./CapabilityPolicies.ts";
-import WorkerOwners from "./WorkerOwners.ts";
+import SessionOwners from "./SessionOwners.ts";
 import ToolResources from "./ToolResources.ts";
 import { isGeneratedPathname, schemeNameOf } from "./plurnk-uri.ts";
 import { execRouteOf } from "../schemes/exec-runtime.ts";
@@ -65,9 +65,9 @@ export default class CapabilityResolver {
                 return manifest === undefined ? null : [{ operation, access, scheme, traits: [...(manifest.traits ?? [])].toSorted() }];
             }
             if (scheme === null || !this.#schemes.has(scheme, workspaceId)) return null;
-            // {§worker-generated-subtree}: owned-state mutation is intrinsic;
+            // {§session-generated-subtree}: owned-state mutation is intrinsic;
             // observation and unrelated effects retain their independent demands.
-            if (writer === "_plurnk" && access !== "observe" && scheme === "worker"
+            if (writer === "_plurnk" && access !== "observe" && scheme === "workspace"
                 && target?.kind === "url" && isGeneratedPathname(target.pathname)) return [];
             return [this.#schemeDescriptor(operation, access, scheme, workspaceId)];
         };
@@ -133,7 +133,7 @@ export default class CapabilityResolver {
             case "KILL": {
                 const scheme = schemeNameOf(statement.target);
                 if (scheme === "log") return [];
-                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
+                const control = scheme === "session" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
                 return demands(describe("KILL", control ? "control" : "mutate", statement.target));
             }
             case "NOTE":
@@ -142,14 +142,14 @@ export default class CapabilityResolver {
             case "SEND": {
                 if (statement.target === null) return [];
                 const scheme = schemeNameOf(statement.target);
-                const control = scheme === "worker" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
+                const control = scheme === "session" || (scheme !== null && this.#executors()?.entry(scheme, workspaceId) !== undefined);
                 return demands(describe("SEND", control ? "control" : "mutate", statement.target));
             }
         }
     }
 
-    // {§owner-interaction-ring} The interaction capabilities this worker's owner would not receive.
-    async #unreceived(workspaceId: number, workerId: number): Promise<ReadonlyArray<{ readonly runtime: string; readonly tool?: string }>> {
+    // {§owner-interaction-ring} The interaction capabilities this session's owner would not receive.
+    async #unreceived(workspaceId: number, sessionId: number): Promise<ReadonlyArray<{ readonly runtime: string; readonly tool?: string }>> {
         const executors = this.#executors();
         const candidates: Array<{ readonly runtime: string; readonly tool?: string; readonly name: string }> = [];
         for (const runtime of executors?.availableRuntimes(workspaceId) ?? []) {
@@ -164,27 +164,27 @@ export default class CapabilityResolver {
             }
         }
         if (candidates.length === 0) return [];
-        const owner = await WorkerOwners.read(this.#db, workerId);
+        const owner = await SessionOwners.read(this.#db, sessionId);
         return candidates
-            .filter(({ name }) => !WorkerOwners.receives(owner, name))
+            .filter(({ name }) => !SessionOwners.receives(owner, name))
             .map(({ runtime, tool }) => ({ runtime, ...(tool === undefined ? {} : { tool }) }));
     }
 
-    // {§owner-interaction-ring} An asking worker adds its owner's ring inside the shared cascade.
-    async layers(workspaceId: number, workerId?: number): Promise<readonly CapabilityLayer[]> {
+    // {§owner-interaction-ring} An asking session adds its owner's ring inside the shared cascade.
+    async layers(workspaceId: number, sessionId?: number): Promise<readonly CapabilityLayer[]> {
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
-        const unreceived = workerId === undefined ? [] : await this.#unreceived(workspaceId, workerId);
+        const unreceived = sessionId === undefined ? [] : await this.#unreceived(workspaceId, sessionId);
         return unreceived.length === 0 ? layers : [...layers, {
             scope: "owner",
             policy: { deny: unreceived.map(({ runtime, tool }) => ({ access: "interact", runtime, ...(tool === undefined ? {} : { tool }) })) },
         }];
     }
 
-    // {§owner-interaction-ring} The worker's face of the shared reserved tree: the documents of a
+    // {§owner-interaction-ring} The session's face of the shared reserved tree: the documents of a
     // runtime or tool its owner ring denies are absent.
-    async referenceVisibility(workspaceId: number, workerId: number): Promise<(pathname: string) => boolean> {
+    async referenceVisibility(workspaceId: number, sessionId: number): Promise<(pathname: string) => boolean> {
         const executors = this.#executors();
-        const unreceived = await this.#unreceived(workspaceId, workerId);
+        const unreceived = await this.#unreceived(workspaceId, sessionId);
         const hidden = unreceived.map(({ runtime, tool }) => {
             const resourcesPath = executors?.entry(runtime, workspaceId)?.resourcesPath;
             if (tool === undefined) return ToolResources.documents(runtime, resourcesPath);
@@ -203,7 +203,7 @@ export default class CapabilityResolver {
         workspaceId: number,
         writer: WriterTier = "model",
         resolveResource?: (target: ParsedPath) => Promise<SchemeManifest | undefined>,
-        workerId?: number,
+        sessionId?: number,
     ): Promise<CapabilityDenial | null> {
         const manifests = new Map<ParsedPath, SchemeManifest | undefined>();
         if (resolveResource !== undefined) {
@@ -218,7 +218,7 @@ export default class CapabilityResolver {
         const descriptors = this.descriptors(statement, workspaceId, writer,
             resolveResource === undefined ? undefined : (target) => manifests.get(target));
         // The owner ring subtracts only interaction; other demands never read the owner.
-        const asker = descriptors.some(({ access }) => access === "interact") ? workerId : undefined;
+        const asker = descriptors.some(({ access }) => access === "interact") ? sessionId : undefined;
         const layers = await this.layers(workspaceId, asker);
         for (const descriptor of descriptors) {
             const denied = layers.find((layer) => !CapabilityAdmission.allows(layer.policy, descriptor));
@@ -274,13 +274,13 @@ export default class CapabilityResolver {
         if (!manifest.writableBy.includes("model")) return false;
         if (entryBearing && allows("COPY", "mutate")) return true;
         if (typeof handler.editBatch === "function" && allows("EDIT", "mutate")) return true;
-        const access = scheme === "worker" ? "control" : "mutate";
+        const access = scheme === "session" ? "control" : "mutate";
         if (typeof handler.send === "function" && allows("SEND", access)) return true;
         if (entryBearing || typeof handler.kill === "function") {
             if (scheme === "log" || allows("KILL", access)) return true;
             if (readable && allows("MOVE", "observe") && allows("MOVE", "mutate")) return true;
         }
-        return scheme === "worker" && (allows("WORK", "control") || allows("FORK", "control"));
+        return scheme === "session" && (allows("WORK", "control") || allows("FORK", "control"));
     }
 
     #schemeDescriptor(

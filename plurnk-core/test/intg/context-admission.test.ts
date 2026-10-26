@@ -11,7 +11,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import TokenCalibration from "../../src/core/TokenCalibration.ts";
 import type { RequestPacket } from "../../src/core/StoredPacket.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 
 const messages = [{ role: "system" as const, content: "An agent." }, { role: "user" as const, content: "Review the evidence." }];
@@ -73,26 +73,26 @@ const ROOMY = { capacity: 900_000, wall: 990_000 };
 const fixture = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `context-admission-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
     // The next request as it would be built now.
     const probe = async (provider: Mock): Promise<RequestPacket> => {
         const next = await db.engine_next_turn_sequence.get<{ next: number }>({ loop_id: loopId });
         return await builder.buildRequestPacket({
-            initialMessages: messages, workspaceId, workerId, loopId, provider, currentTurnSeq: next!.next, gitStatus: null,
+            initialMessages: messages, workspaceId, sessionId, loopId, provider, currentTurnSeq: next!.next, gitStatus: null,
         });
     };
-    return { db, workspaceId, workerId, loopId, engine, probe };
+    return { db, workspaceId, sessionId, loopId, engine, probe };
 };
 const exact = (provider: CountingMock, request: readonly ChatMessage[]) => provider.countPromptTokens(request).then(({ tokens }) => tokens);
 
 test("{§context-admission} {§context-wall-measure}: calibrated on prose, unmeasured dense code is budgeted 1:1 above the prior offset; under the wall and over budget, the complete packet and its emission history go whole with the 413 over-budget row", async () => {
-    const { db, workspaceId, workerId, loopId, engine, probe } = await fixture();
+    const { db, workspaceId, sessionId, loopId, engine, probe } = await fixture();
     try {
         const roomy = providerAt(ROOMY, [note(PROSE), note(PROSE), note(PROSE), note(CODE)]);
-        for (let turn = 0; turn < 4; turn++) await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: roomy });
+        for (let turn = 0; turn < 4; turn++) await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: roomy });
         const offset = await TokenCalibration.forLoop(db, "mock", loopId);
         assert.ok(offset > 0, "prose turns measured below their character weight");
 
@@ -102,7 +102,7 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, unmea
         const wall = exactTokens + 200;
 
         const tight = providerAt({ capacity: Math.floor(estimate / 2), wall }, [note("Continuing the review.")]);
-        const result = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
+        const result = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: tight });
         assert.equal(result.status, 102, "the request was sent, not ended");
         assert.equal(tight.received.length, 1, "one inference request");
         assert.ok(await exact(tight, tight.received[0]) <= wall, "what was sent fits the wall by the provider's own count");
@@ -121,16 +121,16 @@ test("{§context-admission} {§context-wall-measure}: calibrated on prose, unmea
 });
 
 test("{§context-wall-measure} {§context-wall}: a request the provider refuses by exact count ends the loop on the window-overflow Problem, and nothing is sent", async () => {
-    const { db, workspaceId, workerId, loopId, engine, probe } = await fixture();
+    const { db, workspaceId, sessionId, loopId, engine, probe } = await fixture();
     try {
         // The loop's first response sets its offset on prose; the tight provider counts every character,
         // so the exact count exceeds the wall even when the calibrated estimate sits below it.
         const roomy = providerAt(ROOMY, [note("Reading the evidence.")]);
-        await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: roomy });
+        await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: roomy });
         assert.ok(await TokenCalibration.forLoop(db, "mock", loopId) > 0);
         const wall = (await probe(roomy)).weight;
         const tight = providerAt({ capacity: wall, wall }, [note("Continuing the review.")], 1);
-        const result = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: tight });
+        const result = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: tight });
         assert.equal(result.status, 413);
         assert.equal(result.capacityHardStop, false, "the window's own terminal, not a provider failure");
         assert.equal(result.curationFailure?.problem?.detail, "Context window overflow: the packet exceeds the model's window."); // {§pinned-wording-core}

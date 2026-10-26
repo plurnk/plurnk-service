@@ -7,7 +7,7 @@ import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
 const attributionContext: ExtensionAttributionContext = {
     workspaceId: "workspace",
-    workerId: "worker",
+    sessionId: "session",
     loop: 1,
     turn: 1,
     attempt: 1,
@@ -114,7 +114,7 @@ test("{§extension-discovery} registerRuntimeSchemes: a non-reserved executor ta
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
-test("{§module-workspace-capabilities} runtime scheme faces are worker-isolated and reversible", async () => {
+test("{§module-workspace-capabilities} runtime scheme faces are session-isolated and reversible", async () => {
     const registry = new SchemeRegistry();
     const executor = {
         runtime: "gitea",
@@ -317,13 +317,13 @@ test("{§schemes-directory}: documentation exclusion omits references without di
     const registry = new SchemeRegistry();
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {
-        process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "worker,nonsuch";
-        assert.equal((await registry.docs()).find((d) => d.name === "worker"), undefined);
+        process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "session,nonsuch";
+        assert.equal((await registry.docs()).find((d) => d.name === "session"), undefined);
         assert.ok((await registry.docs()).find((d) => d.name === "file"));
-        assert.ok(registry.has("worker"), "documentation exclusion does not revoke a capability");
+        assert.ok(registry.has("session"), "documentation exclusion does not revoke a capability");
 
         process.env.PLURNK_SERVICE_DOCS_EXCLUDE = "";
-        assert.ok((await registry.docs()).find((d) => d.name === "worker"));
+        assert.ok((await registry.docs()).find((d) => d.name === "session"));
     } finally {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
         else process.env.PLURNK_SERVICE_DOCS_EXCLUDE = prior;
@@ -336,7 +336,7 @@ test("{§schemes-directory}: hidden schemes do not publish model references", as
         manifest: { ...manifest("webby"), modelVisible: false, documentation: "# Internal resource" },
     });
     assert.equal((await registry.docs()).find(({ name }) => name === "webby"), undefined);
-    assert.ok((await registry.docs()).find(({ name }) => name === "worker"));
+    assert.ok((await registry.docs()).find(({ name }) => name === "session"));
 });
 
 test("{§extension-discovery} docs(): absent manifest documentation is optional; present external documentation is the fallback", async () => {

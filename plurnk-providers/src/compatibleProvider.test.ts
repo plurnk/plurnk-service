@@ -67,7 +67,7 @@ test("{§provider-generation-completion} repeated text and reasoning retain the 
                 });
                 const provider = await compatibleProviderFromEnv({ ...defaults, ...env }, "local");
                 const response = await provider.generate({
-                    workerId: "repeated-code", messages: [{ role: "user", content: "compare these candidates" }],
+                    sessionId: "repeated-code", messages: [{ role: "user", content: "compare these candidates" }],
                     observeReasoning: (delta) => { observed.push(delta); },
                     observeRequest: async () => async () => { settled++; },
                 });
@@ -99,7 +99,7 @@ test("{§provider-cache-affinity} an undifferentiated compatible endpoint receiv
 
     const provider = await compatibleProviderFromEnv(env, "local");
     await provider.generate({
-        workerId: "worker-affinity",
+        sessionId: "session-affinity",
         messages: [{ role: "user", content: "hello" }],
     });
 
@@ -126,7 +126,7 @@ test("{§provider-sampling-passthrough} the server-wide DRY-off floor emits no D
         PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH: "32",
     }, "local");
     await provider.generate({
-        workerId: "worker-dry-off",
+        sessionId: "session-dry-off",
         messages: [{ role: "user", content: "repeat exactly" }],
     });
 
@@ -191,7 +191,7 @@ for (const row of TEMPLATE_EFFORTS) {
         }
         const provider = await compatibleProviderFromEnv(configured, "local");
         assert.deepEqual(provider.supportedEfforts, row.admits, "the rail admits off, adaptive and what the operator declared");
-        await provider.generate({ workerId: "worker-effort", messages: [{ role: "user", content: "hello" }] });
+        await provider.generate({ sessionId: "session-effort", messages: [{ role: "user", content: "hello" }] });
         assert.deepEqual(sent?.chat_template_kwargs, row.sends, "a fixed effort rides as the template's own variable");
     });
 }

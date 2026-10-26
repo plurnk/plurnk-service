@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { Db } from "../../src/core/Db.ts";
 import Turn from "../../src/core/Turn.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 
 // {§packet-items} — the stored bag carries no sections; they are rows.
 const MIN_PACKET = JSON.stringify({
@@ -14,8 +14,8 @@ const MIN_PACKET = JSON.stringify({
 
 const seedLoop = async (db: Db): Promise<number> => {
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    return insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId);
+    return insertLoop(db, sessionId, 1);
 };
 
 const setup = async () => {
@@ -97,9 +97,9 @@ test("{§packet-items} turns: sequence resets per loop", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-turns-crossloop");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopA = await insertLoop(db, workerId, 1);
-        const loopB = await insertLoop(db, workerId, 2);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopA = await insertLoop(db, sessionId, 1);
+        const loopB = await insertLoop(db, sessionId, 2);
         await db.test_turns_insert.run({ loop_id: loopA, sequence: 1, status: 200, packet: MIN_PACKET });
         await db.test_turns_insert.run({ loop_id: loopB, sequence: 1, status: 200, packet: MIN_PACKET });
         const count = (await db.test_turns_count_all.get<{ n: number }>())?.n;
@@ -297,12 +297,12 @@ test("{§packet-items} turns: ON DELETE CASCADE via loop", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: CASCADE chain workspace→workers→loops→turns", async () => {
+test("{§packet-items} turns: CASCADE chain workspace→sessions→loops→turns", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-turns-fullchain");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
         await db.test_workspaces_delete.run({ id: workspaceId });
         const remaining = (await db.test_turns_count_all.get<{ n: number }>())?.n;

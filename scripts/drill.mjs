@@ -112,10 +112,10 @@ const run = (dir, script, share = BUDGET) => new Promise((resolve) => {
 const pool = async (jobs) => {
     const results = [];
     let i = 0;
-    const workers = Array.from({ length: Math.min(BUDGET, jobs.length) }, async () => {
+    const sessions = Array.from({ length: Math.min(BUDGET, jobs.length) }, async () => {
         while (i < jobs.length) results.push(await jobs[i++]());
     });
-    await Promise.all(workers);
+    await Promise.all(sessions);
     return results;
 };
 

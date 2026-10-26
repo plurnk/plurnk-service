@@ -1,4 +1,4 @@
-// {§worker-model-selection} — create-or-lookup for resolved model routes and the
+// {§session-model-selection} — create-or-lookup for resolved model routes and the
 // inverse lookup. The owning boundary resolves aliases to a complete route before
 // persistence; no path re-resolves a historical selection through a possibly
 // changed alias declaration.
@@ -42,10 +42,10 @@ export const specForRoute = async (db: Db, routeId: number | null): Promise<Prov
 };
 
 // The provider endpoint is durable construction state, not client model identity.
-// {§worker-effort} — effort is identity-grade: the worker's durable policy
+// {§session-effort} — effort is identity-grade: the session's durable policy
 // rides the route; a model without a reasoning dimension (catalog reasoning: false)
 // carries none.
-// {§worker-effort-source} — the source rides beside the policy so a client never renders a
+// {§session-effort-source} — the source rides beside the policy so a client never renders a
 // seeded default as a chosen level.
 export const projectModelRoute = (
     spec: ProviderSpec,

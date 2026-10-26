@@ -1,10 +1,10 @@
 -- Engine SQL. SPEC {§arch} (architecture), {§scheme} (op dispatch + log).
 
--- PREP: engine_count_active_loops_for_worker
+-- PREP: engine_count_active_loops_for_session
 -- Wake-on-completion uses this to decide whether to open a new loop or
 -- let the existing one pick up the channel transition at the next turn
 -- boundary. Status 102 = "in progress" (any non-terminal state).
-SELECT COUNT(*) AS n FROM loops WHERE worker_id = $worker_id AND status = 102;
+SELECT COUNT(*) AS n FROM loops WHERE session_id = $session_id AND status = 102;
 
 -- PREP: engine_loop_usage
 -- Latest packet-bearing model-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
@@ -77,20 +77,20 @@ FROM (
 )
 ORDER BY attribution;
 
--- PREP: engine_worker_provider_identity
+-- PREP: engine_session_provider_identity
 -- Provider routing uses globally unique opaque identities, while all relational
--- ownership and client coordinates retain the local integer worker id.
--- {§worker-provider-identity}
-SELECT provider_identity AS worker_id FROM workers WHERE id = $worker_id;
+-- ownership and client coordinates retain the local integer session id.
+-- {§session-provider-identity}
+SELECT provider_identity AS session_id FROM sessions WHERE id = $session_id;
 
--- PREP: engine_worker_provider_requests
--- {§methods-worker-accounting}: the settled requests of every loop $worker_id and each of its
--- descendants ran, since the worker began. Aggregation belongs to the shared provider accounting
+-- PREP: engine_session_provider_requests
+-- {§methods-session-accounting}: the settled requests of every loop $session_id and each of its
+-- descendants ran, since the session began. Aggregation belongs to the shared provider accounting
 -- contract, as for one loop.
 WITH RECURSIVE tree(id) AS (
-    SELECT $worker_id
+    SELECT $session_id
     UNION ALL
-    SELECT w.id FROM workers w JOIN tree ON w.parent_worker_id = tree.id
+    SELECT w.id FROM sessions w JOIN tree ON w.parent_session_id = tree.id
 )
 SELECT pr.provider, pr.model, pr.outcome, pr.status,
        pr.usage_input, pr.usage_output, pr.usage_total,
@@ -102,5 +102,5 @@ FROM provider_requests pr
 JOIN inference_calls ic ON ic.id = pr.inference_call_id
 JOIN turns t ON t.id = ic.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id IN (SELECT id FROM tree) AND pr.state = 'settled'
+WHERE l.session_id IN (SELECT id FROM tree) AND pr.state = 'settled'
 ORDER BY l.id, t.sequence, ic.sequence, pr.sequence;

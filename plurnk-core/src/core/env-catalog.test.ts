@@ -46,7 +46,7 @@ test("{§env-functionality} EnvCatalog.project matches the declaration name or i
     const pager = EnvCatalog.project(FILES, { query: "pager" });
     assert.match(pager, /PAGER=cat/u);
     assert.doesNotMatch(pager, /PLURNK_MCP_CONNECT_TIMEOUT/u);
-    // A Worker looks for a variable by what it is for before it knows what it is called.
+    // A Session looks for a variable by what it is for before it knows what it is called.
     const deadline = EnvCatalog.project(FILES, { query: "deadline" });
     assert.match(deadline, /PLURNK_MCP_CONNECT_TIMEOUT/u, "the comment that documents a name is a match");
     assert.doesNotMatch(deadline, /PAGER=cat/u);
@@ -126,7 +126,7 @@ test("{§operator-config-undeclared-key} a family declaration is its own declara
     ]);
     assert.equal(found.at(-1)!.text, "# What a pager does.\nPAGER=cat", "the family's lines stay with the family");
     assert.deepEqual(EnvCatalog.candidates([FAMILIES]).map(({ alias }) => alias), ["PLURNK_FIXTURE_EFFORT", "PLURNK_FIXTURE_BUDGET", "PAGER"],
-        "a family is no name a Worker can set, so it is no candidate");
+        "a family is no name a Session can set, so it is no candidate");
 });
 
 test("{§operator-config-undeclared-key} a key is declared by name, as a declared name's scope, or as a family member", () => {

@@ -101,7 +101,7 @@ test("{§functionality-preparation-visibility} a stalled MCP catalog is visible 
     assert.equal(provider.requests.length, 0, "the client can see startup before the provider is called");
     const during = await inspect();
     assert.equal(actionResult(during).ok, true, "inspection does not join the stalled activation");
-    // {§acp-workspace-state} Preparation is the workspace's, so an action that binds no worker carries it too.
+    // {§acp-workspace-state} Preparation is the workspace's, so an action that binds no session carries it too.
     const wsUpdate = sessionUpdates(during).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
         _meta?: { plurnk?: { workspace?: { preparation: { family: string; alias: string | null }[] } } };
     } | undefined;
@@ -123,18 +123,18 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
     const provider = new PacketCapturingMock({
         contextWindow: 1_000_000,
         responses: [
-            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the runtime document.\n````"),
+            makeMockResponse("\n````READ (workspace:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nSelect and inspect the echo contract linked from the runtime document.\n````"),
             makeMockResponse([
-                PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture/echo.json) <1,-1>", null),
-                PlurnkParser.frame('FIND (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
-                PlurnkParser.frame('READ (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")] <1,-1>', null),
+                PlurnkParser.frame("READ (workspace:///_plurnk/tools/fixture/echo.json) <1,-1>", null),
+                PlurnkParser.frame('FIND (workspace:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
+                PlurnkParser.frame('READ (workspace:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")] <1,-1>', null),
                 PlurnkParser.frame("NOTE", "Invoke the documented observation tool."),
             ].join("\n\n")),
             makeMockResponse("\n````fixture (echo)\nhello from MCP\n````\n\n````NOTE\nInspect the attributable tool failure.\n````"),
             makeMockResponse("\n````KILL (log:///**/READ)````\n````fixture (echo)\n{\"message\":\"hello from MCP\"}\n````\n\n````NOTE\nInspect the corrected tool result.\n````"),
             makeMockResponse("\n````FIND (fixture:///**) <1,-1> invalid-tool-arguments````\n\n````NOTE\nInspect the source's durable terminal result.\n````"),
             makeMockResponse("````SEND [200]\nThe MCP echo returned hello from MCP and its earlier failure remains inspectable at the source.\n````"),
-            makeMockResponse("\n````READ (worker:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
+            makeMockResponse("\n````READ (workspace:///_plurnk/tools/fixture.md) <1,-1>````\n````NOTE\nInvoke the documented host tool.\n````"),
             makeMockResponse("\n````fixture (fail)````\n````NOTE\nInspect the failure.\n````"),
             makeMockResponse("````SEND [200]\nThe MCP server reported its expected tool error; recovery is complete.\n````"),
         ],
@@ -227,33 +227,33 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         assert.equal(terminalMeta(observed)?.stopReason, "end_turn");
         const workspaceRow = (await daemon.listWorkspaces()).find((row) => row.name === workspace);
         assert.ok(workspaceRow !== undefined);
-        const [producer] = await daemon.listWorkers(workspaceRow.id, { origin: "model" });
+        const [producer] = await daemon.listSessions(workspaceRow.id, { origin: "model" });
         assert.ok(producer !== undefined);
         const streamEvents = sessionUpdates(observed)
             .filter((u) => u.sessionUpdate === "terminal_update")
-            .map((u) => (u._meta as { plurnk?: { workerId: number; target: string; result?: { status: number } } } | undefined)?.plurnk)
-            .filter((m): m is { workerId: number; target: string; result?: { status: number } } => m !== undefined);
+            .map((u) => (u._meta as { plurnk?: { sessionId: number; target: string; result?: { status: number } } } | undefined)?.plurnk)
+            .filter((m): m is { sessionId: number; target: string; result?: { status: number } } => m !== undefined);
         assert.ok(streamEvents.some((event) => event.result?.status === 200), "the producer's ACP Run receives its actual MCP conclusion");
         assert.ok(streamEvents.some((event) => event.result === undefined), "MCP output streams through ACP before its conclusion");
-        assert.ok(streamEvents.every((event) => event.workerId === producer.id), "stream provenance identifies the producing worker, not a storage owner");
-        assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerWorkerId")), "the wire carries one causal actor identity");
+        assert.ok(streamEvents.every((event) => event.sessionId === producer.id), "stream provenance identifies the producing session, not a storage owner");
+        assert.ok(streamEvents.every((event) => !Object.hasOwn(event, "producerSessionId")), "the wire carries one causal actor identity");
         assert.ok(streamEvents.every((event) => /^fixture:\/\/\/[a-f0-9]{8}$/u.test(event.target)));
         const firstPacket = packet(provider.requests, 0);
-        assert.ok(firstPacket.includes('```plurnk (mcp) <!-- Manage MCP servers (verb: \\"list\\"|\\"add\\"|\\"replace\\"|\\"enable\\"|\\"disable\\"|\\"remove\\"; alias?: string, definition?: object) Schema: worker:///_plurnk/tools/plurnk/mcp.json -->\\n{\\"verb\\": \\"list\\"}\\n```'),
+        assert.ok(firstPacket.includes('```plurnk (mcp) <!-- Manage MCP servers (verb: \\"list\\"|\\"add\\"|\\"replace\\"|\\"enable\\"|\\"disable\\"|\\"remove\\"; alias?: string, definition?: object) Schema: workspace:///_plurnk/tools/plurnk/mcp.json -->\\n{\\"verb\\": \\"list\\"}\\n```'),
             "the initial survey teaches the manager's lifecycle; with no registry it has no discover");
         assert.match(firstPacket, /Echo tools for transport testing\./);
         assert.doesNotMatch(firstPacket, /Pass the message field unchanged/, "full server instructions are not pushed into turn0");
-        assert.match(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\.md"/);
+        assert.match(firstPacket, /"path":"workspace:\/\/\/_plurnk\/tools\/fixture\.md"/);
         assert.match(firstPacket, /```fixture \(echo\)/);
         assert.doesNotMatch(firstPacket, /```fixture \([^)]*fail/);
-        assert.doesNotMatch(firstPacket, /"path":"worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys runtime documents only");
+        assert.doesNotMatch(firstPacket, /"path":"workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json"/, "without PLURNK_MCP_EXPANDED, turn 0 surveys runtime documents only");
         assert.doesNotMatch(firstPacket, /fixture\.json|inputSchema|readOnlyHint/,
             "the catalog and its full definitions are not injected into turn0");
         const runtimeContract = packet(provider.requests, 1);
         assert.match(runtimeContract, /Pass the message field unchanged\./, "READ of the runtime document retrieves the full authored instructions");
-        assert.match(runtimeContract, /```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
+        assert.match(runtimeContract, /```fixture \(echo\) <!-- Echo one message\. Schema: workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->/);
         assert.doesNotMatch(runtimeContract, /```fixture \(fail\)/);
-        assert.match(runtimeContract, /worker:\/\/\/_plurnk\/tools\/fixture\.json/);
+        assert.match(runtimeContract, /workspace:\/\/\/_plurnk\/tools\/fixture\.json/);
         const echoContract = packet(provider.requests, 2);
         assert.match(echoContract, /"title": "fixture: echo"/);
         assert.match(echoContract, /"additionalProperties": false/, "the linked document preserves constraints omitted from the preview");
@@ -265,13 +265,13 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
             "an ordinary JSONPath READ materializes the selected complete tool record in the log");
         assert.doesNotMatch(echoContract, /pattern-(?:invalid|unsupported)|entry-not-found/);
         const toolsCatalog = async () => {
-            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("READ (worker:///_plurnk/tools/fixture.json) <1,-1>", null));
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame("READ (workspace:///_plurnk/tools/fixture.json) <1,-1>", null));
             const item = parsed.items[0];
             assert.equal(item?.kind, "statement");
             if (item?.kind !== "statement") throw new Error("Expected one READ");
-            // A person's READ, acting for the producing model worker ({§actor-boundary-client-operations}).
+            // A person's READ, acting for the producing model session ({§actor-boundary-client-operations}).
             const [result] = await daemon.dispatchClientAction({
-                workspaceId: workspaceRow.id, actor: "test://primary", contextWorkerId: producer.id, statements: [item.statement],
+                workspaceId: workspaceRow.id, actor: "test://primary", contextSessionId: producer.id, statements: [item.statement],
             });
             assert.equal(result.status, 200);
             return JSON.parse(result.content as string) as { tools: { name: string; inputSchema: object }[] };
@@ -281,7 +281,7 @@ test("{§mcp-configuration} ACP composes configured MCP servers: execution, revi
         const found = actionResult(await post(port, runInput(workspace, "find-tool-definition", {
             action: {
                 kind: "op.parse",
-                text: PlurnkParser.frame('FIND (worker:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
+                text: PlurnkParser.frame('FIND (workspace:///_plurnk/tools/fixture.json) $.tools[?(@.name=="echo")].name <1,-1>', null),
             },
         })));
         assert.equal(found.ok, true, JSON.stringify(found.problem));

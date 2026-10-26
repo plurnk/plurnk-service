@@ -131,7 +131,7 @@
             "plurnk": {
               "id": 1,
               "coordinate": "1/1/1",
-              "worker": 7,
+              "session": 7,
               "origin": "model",
               "op": "NOTE",
               "source": null,
@@ -156,7 +156,7 @@
             "plurnk": {
               "terminal": {
                 "workspaceId": 1,
-                "workerId": 7,
+                "sessionId": 7,
                 "loopId": 1,
                 "loopSeq": 1,
                 "result": { "status": 200 },
@@ -286,7 +286,7 @@
             "plurnk": {
               "id": 42,
               "coordinate": "1/2/3",
-              "worker": 7,
+              "session": 7,
               "origin": "model",
               "op": "sh",
               "source": null,
@@ -305,8 +305,8 @@
             "plurnk": {
               "proposal": {
                 "logEntryId": 42,
-                "workerId": 7,
-                "worker": "main",
+                "sessionId": 7,
+                "session": "main",
                 "loopId": 3,
                 "turnId": 5,
                 "coordinate": "1/2/3",
@@ -337,8 +337,8 @@
             "plurnk": {
               "proposal": {
                 "logEntryId": 43,
-                "workerId": 9,
-                "worker": "background",
+                "sessionId": 9,
+                "session": "background",
                 "loopId": 4,
                 "turnId": 6,
                 "coordinate": "1/1/2",
@@ -419,7 +419,7 @@
             "plurnk": {
               "terminal": {
                 "workspaceId": 1,
-                "workerId": 7,
+                "sessionId": 7,
                 "loopId": 1,
                 "loopSeq": 1,
                 "result": { "status": 200 },
@@ -460,11 +460,11 @@
       "events": [
         {
           "sessionUpdate": "agent_message_chunk",
-          "messageId": "outside-worker-1-1",
+          "messageId": "outside-session-1-1",
           "content": { "type": "text", "text": "Thinking out loud." },
           "_meta": {
             "plurnk": {
-              "coordinate": "worker-1-1",
+              "coordinate": "session-1-1",
               "tokens": 9
             }
           }
@@ -477,7 +477,7 @@
             "plurnk": {
               "terminal": {
                 "workspaceId": 1,
-                "workerId": 7,
+                "sessionId": 7,
                 "loopId": 1,
                 "loopSeq": 1,
                 "result": { "status": 200 },
@@ -549,7 +549,7 @@
             "plurnk": {
               "terminal": {
                 "workspaceId": 1,
-                "workerId": 7,
+                "sessionId": 7,
                 "loopId": 1,
                 "loopSeq": 1,
                 "result": { "status": 200 },
@@ -622,7 +622,7 @@
             "plurnk": {
               "terminal": {
                 "workspaceId": 1,
-                "workerId": 7,
+                "sessionId": 7,
                 "loopId": 1,
                 "loopSeq": 1,
                 "result": {
@@ -680,7 +680,7 @@
             "plurnk": {
               "id": 1,
               "coordinate": "1/1/1",
-              "worker": 7,
+              "session": 7,
               "origin": "model",
               "op": "NOTE",
               "source": null,

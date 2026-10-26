@@ -40,17 +40,17 @@ const setup = async () => {
     return { db, ...env, engine };
 };
 
-const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: KillStatement) =>
+const dispatch = (engine: Engine, env: { workspaceId: number; sessionId: number; loopId: number; turnId: number }, statement: KillStatement) =>
     engine.dispatch({ statement, ...env, sequence: 1, origin: "client" });
 test("{§stream-control} KILL on nonexistent entry returns 404", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(url("worker", "nope")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(url("workspace", "nope")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 test("{§pinned-wording-core} End-to-end: synthetic streaming scheme — KILL tears down subscription, transitions state, closes record", async () => {
-    const { db, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         const teardownCalls: string[] = [];
         const handle = "fake-stream-1";
@@ -97,7 +97,7 @@ test("{§pinned-wording-core} End-to-end: synthetic streaming scheme — KILL te
         const engine = new Engine({ db, schemes });
         const opened = await engine.dispatch({
             statement: readStmt(url("fakestream", "/feed/x")),
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, sessionId, loopId, turnId,
             sequence: 1, origin: "client",
         });
         assert.equal(opened.status, 102, "scheme opened the subscription through public capabilities");
@@ -112,7 +112,7 @@ test("{§pinned-wording-core} End-to-end: synthetic streaming scheme — KILL te
 
         const result = await engine.dispatch({
             statement: killStmt(url("fakestream", "/feed/x")),
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, sessionId, loopId, turnId,
             sequence: 2, origin: "client",
         });
 

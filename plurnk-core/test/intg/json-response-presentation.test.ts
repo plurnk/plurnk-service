@@ -32,7 +32,7 @@ test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coord
         if (item?.kind !== "statement") throw new Error("operation did not parse");
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "client", statement: item.statement });
         const row = await db.log_read_by_coordinate.get<{ rx: string }>({
-            worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence,
+            session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence,
         });
         assert.ok(row);
         return JSON.parse(row.rx);
@@ -48,13 +48,13 @@ test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coord
         const locations = JSON.parse(found.content);
         assert.ok(locations.length > 0);
         assert.match(locations[0].region, /^<21,/u);
-        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <20,22> (worker:///selection.json)\`\`\`\``)).status, 201);
-        const copied = await dispatch("````READ (worker:///selection.json) <1,-1>````");
+        assert.equal((await dispatch(`\`\`\`\`COPY (${target}) <20,22> (workspace:///selection.json)\`\`\`\``)).status, 201);
+        const copied = await dispatch("````READ (workspace:///selection.json) <1,-1>````");
         assert.equal(copied.content, scoped.content);
-        assert.equal((await dispatch(`\`\`\`\`EDIT (worker:///literal.json)
+        assert.equal((await dispatch(`\`\`\`\`EDIT (workspace:///literal.json)
 ${source}
 \`\`\`\``)).status, 201);
-        assert.equal((await dispatch("````READ (worker:///literal.json) <1,-1>````")).content, source, "literal JSON resource coordinates and bytes are untouched");
+        assert.equal((await dispatch("````READ (workspace:///literal.json) <1,-1>````")).content, source, "literal JSON resource coordinates and bytes are untouched");
     } finally {
         await mimetypes.dispose();
         await db.close();

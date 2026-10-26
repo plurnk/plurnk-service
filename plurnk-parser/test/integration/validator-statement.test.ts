@@ -17,7 +17,7 @@ const validateRoundTrip = (input: string) => {
 // -------------------------------------------------------------------------
 
 test("{§op-shapes} PlurnkStatement: FIND with tag CSV, path, line marker, matcher", () => {
-    const r = validateRoundTrip("````FIND (worker:///docs) <1-20> @*.xml````");
+    const r = validateRoundTrip("````FIND (workspace:///docs) <1-20> @*.xml````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -27,12 +27,12 @@ test("{§op-shapes} PlurnkStatement: READ with bare local path and empty body", 
 });
 
 test("{§op-shapes} PlurnkStatement: KILL with regex matcher", () => {
-    const r = validateRoundTrip("````KILL (worker:///**) /error|fail/i````");
+    const r = validateRoundTrip("````KILL (workspace:///**) /error|fail/i````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("{§send-body}: a completion reply preserves its literal answer and optional aside", () => {
-    for (const body of [null, "The answer is **42**.", "SEND (worker://alice)\n```sh\necho 42\n```", "{\"answer\":42}"]) {
+    for (const body of [null, "The answer is **42**.", "SEND (session://alice)\n```sh\necho 42\n```", "{\"answer\":42}"]) {
         const source = PlurnkParser.frame("SEND [200] <!-- final answer -->", body);
         const result = PlurnkParser.parse(source);
         assert.equal(result.items.length, 1, "a final body is not a matcher or parser advisory");
@@ -65,22 +65,22 @@ test("{§kill-scope} PlurnkStatement: KILL admits log-body line markers", () => 
 });
 
 test("{§op-shapes} PlurnkStatement: EDIT with raw markdown body", () => {
-    const r = validateRoundTrip("````EDIT (worker:///meaning)\nThe meaning of life is 42\n````");
+    const r = validateRoundTrip("````EDIT (workspace:///meaning)\nThe meaning of life is 42\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("{§text-line-anchor-syntax} PlurnkStatement: EDIT with an anchored line scope", () => {
-    const r = validateRoundTrip("````EDIT (worker:///meaning) <@aZ09b>\nThe meaning of life is 42\n````");
+    const r = validateRoundTrip("````EDIT (workspace:///meaning) <@aZ09b>\nThe meaning of life is 42\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("{§transfer-resource-selections} PlurnkStatement: COPY with destination resource selection", () => {
-    const r = validateRoundTrip("````COPY (worker:///draft) (worker:///archive/draft)````");
+    const r = validateRoundTrip("````COPY (workspace:///draft) (workspace:///archive/draft)````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("{§transfer-resource-selections} PlurnkStatement: MOVE with destination resource selection", () => {
-    const r = validateRoundTrip("````MOVE (worker:///draft) (worker:///final)````");
+    const r = validateRoundTrip("````MOVE (workspace:///draft) (workspace:///final)````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -107,13 +107,13 @@ test("{§bare-statement} PlurnkStatement: BARE carries inline or resource prompt
     assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt" }).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", target: { kind: "local", raw: "prompt.md" } }).valid, true);
-    const resource = validateRoundTrip("````BARE (worker://alice/prompt.md)````");
+    const resource = validateRoundTrip("````BARE (session://alice/prompt.md)````");
     assert.equal(resource!.valid, true, JSON.stringify(resource!.errors));
     assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "prompt", lineMarker: { marks: [1] } }).valid, false);
 });
 
 test("{§scope-marker-forms} PlurnkStatement parser preserves a decimal marker for runtime validation", () => {
-    const r = validateRoundTrip("````EDIT (worker:///checklist.md) <2.5>\n- [ ] new step\n````");
+    const r = validateRoundTrip("````EDIT (workspace:///checklist.md) <2.5>\n- [ ] new step\n````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
@@ -206,7 +206,7 @@ test("{§turn-disposition} PlurnkStatement: WAIT accepts an optional resource ta
     const task = { ...baseFields("WAIT"), body: null };
     assert.equal(Validator.validatePlurnkStatement(task).valid, true);
     assert.equal(Validator.validatePlurnkStatement({ ...task, seconds: 0 }).valid, true);
-    for (const address of ["notes.md", "worker://child", "schedule:///rules/reminder"]) {
+    for (const address of ["notes.md", "session://child", "schedule:///rules/reminder"]) {
         const { valid, errors } = Validator.validatePlurnkStatement({ ...task, target: parsePath(address) });
         assert.equal(valid, true, JSON.stringify(errors));
     }
@@ -240,7 +240,7 @@ test("{§transfer-resource-selections} PlurnkStatement: COPY operands independen
     const stmt = {
         ...transferFields("COPY"),
         source: {
-            target: parsePath("worker://draft/source")!,
+            target: parsePath("session://draft/source")!,
             metadata: ["source metadata"],
             lineMarker: { marks: [1, 4] },
             matcher: { dialect: "glob", raw: "needle" },
@@ -248,8 +248,8 @@ test("{§transfer-resource-selections} PlurnkStatement: COPY operands independen
         destination: {
             target: {
                 kind: "url",
-                raw: "worker://archive/draft",
-                scheme: "worker",
+                raw: "session://archive/draft",
+                scheme: "session",
                 username: null,
                 password: null,
                 hostname: "archive",
@@ -309,11 +309,11 @@ test("{§contract-representations} PlurnkStatement: rejects extra property", () 
 // -------------------------------------------------------------------------
 
 test("{§slot-order} PlurnkStatement: round-trip survives slot-order permutation (path-first)", () => {
-    const r = validateRoundTrip("````FIND (worker:///docs) <1> @*.xml````");
+    const r = validateRoundTrip("````FIND (workspace:///docs) <1> @*.xml````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });
 
 test("{§slot-order} PlurnkStatement: round-trip survives slot-order permutation (L-first)", () => {
-    const r = validateRoundTrip("````FIND <1-5> (worker:///docs) @*.xml````");
+    const r = validateRoundTrip("````FIND <1-5> (workspace:///docs) @*.xml````");
     assert.equal(r!.valid, true, JSON.stringify(r!.errors));
 });

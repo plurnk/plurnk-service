@@ -13,7 +13,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type { SchemeManifest } from "../../src/core/types.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import ExecScratch from "../../src/schemes/ExecScratch.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";
 
 interface Run {
@@ -147,8 +147,8 @@ const wire = async (resourcesPath?: string) => {
     const engine = new Engine({ db, schemes });
     engine.setExecutors(executors);
     const workspaceId = await insertWorkspace(db, `exec-invocation-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "invocation contract");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "invocation contract");
     const turnId = await insertTurn(db, loopId, 1, 102);
     let sequence = 0;
     return {
@@ -157,12 +157,12 @@ const wire = async (resourcesPath?: string) => {
         runs,
         effects,
         workspaceId,
-        workerId,
+        sessionId,
         async dispatch(execStatement: ExecStatement) {
             const result = await engine.dispatch({
                 statement: execStatement,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 sequence: ++sequence,
@@ -214,8 +214,8 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
         assert.equal(disabled.status, 404);
         assert.match(disabled.problem?.type ?? "", /target-not-registered$/);
         assert.equal(disabled.problem?.availableTargetCount, 1);
-        assert.equal(disabled.problem?.recovery, "Select a target from worker:///_plurnk/plurnk/registrytool.md.");
-        assert.ok(reference.some(({ pathname }) => disabled.problem?.recovery === `Select a target from worker://${pathname}.`),
+        assert.equal(disabled.problem?.recovery, "Select a target from workspace:///_plurnk/plurnk/registrytool.md.");
+        assert.ok(reference.some(({ pathname }) => disabled.problem?.recovery === `Select a target from workspace://${pathname}.`),
             "recovery names a published runtime document, not an assumed schema directory");
         assert.equal("availableTargets" in (disabled.problem ?? {}), false);
 
@@ -245,7 +245,7 @@ test("{§tools-resource-discovery} target recovery follows a runtime's declared 
             assert.equal(result.status, 404);
             const documents = await ctx.engine.referenceEntries(ctx.workspaceId);
             const path = `/_plurnk${resourcesPath}/registrytool.md`;
-            assert.equal(result.problem?.recovery, `Select a target from worker://${path}.`);
+            assert.equal(result.problem?.recovery, `Select a target from workspace://${path}.`);
             const document = documents.find(({ pathname }) => pathname === path);
             assert.ok(document, "the recovery document is actually published");
             assert.match(document.content, /enabled_tool/u);
@@ -316,7 +316,7 @@ test("{§exec-target-routing} path targets remain targets and refuse non-file ad
         assert.equal(local.status, 200);
         assert.deepEqual(ctx.runs.get("pathtool"), [{ body: "inspect", cwd: root, target: "database" }]);
 
-        const addressed = await ctx.dispatch(statement("pathtool", "worker:///source", "inspect"));
+        const addressed = await ctx.dispatch(statement("pathtool", "workspace:///source", "inspect"));
         assert.equal(addressed.status, 400);
         assert.match(addressed.problem?.type ?? "", /target-kind-invalid$/);
         assert.equal(ctx.runs.get("pathtool")?.length, 1);
@@ -331,19 +331,19 @@ test("{§exec-source-temporary} a resource target is always a target, including 
     try {
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             pathname: "/source",
             channel: "body",
             content: "resource bytes",
             state: "static",
         });
-        const result = await ctx.dispatch(statement("resourcetool", "worker:///source#body", ""));
+        const result = await ctx.dispatch(statement("resourcetool", "workspace:///source#body", ""));
         assert.equal(result.status, 200);
         const [run] = ctx.runs.get("resourcetool") ?? [];
         assert.equal(run?.body, "");
         assert.ok(run?.target?.startsWith(ExecScratch.directory()), "the source is realized under the scratch directory ({§exec-scratch-directory})");
         assert.equal(run?.materialized, "resource bytes");
-        assert.deepEqual(ctx.effects.get("resourcetool"), ["worker:///source#body"]);
+        assert.deepEqual(ctx.effects.get("resourcetool"), ["workspace:///source#body"]);
     } finally {
         await ctx.close();
     }

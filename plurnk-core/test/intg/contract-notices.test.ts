@@ -4,14 +4,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { Mock, ProviderError } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 import { testProviderCapacity } from "./_provider.ts";
 import { completeStmt, editStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
@@ -78,10 +78,10 @@ const noticeProvider = (extraDrains: number) => {
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "what is the capital of france?");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "what is the capital of france?");
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
-    return { db, engine, workspaceId, workerId, loopId };
+    return { db, engine, workspaceId, sessionId, loopId };
 };
 
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number) => {
@@ -90,13 +90,13 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 };
 
 test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccounted) carries a line:col pointer, no embedded snippet", async () => {
-    // A NOTICE points at exact source retrievable through ops://<worker>/, not an automatic log row.
+    // A NOTICE points at exact source retrievable through ops://<session>/, not an automatic log row.
     // ({§turn-ops-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = noticeProvider(1);
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         const p1 = await getPacket(db, t1.turnId) as { assistant?: { content?: string } };
         assert.equal(p1.assistant?.content, NOTICE_CONTENT, "a transport notice does not discard completed model bytes");
@@ -116,7 +116,7 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccoun
         assert.doesNotMatch(wire, /\{"/, "no JSON dump — the section renders terse lines, not events");
         assert.match(wire, /^> 5000 output tokens billed; 1 visible across content and reasoning @ 2:3 \[output_unaccounted\]$/m);
 
-        const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const programs = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         const source = programs.find(({ turn_id, kind }) => turn_id === t1.turnId && kind === "ops");
         assert.ok(source?.content, "the notice's source is retained for a scoped ops READ");
         const echo = (await db.test_log_entries_by_loop.all<{ op: string | null; turn_id: number }>({ loop_id: loopId }))
@@ -127,12 +127,12 @@ test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccoun
 
 test("{§notice-drain-on-read} the notice buffer drains — a notice appears on exactly one packet, then is gone", async () => {
     // Errors persist (log items); engine NOTICES are ephemeral — drain-on-read, one packet only.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = noticeProvider(2);
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         const kindsOf = async (turnId: number) =>
             packetSection(await getPacket(db, turnId), "notices")
@@ -150,15 +150,15 @@ for (const fail of [false, true]) {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "notice-cleanup");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Record the observation, then finish.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Record the observation, then finish.");
         const pushed = t.mock.method(NoticeChannel.prototype, "push");
         const cause = new Error("notice delivery fixture failed");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), noticeNotify: (_workspaceId, { notice }) => {
             if (fail && notice.kind === "parse_advisory") throw cause;
         } });
         const provider = new Mock({ contextWindow: 100_000, responses: [contentResponse("````NOTE remember\n````\n\n````SEND [200]\ndone\n````")] });
-        const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         if (fail) await assert.rejects(running, (error) => error === cause);
         else assert.equal((await running).result.status, 200);
         const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "parse_advisory");
@@ -168,7 +168,7 @@ for (const fail of [false, true]) {
 }
 
 test("a tolerated three-coordinate scope reports its exact canonical region on the next packet ({§text-scope-runtime})", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     await seedEntryWithChannel(db, {
         workspaceId,
         pathname: "/x",
@@ -183,7 +183,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
                 reasoning: null,
             },
         });
-        const scopedRead = readStmt(urlPath("worker", "/x"));
+        const scopedRead = readStmt(urlPath("workspace", "/x"));
         scopedRead.lineMarker = { marks: [2, 1, 3] };
         const provider = new Mock({
             contextWindow: 100000,
@@ -192,8 +192,8 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
                 stmtTurn([completeStmt("done")]),
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
 
         const read = logEntries(packet).find(({ logPath, body }) =>
@@ -207,17 +207,17 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
 });
 
 test("{§read-zero-start}: a zero-start READ delivers its body and one warning without a failed operation", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         await seedEntryWithChannel(db, { workspaceId, pathname: "/zero-start", content: "alpha\nbeta\ngamma", mimetype: "text/plain" });
-        const scopedRead = readStmt(urlPath("worker", "/zero-start"));
+        const scopedRead = readStmt(urlPath("workspace", "/zero-start"));
         scopedRead.lineMarker = { marks: [0, 120] };
         const provider = new Mock({ contextWindow: 100000, responses: [
             { assistant: { content: "", ops: [scopedRead], reasoning: null } },
             { assistant: { content: "", ops: [completeStmt("done")], reasoning: null } },
         ] });
-        const first = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const first = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
         const read = logEntries(packet).find(({ logPath, body }) => logPath.endsWith("/READ") && /1<@[0-9A-Za-z]{5}>alpha/.test(String(body)));
         assert.match(String(read?.body), /1<@[0-9A-Za-z]{5}>alpha\n2<@[0-9A-Za-z]{5}>beta\n3<@[0-9A-Za-z]{5}>gamma/);
@@ -230,8 +230,8 @@ test("{§read-zero-start}: a zero-start READ delivers its body and one warning w
 });
 
 test("an EDIT batch reports each tolerated scope once in authored order ({§text-scope-runtime})", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
-    const target = urlPath("worker", "/x");
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
+    const target = urlPath("workspace", "/x");
     await seedEntryWithChannel(db, {
         workspaceId,
         pathname: "/x",
@@ -257,8 +257,8 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
                 stmtTurn([completeStmt("done")]),
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         assert.equal(
             packetSection(await getPacket(db, second.turnId), "notices"),
@@ -268,7 +268,7 @@ test("an EDIT batch reports each tolerated scope once in authored order ({§text
 });
 
 test("{§packet} a thrown ProviderError is persisted as one exact operation failure — no turn is fabricated", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // A ProviderError means no completed exchange exists (auth, network, rate
         // limit). The engine persists that failure and does not invent model bytes.
@@ -282,7 +282,7 @@ test("{§packet} a thrown ProviderError is persisted as one exact operation fail
         };
 
         await assert.rejects(
-            () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
+            () => engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] }),
             (err: unknown) => {
                 assert.ok(err instanceof OperationFailureError);
                 assert.equal(err.result.status, 401);
@@ -306,7 +306,7 @@ test("{§packet} a thrown ProviderError is persisted as one exact operation fail
         assert.match(durable.problem.instance, /^log:\/\/\//);
 
         // A later packet projects only a terse pointer to the durable Problem.
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         assert.match(packetSection(p2, "errors"), /"status":401,"path":"log:\/\/\/[^"]+\/error"/);
         assert.equal(packetSection(p2, "notices").includes("unauthorized"), false, "terminal failure never masquerades as a notice");
@@ -317,9 +317,9 @@ test("{§provider-recovery} provider error: a terminal kind is durable product t
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
@@ -330,7 +330,7 @@ test("{§provider-recovery} provider error: a terminal kind is durable product t
 
         // {§provider-recovery} — a transient infra failure never ends the loop: the turn retries with
         // backoff (the Mock tier's budget is 1.5 s) and, still failing, parks as a 202 wait.
-        const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const turn = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(turn.status, 202, "the turn parks instead of failing the loop");
         assert.equal(turn.providerParked, true);
         assert.equal(turn.providerFailure?.status, 503);
@@ -357,15 +357,15 @@ test("{§turn-accounting-notice} engine brackets generate() with turn_awaiting_m
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(),
             noticeNotify: (_sid, payload) => { broadcasts.push({ payload: payload }); },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [drainTurn] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         // The two beats bracket the provider call, in order — so a client flips "reasoning… → working…"
         // across the one long opaque window (submit → first committed op) instead of a static screen
@@ -401,8 +401,8 @@ test("{§notice-content-offset-pointer} a parser warning remains advisory while 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "finish despite a recoverable grammar advisory");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "finish despite a recoverable grammar advisory");
         const broadcasts: Array<{ payload: { loopId: number; notice: Record<string, unknown> } }> = [];
         const engine = new Engine({
             db,
@@ -419,7 +419,7 @@ test("{§notice-content-offset-pointer} a parser warning remains advisory while 
             ],
         });
 
-        const turn = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const turn = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         assert.equal(turn.status, 102, "the invalid mutation prevents premature terminal completion");
         assert.equal(turn.emissionAttempts, 1, "the advisory does not reject and reroll the trustworthy frame");
@@ -436,12 +436,12 @@ test("{§notice-content-offset-pointer} a parser warning remains advisory while 
             { type: "content-offset", line: 2, column: 24 },
             "the Notice retains the parser's typed source position",
         );
-        const [failedEdit] = await db.test_log_entries_by_worker_op_full.all<{
+        const [failedEdit] = await db.test_log_entries_by_session_op_full.all<{
             status_rx: number;
-        }>({ worker_id: workerId, op: "EDIT" });
+        }>({ session_id: sessionId, op: "EDIT" });
         assert.equal(failedEdit?.status_rx, 400, "the operation's own row preserves its durable failure");
         assert.deepEqual(
-            await db.test_error_rows_for_worker.all({ worker_id: workerId }),
+            await db.test_error_rows_for_session.all({ session_id: sessionId }),
             [],
             "the advisory and operation failure mint no substitute error row",
         );
@@ -452,8 +452,8 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "trace the broken xpath");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "trace the broken xpath");
 
         // Capture the live fan-out: every Notice the engine pushes
         // to the loop's buffer also fires this callback the moment it lands.
@@ -466,7 +466,7 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
 
         const provider = noticeProvider(1);                   // turn 1: output_unaccounted NOTICE pushed + broadcast live
         // NOTE: errors are log items (no notice/event); the broadcast surface is for engine NOTICES.
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         // Client side: the notice broadcast live, scoped to the loop's workspace,
         // BEFORE turn 2 ever builds a packet.
@@ -480,7 +480,7 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
         assert.deepEqual(liveNotice.position, { type: "content-offset", line: 2, column: 3 });
 
         // Model side: the notice drains once as a bounded projection.
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         assert.equal(
             packetSection(p2, "notices"),
@@ -490,15 +490,15 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
 });
 
 test("{§fence-boundary}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        const emission = "`````EDIT (worker:///a.md) <!-- first note -->\nalpha\n````EDIT (worker:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (worker:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
+        const emission = "`````EDIT (workspace:///a.md) <!-- first note -->\nalpha\n````EDIT (workspace:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (workspace:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
         const provider = new Mock({ contextWindow: 100000, responses: [contentResponse(emission), contentResponse("````SEND [200]\ndone\n````")] });
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(t1.emissionAttempts, 1);
         const edits = t1.outcomes.filter(({ op }) => op === "EDIT");
         assert.equal(edits.length, 1, "the nested programs are one EDIT's literal body");
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const p2 = await getPacket(db, t2.turnId);
         const notice = packetSection(p2, "notices");
         assert.doesNotMatch(notice, /parse_advisory|parse_error/, "literal examples are not probable mistakes");

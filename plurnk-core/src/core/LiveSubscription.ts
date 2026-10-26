@@ -1,18 +1,18 @@
 import type { ChannelProducerResult, SubscriptionHandle } from "@plurnk/plurnk-schemes";
 import type { Db } from "./Db.ts";
-import ChannelWrite, { type StreamEventNotify, type WakeWorkerNotify, type WakeWorkerPayload } from "./ChannelWrite.ts";
+import ChannelWrite, { type StreamEventNotify, type WakeSessionNotify, type WakeSessionPayload } from "./ChannelWrite.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 
 interface Options {
     readonly db: Db;
     readonly registry: LiveSubscriptions;
-    readonly identity: Omit<WakeWorkerPayload, "result" | "summary">;
+    readonly identity: Omit<WakeSessionPayload, "result" | "summary">;
     readonly handle: SubscriptionHandle;
     // The loop whose teardown reaps the subscription; null when it outlives its loop.
     readonly reaperLoopId: number | null;
     readonly release: () => void;
     readonly notify?: StreamEventNotify;
-    readonly wake?: WakeWorkerNotify;
+    readonly wake?: WakeSessionNotify;
 }
 
 interface Terminal {
@@ -34,13 +34,13 @@ export default class LiveSubscription {
             cancel: () => this.#terminal === null
                 ? options.handle.cancel()
                 : this.close(this.#terminal.result, this.#terminal.summary, this.#terminal.channelResults),
-        }, options.identity.workerId, options.reaperLoopId);
+        }, options.identity.sessionId, options.reaperLoopId);
     }
 
     close(result: ChannelProducerResult, summary = "", channelResults?: Readonly<Record<string, ChannelProducerResult>>): Promise<void> {
         if (this.#closed) return Promise.resolve();
         if (this.#closing !== null) return this.#closing;
-        // {§stream-asked-stop} — a stream its worker's KILL stopped concludes as asked, never as a cancellation.
+        // {§stream-asked-stop} — a stream its session's KILL stopped concludes as asked, never as a cancellation.
         const asked = this.#options.registry.wasAsked(this.#options.identity.subscriptionId);
         const concluded = (produced: ChannelProducerResult): ChannelProducerResult => {
             if (!asked || produced.status !== 499) return produced;

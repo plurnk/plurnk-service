@@ -6,7 +6,7 @@ import {
     type ApplicationOwnerIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { Db } from "./Db.ts";
-import WorkerOwners from "./WorkerOwners.ts";
+import SessionOwners from "./SessionOwners.ts";
 import Results, { OperationFailureError } from "./results.ts";
 
 export interface ClientInteractionPendingEvent extends ClientInteractionProjection {
@@ -16,7 +16,7 @@ export interface ClientInteractionPendingEvent extends ClientInteractionProjecti
 interface InteractionRow {
     readonly interactionId: number;
     readonly workspaceId: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly recipient: string;
@@ -54,7 +54,7 @@ const unsupportedInteraction = (loopId: number, toolName: string): OperationFail
         "interaction:request",
         "interaction-unsupported",
         501,
-        `No recipient implements '${toolName}' for this worker.`,
+        `No recipient implements '${toolName}' for this session.`,
         {},
         {
             loopId,
@@ -77,24 +77,24 @@ export default class ClientInteractions {
         this.#listeners.push(listener);
     }
 
-    // {§client-interaction-routing} The worker's owner, while it receives the tool.
-    async recipient(workerId: number, toolName: string): Promise<string | null> {
-        const owner = await WorkerOwners.read(this.#db, workerId);
-        return WorkerOwners.receives(owner, toolName) ? owner.address : null;
+    // {§client-interaction-routing} The session's owner, while it receives the tool.
+    async recipient(sessionId: number, toolName: string): Promise<string | null> {
+        const owner = await SessionOwners.read(this.#db, sessionId);
+        return SessionOwners.receives(owner, toolName) ? owner.address : null;
     }
 
     async request(
         request: ClientInteractionRequest,
-        ids: { workspaceId: number; workerId: number; loopId: number; turnId: number },
+        ids: { workspaceId: number; sessionId: number; loopId: number; turnId: number },
         signal?: AbortSignal,
     ): Promise<ClientInteractionResolution> {
         const exact = structuredClone(Validator.assertClientInteractionRequest(request));
         signal?.throwIfAborted();
-        const recipient = await this.recipient(ids.workerId, exact.toolName);
+        const recipient = await this.recipient(ids.sessionId, exact.toolName);
         if (recipient === null) throw unsupportedInteraction(ids.loopId, exact.toolName);
         const inserted = await this.#db.client_interaction_insert.get<{ id: number }>({
             workspace_id: ids.workspaceId,
-            worker_id: ids.workerId,
+            session_id: ids.sessionId,
             loop_id: ids.loopId,
             turn_id: ids.turnId,
             recipient,
@@ -102,7 +102,7 @@ export default class ClientInteractions {
         });
         if (inserted === undefined) {
             throw new Error(
-                `Client interaction coordinates do not identify one operation: worker ${ids.workerId}, loop ${ids.loopId}, turn ${ids.turnId}.`,
+                `Client interaction coordinates do not identify one operation: session ${ids.sessionId}, loop ${ids.loopId}, turn ${ids.turnId}.`,
             );
         }
 
@@ -152,7 +152,7 @@ export default class ClientInteractions {
         const event: ClientInteractionPendingEvent = {
             ...Validator.assertClientInteractionProjection({
                 interactionId,
-                workerId: ids.workerId,
+                sessionId: ids.sessionId,
                 loopId: ids.loopId,
                 turnId: ids.turnId,
                 recipient,
@@ -220,7 +220,7 @@ export default class ClientInteractions {
         }
         return Validator.assertClientInteractionProjection({
             interactionId: row.interactionId,
-            workerId: row.workerId,
+            sessionId: row.sessionId,
             loopId: row.loopId,
             turnId: row.turnId,
             recipient: row.recipient,

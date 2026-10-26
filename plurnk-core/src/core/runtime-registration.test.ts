@@ -82,9 +82,9 @@ test("{§executor-policy} module runtimes share package discovery's executor swi
         { env: { PLURNK_EXECS_ONLY: "" }, expected: [] },
     ];
     try {
-        for (const workerId of [undefined, 1]) {
+        for (const sessionId of [undefined, 1]) {
             for (const { env, expected } of cases) {
-                await t.test(`${workerId === undefined ? "daemon" : "worker"}: ${JSON.stringify(env)}`, async () => {
+                await t.test(`${sessionId === undefined ? "daemon" : "session"}: ${JSON.stringify(env)}`, async () => {
                     for (const key of keys) delete process.env[key];
                     Object.assign(process.env, env);
                     const schemes = new SchemeRegistry();
@@ -92,11 +92,11 @@ test("{§executor-policy} module runtimes share package discovery's executor swi
                     const engine = new Engine({ db: {} as Db, schemes });
                     engine.setExecutors(executors);
                     const registrations = [registration("alpha"), registration("beta")];
-                    if (workerId === undefined) engine.registerRuntimes(registrations);
-                    else (await engine.prepareWorkspaceRuntimes(workerId, "@acme/module", registrations))();
+                    if (sessionId === undefined) engine.registerRuntimes(registrations);
+                    else (await engine.prepareWorkspaceRuntimes(sessionId, "@acme/module", registrations))();
                     for (const tag of ["alpha", "beta"]) {
-                        assert.equal(executors.entry(tag, workerId) !== undefined, expected.includes(tag), `${tag} executor`);
-                        assert.equal(schemes.has(tag, workerId), expected.includes(tag), `${tag} scheme`);
+                        assert.equal(executors.entry(tag, sessionId) !== undefined, expected.includes(tag), `${tag} executor`);
+                        assert.equal(schemes.has(tag, sessionId), expected.includes(tag), `${tag} scheme`);
                     }
                 });
             }

@@ -8,12 +8,12 @@ import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import { Digest, DigestRender } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 const TMP_DIR = testArtifactPath("core");
 
 interface EditFixture {
-    workerId: number; loopId: number; turnId: number; sequence: number;
+    sessionId: number; loopId: number; turnId: number; sequence: number;
     pathname: string; marker: string | null; pattern?: string | null; status: number; origin?: "model" | "_plurnk";
 }
 
@@ -23,7 +23,7 @@ const insertEdit = async (db: Db, fixture: EditFixture): Promise<number> => {
     const matcher = fixture.pattern === undefined || fixture.pattern === null ? null : { dialect: "regex", raw: fixture.pattern, pattern: fixture.pattern.slice(1, -1), flags: "" };
     const statement = { op: "EDIT", path: fixture.pathname, lineMarker: fixture.marker === null ? null : JSON.parse(fixture.marker), matcher, body: "x" };
     const row = await db.engine_insert_log_entry.get<{ id: number }>({
-        worker_id: fixture.workerId, loop_id: fixture.loopId, turn_id: fixture.turnId, sequence: fixture.sequence,
+        session_id: fixture.sessionId, loop_id: fixture.loopId, turn_id: fixture.turnId, sequence: fixture.sequence,
         origin: fixture.origin ?? "model", source: null, model_call_id: null,
         op: "EDIT", signal: null,
         scheme: "file", username: null, password: null, hostname: null, port: null,
@@ -57,20 +57,20 @@ test("{§digest-edit-census}: the form is read from the authored marker and patt
     assert.equal(form(null), "whole");
 });
 
-test("{§digest-edit-census}: a worker's EDITs are counted by form, refusal and revisit, on the summary and in digest.json", async () => {
+test("{§digest-edit-census}: a session's EDITs are counted by form, refusal and revisit, on the summary and in digest.json", async () => {
     const dbPath = join(TMP_DIR, `edit-census-${crypto.randomUUID()}.db`);
     const db = await openMigrated(dbPath);
     const ids: Record<string, number> = {};
     try {
         const workspaceId = await insertWorkspace(db, "edit-census");
-        const workerId = await insertWorker(db, workspaceId, null, "editor");
-        await insertWorker(db, workspaceId, null, "bystander");
-        const loopId = await insertLoop(db, workerId, 1, "edit things");
+        const sessionId = await insertSession(db, workspaceId, null, "editor");
+        await insertSession(db, workspaceId, null, "bystander");
+        const loopId = await insertLoop(db, sessionId, 1, "edit things");
         const turns = await Promise.all([1, 2, 3, 4].map((sequence) => insertTurn(db, loopId, sequence, 200)));
-        const base = { workerId, loopId };
+        const base = { sessionId, loopId };
         ids.hash = await insertEdit(db, { ...base, turnId: turns[0], sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde"]}', status: 200 });
         ids.whole = await insertEdit(db, { ...base, turnId: turns[0], sequence: 2, pathname: "src/b.py", marker: null, status: 201 });
-        ids.harness = await insertEdit(db, { ...base, turnId: turns[0], sequence: 3, pathname: "worker:///_plurnk/x.md", marker: null, status: 201, origin: "_plurnk" });
+        ids.harness = await insertEdit(db, { ...base, turnId: turns[0], sequence: 3, pathname: "workspace:///_plurnk/x.md", marker: null, status: 201, origin: "_plurnk" });
         // Turn 2 returns to a.py one turn later: a revisit.
         ids.insert = await insertEdit(db, { ...base, turnId: turns[1], sequence: 1, pathname: "src/a.py", marker: '{"marks":["@abcde",1,"@abcde",1]}', status: 200 });
         ids.pattern = await insertEdit(db, { ...base, turnId: turns[2], sequence: 1, pathname: "src/c.py", marker: null, pattern: "/foo/", status: 200 });
@@ -85,14 +85,14 @@ test("{§digest-edit-census}: a worker's EDITs are counted by form, refusal and 
 
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /^EDITs: {6}7 · hash=1 range=1 insert=1 column=1 append=1 pattern=1 whole=1 · refused=1 · revisits=2$/mu,
-        "the worker summary counts every model EDIT by form, the refusal, and the two returns to a.py; the harness EDIT is not the model's");
-    assert.match(markdown, /^EDITs: {6}\(no edits\)$/mu, "a worker without EDITs says so");
+        "the session summary counts every model EDIT by form, the refusal, and the two returns to a.py; the harness EDIT is not the model's");
+    assert.match(markdown, /^EDITs: {6}\(no edits\)$/mu, "a session without EDITs says so");
 
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
-        workers: Array<{ name: string; edit_census: { edits: number; refused: number; revisits: number; forms: Record<string, number> } | null }>;
+        sessions: Array<{ name: string; edit_census: { edits: number; refused: number; revisits: number; forms: Record<string, number> } | null }>;
         log_entries: Array<{ id: number; edit_form?: string; edit_revisit?: boolean }>;
     };
-    const editor = json.workers.find((worker) => worker.name === "editor");
+    const editor = json.sessions.find((session) => session.name === "editor");
     assert.deepEqual(editor?.edit_census, {
         edits: 7, refused: 1, revisits: 2,
         forms: { hash: 1, line: 0, range: 1, insert: 1, column: 1, prepend: 0, append: 1, offset: 0, pattern: 1, whole: 1 },

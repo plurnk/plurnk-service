@@ -3,23 +3,23 @@
 SELECT m.id AS id, m.loop_id AS loop_id, 'inbound' AS direction, m.source, m.body, m.evidence, '[]' AS answers
 FROM loop_messages m
 JOIN loops l ON l.id = m.loop_id
-JOIN workers w ON w.id = l.worker_id
-WHERE w.workspace_id = $workspace_id AND w.id = $worker_id
+JOIN sessions w ON w.id = l.session_id
+WHERE w.workspace_id = $workspace_id AND w.id = $session_id
   AND ($loop_id IS NULL OR l.id = $loop_id)
 UNION ALL
 SELECT e.id, e.loop_id, 'outbound', e.source, e.content,
        json_object('attachments', json(COALESCE(json_extract(e.rx, '$.attachments'), '[]'))),
        json_extract(e.rx, '$.answers')
 FROM message_responses e
-JOIN workers w ON w.id = e.worker_id
-WHERE w.workspace_id = $workspace_id AND w.id = $worker_id
+JOIN sessions w ON w.id = e.session_id
+WHERE w.workspace_id = $workspace_id AND w.id = $session_id
   AND ($loop_id IS NULL OR e.loop_id = $loop_id)
   AND (length(trim(e.content, char(9) || char(10) || char(13) || ' ')) > 0
        OR json_array_length(e.rx, '$.attachments') > 0)
 ORDER BY loop_id, id;
 -- PREP: message_source_resources
 -- A message keeps the address its minter gave it (`acp://…`), and {§message-short-identity}
--- adds the short `message://<worker>/<key>` alias the worker docs teach.
+-- adds the short `message://<session>/<key>` alias the session docs teach.
 SELECT path, body FROM message_sources
 WHERE workspace_id = $workspace_id AND path LIKE $scheme || '://%'
   AND ($target IS NULL OR path = $target)
@@ -35,11 +35,11 @@ UNION ALL
 SELECT * FROM message_sources WHERE workspace_id = $workspace_id AND address = $path;
 
 -- PREP: message_inbox
--- {§methods-worker-inbox}: accepted and not yet published ({§message-arrival}), in acceptance order, with the status of
+-- {§methods-session-inbox}: accepted and not yet published ({§message-arrival}), in acceptance order, with the status of
 -- the loop holding each ({§message-loop-containment}: one that concluded first will never publish it).
 SELECT s.path, s.source, s.body, s.loop_id, l.status AS loop_status FROM message_sources s
 JOIN loops l ON l.id = s.loop_id
-WHERE s.workspace_id = $workspace_id AND s.worker_id = $worker_id AND s.log_entry_id IS NULL
+WHERE s.workspace_id = $workspace_id AND s.session_id = $session_id AND s.log_entry_id IS NULL
 ORDER BY s.loop_id, s.ordinal;
 
 -- PREP: message_latest_published
@@ -86,7 +86,7 @@ BEGIN
     INSERT INTO message_completions (message_id, response_id, status)
     SELECT m.id, NEW.id, json_extract(NEW.rx, '$.completion')
     FROM message_sources m
-    JOIN workers w ON w.id = NEW.worker_id AND w.workspace_id = m.workspace_id
+    JOIN sessions w ON w.id = NEW.session_id AND w.workspace_id = m.workspace_id
     JOIN json_each(NEW.rx, '$.answers') a ON a.value = m.path
     WHERE true
     ON CONFLICT(message_id) DO UPDATE SET response_id = excluded.response_id, status = excluded.status;

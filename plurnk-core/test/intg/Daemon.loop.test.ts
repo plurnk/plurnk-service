@@ -8,11 +8,11 @@ import { makeMockResponse } from "./_mock.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { seedEntryWithChannel } from "./_db.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 import type { LoopUsage } from "../../src/core/Engine.ts";
 
 test("{§send-premature-terminate} loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
-    const dsl = "````EDIT (worker:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
+    const dsl = "````EDIT (workspace:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
     // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("````SEND [200]\nParis is the capital.\n````", 0)] });
 
@@ -35,7 +35,7 @@ test("{§send-premature-terminate} loop.run accepts immediately (100); the loop'
             assert.equal(result.usage?.accounting.costUsd, "0");
             assert.deepEqual(result.attributions, [], "attribution remains a top-level terminal projection, separate from usage");
 
-            const read = await rpcCall(ws, 3, "entry.read", { target: "worker:///france/capital" });
+            const read = await rpcCall(ws, 3, "entry.read", { target: "workspace:///france/capital" });
             const materialized = Validator.assertEntryReadResult(read.result);
             assert.equal(materialized.status, 200);
             assert.equal(materialized.entry?.channels.body?.content, "Paris");
@@ -54,7 +54,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
             name: `prompt-source-${crypto.randomUUID()}`,
             projectRoot: null,
         });
-        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
+        const sessionId = await namedModelSession(daemon, workspace.workspaceId, "main");
         const terminated: Array<{ loopId: number }> = [];
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/terminated") terminated.push(params as { loopId: number });
@@ -62,7 +62,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
         try {
             const accepted = await daemon.runLoop({
                 workspaceId: workspace.workspaceId,
-                workerId,
+                sessionId,
                 prompt: "external work",
                 source: "acp://session42",
             });
@@ -72,7 +72,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
             );
             const prompt = (await daemon.readLog({
                 workspaceId: workspace.workspaceId,
-                workerId,
+                sessionId,
                 loopId: accepted.loopId,
             })).find((entry) => entry.op === "SEND" && entry.origin === "_plurnk");
             assert.equal(prompt?.origin, "_plurnk", "the harness remains the arrival-row producer");
@@ -83,7 +83,7 @@ test("{§message-causal-source}: a trusted adapter source survives message publi
     });
 });
 
-test("{§problems-functionality} loop.inject speaks into an existing worker; errors when there's none", async (approvalContext) => {
+test("{§problems-functionality} loop.inject speaks into an existing session; errors when there's none", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND [200]\nfirst done\n````", 10),
@@ -95,23 +95,23 @@ test("{§problems-functionality} loop.inject speaks into an existing worker; err
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "loop-inject" });
 
-            // No model worker yet → inject has nothing to talk to (loop.run starts one).
-            const noWorker = await rpcCall(ws, 2, "loop.inject", { prompt: "too early" });
-            const noWorkerResult = noWorker.result as { status: number; problem: { type: string; detail: string } };
-            assert.equal(noWorkerResult.status, 409);
-            assert.equal(noWorkerResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
-            assert.equal(noWorkerResult.problem.detail, "No model worker exists for prompt injection."); // {§problems-functionality}
+            // No model session yet → inject has nothing to talk to (loop.run starts one).
+            const noSession = await rpcCall(ws, 2, "loop.inject", { prompt: "too early" });
+            const noSessionResult = noSession.result as { status: number; problem: { type: string; detail: string } };
+            assert.equal(noSessionResult.status, 409);
+            assert.equal(noSessionResult.problem.type, "https://problems.plurnk.xyz/daemon/session/model-session-required");
+            assert.equal(noSessionResult.problem.detail, "No model session exists for prompt injection."); // {§problems-functionality}
 
-            // Start a worker; completed inventory ends its loop, leaving the worker idle. Wait for the terminal
-            // (loop.run does not block) so the worker is genuinely idle before we inject.
+            // Start a session; completed inventory ends its loop, leaving the session idle. Wait for the terminal
+            // (loop.run does not block) so the session is genuinely idle before we inject.
             await runLoopToTerminal(ws, 3, { prompt: "first" });
 
-            // Inject into the idle worker → enqueues a fresh loop, returns immediately.
+            // Inject into the idle session → enqueues a fresh loop, returns immediately.
             const injected = await rpcCall(ws, 4, "loop.inject", { prompt: "BTW, the config is TOML" });
-            const result = injected.result as { action: string; loopId: number; modelWorkerId: number };
-            assert.equal(result.action, "enqueued_new_loop", "idle worker → a fresh enqueued loop");
+            const result = injected.result as { action: string; loopId: number; modelSessionId: number };
+            assert.equal(result.action, "enqueued_new_loop", "idle session → a fresh enqueued loop");
             assert.ok(typeof result.loopId === "number", "returns the loopId");
-            assert.ok(typeof result.modelWorkerId === "number", "returns the worker it spoke into");
+            assert.ok(typeof result.modelSessionId === "number", "returns the session it spoke into");
 
             // empty prompt is a contract violation.
             const empty = await rpcCall(ws, 5, "loop.inject", { prompt: "" });
@@ -122,44 +122,44 @@ test("{§problems-functionality} loop.inject speaks into an existing worker; err
     });
 });
 
-test("{§problems-functionality} run.fork branches the model worker into a named worker; errors with no worker", async () => {
-    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````EDIT (worker:///x)\nhi\n````\n\n````SEND\ndone\n````", 10), makeMockResponse("````SEND [200]\ndone\n````", 10)] });
+test("{§problems-functionality} run.fork branches the model session into a named session; errors with no session", async () => {
+    const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse("````EDIT (workspace:///x)\nhi\n````\n\n````SEND\ndone\n````", 10), makeMockResponse("````SEND [200]\ndone\n````", 10)] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "fork-test" });
 
-            // No model worker yet → nothing to fork.
-            const noWorker = await rpcCall(ws, 2, "run.fork", {});
-            const noWorkerResult = noWorker.result as { status: number; problem: { type: string; detail: string } };
-            assert.equal(noWorkerResult.status, 409);
-            assert.equal(noWorkerResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/model-worker-required");
-            assert.equal(noWorkerResult.problem.detail, "No model worker exists to fork."); // {§problems-functionality}
+            // No model session yet → nothing to fork.
+            const noSession = await rpcCall(ws, 2, "run.fork", {});
+            const noSessionResult = noSession.result as { status: number; problem: { type: string; detail: string } };
+            assert.equal(noSessionResult.status, 409);
+            assert.equal(noSessionResult.problem.type, "https://problems.plurnk.xyz/daemon/session/model-session-required");
+            assert.equal(noSessionResult.problem.detail, "No model session exists to fork."); // {§problems-functionality}
 
-            // A loop builds the model worker + its log; forking branches it. Wait for the
+            // A loop builds the model session + its log; forking branches it. Wait for the
             // terminal so the log is settled before the fork copies it.
             await runLoopToTerminal(ws, 3, { prompt: "do a thing" });
             const fork = await rpcCall(ws, 4, "run.fork", {});
-            const r = fork.result as { workerId: number; workerName: string | null; parentWorkerId: number };
-            assert.ok(typeof r.workerId === "number" && typeof r.parentWorkerId === "number", "returns new and parent worker ids");
-            assert.notEqual(r.workerId, r.parentWorkerId, "the fork is a distinct worker");
-            assert.match(r.workerName ?? "", /^[a-f0-9]{8}$/, "an unnamed fork gets the ordinary opaque worker identity");
+            const r = fork.result as { sessionId: number; sessionName: string | null; parentSessionId: number };
+            assert.ok(typeof r.sessionId === "number" && typeof r.parentSessionId === "number", "returns new and parent session ids");
+            assert.notEqual(r.sessionId, r.parentSessionId, "the fork is a distinct session");
+            assert.match(r.sessionName ?? "", /^[a-f0-9]{8}$/, "an unnamed fork gets the ordinary opaque session identity");
 
-            // {§worker-scheme-fork} — an explicit branch name is immutable after instantiation.
+            // {§session-scheme-fork} — an explicit branch name is immutable after instantiation.
             const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });
-            assert.equal((named.result as { workerName: string | null }).workerName, "harvest", "an explicit name names the branch");
+            assert.equal((named.result as { sessionName: string | null }).sessionName, "harvest", "an explicit name names the branch");
 
-            // Unmintable + taken names are refused up front (workers.name is UNIQUE per workspace) —
+            // Unmintable + taken names are refused up front (sessions.name is UNIQUE per workspace) —
             // mirrors workspace.attach, never falling through to the insert.
             const runtimeName = await rpcCall(ws, 6, "run.fork", { name: "_plurnk" });
             const runtimeNameResult = runtimeName.result as { status: number; problem: { type: string } };
             assert.equal(runtimeNameResult.status, 400);
-            assert.equal(runtimeNameResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-invalid");
+            assert.equal(runtimeNameResult.problem.type, "https://problems.plurnk.xyz/daemon/session/name-invalid");
 
             const taken = await rpcCall(ws, 7, "run.fork", { name: "harvest" });
             const takenResult = taken.result as { status: number; problem: { type: string } };
             assert.equal(takenResult.status, 409);
-            assert.equal(takenResult.problem.type, "https://problems.plurnk.xyz/daemon/worker/name-conflict");
+            assert.equal(takenResult.problem.type, "https://problems.plurnk.xyz/daemon/session/name-conflict");
 
             const empty = await rpcCall(ws, 8, "run.fork", { name: "" });
             const emptyResult = empty.result as { status: number; problem: { type: string } };
@@ -170,7 +170,7 @@ test("{§problems-functionality} run.fork branches the model worker into a named
 });
 
 test("{§emission-row} loop.run streams log/entry notifications during execution", async () => {
-    const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
+    const dsl = "````EDIT (workspace:///x)\nhello\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -219,7 +219,7 @@ test("{§emission-row} loop.run streams log/entry notifications during execution
 });
 
 test("{§notifications} loop.run fires loop/terminated notification on completion", async () => {
-    const dsl = "````EDIT (worker:///x)\nbody\n````\n\n````SEND\ndone\n````";
+    const dsl = "````EDIT (workspace:///x)\nbody\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -232,12 +232,12 @@ test("{§notifications} loop.run fires loop/terminated notification on completio
             const ack = accept.result as { loopId: number; status: number };
             assert.equal(ack.status, 100, "loop.run accepts immediately, not the terminal");
             const captured = await waitFor(
-                () => terminated() as Array<{ workerId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: LoopUsage }>,
+                () => terminated() as Array<{ sessionId: number; loopId: number; result: { status: number }; hitMaxTurns: boolean; attributions: string[]; usage: LoopUsage }>,
                 (ts) => ts.length >= 1,
             );
             assert.equal(captured.length, 1);
             const params = captured[0];
-            assert.ok(params.workerId > 0, "terminal carries its owning workerId with the loopId");
+            assert.ok(params.sessionId > 0, "terminal carries its owning sessionId with the loopId");
             assert.equal(params.loopId, ack.loopId, "terminal coordinate matches the acknowledged loop");
             assert.equal(params.result.status, 200);
             assert.equal(params.hitMaxTurns, false);
@@ -255,7 +255,7 @@ test("{§engine-rails} loop.run still fires loop/terminated when the loop throws
     // async client's sole outcome channel. One non-terminal turn, then the Mock exhausts — each
     // exhausted call is an invalid response, one provider-response-contract strike ({§engine-rails}
     // Contract Strikes) — three consecutive strike out 500, and the drain must still publish it.
-    const dsl = "````EDIT (worker:///x)\niter\n````\n\n````NOTE\ncontinue\n````";
+    const dsl = "````EDIT (workspace:///x)\niter\n````\n\n````NOTE\ncontinue\n````";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 10)] });
     // The failure must reach daemon diagnostics too. Capture stderr around the loop.
     const logged: string[] = [];
@@ -324,7 +324,7 @@ test("{§problems-functionality} loop.run without a model selection returns 501"
             const result = response.result as { status: number; problem?: { type?: string; detail?: string } };
             assert.equal(result.status, 501);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/daemon/provider/not-configured");
-            assert.equal(result.problem?.detail, "No provider is configured for this worker."); // {§problems-functionality}
+            assert.equal(result.problem?.detail, "No provider is configured for this session."); // {§problems-functionality}
         } finally { ws.close(); }
     });
 });
@@ -346,7 +346,7 @@ test("{§pinned-wording-core} loop.run requires non-empty prompt", async () => {
 });
 
 test("{§loop-terminals} loop.run respects maxTurns cap when model emits non-terminal statuses repeatedly", async () => {
-    const dsl = "````EDIT (worker:///x)\niter\n````\n\n````NOTE\ncontinue\n````";
+    const dsl = "````EDIT (workspace:///x)\niter\n````\n\n````NOTE\ncontinue\n````";
     const responses = Array.from({ length: 5 }, () => makeMockResponse(dsl, 10));
     // Generous context: this test isolates the maxTurns ceiling, so the budget must NOT fire first.
     // At 8192 the 3-turn EDIT accumulation + the foisted docs tips into a 413 before turn 3's cap
@@ -403,14 +403,14 @@ test("{§methods-loop-run-open-paths}: initial reads preserve file paths, scheme
             await seedEntryWithChannel(db, { workspaceId, scheme: "file", pathname: "literal (file).txt", content: "local-file-evidence" });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/reference.txt", content: "scheme-channel-evidence" });
             const result = await runLoopToTerminal(ws, 2, {
-                prompt: "Inspect the selected evidence.", openPaths: ["literal (file).txt", "worker:///reference.txt#body"],
+                prompt: "Inspect the selected evidence.", openPaths: ["literal (file).txt", "workspace:///reference.txt#body"],
             });
             assert.equal(result.result.status, 200);
             const reads = (await db.test_log_entries_by_loop.all<{
                 op: string; origin: string; scheme: string | null; pathname: string; status_rx: number;
             }>({ loop_id: result.loopId })).filter(({ op, origin }) => op === "READ" && origin === "_plurnk");
             assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === null && pathname === "literal (file).txt" && status_rx === 200));
-            assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === "worker" && pathname === "/reference.txt" && status_rx === 200), JSON.stringify(reads));
+            assert.ok(reads.some(({ scheme, pathname, status_rx }) => scheme === "workspace" && pathname === "/reference.txt" && status_rx === 200), JSON.stringify(reads));
             const packet = mock.received[0].map(chatMessageText).join("\n");
             assert.match(packet, /local-file-evidence/u);
             assert.match(packet, /scheme-channel-evidence/u);

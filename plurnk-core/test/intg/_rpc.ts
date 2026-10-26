@@ -114,7 +114,7 @@ export const waitForDb = async <T>(
 };
 
 // Model 3 — loop.run ACCEPTS and returns immediately (status 100 + loopId); a loop's real
-// outcome arrives via the loop/terminated event, never loop.worker's return. A parked loop
+// outcome arrives via the loop/terminated event, never loop.session's return. A parked loop
 // (WAIT) awaits an external event, so loop.run cannot block on it without deadlocking
 // the client that must send that event. This runs a loop to its true terminal the honest
 // way: fire loop.run, then await its loop/terminated. Returns the terminal status (+ the
@@ -123,7 +123,7 @@ export const runLoopToTerminal = async (
     ws: SeamSocket, id: number, params: object,
     { timeoutMs = HARNESS_WAIT_MS, signal }: { timeoutMs?: number; signal?: AbortSignal } = {},
 ): Promise<{
-    loopId: number; finalStatus: number; accepted: number; action?: string; modelWorkerId?: number;
+    loopId: number; finalStatus: number; accepted: number; action?: string; modelSessionId?: number;
     result: OperationResult;
     hitMaxTurns?: boolean; turnIds?: number[]; attributions?: string[];
     usage?: LoopUsage;
@@ -133,7 +133,7 @@ export const runLoopToTerminal = async (
     if (response.error !== undefined) {
         throw new Error(`loop.run RPC failed (${response.error.code}): ${response.error.message}`);
     }
-    const { loopId, status: accepted, action, modelWorkerId } = response.result as OperationResult & { loopId: number; action?: string; modelWorkerId?: number };
+    const { loopId, status: accepted, action, modelSessionId } = response.result as OperationResult & { loopId: number; action?: string; modelSessionId?: number };
     const seen = await waitFor(
         () => terminated() as Array<{ loopId: number }>,
         (ts) => ts.some((t) => t.loopId === loopId),
@@ -143,7 +143,7 @@ export const runLoopToTerminal = async (
         loopId: number; result: OperationResult; hitMaxTurns?: boolean; turnIds?: number[]; attributions?: string[];
         usage?: LoopUsage;
     };
-    return { ...term, finalStatus: term.result.status, accepted, action, modelWorkerId };
+    return { ...term, finalStatus: term.result.status, accepted, action, modelSessionId };
 };
 
 export const connect = (addr: DaemonAddr): Promise<SeamSocket> =>

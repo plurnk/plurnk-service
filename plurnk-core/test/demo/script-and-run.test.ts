@@ -42,11 +42,11 @@ test("demo: 'write a script that greets me and run it' — script lands in works
             const scriptContent = await readFile(join(workspace, "greet.sh"), "utf8");
             assert.match(scriptContent, new RegExp(marker), "script body contains the marker");
 
-            // Execution may be delegated; receipts are paired within their owning worker.
-            const workers = await s.db.test_workers_by_workspace.all<{ id: number }>({ workspace_id: s.workspaceId });
-            const observed = await Promise.all(workers.map(async ({ id }) => observedScriptExecution(
-                await s.db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: id, op: "sh" }),
-                await s.db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: id, op: "READ" }),
+            // Execution may be delegated; receipts are paired within their owning session.
+            const sessions = await s.db.test_sessions_by_workspace.all<{ id: number }>({ workspace_id: s.workspaceId });
+            const observed = await Promise.all(sessions.map(async ({ id }) => observedScriptExecution(
+                await s.db.test_log_entries_by_session_op_full.all<ScriptReceipt>({ session_id: id, op: "sh" }),
+                await s.db.test_log_entries_by_session_op_full.all<ScriptReceipt>({ session_id: id, op: "READ" }),
                 "greet.sh", marker,
             )));
             assert.ok(observed.some(Boolean), "an execution of greet.sh produced the greeting in an observed successful stdout receipt");

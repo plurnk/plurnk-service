@@ -324,7 +324,7 @@ test("{§operator-config-discovery} config check validates capability definition
         { PLURNK_MCP_future_TOOLS: "[1]" },
         { PLURNK_MCP_disabled: "{}", PLURNK_MCP_disabled_ENABLED: "0" },
         { PLURNK_MCP_REQUEST_TIMEOUT: "0" },
-        { PLURNK_SCHEDULE_disabled: '{"rule":"FREQ=NEVER","target":"worker://bot","prompt":"hello"}', PLURNK_SCHEDULE_disabled_ENABLED: "0" },
+        { PLURNK_SCHEDULE_disabled: '{"rule":"FREQ=NEVER","target":"session://bot","prompt":"hello"}', PLURNK_SCHEDULE_disabled_ENABLED: "0" },
         { PLURNK_SCHEDULE_future_ENABLED: "yes" },
         { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "0" },
         { PLURNK_MEMBERS_disabled: "!", PLURNK_MEMBERS_disabled_ENABLED: "0" },
@@ -480,11 +480,11 @@ for (const built of [false, true]) {
         }
         assert.equal(discovered.ok, true);
         assert.ok(typeof discovered.result?.actions === "object" && discovered.result.actions !== null && "models.list" in discovered.result.actions, "model selection remains discoverable without a working default model");
-        // {§acp-action-binding} A sync attaches only to an existing worker; creating the session and
+        // {§acp-action-binding} A sync attaches only to an existing session; creating the session and
         // inheriting the child model needs no model.
         const created = await acpCall(daemon.url, "session/new", {
             cwd: fx.cwd,
-            _meta: { plurnk: { workspace: "startup-repair", workerName: "repair", projectRoot: fx.cwd } },
+            _meta: { plurnk: { workspace: "startup-repair", sessionName: "repair", projectRoot: fx.cwd } },
         });
         assert.equal(created.ok, true, JSON.stringify(created));
         const childSet = await acpCall(daemon.url, "session/set_config_option", {
@@ -494,7 +494,7 @@ for (const built of [false, true]) {
             value: "inherit",
         });
         assert.equal(childSet.ok, true, JSON.stringify(childSet));
-        // {§acp-sync} A client attaches to the worker it owns, as the terminal client does.
+        // {§acp-sync} A client attaches to the session it owns, as the terminal client does.
         const sync = await acpCall(daemon.url, "session/resume", {
             sessionId: "repair",
             cwd: fx.cwd,
@@ -534,11 +534,11 @@ for (const built of [false, true]) {
             cwd: fx.cwd, env, host: "127.0.0.1", port: 0, readyTimeoutMs: 15_000, stopGraceMs: 5_000,
         });
         t.after(() => daemon.stop());
-        // {§acp-action-binding} A sync attaches only to an existing worker; creating a session and
+        // {§acp-action-binding} A sync attaches only to an existing session; creating a session and
         // inheriting the child model resolves no provider.
         const created = await acpCall(daemon.url, "session/new", {
             cwd: fx.cwd,
-            _meta: { plurnk: { workspace: "lazy-model", workerName: "lazy-model", projectRoot: fx.cwd } },
+            _meta: { plurnk: { workspace: "lazy-model", sessionName: "lazy-model", projectRoot: fx.cwd } },
         });
         assert.equal(created.ok, true, JSON.stringify(created));
         const sessionId = String(created.result?.sessionId);
@@ -563,7 +563,7 @@ for (const built of [false, true]) {
         const plurnkMeta = (sync.result?._meta as { plurnk?: Record<string, unknown> } | undefined)?.plurnk;
         assert.ok(plurnkMeta);
         assert.equal(Object.hasOwn(plurnkMeta, "providers"), false, "unavailable is not a fabricated empty catalog");
-        assert.deepEqual(requests, [], "startup, creating the worker and passive attachment perform no provider I/O");
+        assert.deepEqual(requests, [], "startup, creating the session and passive attachment perform no provider I/O");
         const rejected = await acpCall(daemon.url, "session/set_config_option", {
             sessionId,
             configId: "model",

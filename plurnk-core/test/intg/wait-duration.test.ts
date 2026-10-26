@@ -1,5 +1,5 @@
 import { serverProposals } from "./_approval.ts";
-// {§worker-wait-timing} Real subprocesses exercise wait expiry independently of their lifetime.
+// {§session-wait-timing} Real subprocesses exercise wait expiry independently of their lifetime.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -44,13 +44,13 @@ test("{§notice-drain-on-read} cancelling a parked loop releases its undelivered
 });
 
 for (const header of ["WAIT", "WAIT [0]"]) {
-    test(`{§worker-lifecycle-poll-matrix} ${header} resumes a loop without closing its open stream`, async (t) => {
+    test(`{§session-lifecycle-poll-matrix} ${header} resumes a loop without closing its open stream`, async (t) => {
     serverProposals(t, "accept");
         const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
         process.env.PLURNK_SERVICE_WAIT_SEC = "1";
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse(`\`\`\`\`sh [{"lifetime": "30m"}]\nsleep 30\n\`\`\`\`\n\n\`\`\`\`${header}\nawait the result\n\`\`\`\``, 10),
-            makeMockResponse("````SEND\nobserved the still-open stream\n````\n````KILL (worker://root)\n````", 10),
+            makeMockResponse("````SEND\nobserved the still-open stream\n````\n````KILL (session://root)\n````", 10),
         ] });
         try {
             await withDaemon(mock, async (db, daemon, addr) => {
@@ -58,20 +58,20 @@ for (const header of ["WAIT", "WAIT [0]"]) {
                 const notices = subscribeNotifications(ws, "notice/event");
                 try {
                     const workspace = await rpcCall(ws, 1, "workspace.create", { name: "wait-duration" });
-                    const { workerId } = await daemon.createWorker({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
+                    const { sessionId } = await daemon.createSession({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
                     const generate = mock.generate.bind(mock);
                     let observedLiveStream = false;
                     t.mock.method(mock, "generate", async (args: Parameters<typeof mock.generate>[0]) => {
                         if (mock.received.length === 1) {
-                            assert.equal((await db.worker_live_obligations.get({ worker_id: workerId }))?.streams, 1,
+                            assert.equal((await db.session_live_obligations.get({ session_id: sessionId }))?.streams, 1,
                                 "continuation preserves the still-running subprocess");
-                            const loops = await daemon.listWorkerLoops({ workspaceId: (workspace.result as { id: number }).id, workerId });
+                            const loops = await daemon.listSessionLoops({ workspaceId: (workspace.result as { id: number }).id, sessionId });
                             assert.equal(loops.at(-1)?.waitUntil, null, "the resumed application projection clears the deadline");
                             observedLiveStream = true;
                         }
                         return generate(args);
                     });
-                    const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", workerId });
+                    const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", sessionId });
                     assert.equal(finalStatus, 499);
                     assert.equal(mock.remaining, 0);
                     assert.equal(observedLiveStream, true, "the wait expired before the 30-second stream concluded");
@@ -87,7 +87,7 @@ for (const header of ["WAIT", "WAIT [0]"]) {
     });
 }
 
-test("{§worker-lifecycle-poll-matrix} closure wakes the parked loop exactly once before its wait expires", async (approvalContext) => {
+test("{§session-lifecycle-poll-matrix} closure wakes the parked loop exactly once before its wait expires", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
     // The duration is far longer than the spawn: the only wake that can arrive is closure.

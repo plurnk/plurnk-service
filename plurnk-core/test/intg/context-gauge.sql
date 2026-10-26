@@ -29,7 +29,7 @@ INSERT INTO inference_calls (workspace_id, turn_id, sequence, kind, request_mode
 SELECT w.workspace_id, $turn_id, $sequence, 'emission', 'fixture'
 FROM turns t
 JOIN loops l ON l.id = t.loop_id
-JOIN workers w ON w.id = l.worker_id
+JOIN sessions w ON w.id = l.session_id
 WHERE t.id = $turn_id
 RETURNING id;
 
@@ -42,7 +42,7 @@ INSERT INTO inference_calls (workspace_id, turn_id, sequence, kind, request_mode
 SELECT w.workspace_id, $turn_id, $sequence, $kind, 'fixture'
 FROM turns t
 JOIN loops l ON l.id = t.loop_id
-JOIN workers w ON w.id = l.worker_id
+JOIN sessions w ON w.id = l.session_id
 WHERE t.id = $turn_id
 RETURNING id;
 

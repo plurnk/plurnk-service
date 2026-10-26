@@ -19,7 +19,7 @@ test("{§fabricated-log-entry} {§diagnostic-observation} the diagnostic quotes 
 });
 
 test("{§fabricated-log-entry} {§emission-row} an echoed emission heading is tolerated, and a later invented receipt still is not", () => {
-    assert.equal(FabricatedLog.find("### log:///1/4/2/emission (ops://exampleWorkerName/1/4) · 88"), null);
+    assert.equal(FabricatedLog.find("### log:///1/4/2/emission (ops://exampleSessionName/1/4) · 88"), null);
     assert.equal(FabricatedLog.find("### log:///1/4/2/EMISSION · 88"), null, "the leaf compares case-insensitively");
     assert.deepEqual(FabricatedLog.find("### log:///1/4/2/emission · 88\n\n### log:///1/4/3/READ (a.md) · 9"), { heading: "### log:///1/4/3/READ", line: 2 });
     assert.equal(FabricatedLog.echoes("### log:///1/4/2/emission · 88\ntext\n### log:///1/5/1/emission · 9\n### log:///1/5/2/READ · 3"), 2);

@@ -13,11 +13,11 @@ import { packetSection } from "./_packet.ts";
 
 const source = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
 
-for (const scheme of ["file", "worker"]) for (const anchored of [false, true]) {
+for (const scheme of ["file", "session"]) for (const anchored of [false, true]) {
     test(`{§kill-scope-entry}: ${scheme} ${anchored ? "anchored" : "numeric"} deletion exposes its existing receipt through packet and log READ`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const root = await mkdtemp(join(tmpdir(), "plurnk-kill-receipt-"));
-        const target = scheme === "file" ? "notes.md" : "worker:///notes.md";
+        const target = scheme === "file" ? "notes.md" : "workspace:///notes.md";
         try {
             const mock = new Mock({ contextWindow: 32768, responses: [
                 makeMockResponse(`\`\`\`\`EDIT (${target})
@@ -56,7 +56,7 @@ Continue the task.
                     const workspaceId = (created.result as { id: number }).id;
                     const run = await runLoopToTerminal(ws, 2, { prompt: "delete two lines" });
                     assert.equal(run.finalStatus, 200);
-                    const rows = await db.engine_render_log.all<{ id: number; op: string; origin: string; source: number | null; rx: string; weight: number }>({ worker_id: run.modelWorkerId! });
+                    const rows = await db.engine_render_log.all<{ id: number; op: string; origin: string; source: number | null; rx: string; weight: number }>({ session_id: run.modelSessionId! });
                     const kill = rows.find((row) => row.op === "KILL" && row.origin === "model" && row.source === null);
                     assert.ok(kill, "an entry mutation receipt stays visible on later turns");
                     const rx = JSON.parse(kill.rx);
@@ -75,9 +75,9 @@ Continue the task.
                     assert.equal(receipt.preview, undefined, "bounded mutation context is not previewed again");
                     assert.ok(kill.weight > 0, "canonical receipt content participates in body accounting");
                     assert.ok(receipt.tokens > 0, "packet accounting includes the complete visible receipt");
-                    // A person's READ of the model's log, acting for the model worker ({§actor-boundary-client-operations}).
+                    // A person's READ of the model's log, acting for the model session ({§actor-boundary-client-operations}).
                     const [recalled] = await daemon.dispatchClientAction({
-                        workspaceId, actor: TEST_OWNER, contextWorkerId: run.modelWorkerId!,
+                        workspaceId, actor: TEST_OWNER, contextSessionId: run.modelSessionId!,
                         statements: [{ op: "READ", aside: null, metadata: null, target: parsePath(receipt.logPath), lineMarker: { marks: [1, -1] }, matcher: null, body: null, position: { line: 1, column: 0 } }],
                     });
                     assert.equal(recalled.status, 200, JSON.stringify({ logPath: receipt.logPath, recalled }));
@@ -91,8 +91,8 @@ Continue the task.
 test("{§kill-scope-entry} whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        makeMockResponse("````EDIT (worker:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),
-        makeMockResponse("````KILL (worker:///doomed)````\n````NOTE\nContinue the task.\n````", 10),
+        makeMockResponse("````EDIT (workspace:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),
+        makeMockResponse("````KILL (workspace:///doomed)````\n````NOTE\nContinue the task.\n````", 10),
         makeMockResponse("````SEND [200]\ndone\n````", 10),
     ] });
     await withDaemon(mock, async (db, _daemon, addr) => {
@@ -106,7 +106,7 @@ test("{§kill-scope-entry} whole-entry KILL has a bodyless result, not an invent
             const receipt = parseLogRecords(log).find((row) => row.logPath.endsWith("/KILL"));
             assert.ok(receipt);
             assert.equal(Object.hasOwn(receipt, "status"), false, "routine success is implicit for whole-entry deletion too");
-            assert.equal(receipt.path, "worker:///doomed");
+            assert.equal(receipt.path, "workspace:///doomed");
             for (const field of ["body", "extent", "change", "removed", "range"]) {
                 assert.equal(receipt[field], undefined, `whole-entry deletion has no ${field}`);
             }

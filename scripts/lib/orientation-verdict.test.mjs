@@ -24,8 +24,8 @@ was available, so the current stabilization goal is unverified; that missing con
 };
 
 const digest = {
-    workers: [{ id: 1, name: "_plurnk" }, { id: 2, name: "meta" }],
-    loops: [{ id: 1, worker_id: 1 }, { id: 2, worker_id: 2 }],
+    sessions: [{ id: 1, name: "_plurnk" }, { id: 2, name: "meta" }],
+    loops: [{ id: 1, session_id: 1 }, { id: 2, session_id: 2 }],
     turns: [
         { id: 1, loop_id: 1, model: null },
         { id: 2, loop_id: 2, model: "endpoint/model" },
@@ -58,7 +58,7 @@ test("{§emission-row} orientation verdict counts only the model's own inspectio
     harnessOnly.turns = [
         { turn: 1, ops: [
             { op: "READ", target: "ops://meta/1/1", status: 200, origin: "_plurnk" },
-            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "worker:///_plurnk/plurnk/*.md", status: 200, origin: "_plurnk" })),
+            ...Array.from({ length: 8 }, () => ({ op: "FIND", target: "workspace:///_plurnk/plurnk/*.md", status: 200, origin: "_plurnk" })),
             { op: "READ", target: "reasoning://meta/1/1", status: 200, origin: "_plurnk" },
         ] },
         { turn: 2, ops: [

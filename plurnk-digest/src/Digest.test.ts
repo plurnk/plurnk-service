@@ -19,9 +19,9 @@ test("{§digest-evidence-reader}: reports consume an independent reader without 
         opened++;
         return {
             rows: () => ({
-                workspaces: [], workers: [], loops: [], turns: [], inferenceCalls: [], modelCalls: [],
+                workspaces: [], sessions: [], loops: [], turns: [], inferenceCalls: [], modelCalls: [],
                 turnAttempts: [], providerRequests: [], logEntries: [], editRows: [], emissionRows: [],
-                reasoningRows: [], curationEffects: [], workerRollupRows: [], opMixRows: [], environmentRows: [],
+                reasoningRows: [], curationEffects: [], sessionRollupRows: [], opMixRows: [], environmentRows: [],
                 searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
                 derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
                 storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],
@@ -45,17 +45,17 @@ test("{§digest-evidence-reader}: reports consume an independent reader without 
     assert.equal(opened, 1, "a refused destination never opens evidence");
 });
 
-test("{§digest-programmatic-surface}: a workspace selected alone is the digest's workspace though it holds no worker", async (t) => {
+test("{§digest-programmatic-surface}: a workspace selected alone is the digest's workspace though it holds no session", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-empty-workspace-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const unexpected = (): never => { throw new Error("an empty workspace has no heavy evidence"); };
     const openEvidence = (): DigestEvidence => ({
         rows: () => ({
             workspaces: [{ id: 3, name: "empty" }, { id: 4, name: "elsewhere" }],
-            workers: [{ id: 40, workspace_id: 4, name: "main", provider_identity: "mock", owner: "_plurnk" }],
+            sessions: [{ id: 40, workspace_id: 4, name: "main", provider_identity: "mock", owner: "_plurnk" }],
             loops: [], turns: [], inferenceCalls: [], modelCalls: [],
             turnAttempts: [], providerRequests: [], logEntries: [], editRows: [], emissionRows: [],
-            reasoningRows: [], curationEffects: [], workerRollupRows: [], opMixRows: [], environmentRows: [],
+            reasoningRows: [], curationEffects: [], sessionRollupRows: [], opMixRows: [], environmentRows: [],
             searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
             derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
             storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],
@@ -68,9 +68,9 @@ test("{§digest-programmatic-surface}: a workspace selected alone is the digest'
     await writeFile(dbPath, "");
     const digestDir = join(root, "report");
     Digest.run({ dbPath, digestDir, openEvidence, workspaceId: 3 });
-    const report = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }>; workers: unknown[] };
+    const report = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { workspaces: Array<{ name: string }>; sessions: unknown[] };
     assert.deepEqual(report.workspaces.map(({ name }) => name), ["empty"]);
-    assert.deepEqual(report.workers, []);
+    assert.deepEqual(report.sessions, []);
 });
 
 // {§digest-capacity-evidence} — the capacity contract's 413 rows never make a win degenerate (#1096).
@@ -79,7 +79,7 @@ test("{§digest-capacity-evidence}: a loop that concluded under a binding budget
     t.after(() => rm(root, { recursive: true, force: true }));
     const problem = (type: string, status: number, detail: string) => JSON.stringify({ status, problem: { type: `https://problems.plurnk.xyz/${type}`, title: detail, status, detail } });
     const row = (id: number, origin: string, op: string, status_rx: number, rx: string) => ({
-        target: null, id, worker_id: 1, loop_id: 1, turn_id: 1, sequence: id, origin, source: null, model_call_id: null, attrs: "{}",
+        target: null, id, session_id: 1, loop_id: 1, turn_id: 1, sequence: id, origin, source: null, model_call_id: null, attrs: "{}",
         op, scheme: op === "error" ? null : "file", hostname: null, port: null, pathname: op === "error" ? null : "x.py", query: null, fragment: null,
         rx, mimetype_rx: "application/json", status_rx, state: "resolved", outcome: null, initial_folded: "[]", projection_active: 1 as const, projection_folded: "[]",
     });
@@ -96,12 +96,12 @@ test("{§digest-capacity-evidence}: a loop that concluded under a binding budget
         Digest.run({ dbPath, digestDir, openEvidence: () => ({
             rows: () => ({
                 workspaces: [{ id: 1, name: "/testbed" }],
-                workers: [{ id: 1, workspace_id: 1, name: "w", provider_identity: "mock", owner: "acp://operator" }],
-                loops: [{ id: 1, worker_id: 1, sequence: 1, status: 200, prompt: "Fix it.", terminated_by: "model", terminal_result: null, claimed_at: "2026-10-12T00:00:00Z", terminated_at: "2026-10-12T00:01:00Z" }],
+                sessions: [{ id: 1, workspace_id: 1, name: "w", provider_identity: "mock", owner: "acp://operator" }],
+                loops: [{ id: 1, session_id: 1, sequence: 1, status: 200, prompt: "Fix it.", terminated_by: "model", terminal_result: null, claimed_at: "2026-10-12T00:00:00Z", terminated_at: "2026-10-12T00:01:00Z" }],
                 turns: [{ id: 1, loop_id: 1, sequence: 1, producer: "model" as const, kind: "operation" as const, status: 200, timestamp: "2026-10-12T00:00:30Z", completed_at: "2026-10-12T00:00:31Z", has_packet: 0 as const, has_reasoning: 0 as const, finish_reason: null, model: null, meta: null, program: null, outside: null, packetEchoes: 0 }],
                 inferenceCalls: [], modelCalls: [], turnAttempts: [], providerRequests: [], logEntries, editRows: [], emissionRows: [],
-                reasoningRows: [], curationEffects: [], workerRollupRows: [{ worker_id: 1, loops: 1, turns: 1, last_status: 200 }],
-                opMixRows: logEntries.filter((le) => le.origin === "model").map((le) => ({ worker_id: 1, op: le.op, n: 1 })), environmentRows: [],
+                reasoningRows: [], curationEffects: [], sessionRollupRows: [{ session_id: 1, loops: 1, turns: 1, last_status: 200 }],
+                opMixRows: logEntries.filter((le) => le.origin === "model").map((le) => ({ session_id: 1, op: le.op, n: 1 })), environmentRows: [],
                 searchState: { channel_entries: 0, derivation_complete: 0, unfinished: 0 },
                 derivationState: { complete: 0, building: 0 }, dispositionCounts: [], dispositions: [],
                 storage: { bytes: 0, free_bytes: 0, auto_vacuum: 0 }, storageTables: [],

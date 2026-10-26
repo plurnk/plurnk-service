@@ -19,7 +19,7 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
             s,
             2,
             {
-                prompt: "Read worker:///_plurnk/plurnk/pattern.md, then reply with `ready`.",
+                prompt: "Read workspace:///_plurnk/plurnk/pattern.md, then reply with `ready`.",
                 maxTurns: 4,
             },
             { signal: t.signal },
@@ -31,8 +31,8 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         assert.ok(primedTurn);
         const priorPrograms = await s.db.test_turn_sources.all<{
             turn_id: number; kind: string; sequence: number; content: string; producer: string;
-        }>({ worker_id: primed.modelWorkerId });
-        // {§worker-initialization-entry} — initialization records its survey program and authors no reasoning.
+        }>({ session_id: primed.modelSessionId });
+        // {§session-initialization-entry} — initialization records its survey program and authors no reasoning.
         assert.ok(priorPrograms.some(({ kind, producer }) => kind === "ops" && producer === "_plurnk"),
             "initialization records its survey as a program source");
         assert.ok(!priorPrograms.some(({ kind, producer }) => kind === "reasoning" && producer === "_plurnk"),
@@ -45,7 +45,7 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         const activePriorIds = priorReads.filter(({ active }) => active === 1).map(({ id }) => id);
         assert.ok(activePriorIds.length > 0, "the first loop's READ is available for curation");
 
-        const { finalStatus, modelWorkerId, turnIds } = await liveLoop(
+        const { finalStatus, modelSessionId, turnIds } = await liveLoop(
             s,
             3,
             {
@@ -56,14 +56,14 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         );
         assert.equal(finalStatus, 200, "the model completes after curating its prior READ observations");
 
-        const effects = await s.db.test_log_curation_effects_by_worker.all<{
+        const effects = await s.db.test_log_curation_effects_by_session.all<{
             operation_log_entry_id: number;
             target_log_entry_id: number;
             active_before: number;
             active_after: number;
             op: string;
             turn_id: number;
-        }>({ worker_id: modelWorkerId });
+        }>({ session_id: modelSessionId });
         const killedReads: number[] = [];
         const killOperations = new Set<number>();
         for (const effect of effects) {
@@ -83,7 +83,7 @@ test("live: broad log KILL retires READ receipts without erasing program artifac
         assert.equal(killOperations.size, 1, "one broad KILL owns the complete retired target set");
         const retainedSources = await s.db.test_turn_sources.all<{
             turn_id: number; kind: string; sequence: number; content: string;
-        }>({ worker_id: modelWorkerId });
+        }>({ session_id: modelSessionId });
         for (const source of priorPrograms) {
             const retained = retainedSources.find(({ turn_id, kind, sequence }) =>
                 turn_id === source.turn_id && kind === source.kind && sequence === source.sequence);

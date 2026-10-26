@@ -173,7 +173,7 @@ export default class Service {
         const readers = Service.#sqliteKnob("PLURNK_SERVICE_SQLITE_READERS");
         if (readers !== undefined) {
             if (!Number.isSafeInteger(readers) || readers < 0) {
-                Service.#die(78, `PLURNK_SERVICE_SQLITE_READERS must be a non-negative integer (read-only database Workers beside the writer), got ${readers}`);
+                Service.#die(78, `PLURNK_SERVICE_SQLITE_READERS must be a non-negative integer (read-only database Sessions beside the writer), got ${readers}`);
             }
             tuning.readers = readers;
         }
@@ -493,8 +493,8 @@ export default class Service {
         } else if (command === "requiem") {
             if (positionals.length !== 3) Service.#die(64, `requiem takes <file.db> <folder>\n\n${usage}`);
             handler = async () => {
-                const { path, reportPath, workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1], digestDir: positionals[2], provider: await ProviderInstantiate.loadActiveProvider() });
-                process.stdout.write(`requiem: interviewed ${workers} worker(s) -> ${path}, ${reportPath}\n`);
+                const { path, reportPath, sessions } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath: positionals[1], digestDir: positionals[2], provider: await ProviderInstantiate.loadActiveProvider() });
+                process.stdout.write(`requiem: interviewed ${sessions} session(s) -> ${path}, ${reportPath}\n`);
             };
         }
         if (handler === null) Service.#die(64, `unknown command: ${positionals.join(" ")}\n\n${usage}`);

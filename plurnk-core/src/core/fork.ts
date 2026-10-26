@@ -1,19 +1,19 @@
-// Fork a worker — branch the log, share the workspace (SPEC {§machine-processes}).
-// The branch's claimed row is the fork: workers_fork_copies_history copies the parent's
-// history inside that INSERT ({§worker-fork-trigger}, fork.sql).
+// Fork a session — branch the log, share the workspace (SPEC {§machine-processes}).
+// The branch's claimed row is the fork: sessions_fork_copies_history copies the parent's
+// history inside that INSERT ({§session-fork-trigger}, fork.sql).
 
 import type { Db } from "./Db.ts";
-import WorkerName from "./WorkerName.ts";
+import SessionName from "./SessionName.ts";
 
 export default class Fork {
-    static async fork(db: Db, parentWorkerId: number, name: string | undefined): Promise<number> {
-        const parent = await db.worker_get.get<{ workspace_id: number }>({ id: parentWorkerId });
-        if (parent === undefined) throw new Error(`fork: worker ${parentWorkerId} not found`);
-        // {§worker-auto-name} The same allocator serves addressless WORK and FORK.
-        const options = { workspaceId: parent.workspace_id, parentWorkerId, forkSnapshot: true } as const;
+    static async fork(db: Db, parentSessionId: number, name: string | undefined): Promise<number> {
+        const parent = await db.session_get.get<{ workspace_id: number }>({ id: parentSessionId });
+        if (parent === undefined) throw new Error(`fork: session ${parentSessionId} not found`);
+        // {§session-auto-name} The same allocator serves addressless WORK and FORK.
+        const options = { workspaceId: parent.workspace_id, parentSessionId, forkSnapshot: true } as const;
         const branch = name === undefined
-            ? await WorkerName.claimAuto(db, options)
-            : await WorkerName.claimNamed(db, name, options);
+            ? await SessionName.claimAuto(db, options)
+            : await SessionName.claimNamed(db, name, options);
         return branch.id;
     }
 }

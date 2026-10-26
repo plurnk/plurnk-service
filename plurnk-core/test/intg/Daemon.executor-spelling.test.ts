@@ -9,7 +9,7 @@ import { readStmt, urlPath } from "./_dsl.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { makeRawMockResponse } from "./_mock.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
     test(`{§executor-js-spelling}: the daemon routes ${alias} through js`, async (t) => {
@@ -38,17 +38,17 @@ for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
             try {
                 await rpcCall(client, 1, "workspace.create", { name: `js-spelling-${alias}` });
                 const [workspace] = await daemon.listWorkspaces();
-                const workerId = await namedModelWorker(daemon, workspace.id, "main");
+                const sessionId = await namedModelSession(daemon, workspace.id, "main");
                 const reference = async (runtime: string) => (await daemon.dispatchClientAction({ workspaceId: workspace.id, actor: TEST_OWNER,
-                    statements: [readStmt(urlPath("worker", `/_plurnk/plurnk/${runtime}.md`))] }))[0];
+                    statements: [readStmt(urlPath("workspace", `/_plurnk/plurnk/${runtime}.md`))] }))[0];
                 assert.equal((await reference("js")).status, 200, "js remains discoverable");
                 assert.equal((await reference(alias)).status, 404, "the accepted spelling adds no reference document");
                 const { finalStatus, turnIds } = await runLoopToTerminal(client, 2, {
-                    prompt: "Run the snippet and observe the result.", workerId,
+                    prompt: "Run the snippet and observe the result.", sessionId,
                 });
                 assert.equal(finalStatus, 200);
                 assert.equal(turnIds?.length, 3);
-                const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+                const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
                 assert.equal(sources.find((row) => row.turn_id === turnIds[1] && row.kind === "ops")?.content, source,
                     "forensic source retains the authored spelling");
                 const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: turnIds[1] });

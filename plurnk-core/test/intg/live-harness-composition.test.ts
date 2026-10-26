@@ -13,42 +13,42 @@ import { readStmt } from "./_dsl.ts";
 import { lastReply } from "./_packet.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
-test("{§service-worker-composition} live workspaces expose a model worker's references and the management families", async (t) => {
+test("{§service-session-composition} live workspaces expose a model session's references and the management families", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const inference = t.mock.method(provider, "generate");
     const workspace = await liveWorkspace({ name: "harness-reference-composition" });
     try {
-        const workerId = await namedModelWorker(workspace.daemon, workspace.workspaceId, "main");
-        // A person's READ, acting for the model worker ({§actor-boundary-client-operations}).
+        const sessionId = await namedModelSession(workspace.daemon, workspace.workspaceId, "main");
+        // A person's READ, acting for the model session ({§actor-boundary-client-operations}).
         const read = async (target: string) => (await workspace.daemon.dispatchClientAction({
             workspaceId: workspace.workspaceId,
             actor: TEST_OWNER,
-            contextWorkerId: workerId,
+            contextSessionId: sessionId,
             statements: [readStmt(parsePath(target), { marks: [1, -1] })],
         }))[0];
 
         const skill = await read("skill://plurnk/SKILL.md");
         assert.equal(skill.status, 200);
-        for (const reference of ["worker", "sh"]) {
-            const result = await read(`worker:///_plurnk/plurnk/${reference}.md`);
-            assert.equal(result.status, 200, `${reference}.md is READ-able in the worker's actual generated tree`);
+        for (const reference of ["session", "sh"]) {
+            const result = await read(`workspace:///_plurnk/plurnk/${reference}.md`);
+            assert.equal(result.status, 200, `${reference}.md is READ-able in the session's actual generated tree`);
             assert.match(String(result.content), /\S/, `${reference}.md contains its contract`);
         }
-        const plurnkDoc = await read("worker:///_plurnk/tools/plurnk.md");
-        assert.equal(plurnkDoc.status, 200, "plurnk.md is READ-able in the worker's actual generated tree");
+        const plurnkDoc = await read("workspace:///_plurnk/tools/plurnk.md");
+        assert.equal(plurnkDoc.status, 200, "plurnk.md is READ-able in the session's actual generated tree");
         for (const family of ["members", "skills", "mcp", "schedule"]) {
-            const result = await read(`worker:///_plurnk/tools/plurnk/${family}.json`);
-            assert.equal(result.status, 200, `${family}.json is READ-able in the worker's actual generated tree`);
+            const result = await read(`workspace:///_plurnk/tools/plurnk/${family}.json`);
+            assert.equal(result.status, 200, `${family}.json is READ-able in the session's actual generated tree`);
             assert.match(String(result.content), /\S/, `${family}.json contains its contract`);
         }
         for (const family of ["skills", "mcp", "members", "schedule"]) {
             const result = Validator.assertFunctionalityListResult(
                 await workspace.invokeWorkspaceAction(`workspace.${family}.list`, {}),
             );
-            assert.equal(result.family, family, `${family} management belongs to the same composed worker`);
+            assert.equal(result.family, family, `${family} management belongs to the same composed session`);
         }
         assert.equal(inference.mock.callCount(), 0, "capability discovery never requires inference");
     } finally {
@@ -57,7 +57,7 @@ test("{§service-worker-composition} live workspaces expose a model worker's ref
     }
 });
 
-test("{§service-worker-composition} specimen schedules deliver and shut down without activating operator rules", async (t) => {
+test("{§service-session-composition} specimen schedules deliver and shut down without activating operator rules", async (t) => {
     serverProposals(t, "accept");
     const provider = new Mock({
         contextWindow: 100_000,
@@ -68,7 +68,7 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
     const profile = parseEnv(await readFile(new URL("../../.env.test", import.meta.url), "utf8"));
     const environment = {
         PLURNK_SCHEDULE_ENABLED: profile.PLURNK_SCHEDULE_ENABLED!,
-        PLURNK_SCHEDULE_fixture: JSON.stringify({ rule: "FREQ=HOURLY", target: "worker://operator", prompt: "Operator work." }),
+        PLURNK_SCHEDULE_fixture: JSON.stringify({ rule: "FREQ=HOURLY", target: "session://operator", prompt: "Operator work." }),
     };
     const previous = Object.fromEntries(Object.keys(environment).map((key) => [key, process.env[key]]));
     t.after(() => {
@@ -93,8 +93,8 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
     }));
     const workspace = await liveWorkspace({ name: "harness-schedule-composition" });
     try {
-        const workerId = await namedModelWorker(workspace.daemon, workspace.workspaceId, "main");
-        const worker = (await workspace.daemon.listWorkers(workspace.workspaceId)).find(({ id }) => id === workerId)!;
+        const sessionId = await namedModelSession(workspace.daemon, workspace.workspaceId, "main");
+        const session = (await workspace.daemon.listSessions(workspace.workspaceId)).find(({ id }) => id === sessionId)!;
         const list = async () => Validator.assertFunctionalityListResult(await workspace.invokeWorkspaceAction("workspace.schedule.list", {}));
         const mutate = async (verb: string, params: Record<string, unknown>) => Validator.assertFunctionalityMutationResult(
             await workspace.invokeWorkspaceAction(`workspace.schedule.${verb}`, params),
@@ -108,7 +108,7 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
         assert.match(discovered.candidates[0].summary ?? "", /now .+next/u);
         const definition = {
             ...discovered.candidates[0].definition,
-            target: `worker://${worker.name}`,
+            target: `session://${session.name}`,
             prompt: "Take the scheduled message.",
 
         };
@@ -131,7 +131,7 @@ test("{§service-worker-composition} specimen schedules deliver and shut down wi
         assert.equal(inference.mock.callCount(), 1, "only the explicitly added fixture scheduled inference");
         const rows = await workspace.db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null }>({ loop_id: completed[0].loopId });
         assert.equal(rows.filter(({ op, origin, source }) => op === "SEND" && origin === "_plurnk" && source === "schedule://beat").length, 1,
-            "the occurrence arrives through ordinary source-attributed worker messaging");
+            "the occurrence arrives through ordinary source-attributed session messaging");
         await waitForDb(list, ({ definitions }) => {
             const detail = definitions.find(({ alias }) => alias === "beat")?.detail;
             return isRecord(detail) && detail.exhausted === true;

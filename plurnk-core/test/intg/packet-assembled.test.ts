@@ -16,7 +16,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { InvalidCapabilityPolicyError, Validator } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
@@ -26,19 +26,19 @@ import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
-test("{§worker-auto-name}: assembled receipts and child inventory identify anonymous WORK and FORK", async () => {
+test("{§session-auto-name}: assembled receipts and child inventory identify anonymous WORK and FORK", async () => {
     const db = await openMigrated();
     try {
-        const workspaceId = await insertWorkspace(db, `pkt-anonymous-workers-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "delegate two reviews");
+        const workspaceId = await insertWorkspace(db, `pkt-anonymous-sessions-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "delegate two reviews");
         const children: number[] = [];
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            injectWorker: async (args) => {
-                children.push(args.workerId);
-                const history = await db.test_fork_loops.all({ worker_id: args.workerId });
-                const childLoopId = await insertLoop(db, args.workerId, history.length + 1, args.prompt);
+            injectSession: async (args) => {
+                children.push(args.sessionId);
+                const history = await db.test_fork_loops.all({ session_id: args.sessionId });
+                const childLoopId = await insertLoop(db, args.sessionId, history.length + 1, args.prompt);
                 return { action: "enqueued_new_loop", loopId: childLoopId, message: `message://child/${childLoopId}` };
             },
         });
@@ -58,19 +58,19 @@ test("{§worker-auto-name}: assembled receipts and child inventory identify anon
                 { assistant: { content: "", reasoning: null, ops: [noteStmt("Continue.")] } },
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
         const receipts = logEntries(packet).filter(({ logPath: path }) => /\/(WORK|FORK)$/.test(path));
         assert.equal(receipts.length, 2);
-        const names = await Promise.all(children.map(async (id) => (await db.worker_get.get<{ name: string }>({ id }))!.name));
+        const names = await Promise.all(children.map(async (id) => (await db.session_get.get<{ name: string }>({ id }))!.name));
         assert.equal(new Set(names).size, 2);
         const pointers = packetSection(packet, "work");
         for (const [index, name] of names.entries()) {
             assert.match(name, /^[a-f0-9]{8}$/);
-            assert.equal(receipts[index]?.worker, `worker://${name}`, "the outcome address is visible beside the spawning operation");
+            assert.equal(receipts[index]?.session, `session://${name}`, "the outcome address is visible beside the spawning operation");
             assert.equal(receipts[index]?.path, undefined, "no address is invented for the authored operand");
-            assert.ok(pointers.includes(`worker://${name}`), "the same identity appears in the ordinary live-child inventory");
+            assert.ok(pointers.includes(`session://${name}`), "the same identity appears in the ordinary live-child inventory");
         }
         assert.match(String(receipts[0]?.body), /Review the files\./);
         assert.match(String(receipts[1]?.body), /Review the reasoning\./);
@@ -81,11 +81,11 @@ test("{§render-rule-line-navigable-prefix} assembled packet: editable READ line
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-line-anchor-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "inspect notes");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "inspect notes");
         const schemes = new SchemeRegistry();
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-        const target = urlPath("worker", "/anchored.md");
+        const target = urlPath("workspace", "/anchored.md");
         const source = Array.from({ length: 100 }, (_, index) => `line ${index + 1}`).join("\n");
         const provider = new Mock({
             contextWindow: 100000,
@@ -99,13 +99,13 @@ test("{§render-rule-line-navigable-prefix} assembled packet: editable READ line
             ],
         });
 
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const read = logEntries(await getPacket(db, second.turnId)).find((entry) =>
-            entry.path === "worker:///anchored.md"
+            entry.path === "workspace:///anchored.md"
             && typeof entry.logPath === "string"
             && entry.logPath.endsWith("/READ"));
-        assert.equal(read?.path, "worker:///anchored.md");
+        assert.equal(read?.path, "workspace:///anchored.md");
         assert.match(String(read?.body), /^ *9<@[0-9A-Za-z]{5}>line 9\n *10<@[0-9A-Za-z]{5}>line 10\n$/);
     } finally { await db.close(); }
 });
@@ -114,11 +114,11 @@ test("{§edit-result-receipt-projection} assembled packet: landed EDIT receipts 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-edit-parse-issues-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "edit Go sources");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "edit Go sources");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const brokenTarget = urlPath("worker", "/broken.go");
-        const cleanTarget = urlPath("worker", "/clean.go");
+        const brokenTarget = urlPath("workspace", "/broken.go");
+        const cleanTarget = urlPath("workspace", "/clean.go");
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
@@ -131,12 +131,12 @@ test("{§edit-result-receipt-projection} assembled packet: landed EDIT receipts 
             ],
         });
 
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const edits = logEntries(await getPacket(db, second.turnId)).filter((entry) =>
             typeof entry.logPath === "string" && entry.logPath.endsWith("/EDIT"));
-        const broken = edits.find((entry) => entry.path === "worker:///broken.go");
-        const clean = edits.find((entry) => entry.path === "worker:///clean.go");
+        const broken = edits.find((entry) => entry.path === "workspace:///broken.go");
+        const clean = edits.find((entry) => entry.path === "workspace:///clean.go");
         assert.match(String(broken?.parseIssues), /^0->[1-9]\d*$/);
         assert.equal(clean !== undefined && "parseIssues" in clean, false);
     } finally { await db.close(); }
@@ -146,8 +146,8 @@ test("{§workspace-capability-policy}: packet assembly surfaces invalid workspac
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         await db.test_set_workspace_settings.run({ id: workspaceId, settings: JSON.stringify({ capabilities: { deny: "invalid" } }) });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
@@ -156,7 +156,7 @@ test("{§workspace-capability-policy}: packet assembly surfaces invalid workspac
         });
 
         await assert.rejects(
-            engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }),
+            engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] }),
             (error: unknown) => {
                 assert.ok(error instanceof Error);
                 assert.equal(error.message, `Workspace ${workspaceId} has invalid persisted capability policy.`);
@@ -173,23 +173,23 @@ test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog fo
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "subject");
-        const loopId = await insertLoop(db, workerId, 1, "what do I have?"); // {§actor-boundary-catalog-preview}: first loop foists
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/nested/deep.md", channel: "body", content: "nested", mimetype: "text/markdown" });
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/.env.defaults", channel: "body", content: "KNOB=1", mimetype: "text/plain" });
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/.github/settings.yml", channel: "body", content: "setting: true", mimetype: "text/yaml" });
+        const sessionId = await insertSession(db, workspaceId, null, "subject");
+        const loopId = await insertLoop(db, sessionId, 1, "what do I have?"); // {§actor-boundary-catalog-preview}: first loop foists
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/nested/deep.md", channel: "body", content: "nested", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/.env.defaults", channel: "body", content: "KNOB=1", mimetype: "text/plain" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/.github/settings.yml", channel: "body", content: "setting: true", mimetype: "text/yaml" });
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const rows = await db.test_log_entries_by_loop.all<{ id: number; op: string | null; origin: string; tx: string; rx: string; attrs: string }>({ loop_id: loopId });
         const foists = rows
             .filter((row) => row.origin === "_plurnk" && (row.op === "FIND" || row.op === "READ") && !LogEntryProjection.isEmission(row));
         assert.ok(foists.length > 0, "the first turn persists its structural observation foists");
-        const sources = await db.test_turn_sources.all<{ kind: string; producer: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ kind: string; producer: string; content: string }>({ session_id: sessionId });
         const turnSource = sources.find(({ kind, producer }) => kind === "ops" && producer === "_plurnk");
-        assert.ok(turnSource, "initialization stores its exact program as its ops source ({§worker-initialization-entry})");
+        assert.ok(turnSource, "initialization stores its exact program as its ops source ({§session-initialization-entry})");
         const source = turnSource.content;
         const sourceFoists = PlurnkParser.parseStatements(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])
             .filter(({ op }) => op === "FIND" || op === "READ");
@@ -206,16 +206,16 @@ test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog fo
         const packet = await getPacket(db, result.turnId);
         const log = packetSection(packet, "log");
 
-        // The foisted FIND(worker:///*) renders its RESULT into the log
+        // The foisted FIND(workspace:///*) renders its RESULT into the log
         // ({§render-rule-find-renders-result}) — the model sees the catalog groups, not just its own
         // echoed query.
-        assert.match(log, /worker:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
-        assert.match(log, /worker:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
-        assert.match(log, /"path":"worker:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
-        assert.match(log, /"path":"worker:\/\/\/nested\/\*\*","items":1,"tokens":\d+/, "a directory renders as an actionable recursive summary");
-        assert.doesNotMatch(log, /worker:\/\/\/nested\/deep\.md/, "the opening map does not dump a summarized descendant");
+        assert.match(log, /workspace:\/\/\/note\.md/, "the foisted catalog FIND renders a direct entry into the packet's log");
+        assert.match(log, /workspace:\/\/\/\.env\.defaults/, "the one-level page includes direct dot entries");
+        assert.match(log, /"path":"workspace:\/\/\/\.github\/\*\*","items":1,"tokens":\d+/, "a dot directory renders as an actionable recursive summary");
+        assert.match(log, /"path":"workspace:\/\/\/nested\/\*\*","items":1,"tokens":\d+/, "a directory renders as an actionable recursive summary");
+        assert.doesNotMatch(log, /workspace:\/\/\/nested\/deep\.md/, "the opening map does not dump a summarized descendant");
         for (const path of [".env.defaults", ".github/**", "nested/**", "note.md"]) {
-            const target = `worker:///${path}`;
+            const target = `workspace:///${path}`;
             const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             assert.match(
                 log,
@@ -229,7 +229,7 @@ test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog fo
         assert.deepEqual(
             [...new Set(initialization.map(({ logPath: path }) => path.split("/").at(-1) ?? ""))].toSorted(),
             ["FIND", "NOTE"],
-            "{§worker-initialization-entry}: turn 0 exposes its NOTEs and its surveys, and nothing else",
+            "{§session-initialization-entry}: turn 0 exposes its NOTEs and its surveys, and nothing else",
         );
         assert.equal(initialization.some(({ path: target }) => target?.startsWith("ops://") === true), false,
             "turn 0 reads none of its own program, and it announces no emission ({§emission-row})");
@@ -237,10 +237,10 @@ test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog fo
         const initializationOutcomes = initialization;
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).map(({ path: target }) => target),
-            ["worker:///*"],
-            "only the survey with entries runs: no reference is materialized and the worker's own space is new ({§actor-boundary-catalog-preview})",
+            ["workspace:///*"],
+            "only the survey with entries runs: no reference is materialized and the session's own space is new ({§actor-boundary-catalog-preview})",
         );
-        assert.doesNotMatch(log, /worker:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
+        assert.doesNotMatch(log, /workspace:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
     } finally {
         await db.close();
@@ -252,11 +252,11 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-matches-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "find the target");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "find the target");
         await seedEntryWithChannel(db, {
             workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             pathname: "/notes.md",
             channel: "body",
             content: "heading\ntarget one\ncontext\ntarget two",
@@ -264,7 +264,7 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
         });
 
         const matchedFind = {
-            ...findStmt(urlPath("worker", "/notes.md")),
+            ...findStmt(urlPath("workspace", "/notes.md")),
             matcher: regex("target"),
         };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
@@ -275,18 +275,18 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
                 { assistant: { content: "", reasoning: null, ops: [completeStmt()] } },
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const log = packetSection(await getPacket(db, second.turnId), "log");
 
-        assert.match(log, /^### log:\/\/\/\S+\/FIND \(worker:\/\/\/notes\.md\) \/target\/ · \d+$/m, "the addressed resource and matcher return on the receipt heading");
+        assert.match(log, /^### log:\/\/\/\S+\/FIND \(workspace:\/\/\/notes\.md\) \/target\/ · \d+$/m, "the addressed resource and matcher return on the receipt heading");
         assert.match(log, /"range":"2 match locations"/);
         assert.doesNotMatch(log, /"matchLocationCount":2/);
         assert.doesNotMatch(log, /"matchingPathCount":1/);
         // {§find-result-projection}: a location reads in the scope notation with its matched text, its default channel unnamed.
         assert.match(log, /1:\[\{"region":"<2,1,2,7>","matched":"target"\},/);
         assert.match(log, /2:\{"region":"<4,1,4,7>","matched":"target"\}\]/);
-        assert.match(log, /worker:\/\/\/notes\.md/);
+        assert.match(log, /workspace:\/\/\/notes\.md/);
     } finally { await db.close(); }
 });
 
@@ -294,10 +294,10 @@ test("{§copy-move-observation} assembled packet: scoped COPY reports both opera
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-copy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "copy the selected lines");
-        const source = urlPath("worker", "/src.md");
-        const destination = urlPath("worker", "/slice.md");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "copy the selected lines");
+        const source = urlPath("workspace", "/src.md");
+        const destination = urlPath("workspace", "/slice.md");
         const scopedCopy = copyStmt(source, destination, { marks: [2, 3] });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
@@ -319,35 +319,35 @@ test("{§copy-move-observation} assembled packet: scoped COPY reports both opera
             ],
         });
 
-        const first = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const first = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.deepEqual(first.outcomes, [
             { op: "EDIT", status: 201, problemType: null },
             { op: "COPY", status: 201, problemType: null },
             { op: "COPY", status: 304, problemType: null },
             { op: "NOTE", status: 200, problemType: null },
         ]);
-        const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const second = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const packet = await getPacket(db, second.turnId);
         // Turn 0 archives the prompt by COPY (log:///1/1/…); the model's two are under test.
         const copies = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/COPY") && !path.startsWith("log:///1/1/"));
 
         assert.equal(copies.length, 2);
-        assert.equal(copies[0]?.from, "worker:///src.md");
+        assert.equal(copies[0]?.from, "workspace:///src.md");
         assert.deepEqual(copies[0]?.scope, { from: "<2,3>" });
-        assert.equal(copies[0]?.to, "worker:///slice.md");
+        assert.equal(copies[0]?.to, "workspace:///slice.md");
         assert.equal(copies[0]?.status, 201);
         assert.ok(Array.isArray(copies[0]?.effects));
         const [effect] = copies[0].effects as Array<Record<string, unknown>>;
-        assert.equal(effect?.path, "worker:///slice.md");
+        assert.equal(effect?.path, "workspace:///slice.md");
         assert.equal(effect?.action, "create");
         assert.equal(Object.hasOwn(effect ?? {}, "rev"), false, "no revision token in the packet");
         assert.equal(effect?.extent, "lines 0->2");
         assert.equal(effect?.change, "lines -0 +2");
         assert.equal(effect?.effect, "<1,1,1,1> -> <1,2>");
         assert.ok(copies[0] !== undefined && "body" in copies[0], "the landed materialization is open (body present, #338)");
-        assert.equal(copies[1]?.from, "worker:///src.md");
+        assert.equal(copies[1]?.from, "workspace:///src.md");
         assert.deepEqual(copies[1]?.scope, { from: "<2,3>" });
-        assert.equal(copies[1]?.to, "worker:///slice.md");
+        assert.equal(copies[1]?.to, "workspace:///slice.md");
         assert.equal(copies[1]?.status, 304);
         assert.equal(copies[1]?.effects, undefined);
         assert.ok(copies[1] !== undefined && !("body" in copies[1]), "the whole-channel effect has no text body (#338)");
@@ -360,8 +360,8 @@ test("{§packet-cache-monotone} the initial wire preserves canonical order and t
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-monotone-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
@@ -369,7 +369,7 @@ test("{§packet-cache-monotone} the initial wire preserves canonical order and t
             provider,
             recap: "CUSTOM_RECAP_SENTINEL",
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -379,7 +379,7 @@ test("{§packet-cache-monotone} the initial wire preserves canonical order and t
         // append-mostly history precedes per-turn status, open message pointers and Recap.
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "the stable system prefix has no injected resource catalog");
-        assert.deepEqual(slot("user"), ["log", "git", "budget", "worker", "work", "messages", "notices", "errors", "recap"]);
+        assert.deepEqual(slot("user"), ["log", "git", "budget", "session", "work", "messages", "notices", "errors", "recap"]);
         assert.deepEqual(slot("assistant"), []);
         assert.equal(packet.sections.find((section) => section.name === "messages")?.header, "Open Messages");
         assert.equal(packet.sections.find((section) => section.name === "budget")?.header, "Context");
@@ -392,15 +392,15 @@ test("{§recap-lines} no recap line ships and the recap source is empty, so a pa
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-recap-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
 
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -411,27 +411,27 @@ test("{§recap-lines} no recap line ships and the recap source is empty, so a pa
     } finally { await db.close(); }
 });
 
-test("{§schemes-directory} assembled packet: the skills foist surfaces the Worker's materialized skills into its log", async () => {
+test("{§schemes-directory} assembled packet: the skills foist surfaces the Session's materialized skills into its log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-docs-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        // A materialized scheme doc is an ordinary entry owned by the Worker
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        // A materialized scheme doc is an ordinary entry owned by the Session
         // whose effective Functionality it describes.
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/_plurnk/plurnk/worker.md", channel: "body", content: "# worker\n\n## Summary\n\nManage shared worker entries.\n\n## Invocation\n\n````EDIT (worker:///notes.md)\nNotes.\n````", mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/_plurnk/plurnk/session.md", channel: "body", content: "# session\n\n## Summary\n\nManage shared session entries.\n\n## Invocation\n\n````EDIT (workspace:///notes.md)\nNotes.\n````", mimetype: "text/markdown" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const log = packetSection(await getPacket(db, result.turnId), "log");
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§schemes-directory}).
-        assert.match(log, /^### log:\/\/\/\S+\/FIND \(worker:\/\/\/_plurnk\/plurnk\/\*\.md\) · \d+$/m, "the foist scopes discovery to the Worker's skills tree");
-        assert.match(log, /worker:\/\/\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
-        assert.match(log, /"aside":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
+        assert.match(log, /^### log:\/\/\/\S+\/FIND \(workspace:\/\/\/_plurnk\/plurnk\/\*\.md\) · \d+$/m, "the foist scopes discovery to the Session's skills tree");
+        assert.match(log, /workspace:\/\/\/_plurnk\/plurnk\/session\.md/, "the materialized skill surfaces in the foist's rendered result");
+        assert.match(log, /"aside":"Manage shared session entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {
         await db.close();
         if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev;
@@ -444,14 +444,14 @@ test("{§actor-boundary-catalog-preview} assembled packet: a reference catalog w
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-empty-docs-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; scheme: string | null; pathname: string }>({ loop_id: loopId });
-        assert.equal(rows.some((row) => row.op === "FIND" && row.scheme === "worker" && row.pathname === "/_plurnk/plurnk/*.md"), false,
+        assert.equal(rows.some((row) => row.op === "FIND" && row.scheme === "workspace" && row.pathname === "/_plurnk/plurnk/*.md"), false,
             "the reference survey that would select nothing is left out");
         assert.ok(rows.some((row) => row.origin === "model" && row.op === "SEND"), "and the model's turn still runs and completes");
     } finally {
@@ -480,11 +480,11 @@ test("{§operator-config-real-model-profile}: the provider packet excludes perso
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, `pkt-gate-policy-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "go");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "go");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-    const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "fixture language" }, { role: "user", content: "go" }] });
+    const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "fixture language" }, { role: "user", content: "go" }] });
     const packet = await getPacket(db, result.turnId);
     assert.ok(provider.received.length > 0, "the real packet reaches the provider");
     const system = provider.received.flat().filter(({ role }) => role === "system").map((message) => chatMessageText(message)).join("\n");
@@ -504,11 +504,11 @@ test("{§turn0-agents-stunt} assembled packet: PLURNK_SERVICE_POLICY renders the
         process.env.PLURNK_SERVICE_POLICY = sysPath;
 
         const workspaceId = await insertWorkspace(db, `pkt-policy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
         // Policy is the client's foot in the privileged zone — the system slot
@@ -528,23 +528,23 @@ test("{§turn0-agents-stunt} assembled packet: PLURNK_SERVICE_POLICY renders the
     }
 });
 
-test("{§child-orientation} the live things a worker holds — child workers — surface as terse pointers in the status clump", async () => {
+test("{§child-orientation} the live things a session holds — child sessions — surface as terse pointers in the status clump", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        // A live child worker this worker holds (parent_worker_id = workerId; insertLoop's default status 102 = live).
-        const child = await insertWorker(db, workspaceId, workerId, "worker-x");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        // A live child session this session holds (parent_session_id = sessionId; insertLoop's default status 102 = live).
+        const child = await insertSession(db, workspaceId, sessionId, "session-x");
         await insertLoop(db, child, 1, "working");
 
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
-        // The live child surfaces as a terse status+path pointer under `workers` — orienting state, not advice.
-        assert.match(packetSection(packet, "work"), /^\{"workers":\[\{"status":102,"path":"worker:\/\/worker-x"\}\],\n"streams":\[\],\n"messages":\[\]\}$/, "the live child worker is a status+path pointer the model READs/KILLs itself");
+        // The live child surfaces as a terse status+path pointer under `sessions` — orienting state, not advice.
+        assert.match(packetSection(packet, "work"), /^\{"sessions":\[\{"status":102,"path":"session:\/\/session-x"\}\],\n"streams":\[\],\n"messages":\[\]\}$/, "the live child session is a status+path pointer the model READs/KILLs itself");
         const usr = packet.sections.filter((x) => x.slot === "user").map((x) => x.name);
         assert.ok(usr.includes("work"), "{§child-orientation}: open work rides the status clump");
     } finally { await db.close(); }
@@ -554,15 +554,15 @@ test("{§packet-empty-sections} no live children or streams → Open Work states
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         // {§packet-empty-sections} — Open Work states emptiness as `[]` for every list: the model
         // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
-        assert.equal(packetSection(packet, "work"), '{"workers":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no sent messages awaiting → all three lists state []");
+        assert.equal(packetSection(packet, "work"), '{"sessions":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no sent messages awaiting → all three lists state []");
     } finally { await db.close(); }
 });
 
@@ -570,8 +570,8 @@ test("{§definition-table-projection} assembled packet: definition tables compac
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const definition = [
@@ -605,7 +605,7 @@ test("{§definition-table-projection} assembled packet: definition tables compac
             "Prose  spacing remains exact.",
         ].join("\n");
 
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
         assert.equal(packetSection(packet, "definition"), expected, "the stored model-facing definition is the compact projection");
@@ -617,13 +617,13 @@ test("{§definition-table-projection}: canonical operation examples survive pack
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-definition-grammar-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const definition = await readFile(Paths.instructionsSystem, "utf8");
 
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: definition }, { role: "user", content: "go" }] });
         const projected = packetSection(await getPacket(db, result.turnId), "definition");
         const codeBlocks = (markdown: string) => Lexer.lex(markdown)
             .flatMap((token) => token.type === "code" ? [token.text] : []);
@@ -637,11 +637,11 @@ test("{§schemes-directory}: the assembled packet retains the definition without
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-shape-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = await getPacket(db, result.turnId);
 
         // The grammar (plurnk.md) must reach the model — a dropped definition section is a dead packet.

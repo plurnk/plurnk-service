@@ -30,7 +30,7 @@ router fee; incomplete billing evidence remains unknown ({§provider-monetary-ev
 
 ## Runtime-neutral contracts
 
-Browser and edge Workers import accounting and normalized failures through
+Browser and edge Sessions import accounting and normalized failures through
 their dedicated runtime-neutral subpaths
 ({§provider-runtime-neutral-accounting}, {§provider-runtime-neutral-errors}):
 
@@ -88,8 +88,8 @@ The forms, in one table:
 Models.dev supplies cataloged providers' endpoints, credential-variable names,
 model limits, reasoning capabilities, and rates. The operator supplies
 credentials to the service environment; a client's environment does not
-configure a remote daemon. Worker model and reasoning selections persist:
-changing a startup default is not a command to retarget existing Workers.
+configure a remote daemon. Session model and reasoning selections persist:
+changing a startup default is not a command to retarget existing Sessions.
 Clients expose explicit model, reasoning, and child-model controls; their
 available effort choices come from the selected route.
 
@@ -175,7 +175,7 @@ PLURNK_MODEL=local
 # Optional explicit generation allowances, in tokens:
 # PLURNK_PROVIDERS_OUTPUT_BUDGET_local=8192
 # PLURNK_PROVIDERS_REASONING_BUDGET_local=4096
-# Optional: serialize inference on a single-slot endpoint without serializing workers:
+# Optional: serialize inference on a single-slot endpoint without serializing sessions:
 # PLURNK_PROVIDERS_MAX_CONCURRENCY_local=1
 ```
 
@@ -200,7 +200,7 @@ opt-in for endpoints that emit a leading `<think>` envelope, not a reasoning swi
 | Discovery/tokenizer HTTP | Separate non-generation fetch bound; does not limit inference. |
 | Provider-directed waits | Bounded retries honor `Retry-After`; other recoverable failures return to Core. |
 | Loop recovery | Core reissues within its recovery window, then parks for a review-capable owner or concludes on the failure. |
-| Cache affinity | Stable Worker identity through documented provider controls; not a cache-hit guarantee. |
+| Cache affinity | Stable Session identity through documented provider controls; not a cache-hit guarantee. |
 | Explicit cache writes | Separate policy on supported routes; can affect billing. |
 | Service tier | Explicit route choice that may change price and availability. |
 | Cost | Provider monetary evidence wins; known usage and catalog rates yield an estimate, not a settled charge. |

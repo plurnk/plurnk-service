@@ -19,7 +19,7 @@ interface ToolSource {
     readonly invocation: RuntimeInvocationDecl;
     readonly details: string;
     readonly registry: RuntimeToolRegistry | null;
-    // {§tools-resource-materialization} — relative to the Worker's generated root.
+    // {§tools-resource-materialization} — relative to the Session's generated root.
     readonly resourcesPath?: string;
 }
 
@@ -252,7 +252,7 @@ export default class ToolResources {
             summary,
             [
                 "## Tools", "",
-                ...catalog.map((tool) => `Complete tool definitions: ${inlineCode(`worker://${tool.pathname}`)}.\n`),
+                ...catalog.map((tool) => `Complete tool definitions: ${inlineCode(`workspace://${tool.pathname}`)}.\n`),
                 toolInvocations.join("\n\n"),
             ],
             detailsBlock,

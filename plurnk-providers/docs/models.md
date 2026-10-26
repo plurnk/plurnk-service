@@ -1,9 +1,9 @@
 # Models and generation
 
 A route is `provider/model`; an alias names a route with its own tuning. The
-worker owns its model and reasoning selection: an explicit selection persists
-on the worker, a loop snapshots the resolved route, and a change to the
-daemon's default does not retarget an existing worker. A child worker runs on
+session owns its model and reasoning selection: an explicit selection persists
+on the session, a loop snapshots the resolved route, and a change to the
+daemon's default does not retarget an existing session. A child session runs on
 its parent's durable spawn selection, else the parent's own model.
 
 Effort and budget are independent. The effort names available come from the

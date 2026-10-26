@@ -11,13 +11,13 @@ for (const cancel of [false, true]) {
     test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "explicit completion"}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const mock = new Mock({ contextWindow: 16384, responses: [
-            makeMockResponse("\n````KILL (worker:///no-such-entry)\n````\n````SEND\nThe requested entry does not exist.\n````"),
-            makeMockResponse(cancel ? "````KILL (worker://alice)\n````" : "````SEND [200]\n````"),
+            makeMockResponse("\n````KILL (workspace:///no-such-entry)\n````\n````SEND\nThe requested entry does not exist.\n````"),
+            makeMockResponse(cancel ? "````KILL (session://alice)\n````" : "````SEND [200]\n````"),
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: "failed-op-observation" });
-            const { workerId } = await daemon.createWorker({ workspaceId, name: "alice" });
-                const result = await daemon.runLoop({ workspaceId, workerId, prompt: "go" });
+            const { sessionId } = await daemon.createSession({ workspaceId, name: "alice" });
+                const result = await daemon.runLoop({ workspaceId, sessionId, prompt: "go" });
                 const lifecycle = new LoopLifecycle(db);
                 await waitForDb(() => lifecycle.status(result.loopId), (status) => status === (cancel ? 499 : 200));
                 // {§turn-record}: cancellation status precedes the self-KILL receipt and turn completion.

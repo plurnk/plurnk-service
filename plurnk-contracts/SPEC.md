@@ -22,7 +22,7 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Surface                                                                         | Canonical export or artifact                        |
 | ------------------------------------------------------------------------------- | --------------------------------------------------- |
 | AST, validators, Problems, results, Notices, text regions and extents          | `@plurnk/plurnk-contracts`                          |
-| Capability admission and approval ownership | `CapabilityPolicy`, `WorkerOwner`, `ProposalPolicy`, `PROPOSAL_POLICIES` |
+| Capability admission and approval ownership | `CapabilityPolicy`, `SessionOwner`, `ProposalPolicy`, `PROPOSAL_POLICIES` |
 | Durable effort                                                                  | `Effort`, `EFFORTS`             |
 | Model route and catalog discovery                                               | `ModelRoute`, `ModelCatalogQuery`, `ModelCatalogPage`, `ModelReadiness` |
 | Stopped-world client contract                                                   | `ProposalDisposition`, `ProposalProjection`         |
@@ -30,8 +30,8 @@ runtime-neutral wire envelopes; `@plurnk/plurnk-parser` implements the language 
 | Client capability presentation                                                 | `ClientDisplayCapabilities`                         |
 | Exterior adapter application calls                                             | `ApplicationPort`, from `@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}) |
 | Workspace MCP configuration                                                    | `McpServerDefinition`, `McpOAuth` |
-| Worker Agent Skills definition                                                 | `SkillDefinition` |
-| Worker Functionality lifecycle projections (family-neutral)                     | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
+| Session Agent Skills definition                                                 | `SkillDefinition` |
+| Session Functionality lifecycle projections (family-neutral)                     | `FunctionalityProvenance`, `FunctionalityCandidate`, `FunctionalityDiscoverQuery`, `FunctionalityDiscoverResult`, `FunctionalityDefinitionState`, `FunctionalityListResult`, `FunctionalityMutationResult` |
 | ACP discovery, client accounting, and shared conformance specimens             | `AcpDiscovery`, `AcpClientConformance`, `AcpConformanceKit` |
 | JSON Schemas                                                                    | `@plurnk/plurnk-contracts/schema/*.json`            |
 | Generated JSON result rendering                                                 | `renderJsonResult`                                  |
@@ -166,7 +166,7 @@ The schemas own the runtime-neutral shapes; core owns their stateful values.
 | `CapabilityDescriptor`    | One routed operation demand with its operation, access class, resource/runtime/tool coordinates, and declared traits | Derive every demand before dispatch |
 | `CapabilityPolicy`        | Exact `allow`/`only`/`deny` selectors; omitted `only` is unrestricted, present empty `only` denies all, and `allow` pre-approves admitted proposals | Intersect service and workspace layers |
 | `CapabilityProjection`    | Exact service, workspace, and normalized effective policies | Expose the resolver's workspace cascade without claiming one layer is effective authority |
-| `WorkerOwner` | Nonempty address, unique client-tool names, and whether it is interactive | Persist by workspace; inherit through worker creation |
+| `SessionOwner` | Nonempty address, unique client-tool names, and whether it is interactive | Persist by workspace; inherit through session creation |
 | `ProposalPolicy` | `review`, `accept`, or `reject` | Read the server's disposition knob at the proposal boundary |
 | `ProposalDisposition` | Review, or automatic accept/reject with optional outcome | Select once for the pending gate |
 | `ProposalProjection` | Identity, review target, body/attrs, owner, capability selector, ACP v2 subject, stale signal, disposition | One validated projection for live delivery and reconnect |
@@ -196,23 +196,23 @@ than hidden policy behavior.
 
 §capability-policy-projection A `CapabilityProjection` reports every durable
 workspace layer and their normalized intersection: `service`, `workspace`, and
-`effective`. Only `workspace` is client-mutable. Workers and loops store no
+`effective`. Only `workspace` is client-mutable. Sessions and loops store no
 capability policy and inherit no bound; every actor uses the same live workspace
-policy. Core derives one further ring per asking worker from its owner, and it only
+policy. Core derives one further ring per asking session from its owner, and it only
 removes interaction runtimes ({§owner-interaction-ring}). A client never derives
 effective authority from the mutable layer alone.
 
 §proposal-policy `ProposalPolicy` names one server disposition; `PROPOSAL_POLICIES`
-is its schema-owned vocabulary. `WorkerOwner` carries an address, the client-tool
+is its schema-owned vocabulary. `SessionOwner` carries an address, the client-tool
 names that recipient implements, and `interactive`: whether a person attends it. Neither
 contains resource permissions or
 message-carried authority. Core owns persistence, inheritance and settlement
-({§worker-ownership}, {§proposal-disposition}); capability admission precedes approval.
+({§session-ownership}, {§proposal-disposition}); capability admission precedes approval.
 
 §effort-wire `Effort` is exactly `off | adaptive | low |
 medium | high | xhigh | max`. The schema owns this shared wire vocabulary. Providers own the
 supported subset and native projection for a selected route; core owns the
-durable worker value.
+durable session value.
 
 §model-catalog-wire `ModelRoute` is one exact client-visible provider/model
 identity with optional alias provenance. Provider credentials, endpoints, and
@@ -225,7 +225,7 @@ and asserts neither credential validity nor endpoint reachability.
 `capabilities.efforts` lists the route's admitted members of
 {§effort-wire}, including supported activation policies; clients do
 not infer fixed efforts from the `reasoning` capability bit. It is not a
-worker's model/spawn intersection or an alias-specific tuning projection.
+session's model/spawn intersection or an alias-specific tuning projection.
 
 ### §client-interaction-wire Client-owned interaction wire
 
@@ -235,7 +235,7 @@ for structured input without transferring private protocol continuation state.
 | Contract | Shape invariant |
 |---|---|
 | `ClientInteractionRequest` | Non-empty `toolName`, `mode: "form"` with non-empty `message` and object `requestedSchema`, or `mode: "url"` with non-empty `message`, non-empty `elicitationId`, and URI `url` |
-| `ClientInteractionProjection` | Positive interaction, worker, loop, and turn identities plus the exact request; workspace scope remains the containing transport envelope |
+| `ClientInteractionProjection` | Positive interaction, session, loop, and turn identities plus the exact request; workspace scope remains the containing transport envelope |
 | `ClientInteractionResolution` | Exactly `{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }` |
 
 Opaque upstream request identities, retry state, credentials, and callbacks are
@@ -794,7 +794,7 @@ for a first-party owner therefore shows the bracketed array form.
 
 The key `env` is reserved for the
 service's environment option on the operations that open a process or a
-Worker; the shared reader withholds it from the owner's options.
+Session; the shared reader withholds it from the owner's options.
 
 ## 3. Lexical elements
 
@@ -846,10 +846,10 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | MOVE | required source and destination              | optional region after each path | empty                          |
 | execution | the fence name is the runtime; optional program/tool path ({§exec-executor-slot}) | none ({§exec-lifetime}) | optional program input |
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
-| WORK | optional fresh `worker://name`, or a prompt resource ({§worker-spawn-prompt-resource}) | none | prompt; optional with a resource |
-| FORK | optional context-inheriting `worker://name`, or a prompt resource | none            | prompt; optional with a resource |
+| WORK | optional fresh `session://name`, or a prompt resource ({§session-spawn-prompt-resource}) | none | prompt; optional with a resource |
+| FORK | optional context-inheriting `session://name`, or a prompt resource | none            | prompt; optional with a resource |
 | KILL | required target | optional text region on a target ({§kill-scope}) | the distillation of what a `log:///` target retires ({§kill-scope}); none for other targets |
-| SEND | optional recipient | recipient-defined; none for workers ({§send-directed-scope}) | message |
+| SEND | optional recipient | recipient-defined; none for sessions ({§send-directed-scope}) | message |
 | NOTE | none | none | literal working memory |
 | WAIT | optional label ({§send-wait-scope}) | none; duration is `[seconds]` metadata | explanation of the wait |
 
@@ -914,7 +914,7 @@ under {§message-completion}. KILL requires a target; NOTE retains memory.
 
 §send-wait-scope WAIT's optional `[seconds]` metadata is a non-negative finite scalar bounding
 this park, not the lifetime of its work. Without it, the service supplies its
-configured bound ({§worker-wait-timing}). Repeated duration slots select the
+configured bound ({§session-wait-timing}). Repeated duration slots select the
 smallest valid scalar. Zero continues without parking or a diagnostic. Invalid
 duration metadata is ignored with a terse warning; when none is valid, the configured
 bound applies. A text scope cannot supply a duration and receives the same warning.
@@ -925,11 +925,11 @@ one park with the earliest bound, including the configured bound for each bare W
 
 §send-directed-scope A recipient SEND carries an optional numeric scope after
 its target and metadata through to the addressed owner, which assigns its
-semantics or refuses it; worker actors refuse one (`scope-unsupported`, 400). A
+semantics or refuses it; session actors refuse one (`scope-unsupported`, 400). A
 targetless message takes no scope. A scope never changes the message body or
 disposition.
 
-§kill-scope **KILL takes an optional text-coordinate scope beside its target, and an optional matcher.** The scope is numeric or anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or ```` ```KILL (worker:///notes.md) <@aB3dE,@0Aa9Z>``` ````); the heading matcher selects rows or lines (```` ```KILL (log:///**) ~stale``` ````, {§naked-pattern}). Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and `matcher`; no grouped AST reaches execution ({§target-group}). KILL requires a target.
+§kill-scope **KILL takes an optional text-coordinate scope beside its target, and an optional matcher.** The scope is numeric or anchored (```` ```KILL (log:///**/READ) <17,-1>``` ```` or ```` ```KILL (workspace:///notes.md) <@aB3dE,@0Aa9Z>``` ````); the heading matcher selects rows or lines (```` ```KILL (log:///**) ~stale``` ````, {§naked-pattern}). Each operand becomes an ordinary KILL statement with its own `target`, `lineMarker` and `matcher`; no grouped AST reaches execution ({§target-group}). KILL requires a target.
 
 | Fact | Rule |
 | --- | --- |
@@ -968,7 +968,7 @@ An unadvertised ingestion tolerance: the runtime accepts three integers as `star
 path names a prompt resource; its body supplies inline prompt text. At least
 one must supply nonempty text at execution. With both, the complete resource
 text precedes the body, separated by two newlines. The target's scheme owns any
-metadata modifier. No scope, persistent worker identity, or output-language
+metadata modifier. No scope, persistent session identity, or output-language
 shape is represented. Provider selection, source admission, batching,
 accounting, and observation timing belong to the consuming service.
 
@@ -985,7 +985,7 @@ paths is FIND, and only FIND.
 §local-path-fragment **A bare path takes `#channel` like a URL.** `data/users.html#readable`
 parses as `{ kind: "local", raw: "data/users.html", fragment: "readable" }`: the first `#` ends
 the path and the rest is the channel (a spelling that opens with `#` names no path and stays
-whole), exactly as `worker:///a.html#readable` decomposes, so
+whole), exactly as `workspace:///a.html#readable` decomposes, so
 the `#channel` a READ receipt advertises (`channels: {"#readable": N}`) is addressable in the
 same bare spelling the receipt used: a model that appends the channel to the path it was just
 shown addresses the same entry, and so does one that writes it after the parenthesis,
@@ -1029,7 +1029,7 @@ Mutation semantics:
 | execution | Spawn acknowledgement; output arrives through named stream channels               |
 | BARE | The one-shot model response                                                        |
 | WORK | Spawn acknowledgement; the deliverable arrives through the log                    |
-| FORK | Spawn acknowledgement; the inherited worker's deliverable arrives through the log |
+| FORK | Spawn acknowledgement; the inherited session's deliverable arrives through the log |
 | KILL | Status of deletion or termination                                                 |
 | NOTE / WAIT | Literal memory or wait explanation                              |
 
@@ -1062,7 +1062,7 @@ retrieval never returns inline within the emitting turn.
 | {§path-query} | The serialized query component is the lossless representation. |
 | {§path-parentheses} | An unescaped depth-zero `)` closes the target slot. |
 | {§path-glob} | `PathSyntax` owns exact-path versus path-pattern classification. |
-| {§worker-name} | The exported `WORKER_NAME` contract governs names minted for URI authority slots:… |
+| {§session-name} | The exported `SESSION_NAME` contract governs names minted for URI authority slots:… |
 <!-- /map -->
 
 The target slot contains either a local path or a scheme URL. Exact addresses
@@ -1116,13 +1116,13 @@ never target content. Glob metacharacters remain legal path data.
 
 Matching and folder-scope semantics remain runtime concerns.
 
-§worker-name The exported `WORKER_NAME` contract governs names minted for URI
+§session-name The exported `SESSION_NAME` contract governs names minted for URI
 authority slots: `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` (1–63 ASCII characters,
 starting with a letter or digit). Case is preserved and significant;
 `Approach_A` and `approach_a` are distinct names. There is no reserved-name list: the
 runtime's own actor is named `_plurnk`, a spelling the predicate never admits.
 Every matching value, including `self` and `plurnk`, is an ordinary
-literal worker name. This is a minting and registry invariant, not an
+literal session name. This is a minting and registry invariant, not an
 ingestion restriction: the parser decomposes arbitrary URL authorities.
 
 ## §matcher-prefix-claims 6. Bulk pattern matching
@@ -1131,7 +1131,7 @@ ingestion restriction: the parser decomposes arbitrary URL authorities.
 | Tag | Promise |
 | --- | --- |
 | {§heading-boundary-recovery} | A column-0 heading is the trustworthy boundary. |
-| {§scope-slot-tolerance} | A line scope written inside a path slot (```` ```COPY (worker:///src.md<2,3>) ````) is read as… |
+| {§scope-slot-tolerance} | A line scope written inside a path slot (```` ```COPY (workspace:///src.md<2,3>) ````) is read as… |
 | {§extra-path-slot} | A path slot beyond the operation's admitted operands — one for every operation, two for COPY and MOVE, any… |
 | {§matcher-refusal} | A matcher the parser cannot read refuses its operation, never the turn. |
 | {§regex-dialect-readings} | Three habits of other regex dialects are read, with one advisory each. |
@@ -1149,8 +1149,8 @@ refusal ({§matcher-refusal}), not a parse error.
   next heading; the turn shape is decided locally (a turn disposition is recognized by its own
   token, never by a whole-turn alternative), so one malformed heading costs one
   diagnostic and every later statement, the turn disposition included, stands on its own.
-- §scope-slot-tolerance A line scope written inside a path slot (```` ```COPY (worker:///src.md<2,3>) ````)
-  is read as `(worker:///src.md) <2,3>` — `<` and `>` are not URI characters, so a `<…>` right
+- §scope-slot-tolerance A line scope written inside a path slot (```` ```COPY (workspace:///src.md<2,3>) ````)
+  is read as `(workspace:///src.md) <2,3>` — `<` and `>` are not URI characters, so a `<…>` right
   before a slot's closing paren can only be a scope; every path slot of a statement is repaired
   the same way — and the slip is one warning-severity advisory at the `<`, placed right after its
   statement, stating the `(path) <scope>` form that was used. The statement runs; a warning is
@@ -1235,7 +1235,7 @@ The operation column names the canonical AST operation after
 | KILL                  | 0/1/2 text coordinates                 | Whole target when absent; one physical line or inclusive range when present ({§kill-scope}) |
 | execution             | None                                   | Lifetime uses metadata; observation cadence belongs to the daemon ({§exec-lifetime}) |
 | WAIT                  | None                                   | Maximum park duration uses metadata ({§send-wait-scope}) |
-| Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; worker actors refuse it ({§send-directed-scope}) |
+| Directed SEND         | Owner-defined numeric scope           | Carried to the addressed owner; session actors refuse it ({§send-directed-scope}) |
 
 Text coordinates use the algebra in {§text-scope-semantics}: one integer is a
 whole line, two integers are an inclusive whole-line range, and four integers
@@ -1330,7 +1330,7 @@ operation resolves no message and creates no new observation obligation ({§empt
 | WAIT with live obligations | 202 | Park with the supplied or configured duration |
 | Resolved messages, observed results, live work remains | 202 | Join the held work; replies remain delivered |
 | Resolved messages, observed results, no held work | 200 or 499 | Settle under {§loop-completion}, retaining the aggregate message outcome |
-| KILL own worker | 499 | Cancel unfinished work in that worker and its descendants |
+| KILL own session | 499 | Cancel unfinished work in that session and its descendants |
 | Runtime or infrastructure failure | 5xx | Not a model-authored task status |
 
 ### The terminal contract (waitpid)
@@ -1338,7 +1338,7 @@ operation resolves no message and creates no new observation obligation ({§empt
 The model may supply WAIT or complete message obligations with SEND metadata. The host, not the grammar, owns
 turn boundaries and adjudicates the loop's actual obligations. Asking
 the human uses the native `question` executor tool, offered only when a person attends the
-worker's owner ({§owner-interaction-ring}), not a disposition. The shape rules ARE structural:
+session's owner ({§owner-interaction-ring}), not a disposition. The shape rules ARE structural:
 
 - §send-mid-reservation WAIT is reserved ({§turn-disposition}).
   A turn admits any number of lifecycle declarations, anywhere among its
@@ -1413,7 +1413,7 @@ already ends in one. Interstatement whitespace belongs to no body.
 A header starts at column zero. Whitespace outside operation blocks is inert.
 Only a header aside has aside semantics. A matching closer ends its body, and no
 missing closer is inferred. No generic Markdown rendering, indentation stripping
-or recursive code-block extraction occurs. Exact source remains in `ops://<worker>/`
+or recursive code-block extraction occurs. Exact source remains in `ops://<session>/`
 under {§turn-ops-log-curation}; body bytes and source positions are unchanged.
 
 §response-text **The parser owns the partition between operations and response text.**
@@ -1516,11 +1516,11 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 | `CapabilityAdmission`                               | Admission of a capability descriptor against policy layers          | {§capability-admission}                   |
 | `PLURNK_OPS`, `isPlurnkOp`, `INTERNAL_ROW_OPS`, `PLURNK_FENCE` | The closed operation alphabet, its membership test, and the language's fence | {§canonical-statement} |
 | `PROPOSAL_POLICIES` | Server proposal disposition vocabulary | {§proposal-policy} |
-| `WORKER_NAME`                                       | Authority minting predicate                                         | {§worker-name}                            |
+| `SESSION_NAME`                                       | Authority minting predicate                                         | {§session-name}                            |
 | `UNKNOWN_POSITION`                                  | Frozen sentinel for an AST statement without retained parsed source | {§parser-position}                        |
 
 The remaining values are small pure helpers over those contracts (`isExecution`, `isLogEntryNotification`, `writtenOp`,
-`lifecycleOfLoopStatus`, `selectWorkerLoop`, `renderJsonResult`, `formatJsonDocument`,
+`lifecycleOfLoopStatus`, `selectSessionLoop`, `renderJsonResult`, `formatJsonDocument`,
 `acpConformanceReport`, `requestOrigin` for {§http-request-origin}, `withoutBodies`, `addressOf`) and the closed name patterns
 and vocabularies (`RUNTIME_TAG`, `SKILL_NAME`, `EFFORTS`, `APPLICATION_NOTIFICATIONS`).
 
@@ -1552,10 +1552,10 @@ than alternate consumer entry points:
 | {§mcp-server-definition} | 13.8 MCP server definitions |
 | {§mcp-oauth} | `McpOAuth` is the client-managed OAuth plurnk holds for one Streamable HTTP server, included in that server's… |
 | {§application-port} | 13.9 Exterior application port |
-| {§application-worker-observation} | Worker observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a… |
+| {§application-session-observation} | Session observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a… |
 | {§loop-lifecycle-vocabulary} | One projection maps a loop's durable status onto the lifecycle words every client renders, shared by the… |
 | {§list-excerpt} | A list shows a message by its excerpt. |
-| {§application-worker-overview} | The worker overview is the places in a scope with what waits there. |
+| {§application-session-overview} | The session overview is the places in a scope with what waits there. |
 | {§application-loop-observation} | Loop observation exposes the durable scheduler state of work loops (excluding maintenance-only administrative… |
 <!-- /map -->
 
@@ -1782,7 +1782,7 @@ implements it; ACP and other interface modules consume it from
 contains typed application calls and a scoped event subscription, not wire
 route names, protocol framing, persistence access, or adapter-specific methods.
 An exterior adapter owns its own protocol validation, identity binding, and
-projection while reusing the same workspace, worker, loop, operation, proposal,
+projection while reusing the same workspace, session, loop, operation, proposal,
 interaction, and event owners through this port.
 
 `ApplicationOperationEvent` is the schema-owned dispatch observation consumed
@@ -1805,16 +1805,16 @@ each reply's `answers` addresses (empty for incoming messages).
 `resolveClientInteraction` may carry the accepted answer's message evidence;
 Core validates the resolution, retains the arrival, then resumes the operation.
 
-§application-worker-observation **Worker observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a permission grant.** It exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a worker with no parent; `fork` for a child carrying a fork boundary; `work` for any other child), and `lifecycle`, the worker's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle` when it has none), and `hidden_at`, when the worker was hidden ({§place-hiding}), null while it is shown. A client renders kind and lifecycle, it never infers them.
+§application-session-observation **Session observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a permission grant.** It exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a session with no parent; `fork` for a child carrying a fork boundary; `work` for any other child), and `lifecycle`, the session's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle` when it has none), and `hidden_at`, when the session was hidden ({§place-hiding}), null while it is shown. A client renders kind and lifecycle, it never infers them.
 
 | Fact | Rule |
 | --- | --- |
-| `selectWorkerLoop` | chooses running before parked before queued; ties select the oldest unresolved sequence; with no live work, the latest terminal settlement wins (sequence breaks equal timestamps); newer terminal history never hides unfinished work; maintenance-only loops do not change this projection, and their ordinary turns and results remain durable history |
-| `readWorker` | resolves exactly one id or name and returns `null` when absent |
-| `listWorkers` | filters collections by origin, lineage position or mark; an omitted parent filter means every position and an explicit `null` means roots; an omitted `hidden` means shown and hidden workers alike; singular and plural cardinalities are distinct contracts |
+| `selectSessionLoop` | chooses running before parked before queued; ties select the oldest unresolved sequence; with no live work, the latest terminal settlement wins (sequence breaks equal timestamps); newer terminal history never hides unfinished work; maintenance-only loops do not change this projection, and their ordinary turns and results remain durable history |
+| `readSession` | resolves exactly one id or name and returns `null` when absent |
+| `listSessions` | filters collections by origin, lineage position or mark; an omitted parent filter means every position and an explicit `null` means roots; an omitted `hidden` means shown and hidden sessions alike; singular and plural cardinalities are distinct contracts |
 
 §loop-lifecycle-vocabulary One projection maps a loop's durable status onto the
-lifecycle words every client renders, shared by the status gauge and the worker
+lifecycle words every client renders, shared by the status gauge and the session
 directory: no loop `idle`; 100 `queued`; 102 `running`; 202 `parked`; any other status is a
 concluded loop's: below 400 `completed`; 499 `cancelled`, a loop stopped without failing
 ({§acp-run-outcome}); any other of 400 or more `failed` (413 budget, 429 turn ceiling, 500 fail,
@@ -1824,17 +1824,17 @@ in `@plurnk/plurnk-contracts` is that projection's one owner.
 §list-excerpt **A list shows a message by its excerpt.** The excerpt is the message's first line holding anything but
 blanks (spaces, tabs and line ends), cut to at most N characters, a character never cut in two, with blanks trimmed from
 its end; `continued` says whether anything but blanks follows. `excerptOf` in `@plurnk/plurnk-contracts` is that rule's one
-owner, for a loop's opening in a worker's loop list ({§acp-worker-loops}) and a worker's latest finished reply
-({§worker-finished-reply}).
+owner, for a loop's opening in a session's loop list ({§acp-session-loops}) and a session's latest finished reply
+({§session-finished-reply}).
 
-§application-worker-overview **The worker overview is the places in a scope with what waits there.** A place is a
-model-origin worker; bookkeeping workers are not places. The scope is the daemon or one workspace; hidden places are out
+§application-session-overview **The session overview is the places in a scope with what waits there.** A place is a
+model-origin session; bookkeeping sessions are not places. The scope is the daemon or one workspace; hidden places are out
 of it ({§place-hiding}).
 
 | Fact | Rule |
 | --- | --- |
-| A place | `{ workspaceId, id, name, parentWorkerId, kind, lifecycle, gates, reply }`: `kind` and `lifecycle` as {§application-worker-observation} projects them, `gates` the proposals and client interactions it waits on as `pendingProposals` and `pendingClientInteractions` project them, `reply` its latest finished reply or `null` |
-| A reply | `{ id, coordinate, completion, at, excerpt, continued }`: its durable log row, `L/T/S` in its worker's log, the completion its receipt records, when it was recorded (Unix milliseconds) and its excerpt ({§list-excerpt}) |
+| A place | `{ workspaceId, id, name, parentSessionId, kind, lifecycle, gates, reply }`: `kind` and `lifecycle` as {§application-session-observation} projects them, `gates` the proposals and client interactions it waits on as `pendingProposals` and `pendingClientInteractions` project them, `reply` its latest finished reply or `null` |
+| A reply | `{ id, coordinate, completion, at, excerpt, continued }`: its durable log row, `L/T/S` in its session's log, the completion its receipt records, when it was recorded (Unix milliseconds) and its excerpt ({§list-excerpt}) |
 | Order | most recently finished first, by reply row (the log's commit order, so two replies never tie), then the places with no reply, newest first |
 | Bound | every place waiting on a gate, then the first `limit` in that order; `omitted` counts the places in scope it leaves out, so no place is left out silently |
 | Workspaces | `{ id, name, projectRoot, projectLabel }` for each workspace a held place belongs to ({§workspace-label}) |
@@ -1844,9 +1844,9 @@ state of work loops (excluding maintenance-only administrative loops), nullable
 `waitUntil` (the durable observation deadline in Unix milliseconds), the times a loop first
 ran (`claimedAt`, {§loop-claim-latency}) and concluded (`terminatedAt`), ISO 8601 UTC and null
 until they happen, exact terminal `OperationResult`, the operation that opened the loop
-(`invocation`: its Worker and log address, {§worker-obligations}; null when no Worker's operation did),
+(`invocation`: its Session and log address, {§session-obligations}; null when no Session's operation did),
 and exact count of packet-bearing
-Turns for one owned Worker. Packetless producer Turns and physical provider
+Turns for one owned Session. Packetless producer Turns and physical provider
 retries do not contribute to `packetCount`. Exterior
 adapters consume this projection instead of reconstructing lifecycle from
 events or persistence; events remain the live notification edge.

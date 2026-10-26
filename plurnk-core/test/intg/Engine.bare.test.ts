@@ -6,7 +6,7 @@ import type { ChatMessage, InputModality, Provider, ProviderRequestAccounting, P
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testProviderCapacity } from "./_provider.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
@@ -190,25 +190,25 @@ const withEnv = async <T>(overrides: Record<string, string>, run: () => Promise<
 const setup = async (schemes = new SchemeRegistry()) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `bare-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "ask isolated questions");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "ask isolated questions");
     const engine = new Engine({ db, schemes });
-    return { db, workspaceId, workerId, loopId, engine };
+    return { db, workspaceId, sessionId, loopId, engine };
 };
 
 test("{§bare-inference}: resource prompts bypass line and size preview caps after preceding edits, with an optional inline tail", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const prompt = [...Array.from({ length: 24 }, (_, i) => `Finding ${i + 1}`), `Long finding: ${"α".repeat(8_000)} end`].join("\n");
         const child = new BareWitness(2);
         const result = await engine.runTurn({
-            workspaceId, workerId, loopId, messages: [], childProvider: child,
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````EDIT (worker:///prompt.md)",
+                "````EDIT (workspace:///prompt.md)",
                 prompt,
                 "````",
-                "````BARE (worker:///prompt.md)````",
-                "````BARE (worker:///prompt.md)",
+                "````BARE (workspace:///prompt.md)````",
+                "````BARE (workspace:///prompt.md)",
                 "Compare these findings.",
                 "````",
                 "````NOTE\nContinue the task.\n````",
@@ -225,13 +225,13 @@ test("{§bare-inference}: resource prompts bypass line and size preview caps aft
 });
 
 test("{§bare-inference}: missing resources preserve the source error without calling the provider or discarding a successful sibling", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const child = new BareWitness(1);
         const result = await engine.runTurn({
-            workspaceId, workerId, loopId, messages: [], childProvider: child,
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````BARE (worker:///missing.md)",
+                "````BARE (workspace:///missing.md)",
                 "Do not infer from this tail alone.",
                 "````",
                 "````BARE",
@@ -268,11 +268,11 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
             throw cancellation;
         },
     } satisfies SchemeHandler);
-    const { db, workspaceId, workerId, loopId, engine } = await setup(schemes);
+    const { db, workspaceId, sessionId, loopId, engine } = await setup(schemes);
     try {
         const child = new BareWitness(2);
         await assert.rejects(engine.runTurn({
-            workspaceId, workerId, loopId, messages: [], childProvider: child, signal: controller.signal,
+            workspaceId, sessionId, loopId, messages: [], childProvider: child, signal: controller.signal,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
                 "````BARE",
                 "first prompt",
@@ -297,18 +297,18 @@ test("{§bare-inference}: cancellation during source preparation leaves no unsta
 
 for (const [denied, target] of [
     [{ operation: "BARE" }, ""],
-    [{ operation: "BARE" }, " (worker:///prompt.md)"],
-    [{ scheme: "worker", access: "observe" }, " (worker:///prompt.md)"],
+    [{ operation: "BARE" }, " (workspace:///prompt.md)"],
+    [{ scheme: "workspace", access: "observe" }, " (workspace:///prompt.md)"],
 ] as const) {
     test(`{§capability-admission}: BARE${target} respects ${JSON.stringify(denied)} before inference`, async () => {
-        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
         try {
             await db.workspace_capability_policy_update.run({ workspace_id: workspaceId, policy: JSON.stringify({ deny: [denied] }) });
             const child = new BareWitness(1);
             const result = await engine.runTurn({
-                workspaceId, workerId, loopId, messages: [], childProvider: child,
+                workspaceId, sessionId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "````EDIT (worker:///prompt.md)",
+                    "````EDIT (workspace:///prompt.md)",
                     "secret prompt",
                     "````",
                     "````BARE" + target,
@@ -326,17 +326,17 @@ for (const [denied, target] of [
 }
 
 test("{§bare-inference}: a log prompt uses only retained source lines", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const first = await engine.runTurn({
-            workspaceId, workerId, loopId, messages: [],
+            workspaceId, sessionId, loopId, messages: [],
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                "````EDIT (worker:///source.md)",
+                "````EDIT (workspace:///source.md)",
                 "first",
                 "superseded",
                 "last",
                 "````",
-                "````READ (worker:///source.md) <1,-1>````",
+                "````READ (workspace:///source.md) <1,-1>````",
                 "````NOTE\nContinue the task.\n````",
             ].join("\n"))] }),
         });
@@ -348,7 +348,7 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
         const address = `log:///1/${turn.sequence}/${source.sequence}/READ`;
         const child = new BareWitness(1);
         const second = await engine.runTurn({
-            workspaceId, workerId, loopId, messages: [], childProvider: child,
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
                 "````KILL (" + (address) + ") <2>````",
                 "````BARE (" + (address) + ")````",
@@ -361,18 +361,18 @@ test("{§bare-inference}: a log prompt uses only retained source lines", async (
 });
 
 for (const [target, status, problem] of [
-    ["worker:///prompt.md#missing", 404, "channel-not-found"],
+    ["workspace:///prompt.md#missing", 404, "channel-not-found"],
     ["unregistered://prompt", 501, "scheme-not-found"],
     [null, 422, "bare-prompt-empty"],
 ] as const) {
     test(`{§bare-inference}: ${target ?? "empty input"} produces ${problem} without inference`, async () => {
-        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
             const result = await engine.runTurn({
-                workspaceId, workerId, loopId, messages: [], childProvider: child,
+                workspaceId, sessionId, loopId, messages: [], childProvider: child,
                 provider: new Mock({ contextWindow: 32_768, responses: [mainResponse([
-                    "````EDIT (worker:///prompt.md)",
+                    "````EDIT (workspace:///prompt.md)",
                     "source prompt",
                     "````",
                     "````BARE" + (target === null ? "" : ` (${target})`),
@@ -394,7 +394,7 @@ for (const [target, status, problem] of [
 }
 
 test("{§bare-inference}: an intervening operation separates concurrent BARE groups", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const child = new BareWitness(1);
         const generate = child.generate.bind(child);
@@ -405,8 +405,8 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
             return generate(args);
         };
         const result = await engine.runTurn({
-            workspaceId, workerId, loopId, messages: [], childProvider: child,
-            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("````BARE\nbefore\n````\n````EDIT (worker:///between)\nwritten\n````\n````BARE\nafter\n````\n````NOTE\nContinue the task.\n````")] }),
+            workspaceId, sessionId, loopId, messages: [], childProvider: child,
+            provider: new Mock({ contextWindow: 32_768, responses: [mainResponse("````BARE\nbefore\n````\n````EDIT (workspace:///between)\nwritten\n````\n````BARE\nafter\n````\n````NOTE\nContinue the task.\n````")] }),
         });
         assert.equal(result.status, 102);
         assert.deepEqual(observed, [undefined, "written"]);
@@ -417,7 +417,7 @@ test("{§bare-inference}: an intervening operation separates concurrent BARE gro
 
 // {§bare-inference}
 test("{§provider-cache-identity} BARE calls receive only their body prompts, run in parallel, and commit in authored order", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
             contextWindow: 32_768,
@@ -429,7 +429,7 @@ test("{§provider-cache-identity} BARE calls receive only their body prompts, ru
             provider: parent,
             childProvider: child,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
@@ -444,11 +444,11 @@ test("{§provider-cache-identity} BARE calls receive only their body prompts, ru
         assert.ok(child.calls.every(({ grammar }) => grammar === undefined), "BARE has no output rail");
         assert.ok(child.calls.every(({ observeReasoning }) => observeReasoning === undefined), "BARE reasoning remains private to its operation result");
         assert.ok(child.calls.every(({ callKind }) => callKind === "bare"), "BARE declares its provider output contract");
-        const parentIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: workerId });
-        const bareIdentities = child.calls.map(({ workerId: callWorker }) => callWorker);
+        const parentIdentity = await db.test_sessions_get_provider_identity.get<{ provider_identity: string }>({ id: sessionId });
+        const bareIdentities = child.calls.map(({ sessionId: callSession }) => callSession);
         assert.ok(bareIdentities.every((identity) => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(identity)), "each BARE call receives an opaque UUID identity");
         assert.equal(new Set(bareIdentities).size, 2, "parallel BARE calls cannot acquire affinity with one another");
-        assert.ok(bareIdentities.every((identity) => identity !== parentIdentity?.provider_identity), "BARE does not reuse the parent worker's affinity identity");
+        assert.ok(bareIdentities.every((identity) => identity !== parentIdentity?.provider_identity), "BARE does not reuse the parent session's affinity identity");
         const bareCalls = await db.test_model_calls.all<{ kind: string; attributions: string }>({ turn_id: result.turnId });
         assert.ok(bareCalls.filter(({ kind }) => kind === "bare").every(({ attributions }) =>
             JSON.stringify(JSON.parse(attributions)) === JSON.stringify(["provider:bare-witness"])),
@@ -497,7 +497,7 @@ test("{§provider-cache-identity} BARE calls receive only their body prompts, ru
 
 // {§bare-inference} {§provider-guarantees-signal-wired}
 test("{§bare-inference} loop cancellation reaches every concurrent BARE call before the batch escapes", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
             contextWindow: 32_768,
@@ -509,7 +509,7 @@ test("{§bare-inference} loop cancellation reaches every concurrent BARE call be
             provider: parent,
             childProvider: child,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "ask isolated questions" }],
             signal: controller.signal,
@@ -529,7 +529,7 @@ test("{§bare-inference} loop cancellation reaches every concurrent BARE call be
 
 // {§bare-inference}
 test("{§bare-inference} one BARE provider failure is an ordered operation result and does not cancel its siblings", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0" }, async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
             contextWindow: 32_768,
@@ -541,7 +541,7 @@ test("{§bare-inference} one BARE provider failure is an ordered operation resul
             provider: parent,
             childProvider: child,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
@@ -559,7 +559,7 @@ test("{§bare-inference} one BARE provider failure is an ordered operation resul
 }));
 
 test("{§provider-recovery}: an isolated call that drops once is re-issued; the receipt is the answer and the dropped call is on the ledger", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
             contextWindow: 32_768,
@@ -570,7 +570,7 @@ test("{§provider-recovery}: an isolated call that drops once is re-issued; the 
             provider: parent,
             childProvider: child,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
@@ -591,7 +591,7 @@ test("{§provider-recovery}: an isolated call that drops once is re-issued; the 
 
 // {§bare-inference} {§send-premature-terminate}
 test("{§bare-inference} a same-turn BARE response is unseen retrieval work and defers completion", async () => {
-    const { db, workspaceId, workerId, loopId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
             contextWindow: 32_768,
@@ -602,7 +602,7 @@ test("{§bare-inference} a same-turn BARE response is unseen retrieval work and 
             provider: parent,
             childProvider: child,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "ask isolated questions" }],
         });
@@ -618,7 +618,7 @@ test("{§bare-inference} a same-turn BARE response is unseen retrieval work and 
 
 for (const state of ["WAIT", "SEND"] as const) {
     test(`{§bare-inference} {§disposition-anywhere}: BARE after ${state} preserves the operation's scheduling contract`, async () => {
-        const { db, workspaceId, workerId, loopId, engine } = await setup();
+        const { db, workspaceId, sessionId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
             const result = await engine.runTurn({
@@ -632,7 +632,7 @@ question
                 }),
                 childProvider: child,
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [],
             });

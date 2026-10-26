@@ -652,9 +652,9 @@ export default class AiSdkProvider implements Provider {
         });
     }
 
-    async generate({ messages, workerId, signal, grammar, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
-        // {§provider-interface} The worker identity is required.
-        if (workerId === undefined || workerId.length === 0) throw new Error("generate: workerId is required — the worker's stable, opaque identity");
+    async generate({ messages, sessionId, signal, grammar, maxOutputTokens, sampling, observeRequest, observeReasoning, callKind }: ProviderGenerateArgs): Promise<ProviderResponse> {
+        // {§provider-interface} The session identity is required.
+        if (sessionId === undefined || sessionId.length === 0) throw new Error("generate: sessionId is required — the session's stable, opaque identity");
         if (callKind !== undefined && callKind !== "emission" && callKind !== "bare") {
             throw new Error(`generate: unsupported callKind ${JSON.stringify(callKind)}`);
         }
@@ -708,16 +708,16 @@ export default class AiSdkProvider implements Provider {
             // Request per-token logprobs only when enabled (managed field —
             // reserved from caller sampling; the env flag is the single control).
             ...(this.#topLogprobs !== null ? { logprobs: true, top_logprobs: this.#topLogprobs } : {}),
-            ...this.#requestBody.slotBody(workerId),
+            ...this.#requestBody.slotBody(sessionId),
             ...(this.#cacheAffinity?.target === "body"
-                ? { [this.#cacheAffinity.name]: workerId }
+                ? { [this.#cacheAffinity.name]: sessionId }
                 : {}),
         };
 
         // Per-request headers = static auth/routing only.
         const headers = new Headers(this.#headers);
         if (this.#cacheAffinity?.target === "header") {
-            headers.set(this.#cacheAffinity.name, workerId);
+            headers.set(this.#cacheAffinity.name, sessionId);
         }
         const requestHeaders = Object.fromEntries(headers.entries());
         const accounting: ProviderRequestAccounting[] = [];
@@ -837,7 +837,7 @@ export default class AiSdkProvider implements Provider {
                         languageModel: this.#languageModel,
                         fetch,
                         headers: requestHeaders,
-                        providerOptions: this.#requestBody.requestProviderOptions(workerId, nativeReasoningBudget,
+                        providerOptions: this.#requestBody.requestProviderOptions(sessionId, nativeReasoningBudget,
                             this.#requestFields?.namespace === undefined ? undefined : {
                                 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- request fields are JSON: parsed from the operator's settings, composed from strings and numbers
                                 [this.#requestFields.namespace]: this.#requestFields.body(this.#effort.mode, null, capacity.reasoningBudget) as AiSdkProviderOptions[string],

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import StoredPacket, { type DurablePacket } from "../../src/core/StoredPacket.ts";
 import Turn from "../../src/core/Turn.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 const RECORDS = ["### log:///1/1/1/FIND\n{\"status\":200}\n1:[]", "### log:///1/1/2/READ\n{\"status\":200}\n1:alpha\n2:beta"];
@@ -17,15 +17,15 @@ const packet = (records: readonly string[], prompt: string): DurablePacket => ({
         { name: "log", slot: "user", header: "Log", content: records.join("\n\n"), weight: 4, items: records },
         { name: "messages", slot: "user", header: "Open Messages", content: prompt, weight: 1 },
     ],
-    attributions: ["worker://a"],
+    attributions: ["session://a"],
 });
 
 test("{§packet-items}: a turn stores only the items the previous turn did not, and reads back exactly", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `packet-items-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const first = packet(RECORDS.slice(0, 1), "[{\"path\":\"log:///1/1/1/SEND\"}]");
         const second = packet(RECORDS, "[{\"path\":\"log:///1/1/1/SEND\"}]");
         const firstId = await insertPacketTurn(db, loopId, 1, first, 102);
@@ -58,8 +58,8 @@ test("{§packet-items}: the write view refuses a turn that is not an open model 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `packet-items-refuse-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const done = await insertPacketTurn(db, loopId, 1, packet(RECORDS, "[]"), 200);
         await assert.rejects(
             () => Turn.recordInference(db, done, { packet: StoredPacket.stringify(packet([], "[]")), sections: StoredPacket.sections(packet([], "[]")), usageCurationBudget: null, finishReason: null, model: "m", meta: "{}" }),
@@ -72,12 +72,12 @@ test("{§packet-items}: items nothing references are collected; shared items sur
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `packet-items-collect-${crypto.randomUUID()}`);
-        const keeper = await insertWorker(db, workspaceId, null, "keeper");
-        const leaver = await insertWorker(db, workspaceId, null, "leaver");
+        const keeper = await insertSession(db, workspaceId, null, "keeper");
+        const leaver = await insertSession(db, workspaceId, null, "leaver");
         await insertPacketTurn(db, await insertLoop(db, keeper, 1, "k"), 1, packet(RECORDS.slice(0, 1), "[\"k\"]"), 200);
         await insertPacketTurn(db, await insertLoop(db, leaver, 1, "l"), 1, packet(RECORDS, "[\"l\"]"), 200);
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 5, "definition + two records + two prompts");
-        await db.test_delete_worker.run({ id: leaver });
+        await db.test_delete_session.run({ id: leaver });
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 5, "deletion cascades the composition, not the items");
         await db.retention_collect_packet_items.run({ collect: 1 });
         assert.equal((await db.test_packet_item_count.get<{ n: number }>({}))!.n, 3, "the leaver's own record and prompt are collected; the shared definition and record stay");

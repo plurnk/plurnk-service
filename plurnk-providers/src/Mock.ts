@@ -44,7 +44,7 @@ const MOCK_USAGE: ProviderUsage = {
     outputTokens: 0,
     totalTokens: 0,
 };
-type MockGenerateArgs = Omit<Parameters<Provider["generate"]>[0], "workerId"> & { workerId?: string };
+type MockGenerateArgs = Omit<Parameters<Provider["generate"]>[0], "sessionId"> & { sessionId?: string };
 
 export default class Mock implements Provider {
     #contextWindow: number | null;

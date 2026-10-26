@@ -9,7 +9,7 @@ console.log(JSON.stringify({ platform: os.platform(), cpus: os.cpus().length }))
 ```
 
 `js (tool.js)` runs that JavaScript file and passes the body as its arguments
-(tokenized by shell quoting), also for `worker://` and `skill://` targets.
+(tokenized by shell quoting), also for `session://` and `skill://` targets.
 Relative imports resolve from the script; ordinary relative filesystem paths
 resolve from the working directory. Environment, working directory, channels,
 output on completion, exit status and lifetime are every subprocess executor's,

@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/ModelRoute.json",
     "title": "ModelRoute",
-    "description": "A client-visible resolved provider/model identity. Alias is present only when a declared alias supplied the route; provider configuration remains private to the daemon. effort is the worker's durable effort selection — absent when the model has no reasoning dimension.",
+    "description": "A client-visible resolved provider/model identity. Alias is present only when a declared alias supplied the route; provider configuration remains private to the daemon. effort is the session's durable effort selection — absent when the model has no reasoning dimension.",
     "type": "object",
     "required": ["provider", "model"],
     "dependentRequired": {
@@ -27,7 +27,7 @@
             "$ref": "https://schemas.plurnk.xyz/v0/Effort.json"
         },
         "effortSource": {
-            "description": "Whether effort was chosen through setWorkerEffort (explicit) or seeded from the alias configuration (default). Present exactly when effort is.",
+            "description": "Whether effort was chosen through setSessionEffort (explicit) or seeded from the alias configuration (default). Present exactly when effort is.",
             "type": "string",
             "enum": ["default", "explicit"]
         }

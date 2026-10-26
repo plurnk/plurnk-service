@@ -42,9 +42,9 @@ test("{§native-tool-calls} a DSML READ with path and scope parameters is that R
     assert.deepEqual(withoutPosition(ops(input)), canonical("````READ (Engine.ts) <440,470>\n````"));
 });
 
-test("{§native-tool-calls} a DSML WAIT naming a worker and a DSML sh with a verbatim heading and plain body lines", () => {
-    const wait = ["<｜｜DSML｜｜ calls>", "<｜｜DSML｜｜ invoke name=\"WAIT\">", "<parameter name=\"path\">worker://codename-lookup</｜｜DSML｜｜ parameter>", "</｜｜DSML｜｜ invoke>", "</｜｜DSML｜｜ calls>"].join("\n");
-    assert.deepEqual(withoutPosition(ops(wait)), canonical("````WAIT (worker://codename-lookup)\n````"));
+test("{§native-tool-calls} a DSML WAIT naming a session and a DSML sh with a verbatim heading and plain body lines", () => {
+    const wait = ["<｜｜DSML｜｜ calls>", "<｜｜DSML｜｜ invoke name=\"WAIT\">", "<parameter name=\"path\">session://codename-lookup</｜｜DSML｜｜ parameter>", "</｜｜DSML｜｜ invoke>", "</｜｜DSML｜｜ calls>"].join("\n");
+    assert.deepEqual(withoutPosition(ops(wait)), canonical("````WAIT (session://codename-lookup)\n````"));
 
     const sh = [
         "<｜｜DSML｜｜ calls>",
@@ -87,8 +87,8 @@ test("{§native-tool-calls} MiMo's hybrid <function=NOTE> with a bare body and <
 });
 
 test("{§native-tool-calls} a Hermes JSON tool_call and a GLM key/value tool_call are the operations they name", () => {
-    const hermes = "<tool_call>\n{\"name\": \"READ\", \"arguments\": {\"path\": \"worker:///notes.md\", \"scope\": \"1,20\"}}\n</tool_call>";
-    assert.deepEqual(withoutPosition(ops(hermes)), canonical("````READ (worker:///notes.md) <1,20>\n````"));
+    const hermes = "<tool_call>\n{\"name\": \"READ\", \"arguments\": {\"path\": \"workspace:///notes.md\", \"scope\": \"1,20\"}}\n</tool_call>";
+    assert.deepEqual(withoutPosition(ops(hermes)), canonical("````READ (workspace:///notes.md) <1,20>\n````"));
     const glm = "<tool_call>FIND\n<arg_key>path</arg_key>\n<arg_value>django/urls/*.py</arg_value>\n<arg_key>pattern</arg_key>\n<arg_value>def resolve</arg_value>\n</tool_call>";
     assert.deepEqual(withoutPosition(ops(glm)), canonical("````FIND (django/urls/*.py) def resolve\n````"));
 });

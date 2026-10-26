@@ -1,10 +1,10 @@
-// {§methods-worker-inbox} The accepted messages a worker has not yet observed, by the daemon's word: a message accepted
+// {§methods-session-inbox} The accepted messages a session has not yet observed, by the daemon's word: a message accepted
 // while a turn is in flight is in the inbox until the next turn boundary publishes it, and leaves it when its loop concludes.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AiSdkProvider } from "@plurnk/plurnk-providers";
 import { withDaemon, waitForDb } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 const streamed = (frames: readonly object[], hold?: Promise<void>): Response => new Response(new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -43,46 +43,46 @@ const heldProvider = (): { provider: AiSdkProvider; release: () => void; calls: 
 
 const address = (id: string): string => `acp://operator/threads/inbox/messages/${id}`;
 
-test("{§methods-worker-inbox} a message accepted mid-turn is in the inbox until its arrival row lands", async () => {
+test("{§methods-session-inbox} a message accepted mid-turn is in the inbox until its arrival row lands", async () => {
     const { provider, release, calls } = heldProvider();
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "inbox" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        const first = await daemon.runLoop({ workspaceId, workerId, prompt: "A", source: address("A"), messageAddress: address("A") });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const first = await daemon.runLoop({ workspaceId, sessionId, prompt: "A", source: address("A"), messageAddress: address("A") });
         await waitForDb(async () => calls(), (count) => count >= 1);
-        assert.deepEqual(await daemon.readInbox({ workspaceId, workerId }), [], "the headline message is observed by the turn in flight");
-        const second = await daemon.runLoop({ workspaceId, workerId, prompt: "B", source: address("B"), messageAddress: address("B") });
+        assert.deepEqual(await daemon.readInbox({ workspaceId, sessionId }), [], "the headline message is observed by the turn in flight");
+        const second = await daemon.runLoop({ workspaceId, sessionId, prompt: "B", source: address("B"), messageAddress: address("B") });
         assert.equal(second.loopId, first.loopId, "{§message-arrival} the follow-up joins the live loop");
-        assert.deepEqual(await daemon.readInbox({ workspaceId, workerId }),
+        assert.deepEqual(await daemon.readInbox({ workspaceId, sessionId }),
             [{ path: address("B"), source: address("B"), body: "B", loopId: first.loopId, lifecycle: "running" }],
             "accepted, durable, and not yet observed: in the inbox by its immutable address, source, words, loop and its lifecycle");
         assert.equal(await daemon.messageAdmission({ workspaceId, address: address("B"), body: "B" }), "accepted",
             "{§message-idempotency} the same address and words are already accepted");
         release();
-        await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }), (loops) => loops.some(({ id, status }) => id === first.loopId && status === 200));
+        await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId }), (loops) => loops.some(({ id, status }) => id === first.loopId && status === 200));
         assert.equal(calls(), 2, "the next turn boundary published B and the model answered it");
-        assert.deepEqual(await daemon.readInbox({ workspaceId, workerId }), [], "published: out of the inbox");
-        const messages = await daemon.readMessages({ workspaceId, workerId });
+        assert.deepEqual(await daemon.readInbox({ workspaceId, sessionId }), [], "published: out of the inbox");
+        const messages = await daemon.readMessages({ workspaceId, sessionId });
         assert.deepEqual(messages.filter(({ direction }) => direction === "inbound").map(({ body }) => body), ["A", "B"], "and durable as ever");
     });
 });
 
-test("{§methods-worker-inbox} {§message-loop-containment} a loop cancelled before observing a message leaves it in the inbox with that terminal lifecycle", async () => {
+test("{§methods-session-inbox} {§message-loop-containment} a loop cancelled before observing a message leaves it in the inbox with that terminal lifecycle", async () => {
     const { provider, release, calls } = heldProvider();
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "inbox-cancel" });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        const first = await daemon.runLoop({ workspaceId, workerId, prompt: "A", source: address("A"), messageAddress: address("A") });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const first = await daemon.runLoop({ workspaceId, sessionId, prompt: "A", source: address("A"), messageAddress: address("A") });
         await waitForDb(async () => calls(), (count) => count >= 1);
-        await daemon.runLoop({ workspaceId, workerId, prompt: "B", source: address("B"), messageAddress: address("B") });
-        assert.equal((await daemon.readInbox({ workspaceId, workerId })).length, 1);
-        await daemon.cancelWorker({ workspaceId, workerId });
+        await daemon.runLoop({ workspaceId, sessionId, prompt: "B", source: address("B"), messageAddress: address("B") });
+        assert.equal((await daemon.readInbox({ workspaceId, sessionId })).length, 1);
+        await daemon.cancelSession({ workspaceId, sessionId });
         release();
-        await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId }), (loops) => loops.some(({ id, terminatedAt }) => id === first.loopId && terminatedAt !== null));
-        assert.deepEqual(await daemon.readInbox({ workspaceId, workerId }),
+        await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId }), (loops) => loops.some(({ id, terminatedAt }) => id === first.loopId && terminatedAt !== null));
+        assert.deepEqual(await daemon.readInbox({ workspaceId, sessionId }),
             [{ path: address("B"), source: address("B"), body: "B", loopId: first.loopId, lifecycle: "cancelled" }],
             "the loop concluded without observing it: still unobserved, and its lifecycle says nothing will");
-        assert.ok((await daemon.readMessages({ workspaceId, workerId })).some(({ body }) => body === "B"), "{§message-arrival} acceptance is durable");
+        assert.ok((await daemon.readMessages({ workspaceId, sessionId })).some(({ body }) => body === "B"), "{§message-arrival} acceptance is durable");
         assert.equal(await daemon.messageAdmission({ workspaceId, address: address("B"), body: "B" }), "accepted", "{§message-idempotency} and its address stays taken");
     });
 });

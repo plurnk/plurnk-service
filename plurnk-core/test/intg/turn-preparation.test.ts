@@ -6,15 +6,15 @@ import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { LOOP_TIMEOUT_REASON } from "../../src/core/TurnRunner.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 
 for (const mode of ["cancel", "cancel-wrapped", "cancel-context", "deadline", "deadline-wrapped", "internal", "internal-after-cancel", "foreign-abort-after-cancel", "aggregate-after-cancel"] as const) {
     test(`{§turn-exception-outcome}: ${mode} during preparation retains its cause and performs no inference`, async (t) => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `preparation-${mode}`);
-            const workerId = await insertWorker(db, workspaceId, null, "subject");
-            const loopId = await insertLoop(db, workerId, 1, "prepare");
+            const sessionId = await insertSession(db, workspaceId, null, "subject");
+            const loopId = await insertLoop(db, sessionId, 1, "prepare");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const controller = new AbortController();
             const deadline = mode.startsWith("deadline");
@@ -41,7 +41,7 @@ for (const mode of ["cancel", "cancel-wrapped", "cancel-context", "deadline", "d
                 throw thrown;
             });
             const provider = new Mock({ contextWindow: 100_000, responses: [] });
-            const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], signal: controller.signal });
+            const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], signal: controller.signal });
             if (deadline) {
                 const result = await running;
                 assert.equal(result.result.status, 504);
@@ -57,7 +57,7 @@ for (const mode of ["cancel", "cancel-wrapped", "cancel-context", "deadline", "d
             assert.equal(turns.at(-1)?.packet, null, "failed preparation does not fabricate a request packet");
             assert.equal(provider.received.length, 0);
             assert.deepEqual(await db.test_inference_calls_by_workspace.all({ workspace_id: workspaceId }), [], "preparation failure is not a provider call");
-            assert.deepEqual(await db.test_error_rows_for_worker.all({ worker_id: workerId }), [], "no provider problem is fabricated");
+            assert.deepEqual(await db.test_error_rows_for_session.all({ session_id: sessionId }), [], "no provider problem is fabricated");
         } finally { await db.close(); }
     });
 }

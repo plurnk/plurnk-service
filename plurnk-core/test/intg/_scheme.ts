@@ -33,7 +33,7 @@ export const mimetypesFixture = (overrides: object): Mimetypes => new Proxy(DEFA
 export const makeSchemeCtx = (overrides: Partial<PlurnkSchemeContext> = {}): PlurnkSchemeContext => ({
     db: undefined as unknown as Db,
     workspaceId: 0,
-    workerId: 0,
+    sessionId: 0,
     loopId: 0,
     turnId: 0,
     writer: "model",
@@ -68,7 +68,7 @@ export const settleOutbound = async <T extends { status: number; attrs?: object 
     return handler.applyResolution({ attrs: result.attrs ?? {}, metadata }, ctx as never);
 };
 
-// {§http-outbound-proposes} — a worker's operation that proposes needs a settlement: its owner answers
+// {§http-outbound-proposes} — a session's operation that proposes needs a settlement: its owner answers
 // the `loop/proposal` event it receives. A test that only means to observe the operation does the same.
 // A dispatch that never proposes passes straight through.
 interface ProposalSettler {
@@ -117,8 +117,8 @@ export const seedStaticChannel = async (
     });
 };
 
-// A client-tier READ through the real dispatch composition, read by the context's worker in the
-// surrounding test's database: an administrative loop joins that worker's log.
+// A client-tier READ through the real dispatch composition, read by the context's session in the
+// surrounding test's database: an administrative loop joins that session's log.
 export const readThroughScheme = async (
     name: string,
     handler: object | null,
@@ -135,7 +135,7 @@ export const readThroughScheme = async (
     });
     // A context that carries a registry reads through an engine that has it, as the daemon does.
     if (ctx.executors !== undefined) engine.setExecutors(ctx.executors);
-    const result = await clientRead(engine, ctx.db, { workspaceId: ctx.workspaceId, workerId: ctx.workerId, statement });
+    const result = await clientRead(engine, ctx.db, { workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, statement });
     Results.assertReadResult(result);
     return result as EntryReadResult;
 };

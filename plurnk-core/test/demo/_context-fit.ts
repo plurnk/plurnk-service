@@ -48,11 +48,11 @@ export const seedAttachmentFixture = async (): Promise<AttachmentFixture> => {
     };
 };
 
-export const assertContextFitEvidence = async ({ db, daemon, workspaceId, workerId, turnIds, fixture }: {
+export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessionId, turnIds, fixture }: {
     db: Db;
     daemon: Daemon;
     workspaceId: number;
-    workerId: number;
+    sessionId: number;
     turnIds: number[];
     fixture: AttachmentFixture;
 }): Promise<{ landed: number; receipts: number; modelTurns: number; receiptActive: boolean }> => {
@@ -108,17 +108,17 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, worker
     const incident = attachments.find(({ pathname }) => pathname === "incident.txt")!;
     assert.ok(incident);
     assert.equal(incident.status_rx, 413, "the incident attachment needed recovery, not just the unrelated telemetry");
-    // A person's READ, acting for the worker ({§actor-boundary-client-operations}).
+    // A person's READ, acting for the session ({§actor-boundary-client-operations}).
     const [recovered] = await daemon.dispatchClientAction({
-        workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: [readStmt(localPath("incident.txt"), { marks: [2] })],
+        workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: [readStmt(localPath("incident.txt"), { marks: [2] })],
     });
     assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
     assert.match(String(recovered.content), new RegExp(fixture.answer, "u"));
     if (incident.active === 0) {
-        const effects = await db.test_log_curation_effects_by_worker.all<{
+        const effects = await db.test_log_curation_effects_by_session.all<{
             operation_log_entry_id: number; target_log_entry_id: number;
             active_before: number; active_after: number;
-        }>({ worker_id: workerId });
+        }>({ session_id: sessionId });
         const retirement = effects.find((effect) => effect.target_log_entry_id === incident.id
             && effect.active_before === 1 && effect.active_after === 0);
         assert.ok(retirement, "retirement has a durable curation effect, not missing history");

@@ -4,17 +4,17 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `range-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Read the requested range and report it.");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Read the requested range and report it.");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    return { db, engine, workspaceId, workerId, loopId };
+    return { db, engine, workspaceId, sessionId, loopId };
 };
 
 for (const channel of ["content", "reasoning"] as const) {
@@ -24,7 +24,7 @@ for (const channel of ["content", "reasoning"] as const) {
             t.after(() => db.close());
             const lines = Array.from({ length: 410 }, (_, i) => `line ${i + 1}`);
             await seedEntryWithChannel(db, { workspaceId: context.workspaceId, pathname: "/range.txt", content: lines.join("\n") });
-            const emission = PlurnkParser.frame(`READ (worker:///range.txt) ${scope}`, null);
+            const emission = PlurnkParser.frame(`READ (workspace:///range.txt) ${scope}`, null);
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: { content: "", reasoning: null, [channel]: emission } },
                 { assistant: { content: PlurnkParser.frame("SEND [200]", "done"), reasoning: null } },
@@ -36,8 +36,8 @@ for (const channel of ["content", "reasoning"] as const) {
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
             const read = logEntries(packet).find((row) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(row.logPath));
             assert.ok(read, "the explicit READ has its own receipt");
-            if (channel === "content") assert.equal(packetSection(packet, "emission-history"), PlurnkParser.frame(`READ (worker:///range.txt) <395,${end}>`, null));
-            else assert.equal(read.path, "worker:///range.txt", "an unpaired reasoning READ remains self-describing");
+            if (channel === "content") assert.equal(packetSection(packet, "emission-history"), PlurnkParser.frame(`READ (workspace:///range.txt) <395,${end}>`, null));
+            else assert.equal(read.path, "workspace:///range.txt", "an unpaired reasoning READ remains self-describing");
             const shown = String(read?.body).split("\n").filter(Boolean).map((line) => line.replace(/^\s*\d+<@[0-9A-Za-z]{5}>/u, ""));
             assert.deepEqual(shown, lines.slice(394, end));
             const notice = packetSection(packet, "notices");
@@ -47,7 +47,7 @@ for (const channel of ["content", "reasoning"] as const) {
             const outcomes = await db.test_log_entries_by_turn.all<{ op: string; pathname: string; status_rx: number }>({ turn_id: first.turnId });
             assert.deepEqual(outcomes.filter(({ op, pathname }) => op === "READ" && pathname === "/range.txt").map(({ status_rx }) => status_rx), [200]);
             assert.ok(outcomes.every(({ status_rx }) => status_rx < 400), JSON.stringify(outcomes));
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: context.workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: context.sessionId });
             assert.ok(sources.some(({ turn_id, kind, content }) => turn_id === first.turnId && kind === (channel === "content" ? "ops" : "reasoning") && content === emission),
                 "normalization must not rewrite the forensic emission");
         });
@@ -70,29 +70,29 @@ test("{§scope-range-recovery} FIND selects positions and anchor inversions rema
         return engine.dispatch({ ...context, statement, sequence: ++sequence, origin: "model" });
     };
     for (const scope of ["<3,2>", "<3,+1>"]) {
-        const found = await dispatch(`FIND (worker:///range.txt) ${scope} /.+/`);
+        const found = await dispatch(`FIND (workspace:///range.txt) ${scope} /.+/`);
         assert.equal(found.status, 200, JSON.stringify(found));
         const matches = JSON.parse(String(found.content)) as { region: string }[];
         assert.deepEqual(matches.map(({ region }) => region), ["<3,1,3,6>", "<4,1,4,5>"], JSON.stringify(found));
     }
-    const read = await dispatch("READ (worker:///range.txt) <1,-1>");
+    const read = await dispatch("READ (workspace:///range.txt) <1,-1>");
     assert.equal(read.status, 200);
     const anchors = read.lineAnchors as string[];
     assert.equal(anchors.length, 5);
     for (const scope of [`<${anchors[3]},${anchors[1]}>`, "<4,1,2,1>", "<3.5,2>"]) {
-        const refused = await dispatch(`READ (worker:///range.txt) ${scope}`);
+        const refused = await dispatch(`READ (workspace:///range.txt) ${scope}`);
         assert.equal(refused.status, 416, JSON.stringify(refused));
         assert.match(String(refused.problem?.type), /\/range-not-satisfiable$/u);
     }
-    const relative = await dispatch(`READ (worker:///range.txt) <${anchors[2]},+1>`);
+    const relative = await dispatch(`READ (workspace:///range.txt) <${anchors[2]},+1>`);
     assert.equal(relative.status, 200);
     assert.equal(relative.content, "three\nfour");
-    const pastEnd = await dispatch("READ (worker:///range.txt) <9,2>");
+    const pastEnd = await dispatch("READ (workspace:///range.txt) <9,2>");
     assert.equal(pastEnd.status, 204);
     assert.equal(pastEnd.content, "", "a recovered range past EOF is the usual empty page");
     assert.deepEqual(pastEnd.range, { unit: "line", total: 5, requested: [9, 10] });
-    assert.equal((await dispatch("READ (worker:///range.txt) <4,3>")).content, "four\nfive", "recovered counts use ordinary end clamping");
-    assert.equal((await dispatch("READ (worker:///range.txt) <3,20>")).content, "three\nfour\nfive", "ordinary end clamping remains intact");
+    assert.equal((await dispatch("READ (workspace:///range.txt) <4,3>")).content, "four\nfive", "recovered counts use ordinary end clamping");
+    assert.equal((await dispatch("READ (workspace:///range.txt) <3,20>")).content, "three\nfour\nfive", "ordinary end clamping remains intact");
 });
 
 for (const scope of ["<3,2>", "<3,+1>"]) {
@@ -103,10 +103,10 @@ for (const scope of ["<3,2>", "<3,+1>"]) {
         for (const name of ["edited", "copied-from", "moved-from", "killed"]) await seed(name);
         for (const name of ["copied-to", "moved-to"]) await seed(name, "A\nB\nC\nD\nE");
         const program = [
-            PlurnkParser.frame(`EDIT (worker:///edited) ${scope}`, "replacement"),
-            PlurnkParser.frame(`COPY (worker:///copied-from) ${scope} (worker:///copied-to) ${scope}`, null),
-            PlurnkParser.frame(`MOVE (worker:///moved-from) ${scope} (worker:///moved-to) ${scope}`, null),
-            PlurnkParser.frame(`KILL (worker:///killed) ${scope}`, null),
+            PlurnkParser.frame(`EDIT (workspace:///edited) ${scope}`, "replacement"),
+            PlurnkParser.frame(`COPY (workspace:///copied-from) ${scope} (workspace:///copied-to) ${scope}`, null),
+            PlurnkParser.frame(`MOVE (workspace:///moved-from) ${scope} (workspace:///moved-to) ${scope}`, null),
+            PlurnkParser.frame(`KILL (workspace:///killed) ${scope}`, null),
         ].join("\n\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: program, reasoning: null } }] });
         const result = await engine.runTurn({ ...context, provider, messages: [] });

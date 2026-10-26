@@ -3,7 +3,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "../intg/_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "../intg/_db.ts";
 import { mountMemoryTracing } from "../intg/_observe-memory.ts";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace";
 
@@ -34,11 +34,11 @@ export const recordGenAiSpans = async (): Promise<GenAiSpanRecording[]> => {
                 }
             }
             const workspaceId = await insertWorkspace(db, `observe-${providerId ?? "unregistered"}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "private prompt");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "private prompt");
             const before = memory.spans().length;
             const result = await new Engine({ db, schemes: new SchemeRegistry() }).runTurn({
-                workspaceId, workerId, loopId, messages: [], provider, childProvider: child,
+                workspaceId, sessionId, loopId, messages: [], provider, childProvider: child,
             });
             const spans = memory.spans().slice(before).filter((span) => span.attributes["gen_ai.operation.name"] === "chat");
             samples.push({ providerId, result, spans });

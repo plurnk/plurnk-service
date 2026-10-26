@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 import TurnDispositionHandler from "./TurnDispositionHandler.ts";
 
-test("{§worker-wait-timing} the maximum park has one positive configured duration", (t) => {
+test("{§session-wait-timing} the maximum park has one positive configured duration", (t) => {
     const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
     t.after(() => {
         if (previous === undefined) delete process.env.PLURNK_SERVICE_WAIT_SEC;

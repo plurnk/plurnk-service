@@ -8,7 +8,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { insertSession, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
@@ -79,9 +79,9 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     t.after(async () => { release.resolve(); await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "catalog-race" });
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-    // Tool documents are workspace resources ({§worker-generated-subtree}): a person reads them
-    // ({§connection-lifecycle}), leaving the model worker's next call under test.
+    const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+    // Tool documents are workspace resources ({§session-generated-subtree}): a person reads them
+    // ({§connection-lifecycle}), leaving the model session's next call under test.
     const read = async (path: string) => {
         const source = PlurnkParser.frame(`READ (${path}) <1,-1>`, null);
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });
@@ -91,7 +91,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
         return (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [item.statement] }))[0];
     };
     const toolsDocument = async (extension = "md"): Promise<string> => {
-        const document = await read(`worker:///_plurnk/tools/fixture.${extension}`);
+        const document = await read(`workspace:///_plurnk/tools/fixture.${extension}`);
         assert.equal(document.status, 200);
         assert.equal(typeof document.content, "string");
         return document.content as string;
@@ -144,7 +144,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.match(document, /fixture \(third\)/);
     assert.doesNotMatch(document, /fixture \((?:first|second)\)/);
     assert.deepEqual(await names(), ["third"]);
-    assert.equal((await read("worker:///_plurnk/tools/fixture/first.json")).status, 404,
+    assert.equal((await read("workspace:///_plurnk/tools/fixture/first.json")).status, 404,
         "refresh removes the old per-tool schema as well as its catalog definition");
     assert.equal(provider.received.length, 0, "catalog updates do not invoke the model");
     const terminated = Promise.withResolvers<void>();
@@ -153,7 +153,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     });
     t.after(unsubscribe);
     serverProposals(t, "accept");
-    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Use the current tool." });
+    const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Use the current tool." });
     const lifecycle = new LoopLifecycle(db);
     // {§module-workspace-quiescence}: the stored result precedes turn-gate release.
     await terminated.promise;
@@ -162,7 +162,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     assert.match(provider.received[1].map(chatMessageText).join("\n"), /Observed third from the server\./);
     await daemon.invokeModuleAction("workspace.mcp.disable", { alias: "fixture" }, { scope: "workspace", workspaceId });
     for (const path of ["fixture.md", "fixture.json", "fixture/third.json"]) {
-        assert.equal((await read(`worker:///_plurnk/tools/${path}`)).status, 404,
+        assert.equal((await read(`workspace:///_plurnk/tools/${path}`)).status, 404,
             `disabled tools leave no generated resource: ${path}`);
     }
 };

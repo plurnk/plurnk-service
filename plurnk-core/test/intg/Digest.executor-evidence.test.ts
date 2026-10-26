@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 
 test("{§digest-executor-evidence}: executor completion rows never count toward health or errs", async (t) => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-executor-"));
@@ -18,14 +18,14 @@ test("{§digest-executor-evidence}: executor completion rows never count toward 
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "digest-executor");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "fix");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "fix");
         await db.test_set_loop_status.run({ id: loopId, status: 200, terminal_result: JSON.stringify({ status: 200, content: "done" }) });
         const turnId = await insertTurn(db, loopId, 1, 200);
         const insert = async (sequence: number, origin: "model" | "_plurnk", rx: object, status: number): Promise<void> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin, source: origin === "_plurnk" ? "worker://runner" : null, model_call_id: null,
+                session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
+                origin, source: origin === "_plurnk" ? "session://runner" : null, model_call_id: null,
                 op: "READ",
                 scheme: "sh", username: null, password: null, hostname: null, port: null,
                 pathname: "/1/1/2", query: null, fragment: "stderr", lineMarker: null,
@@ -58,13 +58,13 @@ test("{§digest-executor-evidence}: a green conclusion over only red commands is
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "digest-executor-clean");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "fix");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "fix");
         await db.test_set_loop_status.run({ id: loopId, status: 200, terminal_result: JSON.stringify({ status: 200, content: "done" }) });
         const turnId = await insertTurn(db, loopId, 1, 200);
         const row = await db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
-            origin: "_plurnk", source: "worker://runner", model_call_id: null,
+            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            origin: "_plurnk", source: "session://runner", model_call_id: null,
             op: "READ",
             scheme: "sh", username: null, password: null, hostname: null, port: null,
             pathname: "/1/1/2", query: null, fragment: "stderr", lineMarker: null,

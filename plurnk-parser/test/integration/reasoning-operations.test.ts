@@ -9,16 +9,16 @@ test("{§reasoning-operations}: complete NOTE, FIND and READ retain source order
     const source = [
         "I need the actual contents before editing.",
         frame("NOTE", "Check the exported interface."),
-        frame("FIND (worker:///*) /interface/", null),
-        frame("READ (worker:///api.ts) <1,16>", null),
-        frame("READ (worker:///api.ts) <1,16>", null),
+        frame("FIND (workspace:///*) /interface/", null),
+        frame("READ (workspace:///api.ts) <1,16>", null),
+        frame("READ (workspace:///api.ts) <1,16>", null),
     ].join("\n\n");
     assert.deepEqual(parse(source).map(({ op }) => op), ["NOTE", "FIND", "READ", "READ"]);
 });
 
 
 test("{§reasoning-operations}: quotations and other operations do not execute fact-finding examples", () => {
-    const example = frame("READ (worker:///quoted.txt)", null);
+    const example = frame("READ (workspace:///quoted.txt)", null);
     for (const fence of ["```", "`````", "`````text", "~~~markdown", "````EDIT (file.txt)", "````sh", "````WAIT"]) {
         const closer = fence.match(/^[`~]+/u)![0];
         assert.deepEqual(parse(`${fence}\n${example}\n${closer}`), [], fence);
@@ -27,13 +27,13 @@ test("{§reasoning-operations}: quotations and other operations do not execute f
         `Example: ${example}`,
         example.split("\n").map((line) => `> ${line}`).join("\n"),
         example.split("\n").map((line) => `    ${line}`).join("\n"),
-        "READ (worker:///naked.txt)",
+        "READ (workspace:///naked.txt)",
         "<tool_call><function=READ><parameter=path>file.txt</parameter></function></tool_call>",
     ]) assert.deepEqual(parse(source), [], source);
 });
 
 test("{§reasoning-operations}: fact-finding quoted inside a NOTE remains note content", () => {
-    const example = frame("READ (worker:///quoted.txt)", null);
+    const example = frame("READ (workspace:///quoted.txt)", null);
     const source = frame("NOTE", example);
     const operations = parse(source);
     assert.equal(operations.length, 1);
@@ -44,7 +44,7 @@ test("{§reasoning-operations}: fact-finding quoted inside a NOTE remains note c
 test("{§reasoning-operations}: only authored, closed operations survive an unfinished suffix", () => {
     for (const suffix of ["````READ (unfinished", "````READ (file.txt)\n", "````NOTE\nUnfinished", "````FIND (*)\n"]) {
         assert.deepEqual(parse(suffix), [], suffix);
-        const source = `${frame("READ (worker:///complete.txt)", null)}\n\n${suffix}`;
+        const source = `${frame("READ (workspace:///complete.txt)", null)}\n\n${suffix}`;
         assert.deepEqual(parse(source).map(({ op }) => op), ["READ"], suffix);
     }
     assert.deepEqual(parse("````READ (missing close\n````"), []);

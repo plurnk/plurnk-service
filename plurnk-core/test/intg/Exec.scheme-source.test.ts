@@ -1,4 +1,4 @@
-import WorkerName from "../../src/core/WorkerName.ts";
+import SessionName from "../../src/core/SessionName.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -16,16 +16,16 @@ import type {
 import { OutputScheme } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
-import type { WakeWorkerPayload } from "../../src/core/ChannelWrite.ts";
+import type { WakeSessionPayload } from "../../src/core/ChannelWrite.ts";
 import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Results from "../../src/core/results.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { schemeManifest } from "./_scheme.ts";
 
 type Actor = {
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly turnId: number;
     sequence: number;
@@ -82,13 +82,13 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
     readonly workspaceId: number;
     readonly root: Actor;
     readonly runs: Run[];
-    readonly wakes: WakeWorkerPayload[];
-    actor(parentWorkerId: number | null, name: string): Promise<Actor>;
+    readonly wakes: WakeSessionPayload[];
+    actor(parentSessionId: number | null, name: string): Promise<Actor>;
     dispatch(actor: Actor, target: string, body?: string, metadata?: string[] | null): Promise<Awaited<ReturnType<Engine["dispatch"]>>>;
     close(): Promise<void>;
 }> => {
     const runs: Run[] = [];
-    const wakes: WakeWorkerPayload[] = [];
+    const wakes: WakeSessionPayload[] = [];
     const executor: Executor = {
         runtime: "tool",
         glyph: "🔧",
@@ -137,15 +137,15 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
     const engine = new Engine({
         db,
         schemes,
-        wakeWorkerNotify: (payload) => { wakes.push(payload); },
+        wakeSessionNotify: (payload) => { wakes.push(payload); },
     });
     engine.setExecutors(executors);
     const workspaceId = await insertWorkspace(db, `exec-source-${crypto.randomUUID()}`);
-    const makeActor = async (parentWorkerId: number | null, name: string): Promise<Actor> => {
-        const workerId = await insertWorker(db, workspaceId, parentWorkerId, name);
-        const loopId = await insertLoop(db, workerId, 1, `${name} source test`);
+    const makeActor = async (parentSessionId: number | null, name: string): Promise<Actor> => {
+        const sessionId = await insertSession(db, workspaceId, parentSessionId, name);
+        const loopId = await insertLoop(db, sessionId, 1, `${name} source test`);
         const turnId = await insertTurn(db, loopId, 1, 102);
-        return { workerId, loopId, turnId, sequence: 0 };
+        return { sessionId, loopId, turnId, sequence: 0 };
     };
     const root = await makeActor(null, "root");
     return {
@@ -162,7 +162,7 @@ const wire = async (beforeRun?: () => Promise<void>): Promise<{
             const result = await engine.dispatch({
                 statement: execStatement(target, body, metadata),
                 workspaceId,
-                workerId: actor.workerId,
+                sessionId: actor.sessionId,
                 loopId: actor.loopId,
                 turnId: actor.turnId,
                 sequence: ++actor.sequence,
@@ -187,9 +187,9 @@ test("{§op-execution-order}: create, launch, and delete are ordered without wai
     const gate = Promise.withResolvers<void>();
     const ctx = await wire(() => gate.promise);
     try {
-        const source = "````EDIT (worker:///script)\nsource code\n````\n````tool (worker:///script)````\n````KILL (worker:///script)````\n````NOTE\nContinue the task.\n````";
+        const source = "````EDIT (workspace:///script)\nsource code\n````\n````tool (workspace:///script)````\n````KILL (workspace:///script)````\n````NOTE\nContinue the task.\n````";
         const result = await ctx.engine.runTurn({
-            workspaceId: ctx.workspaceId, workerId: ctx.root.workerId, loopId: ctx.root.loopId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.root.sessionId, loopId: ctx.root.loopId,
             messages: [], provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: source, reasoning: null } }] }),
         });
         const rows = await ctx.db.test_log_entries_by_turn.all<{ op: string | null; status_rx: number }>({ turn_id: result.turnId });
@@ -336,36 +336,36 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
     }
 });
 
-test("{§worker-read-scope} execution source READ preserves literal shared and named scratch identities", async () => {
+test("{§session-read-scope} execution source READ preserves literal shared and named scratch identities", async () => {
     const ctx = await wire();
     try {
-        const child = await ctx.actor(ctx.root.workerId, "child");
-        const sibling = await ctx.actor(ctx.root.workerId, "sibling");
+        const child = await ctx.actor(ctx.root.sessionId, "child");
+        const sibling = await ctx.actor(ctx.root.sessionId, "sibling");
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             pathname: "/script",
             content: "commons command",
         });
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            authority: await WorkerName.forId(ctx.db, ctx.root.workerId),
-            scheme: "worker",
+            authority: await SessionName.forId(ctx.db, ctx.root.sessionId),
+            scheme: "session",
             pathname: "/script",
             content: "root command",
         });
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
-            authority: await WorkerName.forId(ctx.db, child.workerId),
-            scheme: "worker",
+            authority: await SessionName.forId(ctx.db, child.sessionId),
+            scheme: "session",
             pathname: "/script",
             content: "child command",
         });
 
-        const commonsRead = await ctx.dispatch(ctx.root, "worker:///script#body");
+        const commonsRead = await ctx.dispatch(ctx.root, "workspace:///script#body");
         assert.equal(commonsRead.status, 200, JSON.stringify(commonsRead));
-        assert.equal((await ctx.dispatch(ctx.root, `worker://${await WorkerName.forId(ctx.db, ctx.root.workerId)}/script#body`)).status, 200);
-        assert.equal((await ctx.dispatch(ctx.root, "worker://child/script#body")).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, `session://${await SessionName.forId(ctx.db, ctx.root.sessionId)}/script#body`)).status, 200);
+        assert.equal((await ctx.dispatch(ctx.root, "session://child/script#body")).status, 200);
         assert.deepEqual(ctx.runs.map(({ body }) => body), ["", "", ""]);
         assert.deepEqual(ctx.runs.map(({ materialized }) => materialized), [
             "commons command",
@@ -373,23 +373,23 @@ test("{§worker-read-scope} execution source READ preserves literal shared and n
             "child command",
         ]);
 
-        // {§worker-read-scope} — a sibling names another worker's space and materializes it (#394).
-        const named = await ctx.dispatch(sibling, "worker://child/script#body");
+        // {§session-read-scope} — a sibling names another session's space and materializes it (#394).
+        const named = await ctx.dispatch(sibling, "session://child/script#body");
         assert.equal(named.status, 200, JSON.stringify(named));
-        assert.equal(ctx.runs.at(-1)?.materialized, "child command", "the sibling's execution materialized the named worker's script");
-        const unknown = await ctx.dispatch(ctx.root, "worker://unknown/script#body");
+        assert.equal(ctx.runs.at(-1)?.materialized, "child command", "the sibling's execution materialized the named session's script");
+        const unknown = await ctx.dispatch(ctx.root, "session://unknown/script#body");
         assert.equal(unknown.status, 404);
-        assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/scheme/worker/entry-not-found");
+        assert.equal(unknown.problem?.type, "https://problems.plurnk.xyz/scheme/session/entry-not-found");
         assert.equal(ctx.runs.length, 4, "failed source resolution never invokes the executor");
     } finally {
         await ctx.close();
     }
 });
 
-test("{§execution-output-identity}: execution source READ uses the same workspace output from either worker", async () => {
+test("{§execution-output-identity}: execution source READ uses the same workspace output from either session", async () => {
     const ctx = await wire();
     try {
-        const child = await ctx.actor(ctx.root.workerId, "child");
+        const child = await ctx.actor(ctx.root.sessionId, "child");
         await seedEntryWithChannel(ctx.db, {
             workspaceId: ctx.workspaceId,
             scheme: "tool",
@@ -510,18 +510,18 @@ test("{§exec-target-near-miss} an own-scheme target that can never be a stream 
     }
 });
 
-// {§exec-target-documentation} — the recorded shape (#853, run99 qflash): ```sh (worker:///_plurnk/plurnk/sh.md)```
+// {§exec-target-documentation} — the recorded shape (#853, run99 qflash): ```sh (workspace:///_plurnk/plurnk/sh.md)```
 // over `git checkout -- …` was accepted, realized as a host temporary the containerized runtime never saw,
 // and failed as `cannot open /tmp/plurnk-exec-….md`.
 test("{§exec-target-documentation} {§diagnostic-observation} a generated reference target is refused at admission, saying what it is and nothing more", async () => {
     const ctx = await wire();
     try {
-        const withBody = await ctx.dispatch(ctx.root, "worker:///_plurnk/plurnk/tool.md", "git checkout -- src/_pytest/assertion/util.py");
+        const withBody = await ctx.dispatch(ctx.root, "workspace:///_plurnk/plurnk/tool.md", "git checkout -- src/_pytest/assertion/util.py");
         assert.equal(withBody.status, 400);
         assert.match(String(withBody.problem?.type), /\/target-is-documentation$/);
-        assert.equal(withBody.problem?.detail, "`worker:///_plurnk/plurnk/tool.md` is reference documentation the harness generated, not a program; tool cannot run it.");
+        assert.equal(withBody.problem?.detail, "`workspace:///_plurnk/plurnk/tool.md` is reference documentation the harness generated, not a program; tool cannot run it.");
         assert.equal(withBody.problem?.recovery, undefined, "the body is not presumed to be a command");
-        const bodiless = await ctx.dispatch(ctx.root, "worker:///_plurnk/tools/tool.md");
+        const bodiless = await ctx.dispatch(ctx.root, "workspace:///_plurnk/tools/tool.md");
         assert.equal(bodiless.status, 400);
         assert.equal(bodiless.problem?.recovery, undefined);
         assert.equal(ctx.runs.length, 0, "nothing was realized or run");

@@ -2,7 +2,8 @@ import Log from "../schemes/Log.ts";
 import Exec, { type WebFetch } from "../schemes/Exec.ts";
 import TurnSource from "../schemes/TurnSource.ts";
 import File from "../schemes/File.ts";
-import Worker from "../schemes/Worker.ts";
+import Session from "../schemes/Session.ts";
+import Workspace from "../schemes/Workspace.ts";
 import {
     Manifest,
     MessageScheme,
@@ -85,13 +86,14 @@ export default class SchemeRegistry {
         // {§scheme} — "exec" is internal machinery, not an addressable scheme: executions route here
         // and the spawn-abort/idle state lives here, but the model addresses output via the tag
         // schemes (sh://, js://) and process-KILLs the tag coordinate. The knowledgebase
-        // is worker:/// (shared) or worker://<name>/ (named).
+        // is workspace:/// (shared) or session://<name>/ (named).
         this.#registerBuiltIn("exec", new Exec(opts?.fetchWeb, () => this.webMaterializer()));
         this.#registerBuiltIn("reasoning", new TurnSource("reasoning"));
         this.#registerBuiltIn("ops", new TurnSource("ops"));
         this.#registerBuiltIn("note", new TurnSource("note"));
         this.#registerBuiltIn("file", new File());
-        this.#registerBuiltIn("worker", new Worker());
+        this.#registerBuiltIn("session", new Session());
+        this.#registerBuiltIn("workspace", new Workspace());
         this.#registerBuiltIn("message", new MessageScheme("message"));
     }
 

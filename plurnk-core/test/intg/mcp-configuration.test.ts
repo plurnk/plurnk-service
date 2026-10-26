@@ -10,7 +10,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { FunctionalityListResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Problems } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse, userText } from "./_mock.ts";
 import { waitFor } from "./_rpc.ts";
 import { awaitExecOutcome } from "./_execs.ts";
@@ -105,7 +105,7 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     await writeFile(file, "not json");
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-file-repair-${crypto.randomUUID()}`);
-    const model = await insertWorker(db, workspaceId, null, "primary", "model");
+    const model = await insertSession(db, workspaceId, null, "primary", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 5 }, () => makeMockResponse("````SEND [200]\nConfiguration checked.\n````")) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env }), "@plurnk/plurnk-mcp");
@@ -115,7 +115,7 @@ test("{§mcp-file-configuration} malformed files leave chat usable and normal tu
     t.after(unsubscribe);
     await daemon.start();
     const turn = async () => {
-        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: "Inspect configuration." });
+        const started = await daemon.runLoop({ workspaceId, sessionId: model, prompt: "Inspect configuration." });
         await waitFor(() => ended, (ids) => ids.includes(started.loopId), { timeoutMs: 10_000 });
     };
     const list = async () => (await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult).definitions;
@@ -169,16 +169,16 @@ test("{§configuration-repair-path} a model's EDIT and same-turn list observe th
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "same-turn-repair", projectRoot: project });
     await daemon.invokeModuleAction("workspace.members.add", { files: [".agents/mcp.json"] }, { scope: "workspace", workspaceId });
-    const workerId = await insertWorker(db, workspaceId, null, "repairer", "model");
+    const sessionId = await insertSession(db, workspaceId, null, "repairer", "model");
     const finalStatuses: number[] = [];
     const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
         if (method === "loop/terminated") finalStatuses.push((params as { result: { status: number } }).result.status);
     });
     t.after(unsubscribe);
-    await daemon.runLoop({ workspaceId, workerId, prompt: "Repair the MCP file and verify its tool." });
+    await daemon.runLoop({ workspaceId, sessionId, prompt: "Repair the MCP file and verify its tool." });
     await waitFor(() => finalStatuses, (statuses) => statuses.length > 0, { timeoutMs: 15_000 });
     assert.deepEqual(finalStatuses, [200]);
-    const log = await daemon.readLog({ workspaceId, workerId, limit: 100 });
+    const log = await daemon.readLog({ workspaceId, sessionId, limit: 100 });
     assert.equal(await readFile(file, "utf8"), content, JSON.stringify(log.filter(({ op }) => op === "EDIT")));
     const inspected = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
     assert.deepEqual((inspected.definitions as FunctionalityListResult["definitions"]).map(({ alias, state }) => [alias, state]),
@@ -256,7 +256,7 @@ test("{§functionality-hotload} {§functionality-inspection} changed baseline de
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs") });
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `mcp-hotload-${crypto.randomUUID()}`);
-    const model = await insertWorker(db, workspaceId, null, "primary", "model");
+    const model = await insertSession(db, workspaceId, null, "primary", "model");
     const provider = new Mock({ contextWindow: 1_000_000, responses: Array.from({ length: 6 }, () => makeMockResponse("````SEND [200]\ndone\n````", 20)) });
     const daemon = new Daemon({ db, provider, hostPaths });
     daemon.registerModule(McpModule.init({ env: mcpEnv }), "@plurnk/plurnk-mcp");
@@ -267,7 +267,7 @@ test("{§functionality-hotload} {§functionality-inspection} changed baseline de
     type Listed = { alias: string; state: string };
     const states = async (): Promise<Listed[]> => ((await daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId })) as { definitions: Listed[] }).definitions.map(({ alias, state }) => ({ alias, state }));
     const turn = async (): Promise<void> => {
-        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: "hotload" });
+        const started = await daemon.runLoop({ workspaceId, sessionId: model, prompt: "hotload" });
         await waitFor(() => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === started.loopId), (list) => list.length > 0, { timeoutMs: 20_000 });
     };
 

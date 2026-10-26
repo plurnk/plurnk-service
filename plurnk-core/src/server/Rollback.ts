@@ -1,4 +1,4 @@
-// {§rollback} — undo a worker's settled file mutations after one of its log coordinates. Each row's
+// {§rollback} — undo a session's settled file mutations after one of its log coordinates. Each row's
 // patch ({§log-mutation-patch}) is reversed against the file as it is now and written back as an
 // ordinary operation of the acting client, so every step is a proposal, a row and a patch of its
 // own; the first file that no longer holds what its mutation wrote stops the rollback where it is.
@@ -38,7 +38,7 @@ export default class Rollback {
         return loopSeq > 0 && turnSeq > 0 && sequence > 0 ? { loopSeq: loopSeq, turnSeq: turnSeq, sequence: sequence } : null;
     }
 
-    static async run(seam: RollbackSeam, args: { workspaceId: number; workerId: number; to: string }): Promise<RollbackReport> {
+    static async run(seam: RollbackSeam, args: { workspaceId: number; sessionId: number; to: string }): Promise<RollbackReport> {
         const coordinate = Rollback.coordinate(args.to);
         if (coordinate === null) {
             throw daemonFailure("daemon:rollback", "coordinate-invalid", 400, `'${args.to}' is not a log coordinate.`, {
@@ -47,7 +47,7 @@ export default class Rollback {
         }
         const at = `${coordinate.loopSeq}/${coordinate.turnSeq}/${coordinate.sequence}`;
         const anchor = await seam.db.log_id_by_coordinate.get<{ id: number }>({
-            worker_id: args.workerId, loop_seq: coordinate.loopSeq, turn_seq: coordinate.turnSeq, sequence: coordinate.sequence,
+            session_id: args.sessionId, loop_seq: coordinate.loopSeq, turn_seq: coordinate.turnSeq, sequence: coordinate.sequence,
         });
         if (anchor === undefined) {
             throw daemonFailure("daemon:rollback", "coordinate-not-found", 404, `No log entry exists at log:///${at}.`, { to: at });
@@ -57,7 +57,7 @@ export default class Rollback {
             throw daemonFailure("daemon:rollback", "project-root-required", 400, "Rollback restores files, and this workspace has no project root.", {});
         }
         const rows = await seam.db.log_file_mutations_after.all<MutationRow>({
-            worker_id: args.workerId, loop_seq: coordinate.loopSeq, turn_seq: coordinate.turnSeq, sequence: coordinate.sequence,
+            session_id: args.sessionId, loop_seq: coordinate.loopSeq, turn_seq: coordinate.turnSeq, sequence: coordinate.sequence,
         });
         const restored: Restored[] = [];
         const skipped: RollbackReport["skipped"][number][] = [];

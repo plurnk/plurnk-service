@@ -1,5 +1,5 @@
 // Contract specimens for {§env-delta-log-pull} and
-// {§env-delta-worker-entry-visibility}. #67 retains the model-facing actor-name gap.
+// {§env-delta-session-entry-visibility}. #67 retains the model-facing actor-name gap.
 
 import test from "node:test";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
@@ -21,7 +21,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 import { killStmt, noteStmt } from "./_dsl.ts";
@@ -79,8 +79,8 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname, query: null, fragment: null,
 });
-const workerPath = (authority: string, pathname: string): UrlPath => ({
-    kind: "url", raw: `worker://${authority}${pathname}`, scheme: "worker",
+const sessionPath = (authority: string, pathname: string): UrlPath => ({
+    kind: "url", raw: `session://${authority}${pathname}`, scheme: "session",
     username: null, password: null, hostname: authority, port: null,
     pathname, query: null, fragment: null,
 });
@@ -89,55 +89,55 @@ const editStmt = (target: UrlPath, body: string): EditStatement => ({
     op: "EDIT", aside: null, target, lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
-test("{§env-delta-log-pull} a parent receives all direct-child entry activity while an independent runtime worker stays private", async () => {
+test("{§env-delta-log-pull} a parent receives all direct-child entry activity while an independent runtime session stays private", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `owner-delta-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "go");
-        const sibling = await insertWorker(db, workspaceId, observer, "sibling");
+        const sibling = await insertSession(db, workspaceId, observer, "sibling");
         const siblingLoop = await insertLoop(db, sibling, 1);
         const siblingTurn = await insertTurn(db, siblingLoop, 1);
-        const kernel = await insertWorker(db, workspaceId, null, "plurnk");
+        const kernel = await insertSession(db, workspaceId, null, "plurnk");
         const kernelLoop = await insertLoop(db, kernel, 1);
         const kernelTurn = await insertTurn(db, kernelLoop, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         assert.equal((await eng.dispatch({
-            statement: editStmt(urlPath("worker", "/shared.md"), "shared bulletin"),
-            workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 1, origin: "model",
+            statement: editStmt(urlPath("workspace", "/shared.md"), "shared bulletin"),
+            workspaceId, sessionId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 1, origin: "model",
         })).status, 201, "the sibling creates a commons entry");
         assert.equal((await eng.dispatch({
-            statement: editStmt(workerPath("sibling", "/secret.md"), "named scratch"),
-            workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 2, origin: "model",
-        })).status, 201, "the sibling creates current-worker scratch");
+            statement: editStmt(sessionPath("sibling", "/secret.md"), "named scratch"),
+            workspaceId, sessionId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 2, origin: "model",
+        })).status, 201, "the sibling creates current-session scratch");
         assert.equal((await eng.dispatch({
-            statement: editStmt(workerPath("sibling", "/named-secret.md"), "named scratch"),
-            workspaceId, workerId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 3, origin: "model",
+            statement: editStmt(sessionPath("sibling", "/named-secret.md"), "named scratch"),
+            workspaceId, sessionId: sibling, loopId: siblingLoop, turnId: siblingTurn, sequence: 3, origin: "model",
         })).status, 201, "named scratch is writable");
         assert.equal((await eng.dispatch({
-            statement: editStmt(workerPath("plurnk", "/bulletin.md"), "runtime bulletin"),
-            workspaceId, workerId: kernel, loopId: kernelLoop, turnId: kernelTurn, sequence: 1, origin: "_plurnk",
+            statement: editStmt(sessionPath("plurnk", "/bulletin.md"), "runtime bulletin"),
+            workspaceId, sessionId: kernel, loopId: kernelLoop, turnId: kernelTurn, sequence: 1, origin: "_plurnk",
         })).status, 201, "the runtime actor writes ordinary named scratch");
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{
             origin: string; op: string; scheme: string | null; hostname: string | null;
             pathname: string | null; source: string | null; rx: string;
-        }>({ worker_id: observer });
+        }>({ session_id: observer });
         const deltas = rows.filter((row) => row.origin === "_plurnk" && row.op === "EDIT");
 
         assert.deepEqual(
             deltas
-                .filter((row) => row.scheme === "worker")
+                .filter((row) => row.scheme === "session" || row.scheme === "workspace")
                 .map(({ hostname, pathname, source }) => ({ hostname, pathname, source }))
                 .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? "")),
             [
-                { hostname: "sibling", pathname: "/named-secret.md", source: "worker://sibling" },
-                { hostname: "sibling", pathname: "/secret.md", source: "worker://sibling" },
-                { hostname: null, pathname: "/shared.md", source: "worker://sibling" },
+                { hostname: "sibling", pathname: "/named-secret.md", source: "session://sibling" },
+                { hostname: "sibling", pathname: "/secret.md", source: "session://sibling" },
+                { hostname: null, pathname: "/shared.md", source: "session://sibling" },
             ],
             "lineage supervision carries every child operation, including private-entry activity",
         );
@@ -151,30 +151,30 @@ test("{§env-delta-child-activity}: child log curation stays with the child, inc
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `curation-observation-${crypto.randomUUID()}`);
-        const parent = await insertWorker(db, workspaceId, null, "parent");
+        const parent = await insertSession(db, workspaceId, null, "parent");
         const parentLoop = await insertLoop(db, parent, 1, "Observe the child.");
-        const child = await insertWorker(db, workspaceId, parent, "child");
+        const child = await insertSession(db, workspaceId, parent, "child");
         const childLoop = await insertLoop(db, child, 1);
         const childTurn = await insertTurn(db, childLoop, 1);
         const engine = makeEngine(db);
         const dispatch = (statement: Parameters<Engine["dispatch"]>[0]["statement"], sequence: number) => engine.dispatch({
-            statement, workspaceId, workerId: child, loopId: childLoop,
+            statement, workspaceId, sessionId: child, loopId: childLoop,
             turnId: childTurn, sequence, origin: "model",
         });
-        assert.equal((await dispatch(editStmt(workerPath("child", "/note"), "child note"), 1)).status, 201);
+        assert.equal((await dispatch(editStmt(sessionPath("child", "/note"), "child note"), 1)).status, 201);
         assert.equal((await dispatch(killStmt(urlPath("log", "/1/1/1/EDIT")), 2)).status, 200);
         assert.equal((await dispatch(killStmt(urlPath("log", "/9/9/9")), 3)).status, 404);
         const turn = await engine.runTurn({
             provider: new Mock({ contextWindow: 32768, responses: [okSend()] }),
-            workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES,
+            workspaceId, sessionId: parent, loopId: parentLoop, messages: MESSAGES,
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
         const kills = logEntries(packet).filter(({ logPath: path }) => path.endsWith("/KILL"));
         assert.deepEqual(kills, [], "neither successful nor failed log curation becomes parent activity");
-        const observations = await db.test_log_entries_by_worker.all<{ op: string; source: string; status_rx: number }>({ worker_id: parent });
+        const observations = await db.test_log_entries_by_session.all<{ op: string; source: string; status_rx: number }>({ session_id: parent });
         assert.deepEqual(observations.filter(({ op }) => op === "KILL"), []);
-        assert.ok(observations.some(({ op, source }) => op === "EDIT" && source === "worker://child"), "the actual edit still reaches the parent");
-        const childHistory = await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: child });
+        assert.ok(observations.some(({ op, source }) => op === "EDIT" && source === "session://child"), "the actual edit still reaches the parent");
+        const childHistory = await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: child });
         assert.deepEqual(childHistory.filter(({ op }) => op === "KILL").map(({ status_rx }) => status_rx), [200, 404],
             "both curation outcomes remain durable for the child and forensics");
     } finally {
@@ -182,37 +182,37 @@ test("{§env-delta-child-activity}: child log curation stays with the child, inc
     }
 });
 
-test("{§env-delta-log-pull} a worker learns a sibling's edit through its own log — pulled from the shared log, no per-worker snapshot", async () => {
+test("{§env-delta-log-pull} a session learns a sibling's edit through its own log — pulled from the shared log, no per-session snapshot", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `xrun-${crypto.randomUUID()}`);
-        const workerA = await insertWorker(db, workspaceId, null, "observer");
-        const loopA = await insertLoop(db, workerA, 1, "go");
-        const workerB = await insertWorker(db, workspaceId, null, "sibling");
-        const loopB = await insertLoop(db, workerB, 1);
+        const sessionA = await insertSession(db, workspaceId, null, "observer");
+        const loopA = await insertLoop(db, sessionA, 1, "go");
+        const sessionB = await insertSession(db, workspaceId, null, "sibling");
+        const loopB = await insertLoop(db, sessionB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; nothing happened before it, so no deltas.
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         // B edits a shared entry — a real EDIT row in B's own log.
-        const edit = await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        const edit = await eng.dispatch({ statement: editStmt(urlPath("workspace", "/shared.md"), "from sibling B"), workspaceId, sessionId: sessionB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
         assert.ok(edit.status === 200 || edit.status === 201, "B's edit to the shared entry lands");
 
         // A's turn 2 pulls B's edit from the shared log as a body-suppressed delta — A consulted no
-        // per-worker snapshot; it learned its workspace moved purely through its own log.
-        const turn = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; initial_folded: string; folded: string }>({ worker_id: workerA });
-        const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "worker" && r.pathname === "/shared.md");
+        // per-session snapshot; it learned its workspace moved purely through its own log.
+        const turn = await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string; source: string | null; initial_folded: string; folded: string }>({ session_id: sessionA });
+        const delta = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.scheme === "workspace" && r.pathname === "/shared.md");
         assert.ok(delta, "A's turn-2 log carries a delta for B's edit");
-        assert.equal(delta.source, "worker://sibling", "the durable delta uses the sibling's addressable identity");
+        assert.equal(delta.source, "session://sibling", "the durable delta uses the sibling's addressable identity");
         assert.equal(delta.initial_folded, "[[1,-1]]", "the broadcast delta lands body-suppressed — listed until the model READs what it needs");
         assert.equal(delta.folded, "[]", "the broadcast does not trim the readable delta");
 
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turn.turnId }))!.packet);
-        const packetDelta = logEntries(packet).find((entry) => entry.path === "worker:///shared.md" && entry.logPath.endsWith("/EDIT"));
-        assert.equal(packetDelta?.source, "worker://sibling", "the model sees the same worker identity used by worker control");
+        const packetDelta = logEntries(packet).find((entry) => entry.path === "workspace:///shared.md" && entry.logPath.endsWith("/EDIT"));
+        assert.equal(packetDelta?.source, "session://sibling", "the model sees the same session identity used by session control");
     } finally {
         await db.close();
     }
@@ -222,20 +222,20 @@ test("{§env-delta-log-pull} ambient delivery follows monotonic occurrence ident
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `event-id-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "observe");
-        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producer = await insertSession(db, workspaceId, null, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "produce");
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend()] });
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
 
         const sameOldTime = "2000-01-01T00:00:00.000Z";
         for (const [index, pathname] of ["/equal-a.md", "/equal-b.md"].entries()) {
             await db.test_insert_shared_edit_at.get({
-                worker_id: producer,
+                session_id: producer,
                 loop_id: producerLoop,
                 turn_id: producerTurn,
                 sequence: index + 1,
@@ -245,18 +245,18 @@ test("{§env-delta-log-pull} ambient delivery follows monotonic occurrence ident
             });
         }
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 3 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 3 });
 
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ session_id: observer });
         const observed = rows
             .flatMap(({ origin, op, pathname }) => origin === "_plurnk" && op === "EDIT" && pathname?.startsWith("/equal-") === true ? [pathname] : [])
             .toSorted();
         assert.deepEqual(observed, ["/equal-a.md", "/equal-b.md"], "both equal-time events arrive, once each");
 
-        const links = async (workerId: number) => (await db.test_log_entries_by_worker.all<{
+        const links = async (sessionId: number) => (await db.test_log_entries_by_session.all<{
             ambient_event_id: number | null; pathname: string | null;
-        }>({ worker_id: workerId }))
+        }>({ session_id: sessionId }))
             .filter((row) => row.pathname?.startsWith("/equal-") === true)
             .map(({ pathname, ambient_event_id }) => ({ pathname, eventId: ambient_event_id }))
             .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
@@ -273,23 +273,23 @@ test("{§env-delta-log-pull} a settled child proposal reaches its parent while o
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `proposal-event-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "observe");
-        const independent = await insertWorker(db, workspaceId, null, "independent");
+        const independent = await insertSession(db, workspaceId, null, "independent");
         const independentLoop = await insertLoop(db, independent, 1, "observe");
-        const producer = await insertWorker(db, workspaceId, observer, "producer");
+        const producer = await insertSession(db, workspaceId, observer, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "propose");
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend(), okSend()] });
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
-        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 1 });
 
         const propose = async (sequence: number, pathname: string): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
-                worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
+                session_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence,
                 origin: "model", source: null, model_call_id: null, op: "EDIT",
-                scheme: "worker", username: null, password: null, hostname: null, port: null,
+                scheme: "workspace", username: null, password: null, hostname: null, port: null,
                 pathname, query: null, fragment: null, lineMarker: null,
                 tx: "", mimetype_tx: "text/plain", rx: JSON.stringify({ status: 202 }),
                 mimetype_rx: "application/json", status_rx: 202, weight: 0,
@@ -311,12 +311,12 @@ test("{§env-delta-log-pull} a settled child proposal reaches its parent while o
             weight: 0,
         });
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
-        const observed = async (workerId: number) => (await db.engine_render_log.all<{
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider, workspaceId, sessionId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
+        const observed = async (sessionId: number) => (await db.engine_render_log.all<{
             origin: string; op: string; pathname: string | null; source: string | null;
-        }>({ worker_id: workerId }))
-            .filter((row) => row.origin === "_plurnk" && row.source === "worker://producer" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
+        }>({ session_id: sessionId }))
+            .filter((row) => row.origin === "_plurnk" && row.source === "session://producer" && row.op === "EDIT" && row.pathname?.endsWith("-proposal.md") === true)
             .map((row) => row.pathname);
         assert.deepEqual(await observed(observer), ["/accepted-proposal.md", "/rejected-proposal.md"], "the parent supervises both final proposal outcomes");
         assert.deepEqual(await observed(independent), ["/accepted-proposal.md"], "only the successfully landed commons effect broadcasts");
@@ -329,18 +329,18 @@ test("{§env-delta-log-pull} a closed pull boundary assigns before, during, and 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `closed-boundary-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "observe");
-        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producer = await insertSession(db, workspaceId, null, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "produce");
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         let producerSequence = 1;
         const emit = async (pathname: string): Promise<void> => {
             const result = await eng.dispatch({
-                statement: editStmt(urlPath("worker", pathname), pathname),
+                statement: editStmt(urlPath("workspace", pathname), pathname),
                 workspaceId,
-                workerId: producer,
+                sessionId: producer,
                 loopId: producerLoop,
                 turnId: producerTurn,
                 sequence: producerSequence++,
@@ -351,24 +351,24 @@ test("{§env-delta-log-pull} a closed pull boundary assigns before, during, and 
 
         await eng.runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
-            workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1,
+            workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1,
         });
 
         let racedDb = afterFirstStatement(db, "turn_open", "get", () => emit("/before-boundary.md"));
         racedDb = afterFirstStatement(racedDb, "engine_pull_ambient_events", "all", () => emit("/during-boundary.md"));
         await makeEngine(racedDb).runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
-            workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2,
+            workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2,
         });
         await emit("/after-boundary.md");
 
         const tailProvider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
-        await eng.runTurn({ provider: tailProvider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 3 });
-        await eng.runTurn({ provider: tailProvider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 4 });
+        await eng.runTurn({ provider: tailProvider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 3 });
+        await eng.runTurn({ provider: tailProvider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 4 });
 
         const rows = await db.engine_render_log.all<{
             turn_seq: number; origin: string; op: string; pathname: string | null;
-        }>({ worker_id: observer });
+        }>({ session_id: observer });
         assert.deepEqual(
             rows
                 .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-boundary.md") === true)
@@ -386,34 +386,34 @@ test("{§env-delta-log-pull} a closed pull boundary assigns before, during, and 
     }
 });
 
-test("{§env-delta-log-pull} a fresh worker baselines history but retains an event racing its first packet", async () => {
+test("{§env-delta-log-pull} a fresh session baselines history but retains an event racing its first packet", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `first-boundary-${crypto.randomUUID()}`);
-        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producer = await insertSession(db, workspaceId, null, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "produce");
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         let producerSequence = 1;
         const emit = async (pathname: string): Promise<void> => {
             await eng.dispatch({
-                statement: editStmt(urlPath("worker", pathname), pathname),
-                workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn,
+                statement: editStmt(urlPath("workspace", pathname), pathname),
+                workspaceId, sessionId: producer, loopId: producerLoop, turnId: producerTurn,
                 sequence: producerSequence++, origin: "model",
             });
         };
 
         await emit("/historical.md");
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "observe");
         const racedDb = afterFirstStatement(db, "engine_initialize_ambient_cursor", "get", () => emit("/first-turn-race.md"));
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
         await makeEngine(racedDb).runTurn({
-            provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1,
+            provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1,
         });
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
 
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ worker_id: observer });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null }>({ session_id: observer });
         const observed = rows
             .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && ["/historical.md", "/first-turn-race.md"].includes(row.pathname ?? ""))
             .map((row) => row.pathname);
@@ -427,26 +427,26 @@ test("{§env-delta-log-pull} ambient occurrence evidence survives source-log cur
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `curated-source-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "observe");
-        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producer = await insertSession(db, workspaceId, null, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "produce");
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         await eng.dispatch({
-            statement: editStmt(urlPath("worker", "/curated.md"), "durable occurrence"),
-            workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 1, origin: "model",
+            statement: editStmt(urlPath("workspace", "/curated.md"), "durable occurrence"),
+            workspaceId, sessionId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 1, origin: "model",
         });
         const killed = await new Log().kill(killStmt(urlPath("log", "/1/1/1")), makeSchemeCtx({
-            db, workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, writer: "model",
+            db, workspaceId, sessionId: producer, loopId: producerLoop, turnId: producerTurn, writer: "model",
         }));
         assert.equal(killed.status, 200, "the producer really curated away its source row");
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; rx: string }>({ worker_id: observer });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; rx: string }>({ session_id: observer });
         const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/curated.md");
         assert.match(delta?.rx ?? "", /durable occurrence/, "curating the producer's log cannot erase the ambient event");
         await db.test_workspaces_delete.run({ id: workspaceId });
@@ -459,42 +459,42 @@ test("{§env-delta-log-pull} a fork inherits observed progress and independently
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-cursor-${crypto.randomUUID()}`);
-        const parent = await insertWorker(db, workspaceId, null, "parent");
+        const parent = await insertSession(db, workspaceId, null, "parent");
         const parentLoop = await insertLoop(db, parent, 1, "observe");
-        const producer = await insertWorker(db, workspaceId, null, "producer");
+        const producer = await insertSession(db, workspaceId, null, "producer");
         const producerLoop = await insertLoop(db, producer, 1, "produce");
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         const parentProvider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend()] });
 
-        await eng.runTurn({ provider: parentProvider, workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider: parentProvider, workspaceId, sessionId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 1 });
         await eng.dispatch({
-            statement: editStmt(urlPath("worker", "/seen-before-fork.md"), "seen"),
-            workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 1, origin: "model",
+            statement: editStmt(urlPath("workspace", "/seen-before-fork.md"), "seen"),
+            workspaceId, sessionId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 1, origin: "model",
         });
-        await eng.runTurn({ provider: parentProvider, workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider: parentProvider, workspaceId, sessionId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 2 });
         await eng.dispatch({
-            statement: editStmt(urlPath("worker", "/pending-at-fork.md"), "pending"),
-            workspaceId, workerId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 2, origin: "model",
+            statement: editStmt(urlPath("workspace", "/pending-at-fork.md"), "pending"),
+            workspaceId, sessionId: producer, loopId: producerLoop, turnId: producerTurn, sequence: 2, origin: "model",
         });
 
         const branch = await Fork.fork(db, parent, "branch");
         const branchLoop = await insertLoop(db, branch, 2, "continue");
         await eng.runTurn({
             provider: new Mock({ contextWindow: 4096, responses: [okSend()] }),
-            workspaceId, workerId: branch, loopId: branchLoop, messages: MESSAGES, turnNumber: 1,
+            workspaceId, sessionId: branch, loopId: branchLoop, messages: MESSAGES, turnNumber: 1,
         });
-        await eng.runTurn({ provider: parentProvider, workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 3 });
+        await eng.runTurn({ provider: parentProvider, workspaceId, sessionId: parent, loopId: parentLoop, messages: MESSAGES, turnNumber: 3 });
 
-        for (const [workerId, label] of [[branch, "branch"], [parent, "parent"]] as const) {
-            const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; source: string | null }>({ worker_id: workerId });
+        for (const [sessionId, label] of [[branch, "branch"], [parent, "parent"]] as const) {
+            const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string | null; source: string | null }>({ session_id: sessionId });
             const paths = rows
                 .filter((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname?.endsWith("-fork.md") === true)
                 .map(({ pathname, source }) => ({ pathname, source }))
                 .toSorted((a, b) => (a.pathname ?? "").localeCompare(b.pathname ?? ""));
             assert.deepEqual(paths, [
-                { pathname: "/pending-at-fork.md", source: "worker://producer" },
-                { pathname: "/seen-before-fork.md", source: "worker://producer" },
+                { pathname: "/pending-at-fork.md", source: "session://producer" },
+                { pathname: "/seen-before-fork.md", source: "session://producer" },
             ], `${label} preserves the public cause across copied history and pending delivery`);
         }
     } finally {
@@ -506,18 +506,18 @@ test("{§env-delta-log-pull} a child-activity delta preserves typed attributes a
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `typed-delta-${crypto.randomUUID()}`);
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const observerLoop = await insertLoop(db, observer, 1, "go");
-        const producer = await insertWorker(db, workspaceId, observer, "producer");
+        const producer = await insertSession(db, workspaceId, observer, "producer");
         const producerLoop = await insertLoop(db, producer, 1);
         const producerTurn = await insertTurn(db, producerLoop, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 1 });
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence: 1,
-            origin: "_plurnk", source: "worker://observer", model_call_id: null,
+            session_id: producer, loop_id: producerLoop, turn_id: producerTurn, sequence: 1,
+            origin: "_plurnk", source: "session://observer", model_call_id: null,
             op: "EDIT", signal: JSON.stringify(["+query"]),
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/page", query: null, fragment: null, lineMarker: null,
@@ -528,36 +528,36 @@ test("{§env-delta-log-pull} a child-activity delta preserves typed attributes a
         });
         assert.ok(inserted !== undefined);
 
-        await eng.runTurn({ provider, workspaceId, workerId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string }>({ worker_id: observer });
+        await eng.runTurn({ provider, workspaceId, sessionId: observer, loopId: observerLoop, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; attrs: string }>({ session_id: observer });
         const delta = rows.find((row) => row.origin === "_plurnk" && row.op === "EDIT" && row.pathname === "/page");
-        assert.equal(delta?.source, "worker://producer");
+        assert.equal(delta?.source, "session://producer");
         assert.deepEqual(JSON.parse(delta?.attrs ?? "{}"), { kind: "entry_materialized" });
     } finally {
         await db.close();
     }
 });
 
-test("{§methods-loop-run-fold-consistency} exactly two cross-worker channels — state via the env-delta, a message via inject", async () => {
-    // Both doors in one place: inject and IRC resume parked workers in place
+test("{§methods-loop-run-fold-consistency} exactly two cross-session channels — state via the env-delta, a message via inject", async () => {
+    // Both doors in one place: inject and IRC resume parked sessions in place
     // under {§methods-loop-run-fold-consistency}. No third channel — by design.
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `two-doors-${crypto.randomUUID()}`);
-        const workerA = await insertWorker(db, workspaceId, null, "observer");
-        const loopA = await insertLoop(db, workerA, 1, "go");
-        const workerB = await insertWorker(db, workspaceId, null, "sibling");
-        const loopB = await insertLoop(db, workerB, 1);
+        const sessionA = await insertSession(db, workspaceId, null, "observer");
+        const loopA = await insertLoop(db, sessionA, 1, "go");
+        const sessionB = await insertSession(db, workspaceId, null, "sibling");
+        const loopB = await insertLoop(db, sessionB, 1);
         const turnB = await insertTurn(db, loopB, 1);
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
         // ENVIRONMENT DOOR — *state*: B's edit to a shared entry crosses to A as a body-suppressed delta, not a message.
-        await eng.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "from sibling B"), workspaceId, workerId: workerB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; weight: number }>({ worker_id: workerA });
-        const ambient = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.pathname === "/shared.md" && r.source === "worker://sibling");
+        await eng.dispatch({ statement: editStmt(urlPath("workspace", "/shared.md"), "from sibling B"), workspaceId, sessionId: sessionB, loopId: loopB, turnId: turnB, sequence: 1, origin: "model" });
+        await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; pathname: string; source: string | null; weight: number }>({ session_id: sessionA });
+        const ambient = rows.find((r) => r.op === "EDIT" && r.origin === "_plurnk" && r.pathname === "/shared.md" && r.source === "session://sibling");
         assert.ok(ambient, "environment door: B's shared-entry edit crossed to A as a delta (state, ambient)");
         assert.ok(ambient.weight > 0, "the ambient copy retains the source event's canonical body weight");
 
@@ -584,26 +584,26 @@ test("{§env-delta-filesystem-narration} an out-of-band disk change is runtime e
 
         const workspaceId = await insertWorkspace(db, `envfs-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerA = await insertWorker(db, workspaceId);
-        const loopA = await insertLoop(db, workerA, 1, "go");
+        const sessionA = await insertSession(db, workspaceId);
+        const loopA = await insertLoop(db, sessionA, 1, "go");
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
 
         // Turn 1 materializes notes.md from disk (first sight — no divergence).
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        const afterT1 = await db.engine_render_log.all<{ origin: string; op: string; source: string | null }>({ worker_id: workerA });
+        await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        const afterT1 = await db.engine_render_log.all<{ origin: string; op: string; source: string | null }>({ session_id: sessionA });
         assert.ok(!afterT1.some((r) => r.origin === "_plurnk" && r.op === "EDIT" && r.source === "file"), "first sight reconciles silently — no fs delta");
         // The file changes out-of-band (an external editor, a git pull).
         await writeFile(join(root, "notes.md"), "line1\nline2\nline3-external\n");
 
         // Turn 2 — the runtime actor records the divergence, but the unrelated
-        // model worker does not receive ambient filesystem noise.
-        const turn2 = await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; folded: string; attrs: string; weight: number }>({ worker_id: workerA });
-        assert.ok(!rows.some((r) => r.source === "file"), "project-file divergence does not enter an unrelated worker log");
-        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
-        assert.ok(runtimeWorker, "the runtime actor owns the reconciliation evidence");
-        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string; weight: number }>({ worker_id: runtimeWorker.id });
+        // model session does not receive ambient filesystem noise.
+        const turn2 = await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ origin: string; op: string; source: string | null; rx: string; pathname: string; folded: string; attrs: string; weight: number }>({ session_id: sessionA });
+        assert.ok(!rows.some((r) => r.source === "file"), "project-file divergence does not enter an unrelated session log");
+        const runtimeSession = await db.envelope_get_session_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
+        assert.ok(runtimeSession, "the runtime actor owns the reconciliation evidence");
+        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string; weight: number }>({ session_id: runtimeSession.id });
         const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "notes.md");
         assert.ok(delta, "the runtime log retains exact source=file evidence");
         const span = JSON.parse(delta.rx).span as string;
@@ -632,21 +632,21 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
 
         const workspaceId = await insertWorkspace(db, `envfs-delete-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend()] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
         await rm(join(root, "removed.md"));
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
 
         const channel = await db.ops_read_channel.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "removed.md", channel: "body" });
         assert.equal(channel, undefined, "a deleted file cannot remain READable from a stale body channel");
-        const rows = await db.engine_render_log.all<{ source: string | null; pathname: string }>({ worker_id: workerId });
-        assert.ok(!rows.some((row) => row.source === "file"), "the deletion does not broadcast into the model worker");
-        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
-        assert.ok(runtimeWorker);
-        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ worker_id: runtimeWorker.id });
+        const rows = await db.engine_render_log.all<{ source: string | null; pathname: string }>({ session_id: sessionId });
+        assert.ok(!rows.some((row) => row.source === "file"), "the deletion does not broadcast into the model session");
+        const runtimeSession = await db.envelope_get_session_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
+        assert.ok(runtimeSession);
+        const runtimeRows = await db.engine_render_log.all<{ source: string | null; pathname: string; rx: string; attrs: string }>({ session_id: runtimeSession.id });
         const delta = runtimeRows.find((row) => row.source === "file" && row.pathname === "removed.md");
         assert.ok(delta, "the observed deletion remains durable runtime evidence");
         assert.equal((JSON.parse(delta.rx) as { span: string }).span, "", "the deleted resource has no resulting text to project");
@@ -657,7 +657,7 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
     }
 });
 
-// {§worker-scheme-collect} / {§env-delta-child-termination}
+// {§session-scheme-collect} / {§env-delta-child-termination}
 test("{§env-delta-child-termination} administrative loops stay private without hiding real model-free or pre-turn conclusions", async (t) => {
     type Authorship = { producer: TurnProducer; kind: TurnKind };
     const maintenance: Authorship = { producer: "_plurnk", kind: "maintenance" };
@@ -679,9 +679,9 @@ test("{§env-delta-child-termination} administrative loops stay private without 
                 const db = await openMigrated();
                 try {
                     const workspaceId = await insertWorkspace(db, `terminal-kind-${crypto.randomUUID()}`);
-                    const parent = await insertWorker(db, workspaceId, null, "parent");
+                    const parent = await insertSession(db, workspaceId, null, "parent");
                     const parentLoop = await insertLoop(db, parent, 1, "collect");
-                    const child = await insertWorker(db, workspaceId, parent, "child");
+                    const child = await insertSession(db, workspaceId, parent, "child");
                     const childLoop = await insertLoop(db, child, 1, "work");
                     for (const authorship of specimen.turns) {
                         const turn = await Turn.open(db, { loopId: childLoop, ...authorship });
@@ -691,15 +691,15 @@ test("{§env-delta-child-termination} administrative loops stay private without 
                         ? { status: 200, content: "child deliverable", mimetype: "text/plain" }
                         : Results.failure("engine:provider", "provider-failed", status, "child provider unavailable"));
                     assert.ok(result);
-                    assert.equal((await db.engine_worker_has_undelivered_child_term.get({ worker_id: parent })) !== undefined,
+                    assert.equal((await db.engine_session_has_undelivered_child_term.get({ session_id: parent })) !== undefined,
                         specimen.delivered, "the pending-result rail follows the actual conclusion audience");
                     const engine = makeEngine(db);
                     await engine.runTurn({
                         provider: new Mock({ contextWindow: 100000, responses: [okSend()] }),
-                        workspaceId, workerId: parent, loopId: parentLoop, messages: MESSAGES,
+                        workspaceId, sessionId: parent, loopId: parentLoop, messages: MESSAGES,
                     });
-                    const rows = await db.engine_render_log.all<{ source: string | null; rx: string }>({ worker_id: parent });
-                    const outcomes = rows.filter(({ source }) => source === "worker://child").map(({ rx }) => JSON.parse(rx));
+                    const rows = await db.engine_render_log.all<{ source: string | null; rx: string }>({ session_id: parent });
+                    const outcomes = rows.filter(({ source }) => source === "session://child").map(({ rx }) => JSON.parse(rx));
                     assert.equal(outcomes.length, Number(specimen.delivered));
                     if (specimen.delivered) {
                         assert.equal(outcomes[0].resource, "ops://child/1");
@@ -707,7 +707,7 @@ test("{§env-delta-child-termination} administrative loops stay private without 
                         assert.deepEqual(outcomes[0].problem, result.problem);
                         assert.equal(outcomes[0].content, result.content ?? result.problem?.detail);
                     }
-                    assert.equal(await db.engine_worker_has_undelivered_child_term.get({ worker_id: parent }), undefined,
+                    assert.equal(await db.engine_session_has_undelivered_child_term.get({ session_id: parent }), undefined,
                         "the parent consumes every eligible result through its ordinary observation boundary");
                 } finally { await db.close(); }
             });
@@ -715,34 +715,34 @@ test("{§env-delta-child-termination} administrative loops stay private without 
     }
 });
 
-test("{§worker-scheme-collect} a child's loop termination reaches only its parent with success, failure, and cancellation bodies visible", async () => {
+test("{§session-scheme-collect} a child's loop termination reaches only its parent with success, failure, and cancellation bodies visible", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);
-        const workerA = await insertWorker(db, workspaceId);                       // the observer
-        const loopA = await insertLoop(db, workerA, 1, "go");
-        const worker = await insertWorker(db, workspaceId, workerA, "worker");      // finishes gracefully
-        const workerLoop = await insertLoop(db, worker, 1, "investigate the bug");
-        const failedWorker = await insertWorker(db, workspaceId, workerA, "failed-worker");
-        const failedLoop = await insertLoop(db, failedWorker, 1, "call provider");
-        const cancelledWorker = await insertWorker(db, workspaceId, workerA, "cancelled-worker");
-        const cancelledLoop = await insertLoop(db, cancelledWorker, 1, "get killed");
-        const independent = await insertWorker(db, workspaceId, null, "independent");
+        const sessionA = await insertSession(db, workspaceId);                       // the observer
+        const loopA = await insertLoop(db, sessionA, 1, "go");
+        const session = await insertSession(db, workspaceId, sessionA, "session");      // finishes gracefully
+        const sessionLoop = await insertLoop(db, session, 1, "investigate the bug");
+        const failedSession = await insertSession(db, workspaceId, sessionA, "failed-session");
+        const failedLoop = await insertLoop(db, failedSession, 1, "call provider");
+        const cancelledSession = await insertSession(db, workspaceId, sessionA, "cancelled-session");
+        const cancelledLoop = await insertLoop(db, cancelledSession, 1, "get killed");
+        const independent = await insertSession(db, workspaceId, null, "independent");
         const independentLoop = await insertLoop(db, independent, 1, "unrelated");
         const eng = makeEngine(db);
         const provider = new Mock({ contextWindow: 4096, responses: [okSend(), okSend(), okSend(), okSend()] });
 
         // A's turn 1 sets its "last looked" boundary; the siblings are still running.
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
-        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 1 });
-        // One worker delivers successfully; the other retains an uncommon exact
+        await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 1 });
+        await eng.runTurn({ provider, workspaceId, sessionId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 1 });
+        // One session delivers successfully; the other retains an uncommon exact
         // provider status even though the scheduler projects it to lifecycle 500.
         const lifecycle = new LoopLifecycle(db);
         const deliverable = { status: 200, content: "the answer is 42", mimetype: "text/markdown" };
-        await insertTurn(db, workerLoop, 1, 102);
+        await insertTurn(db, sessionLoop, 1, 102);
         await insertTurn(db, failedLoop, 1, 102);
         await insertTurn(db, cancelledLoop, 1, 102);
-        assert.deepEqual(await lifecycle.finish(workerLoop, deliverable), deliverable);
+        assert.deepEqual(await lifecycle.finish(sessionLoop, deliverable), deliverable);
         assert.equal(
             (await lifecycle.finish(
                 failedLoop,
@@ -760,58 +760,58 @@ test("{§worker-scheme-collect} a child's loop termination reaches only its pare
         );
 
         // A's turn 2 pulls every termination from the shared log: each conclusion born
-        // visible, a failure with its Problem beside its message ({§worker-scheme-collect}).
-        await eng.runTurn({ provider, workspaceId, workerId: workerA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
-        await eng.runTurn({ provider, workspaceId, workerId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
-        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string | null; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string; attrs: string }>({ worker_id: workerA });
+        // visible, a failure with its Problem beside its message ({§session-scheme-collect}).
+        await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
+        await eng.runTurn({ provider, workspaceId, sessionId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
+        const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string | null; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string; attrs: string }>({ session_id: sessionA });
 
         // {§env-delta-child-termination}: actor and execution have distinct addresses.
-        const terminations = rows.filter((r) => r.origin === "_plurnk" && r.op === "READ" && r.source?.startsWith("worker://") === true);
+        const terminations = rows.filter((r) => r.origin === "_plurnk" && r.op === "READ" && r.source?.startsWith("session://") === true);
         assert.deepEqual(
             terminations.map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
             [
-                { source: "worker://worker", scheme: "ops", pathname: "/1", status_rx: 200 },
-                { source: "worker://failed-worker", scheme: "ops", pathname: "/1", status_rx: 502 },
-                { source: "worker://cancelled-worker", scheme: "ops", pathname: "/1", status_rx: 499 },
+                { source: "session://session", scheme: "ops", pathname: "/1", status_rx: 200 },
+                { source: "session://failed-session", scheme: "ops", pathname: "/1", status_rx: 502 },
+                { source: "session://cancelled-session", scheme: "ops", pathname: "/1", status_rx: 499 },
             ],
-            "every conclusion selects its exact loop, in occurrence order, attributed to the concluding worker",
+            "every conclusion selects its exact loop, in occurrence order, attributed to the concluding session",
         );
-        const win = terminations.find((r) => r.source === "worker://worker");
-        assert.ok(win, "worker's completion surfaced as a worker delta in A's log");
+        const win = terminations.find((r) => r.source === "session://session");
+        assert.ok(win, "session's completion surfaced as a session delta in A's log");
         assert.equal(win.origin, "_plurnk", "the termination delta is the engine's narration");
-        assert.equal(win.source, "worker://worker", "attributed with the terminating worker's control identity");
+        assert.equal(win.source, "session://session", "attributed with the terminating session's control identity");
         assert.equal(win.status_rx, 200, "the terminal status rides");
         const projected = JSON.parse(win.rx);
         assert.equal(projected.status, deliverable.status);
         assert.equal(projected.content, deliverable.content);
-        assert.equal(projected.resource, "ops://worker/1");
+        assert.equal(projected.resource, "ops://session/1");
         assert.equal(win.initial_folded, "[]", "initially visible — a child's 2xx deliverable reaches the parent with its body + awakening");
         assert.equal(win.folded, "[]", "the deliverable is untrimmed");
 
-        const failed = terminations.find((r) => r.source === "worker://failed-worker");
+        const failed = terminations.find((r) => r.source === "session://failed-session");
         assert.ok(failed, "the failed loop surfaced too — every death-path stamps terminated_at uniformly");
         assert.equal(failed.status_rx, 502, "the parent edge carries the exact status, not scheduler class 500");
         const failure = JSON.parse(failed.rx) as { status: number; problem?: { detail?: string } };
         assert.equal(failure.status, 502, "the exact failure status survives the parent edge");
         assert.equal(failure.problem?.detail, "provider_failure", "the exact Problem survives the parent edge");
-        assert.equal(failed.source, "worker://failed-worker", "attributed with the failed worker's control identity");
+        assert.equal(failed.source, "session://failed-session", "attributed with the failed session's control identity");
         assert.equal(failed.initial_folded, "[]", "a failure is born visible too — its explanation is the deliverable");
         assert.equal(failed.folded, "[]", "the failure is still READable");
-        const cancelled = terminations.find((r) => r.source === "worker://cancelled-worker");
+        const cancelled = terminations.find((r) => r.source === "session://cancelled-session");
         assert.ok(cancelled, "a KILLed child concludes to its parent through the same retained-outcome READ");
         assert.equal((JSON.parse(cancelled.attrs) as { terminatedBy?: string }).terminatedBy, "cancel", "cancellation authorship rides the attrs, not a target");
         assert.equal(cancelled.initial_folded, "[]", "a cancellation is born visible like every conclusion");
-        const independentRows = await db.engine_render_log.all<{ source: string | null }>({ worker_id: independent });
+        const independentRows = await db.engine_render_log.all<{ source: string | null }>({ session_id: independent });
         assert.equal(
-            independentRows.some(({ source }) => source?.startsWith("worker://") === true),
+            independentRows.some(({ source }) => source?.startsWith("session://") === true),
             false,
             "child terminal results never broadcast to an independent root",
         );
         // A fork copies observed conclusions verbatim, retaining their original targets.
-        const branch = await Fork.fork(db, workerA, "branch");
-        const branchRows = await db.engine_render_log.all<{ origin: string; op: string; scheme: string | null; pathname: string | null; source: string | null; status_rx: number | null }>({ worker_id: branch });
+        const branch = await Fork.fork(db, sessionA, "branch");
+        const branchRows = await db.engine_render_log.all<{ origin: string; op: string; scheme: string | null; pathname: string | null; source: string | null; status_rx: number | null }>({ session_id: branch });
         assert.deepEqual(
-            branchRows.filter((r) => r.origin === "_plurnk" && r.op === "READ" && r.source?.startsWith("worker://") === true)
+            branchRows.filter((r) => r.origin === "_plurnk" && r.op === "READ" && r.source?.startsWith("session://") === true)
                 .map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
             terminations.map(({ source, scheme, pathname, status_rx }) => ({ source, scheme, pathname, status_rx })),
             "a fork inherits observed conclusions verbatim, including their original source and target",

@@ -1,5 +1,5 @@
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
-// {§rollback} {§methods-workspace-rollback} — a worker's settled file mutations after a coordinate are
+// {§rollback} {§methods-workspace-rollback} — a session's settled file mutations after a coordinate are
 // reversed latest first as one client operation of the acting person; a patchless row is skipped; drift stops
 // the rollback where it is; a rollback is itself reversible; a coordinate that is not a row refuses.
 import test from "node:test";
@@ -15,7 +15,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
 
 const execFileP = promisify(execFile);
 const ORIGINAL = "one\ntwo\nthree\n";
@@ -45,7 +45,7 @@ test("{§rollback} reversals land as one client operation of the acting person, 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `rollback-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
-    const model = await insertWorker(db, workspaceId, null, "primary", "model");
+    const model = await insertSession(db, workspaceId, null, "primary", "model");
     const loopId = await insertLoop(db, model, 1);
     const turnId = await insertTurn(db, loopId, 1, 102);
     const daemon = new Daemon({ db, provider: null });
@@ -54,20 +54,20 @@ test("{§rollback} reversals land as one client operation of the acting person, 
         await daemon.engine.warmWorkspaceDerivations(workspaceId);
         let sequence = 0;
         const model_ = async (source: string): Promise<number> => {
-            const result = await daemon.engine.dispatch({ statement: parseOne(source), workspaceId, workerId: model, loopId, turnId, sequence: ++sequence, origin: "model" });
+            const result = await daemon.engine.dispatch({ statement: parseOne(source), workspaceId, sessionId: model, loopId, turnId, sequence: ++sequence, origin: "model" });
             assert.ok(result.status < 300, `${source.slice(0, 40)}: ${JSON.stringify(result).slice(0, 200)}`);
             return sequence;
         };
         const content = (path: string) => readFile(join(root, path), "utf8");
-        const rollback = (to: string) => daemon.rollback({ workspaceId, workerId: model, actor: TEST_OWNER, to });
-        // A person's client operations journal in the runtime worker ({§connection-lifecycle}).
-        const runtime = await daemon.ensureRuntimeWorker(workspaceId);
-        const personLoops = async () => (await daemon.listWorkerLoops({ workspaceId, workerId: runtime }))
+        const rollback = (to: string) => daemon.rollback({ workspaceId, sessionId: model, actor: TEST_OWNER, to });
+        // A person's client operations journal in the runtime session ({§connection-lifecycle}).
+        const runtime = await daemon.ensureRuntimeSession(workspaceId);
+        const personLoops = async () => (await daemon.listSessionLoops({ workspaceId, sessionId: runtime }))
             .filter(({ promptSource }) => promptSource === TEST_OWNER);
         const clientMutations = async () => {
             const operations = new Set((await personLoops()).map((loop) => loop.sequence));
             return (await db.log_file_mutations_after.all<{ loop_seq: number; op: string; pathname: string | null; patch: string | null }>({
-                worker_id: runtime, loop_seq: 0, turn_seq: 0, sequence: 0,
+                session_id: runtime, loop_seq: 0, turn_seq: 0, sequence: 0,
             })).filter(({ loop_seq }) => operations.has(loop_seq)).map(({ op, pathname, patch }) => `${op} ${pathname} ${patch === null ? "no patch" : "patch"}`);
         };
 

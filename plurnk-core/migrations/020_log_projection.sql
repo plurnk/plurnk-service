@@ -1,6 +1,6 @@
 -- MIGRATE: 20 log projection
 -- Released in 3.0.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
--- {§worker-wait-timing} A WAIT receipt's `waiting` is the accepted maximum in non-negative seconds;
+-- {§session-wait-timing} A WAIT receipt's `waiting` is the accepted maximum in non-negative seconds;
 -- a receipt without one carries no bound. The attrs guard is redeclared around this one rewrite.
 DROP TRIGGER IF EXISTS log_entries_immutable_attrs;
 
@@ -37,7 +37,7 @@ SELECT log_entry_id, active, folded FROM log_entry_projections;
 DROP VIEW IF EXISTS active_log_entries;
 DROP TRIGGER IF EXISTS log_entries_initialize_projection;
 DROP TRIGGER IF EXISTS log_entries_apply_curation;
-DROP TRIGGER IF EXISTS workers_fork_copies_history;
+DROP TRIGGER IF EXISTS sessions_fork_copies_history;
 DROP TRIGGER IF EXISTS log_output_admission_immutable;
 DROP TRIGGER IF EXISTS log_output_admission_owner;
 DROP TABLE log_entry_projections;
@@ -131,7 +131,7 @@ END;
 -- The ordinary operation surface reads this view. Forensic and lifecycle
 -- machinery names log_entries directly and therefore retains complete history.
 CREATE VIEW active_log_entries AS
-SELECT le.id, le.version, le.worker_id, le.loop_id, le.turn_id, le.sequence,
+SELECT le.id, le.version, le.session_id, le.loop_id, le.turn_id, le.sequence,
        le.at, le.origin, le.source, le.ambient_event_id, le.inherited_history,
        le.deep_hash, le.model_call_id, le.subscription_publication_id,
        le.op, le.signal, le.scheme, le.username, le.password,

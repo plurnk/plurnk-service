@@ -43,10 +43,10 @@ export type WorkspaceDerivationStatus = {
     message: string;
     level: "info" | "warn" | "error";
 };
-export type WithWorkspaceTurn = <T>(workspaceId: number, workerId: number, run: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
+export type WithWorkspaceTurn = <T>(workspaceId: number, sessionId: number, run: () => Promise<T>, signal?: AbortSignal) => Promise<T>;
 export type WorkspaceTurnStarting = (args: {
     workspaceId: number;
-    workerId: number;
+    sessionId: number;
     loopId: number;
 }) => Promise<readonly Notice[] | void>;
 
@@ -95,7 +95,7 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // Per-turn running-worker READ obligations. {§join-blocking-collect}
+    // Per-turn running-session READ obligations. {§join-blocking-collect}
 
     // The collaborators. Engine constructs them (they share its deps via
     // thunks where the value is late-injected — executors, loop signals)
@@ -268,7 +268,7 @@ export default class Engine {
         this.#lifecycle = lifecycle ?? new LoopLifecycle(db);
         this.#schemes = schemes;
         this.#notify = notify;
-        this.#withWorkspaceTurn = withWorkspaceTurn ?? (async (_workspaceId, _workerId, run) => run());
+        this.#withWorkspaceTurn = withWorkspaceTurn ?? (async (_workspaceId, _sessionId, run) => run());
         this.#workspaceTurnStarting = workspaceTurnStarting;
         // Default to empty discovery — standalone Engine construction (in
         // tests) gets no handlers, and content flows through the framework's
@@ -326,7 +326,7 @@ export default class Engine {
             warmWorkspace: (context, invalidate, materialize) =>
                 this.#queueWorkspaceWarm(context, invalidate, materialize),
             dispatch: (context) => this.dispatch(context),
-            resolveWorkerProviderIdentity: (workerId) => this.resolveWorkerProviderIdentity(workerId),
+            resolveSessionProviderIdentity: (sessionId) => this.resolveSessionProviderIdentity(sessionId),
             loopGauge: async (loopId) => Engine.clientGauge(await this.loopGauge(loopId)) });
         schemes.bindCore({
             db,
@@ -334,9 +334,9 @@ export default class Engine {
             executors,
             weigh: this.#weighContent,
             streamEventNotify: notify.streamEventNotify,
-            wakeWorkerNotify: notify.wakeWorkerNotify,
-            injectWorker: notify.injectWorker,
-            pushNotice: (workspaceId, workerId, loopId, notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+            wakeSessionNotify: notify.wakeSessionNotify,
+            injectSession: notify.injectSession,
+            pushNotice: (workspaceId, sessionId, loopId, notice) => this.#notices.push(workspaceId, sessionId, loopId, notice),
             defaultChannelFor: (scheme, workspaceId) => schemes.defaultChannelFor(scheme, workspaceId),
             settleDerivations: (context) => this.#queueWorkspaceWarm(context, true, false),
             resolveEntryAddress: (target, ctx) => this.#dispatcher.bindEntryAddress(target, ctx),
@@ -360,8 +360,8 @@ export default class Engine {
         this.#executors = executors;
     }
 
-    // {§functionality-documents} — the coordinator's per-Worker generated
-    // documents join the Worker's reference entries.
+    // {§functionality-documents} — the coordinator's per-Session generated
+    // documents join the Session's reference entries.
     setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
         this.#packets.setFunctionalityDocuments(documents);
     }
@@ -452,16 +452,16 @@ export default class Engine {
         };
     }
 
-    // The worker's durable opaque identity for provider calls; fail hard when a
-    // worker has none. {§worker-provider-identity}
-    async resolveWorkerProviderIdentity(workerId: number): Promise<{ workerId: string }> {
-        const identity = await this.#db.engine_worker_provider_identity.get<{
-            worker_id: string;
-        }>({ worker_id: workerId });
+    // The session's durable opaque identity for provider calls; fail hard when a
+    // session has none. {§session-provider-identity}
+    async resolveSessionProviderIdentity(sessionId: number): Promise<{ sessionId: string }> {
+        const identity = await this.#db.engine_session_provider_identity.get<{
+            session_id: string;
+        }>({ session_id: sessionId });
         if (identity === undefined) {
-            throw new Error(`resolveWorkerProviderIdentity: worker ${workerId} has no provider identity`);
+            throw new Error(`resolveSessionProviderIdentity: session ${sessionId} has no provider identity`);
         }
-        return { workerId: identity.worker_id };
+        return { sessionId: identity.session_id };
     }
 
     // {§attribution} — reporting derives from exact provider-request evidence;
@@ -517,10 +517,10 @@ export default class Engine {
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
     }
 
-    // {§methods-worker-accounting} — the spend of a worker and its descendants since the worker
+    // {§methods-session-accounting} — the spend of a session and its descendants since the session
     // began; nothing spent projects explicit zero ({§provider-accounting}).
-    async workerAccounting(workerId: number): Promise<ProviderAccounting> {
-        const requests = await this.#db.engine_worker_provider_requests.all<ProviderRequestStorageRow>({ worker_id: workerId });
+    async sessionAccounting(sessionId: number): Promise<ProviderAccounting> {
+        const requests = await this.#db.engine_session_provider_requests.all<ProviderRequestStorageRow>({ session_id: sessionId });
         return aggregateProviderAccounting(requests.map(providerRequestFromStorageRow));
     }
 
@@ -536,12 +536,12 @@ export default class Engine {
         return this.#packets.referenceEntries(workspaceId);
     }
 
-    workerCurationOverflow(workerId: number, provider: Provider): ReturnType<PacketBuilder["workerCurationOverflow"]> {
-        return this.#packets.workerCurationOverflow(workerId, provider);
+    sessionCurationOverflow(sessionId: number, provider: Provider): ReturnType<PacketBuilder["sessionCurationOverflow"]> {
+        return this.#packets.sessionCurationOverflow(sessionId, provider);
     }
 
     // {§env-delta-log-pull} — materialize one closed interval of the ambient
-    // occurrence journal into this worker's self-contained log. #67 owns only
+    // occurrence journal into this session's self-contained log. #67 owns only
     // the remaining model-facing actor-name projection.
     cancelSubscription(subscriptionId: number): Promise<boolean> {
         return this.#liveSubscriptions.cancel(subscriptionId);
@@ -589,7 +589,7 @@ export default class Engine {
     readClientEntry(context: {
         target: ParsedPath;
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
     }): Promise<ClientEntryAcquisition | null> {
         return this.#dispatcher.readClientEntry(context);
     }
@@ -643,11 +643,11 @@ export default class Engine {
     }
 
     // Used by wake-on-completion (daemon side): "is there any loop in this
-    // worker still accepting turns?" If yes, skip the wake — the active loop
+    // session still accepting turns?" If yes, skip the wake — the active loop
     // will pick up the channel transition at its next turn boundary. If no,
     // the daemon opens a fresh loop with the wake prompt.
-    async hasActiveLoopForWorker(workerId: number): Promise<boolean> {
-        const row = await this.#db.engine_count_active_loops_for_worker.get<{ n: number }>({ worker_id: workerId });
+    async hasActiveLoopForSession(sessionId: number): Promise<boolean> {
+        const row = await this.#db.engine_count_active_loops_for_session.get<{ n: number }>({ session_id: sessionId });
         return (row?.n ?? 0) > 0;
     }
 
@@ -656,11 +656,11 @@ export default class Engine {
     // promise and cannot reach its provider until coverage is complete.
     async warmWorkspaceDerivations(workspaceId: number): Promise<void> {
         const ctx: PlurnkSchemeContext = {
-            db: this.#db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
+            db: this.#db, workspaceId, sessionId: 0, loopId: 0, turnId: 0,
             writer: "_plurnk",
             signal: undefined,
             streamEventNotify: this.#notify.streamEventNotify,
-            wakeWorkerNotify: this.#notify.wakeWorkerNotify,
+            wakeSessionNotify: this.#notify.wakeSessionNotify,
             weigh: this.#weighContent,
             mimetypes: this.#mimetypes,
             defaultChannelFor: (s) => this.#schemes.defaultChannelFor(s),

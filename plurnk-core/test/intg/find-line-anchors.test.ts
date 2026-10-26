@@ -33,7 +33,7 @@ const runtime = async (t: TestContext) => {
         const item = items[0];
         if (item?.kind !== "statement") throw new Error(`test operation did not parse: ${source}`);
         await engine.dispatch({ ...ids, sequence: ++sequence, origin: "model", statement: item.statement });
-        const row = await db.log_read_by_coordinate.get<{ rx: string }>({ worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence });
+        const row = await db.log_read_by_coordinate.get<{ rx: string }>({ session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence });
         assert.ok(row);
         return JSON.parse(row.rx);
     };
@@ -46,20 +46,20 @@ const startLines = (found: { content: string }): number[] =>
 
 test("{§find-line-anchors}: the recorded `FIND (x.py) /^from|^import/` locates the lines READ selects", async (t) => {
     const { dispatch } = await runtime(t);
-    const found = await dispatch("````FIND (worker:///resolvers.py) /^from|^import/ <!-- current imports -->````");
+    const found = await dispatch("````FIND (workspace:///resolvers.py) /^from|^import/ <!-- current imports -->````");
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.deepEqual(startLines(found), [4, 5, 6, 8]);
-    const read = await dispatch("````READ (worker:///resolvers.py) /^from|^import/````");
+    const read = await dispatch("````READ (workspace:///resolvers.py) /^from|^import/````");
     assert.equal(read.status, 200, JSON.stringify(read));
     assert.equal(read.content, "import functools\nimport inspect\nfrom importlib import import_module\nfrom django.conf import settings");
-    const tail = await dispatch("````FIND (worker:///resolvers.py) /urlconf$/````");
+    const tail = await dispatch("````FIND (workspace:///resolvers.py) /urlconf$/````");
     assert.equal(tail.status, 200, JSON.stringify(tail));
     assert.deepEqual(startLines(tail), [10], "`$` is a line's end as well");
 });
 
 test("{§find-line-anchors}: a log FIND anchors each line of the row it searches", async (t) => {
     const { dispatch } = await runtime(t);
-    assert.equal((await dispatch("````READ (worker:///resolvers.py) <1,-1>````")).status, 200);
+    assert.equal((await dispatch("````READ (workspace:///resolvers.py) <1,-1>````")).status, 200);
     const found = await dispatch("````FIND (log:///1/1/1/READ) /^from|^import/````");
     assert.equal(found.status, 200, JSON.stringify(found));
     assert.deepEqual(startLines(found), [4, 5, 6, 8]);

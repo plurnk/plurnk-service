@@ -100,7 +100,7 @@ const provider = (url: string, route: string, overrides: NodeJS.ProcessEnv = {})
 });
 
 const generate = (p: Provider, id: string, signal?: AbortSignal, observeRequest?: Parameters<Provider["generate"]>[0]["observeRequest"]) => p.generate({
-    workerId: id,
+    sessionId: id,
     messages: [{ role: "user", content: id }],
     signal,
     observeRequest,
@@ -190,7 +190,7 @@ test("{§provider-inference-admission} queueing and generation do not use the di
 });
 
 for (const failure of ["abort", "disconnect"] as const) {
-    test(`{§provider-inference-admission} in-flight ${failure} releases capacity to a queued worker`, { timeout: 10000 }, async (t) => {
+    test(`{§provider-inference-admission} in-flight ${failure} releases capacity to a queued session`, { timeout: 10000 }, async (t) => {
         const wire = await endpoint(t);
         const p = await provider(wire.url, "openai/gpt-4.1-mini");
         const cancel = new AbortController();

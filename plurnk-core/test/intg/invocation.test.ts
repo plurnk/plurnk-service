@@ -1,4 +1,4 @@
-// {§methods-invocation} {§worker-obligations} — a row that discharges an obligation names the operation that opened it,
+// {§methods-invocation} {§session-obligations} — a row that discharges an obligation names the operation that opened it,
 // so a client pairs the answer with its call without matching addresses.
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ import type { Db } from "../../src/core/Db.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { serverProposals } from "./_approval.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 const streamed = (content: string): Response => new Response(new ReadableStream<Uint8Array>({
     start(controller) {
@@ -20,7 +20,7 @@ const streamed = (content: string): Response => new Response(new ReadableStream<
     },
 }), { headers: { "content-type": "text/event-stream" } });
 
-// One loop of `main` against a scripted model whose calls the WAITs serialize; each named worker's log after it, in order,
+// One loop of `main` against a scripted model whose calls the WAITs serialize; each named session's log after it, in order,
 // and its loops.
 const run = async (
     t: TestContext,
@@ -29,7 +29,7 @@ const run = async (
     check: (
         logs: (name: string) => Promise<LogEntryWire[]>,
         announced: readonly LogEntryWire[],
-        worker: (name: string) => Promise<{ id: number; loops: readonly ApplicationLoopProjection[] }>,
+        session: (name: string) => Promise<{ id: number; loops: readonly ApplicationLoopProjection[] }>,
     ) => Promise<void>,
 ): Promise<void> => {
     serverProposals(t, "accept");
@@ -46,22 +46,22 @@ const run = async (
             if (method === "log/entry") announced.push((params as { entry: LogEntryWire }).entry);
         });
         const { workspaceId } = await daemon.createWorkspace({ name: `invocation-${crypto.randomUUID()}` });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        for (const peer of peers) await namedModelWorker(daemon, workspaceId, peer);
-        const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Begin." });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        for (const peer of peers) await namedModelSession(daemon, workspaceId, peer);
+        const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Begin." });
         const status = await waitForDb(() => new LoopLifecycle(db).status(loopId), (value) => value === 200 || value >= 400);
         assert.equal(status, 200, "main concludes");
         const named = async (name: string): Promise<number> => {
-            const worker = (await daemon.listWorkers(workspaceId)).find((candidate) => candidate.name === name);
-            assert.ok(worker, `${name} exists`);
-            return worker.id;
+            const session = (await daemon.listSessions(workspaceId)).find((candidate) => candidate.name === name);
+            assert.ok(session, `${name} exists`);
+            return session.id;
         };
         await check(
-            async (name) => (await daemon.readLog({ workspaceId, workerId: await named(name), limit: 1000 })).toSorted((left, right) => left.id - right.id),
+            async (name) => (await daemon.readLog({ workspaceId, sessionId: await named(name), limit: 1000 })).toSorted((left, right) => left.id - right.id),
             announced,
             async (name) => {
                 const id = await named(name);
-                return { id, loops: await daemon.listWorkerLoops({ workspaceId, workerId: id }) };
+                return { id, loops: await daemon.listSessionLoops({ workspaceId, sessionId: id }) };
             },
         );
     });
@@ -73,7 +73,7 @@ const attrs = (row: LogEntryWire): Record<string, unknown> => row.attrs as Recor
 test("{§methods-invocation} a stream's observation names its execution, and a FORK's copy names the same one", async (t) => {
     await run(t, [
         "````sh\nprintf 'hello\\n'\n````\n````WAIT\n````",
-        "````FORK (worker://branch)\nConfirm the greeting.\n````\n````WAIT\n````",
+        "````FORK (session://branch)\nConfirm the greeting.\n````\n````WAIT\n````",
         "````SEND [200]\nConfirmed.\n````",
         "````SEND [200]\nDone.\n````",
     ], [], async (logs, announced) => {
@@ -89,14 +89,14 @@ test("{§methods-invocation} a stream's observation names its execution, and a F
     });
 });
 
-test("{§methods-invocation} {§worker-obligations} a delegation is answered by its child's conclusion, and a message by its completion reply", async (t) => {
+test("{§methods-invocation} {§session-obligations} a delegation is answered by its child's conclusion, and a message by its completion reply", async (t) => {
     await run(t, [
-        "````WORK (worker://helper)\nSay hello.\n````\n````WAIT\n````",
+        "````WORK (session://helper)\nSay hello.\n````\n````WAIT\n````",
         "````SEND [200]\nhello from the helper\n````",
-        "````SEND (worker://peer)\nWhat is the answer?\n````\n````WAIT\n````",
+        "````SEND (session://peer)\nWhat is the answer?\n````\n````WAIT\n````",
         "````SEND [200]\nforty-two\n````",
         "````SEND [200]\nThe helper said hello; the answer is forty-two.\n````",
-    ], ["peer"], async (logs, _announced, worker) => {
+    ], ["peer"], async (logs, _announced, session) => {
         const main = await logs("main");
         const work = main.find(({ op }) => op === "WORK")!;
         const send = main.find(({ op, attrs: opened }) => op === "SEND" && typeof (opened as { message?: unknown }).message === "string")!;
@@ -105,18 +105,18 @@ test("{§methods-invocation} {§worker-obligations} a delegation is answered by 
         const answers = main.filter(({ invocation }) => invocation !== undefined).map(({ invocation, op, source, attrs: kind }) =>
             ({ invocation, op, source, kind: (kind as { kind?: unknown }).kind }));
         assert.deepEqual(answers, [
-            { invocation: address(work), op: "READ", source: "worker://helper", kind: "loop_termination" },
-            { invocation: address(send), op: "SEND", source: "worker://peer", kind: "reply" },
+            { invocation: address(work), op: "READ", source: "session://helper", kind: "loop_termination" },
+            { invocation: address(send), op: "SEND", source: "session://peer", kind: "reply" },
         ], "the child's conclusion answers the WORK and the peer's completion answers the SEND, each once");
         const wait = main.find(({ op, sequence, turn_seq }) => op === "WAIT" && turn_seq === send.turn_seq && sequence > send.sequence);
         assert.equal(wait?.status_rx, 202, "the open message held its sender, so the WAIT parked until the reply");
         const peer = await logs("peer");
-        assert.equal(peer.find(({ op, origin }) => op === "SEND" && origin === "_plurnk")?.source, "worker://main", "the message names its sender");
-        // {§methods-worker-loops} A loop names the operation that opened it; a person's prompt is no worker's operation.
-        const sender = await worker("main");
-        assert.deepEqual((await worker("helper")).loops.map(({ invocation }) => invocation), [{ workerId: sender.id, address: address(work) }],
+        assert.equal(peer.find(({ op, origin }) => op === "SEND" && origin === "_plurnk")?.source, "session://main", "the message names its sender");
+        // {§methods-session-loops} A loop names the operation that opened it; a person's prompt is no session's operation.
+        const sender = await session("main");
+        assert.deepEqual((await session("helper")).loops.map(({ invocation }) => invocation), [{ sessionId: sender.id, address: address(work) }],
             "the child's loop was opened by the WORK");
-        assert.deepEqual((await worker("peer")).loops.map(({ invocation }) => invocation), [{ workerId: sender.id, address: address(send) }],
+        assert.deepEqual((await session("peer")).loops.map(({ invocation }) => invocation), [{ sessionId: sender.id, address: address(send) }],
             "the peer's loop was opened by the SEND");
         assert.deepEqual(sender.loops.map(({ invocation }) => invocation), [null], "main's loop was opened by a person's prompt");
     });
@@ -124,7 +124,7 @@ test("{§methods-invocation} {§worker-obligations} a delegation is answered by 
 
 test("{§methods-answering} a peer's progress and its completion each name the SEND they answer; only the completion discharges it", async (t) => {
     await run(t, [
-        "````SEND (worker://peer)\nWhat is the answer?\n````\n````WAIT\n````",
+        "````SEND (session://peer)\nWhat is the answer?\n````\n````WAIT\n````",
         "````SEND\nStill looking.\n````\n````SEND [200]\nforty-two\n````",
         "````SEND [200]\nThe answer is forty-two.\n````",
     ], ["peer"], async (logs, announced) => {
@@ -133,8 +133,8 @@ test("{§methods-answering} a peer's progress and its completion each name the S
         const replies = main.filter(({ answering }) => answering !== undefined).map(({ answering, invocation, source, tx }) =>
             ({ answering, invocation, source, body: (tx as { body?: { raw?: unknown } } | null)?.body?.raw }));
         assert.deepEqual(replies, [
-            { answering: address(send), invocation: undefined, source: "worker://peer", body: "Still looking." },
-            { answering: address(send), invocation: address(send), source: "worker://peer", body: "forty-two" },
+            { answering: address(send), invocation: undefined, source: "session://peer", body: "Still looking." },
+            { answering: address(send), invocation: address(send), source: "session://peer", body: "forty-two" },
         ], "progress names the SEND it answers; the completion names it twice, as what it answers and what it discharges");
         const progress = main.find(({ answering, invocation }) => answering !== undefined && invocation === undefined)!;
         assert.equal(announced.find(({ id }) => id === progress.id)?.answering, address(send), "log/entry carries it as readLog does");

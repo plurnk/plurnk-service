@@ -26,11 +26,11 @@ advantage over conventional tool calling.
 
 ## Internal resource addressing
 
-Agent-visible state uses URI schemes such as `worker://` and
-`log://`. The URI authority identifies the relevant worker namespace where the
+Agent-visible state uses URI schemes such as `session://` and
+`log://`. The URI authority identifies the relevant session namespace where the
 scheme supports one.
 
-This provides one address form for project content, worker state, execution
+This provides one address form for project content, session state, execution
 results, and external resources. The internal representation does not alter
 MCP, ACP, or provider wire protocols.
 

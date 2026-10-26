@@ -1,4 +1,4 @@
-import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
+import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -15,9 +15,9 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
-import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
-import { modelOperation } from "./_workers.ts";
+import { modelOperation } from "./_sessions.ts";
 import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 
@@ -55,11 +55,11 @@ test("{§functionality-model-mutation} MCP replacement precedes a tool invocatio
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "mcp-ordered" });
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Replace the server and query its environment.", maxTurns: 2 });
+    const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+    const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Replace the server and query its environment.", maxTurns: 2 });
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
-    const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+    const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
     assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201, "replacement creates the workspace override before invoking its tool");
     assert.equal(rows.find((row) => row.origin === "model" && row.op === "fixture")?.status_rx, 200);
     const output = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body" });
@@ -67,7 +67,7 @@ test("{§functionality-model-mutation} MCP replacement precedes a tool invocatio
     assert.equal(await lifecycle.status(loop.loopId), 200);
 });
 
-test("{§mcp-launch-environment} a configured stdio server starts with the operator's environment beneath the workspace layer, never a worker's, and picks up changes only on restart", { timeout: 30000 }, async (t) => {
+test("{§mcp-launch-environment} a configured stdio server starts with the operator's environment beneath the workspace layer, never a session's, and picks up changes only on restart", { timeout: 30000 }, async (t) => {
     const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-env-"));
     t.after(() => rm(scratch, { recursive: true, force: true }));
     withOperatorEnvironment(t, {
@@ -93,8 +93,8 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
     await daemon.start();
     try {
         const workspaceId = await insertWorkspace(db, `mcp-env-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "alice", "model");
-        await ownWorker(db, workspaceId, workerId);
+        const sessionId = await insertSession(db, workspaceId, null, "alice", "model");
+        await ownSession(db, workspaceId, sessionId);
         const invoke = (family: string, verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
         const set = (alias: string, value: string) => invoke("env", "add", { alias, definition: { value } });
         const starts = async (server: string): Promise<Start[]> => (await readFile(marker(server), "utf8")).trim().split("\n").map((line) => JSON.parse(line) as Start);
@@ -106,8 +106,8 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
         assert.equal(launched?.plurnk, null, "nor does any of plurnk's own settings");
         assert.equal(launched?.home, hostPaths.home);
         assert.equal(launched?.witness, null, "the server launched before the workspace defined its value");
-        await daemon.invokeModuleAction("worker.env.add", { alias: "ENV_WITNESS", definition: { value: "private" } }, { scope: "worker", workspaceId, workerId });
-        await daemon.invokeModuleAction("worker.env.add", { alias: "WORKER_ONLY", definition: { value: "private" } }, { scope: "worker", workspaceId, workerId });
+        await daemon.invokeModuleAction("session.env.add", { alias: "ENV_WITNESS", definition: { value: "private" } }, { scope: "session", workspaceId, sessionId });
+        await daemon.invokeModuleAction("session.env.add", { alias: "SESSION_ONLY", definition: { value: "private" } }, { scope: "session", workspaceId, sessionId });
         const before = await starts("fixture");
         await invoke("mcp", "list");
         assert.deepEqual(await starts("fixture"), before, "env edits and listing do not restart a live MCP");
@@ -129,8 +129,8 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
             if (op?.kind !== "statement") throw new Error("Expected one operation");
             const after = (await db.test_entries_by_scheme_prefix.all({ workspace_id: workspaceId, scheme: runtime, prefix: "/%" })).length;
             const seen = proposals.length;
-            // The worker's own verb, reviewed by its owner.
-            const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: op.statement });
+            // The session's own verb, reviewed by its owner.
+            const pending = modelOperation(daemon, db, { workspaceId, sessionId, statement: op.statement });
             if (approve) {
                 await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10000 });
                 await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
@@ -146,7 +146,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
             const received = await run("explicit", "explicit (environment)", {}, true, 200, "body");
             assert.equal(received.witness, "explicit", "the entry's env applies over the workspace layer");
             assert.equal(received.reference, "workspace-reference", "a workspace value replaces the operator's");
-            assert.equal(received.private, null, "the invoking worker never becomes the shared MCP's environment");
+            assert.equal(received.private, null, "the invoking session never becomes the shared MCP's environment");
 
             const listed = await invoke("mcp", "list") as FunctionalityListResult;
             const retained = listed.definitions.find(({ alias }) => alias === "explicit");
@@ -259,8 +259,8 @@ for (const { policy, decision } of [
         await daemon.start();
         try {
             const workspaceId = await insertWorkspace(db, `mcp-approval-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId, null, "alice", "model");
-            await ownWorker(db, workspaceId, workerId);
+            const sessionId = await insertSession(db, workspaceId, null, "alice", "model");
+            await ownSession(db, workspaceId, sessionId);
             const list = () => daemon.invokeModuleAction("workspace.mcp.list", {}, { scope: "workspace", workspaceId }) as Promise<FunctionalityListResult>;
             const definition = { name: "credential", ...environmentEntry({ MCP_ENV_MARKER: marker, BOUND_VALUE: "${BOUND_VALUE}" }) };
             const source = PlurnkParser.frame("plurnk (mcp)", JSON.stringify({ verb: "add", alias: "credential", definition }));
@@ -272,7 +272,7 @@ for (const { policy, decision } of [
                 if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
             });
             t.after(unsubscribe);
-            const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: op.statement });
+            const pending = modelOperation(daemon, db, { workspaceId, sessionId, statement: op.statement });
             if (policy === "review") {
                 await waitFor(() => proposals, (items) => items.length === 1, { timeoutMs: 10000 });
                 assert.deepEqual((await list()).definitions, [], "awaiting approval publishes no definition");

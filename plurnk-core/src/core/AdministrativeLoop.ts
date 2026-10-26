@@ -4,9 +4,9 @@ import type { Db } from "./Db.ts";
 export default class AdministrativeLoop {
     // `source` is the actor that opened it: a person's address for their client operation
     // ({§actor-boundary-client-operations}), absent for the daemon's own.
-    static async open(db: Db, workerId: number, source?: string): Promise<{ id: number; sequence: number }> {
+    static async open(db: Db, sessionId: number, source?: string): Promise<{ id: number; sequence: number }> {
         const loop = await db.envelope_insert_client_loop.get<{ id: number; sequence: number }>({
-            worker_id: workerId,
+            session_id: sessionId,
             prompt_source: source ?? null,
         });
         if (loop === undefined) throw new Error("administrative loop insert returned no row");

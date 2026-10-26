@@ -27,7 +27,7 @@ test("{§scheme-operation-dispatch}: KILL receives the authored statement and bo
         async kill(received, ctx) {
             assert.deepEqual(received, requested, "all authored KILL fields reach the owner");
             assert.equal(ctx.workspaceId, env.workspaceId);
-            assert.equal(ctx.workerId, env.workerId);
+            assert.equal(ctx.sessionId, env.sessionId);
             assert.equal(ctx.writer, "model");
             const prior = await ctx.entries.read("/notes");
             assert.equal(prior.entry?.channels.body.content, "selected namespace");
@@ -109,13 +109,13 @@ for (const protocol of ["wss", "ws"]) {
             assert.equal(opened.status, 102, JSON.stringify(opened));
             const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: protocol, pathname: "/feed" });
             assert.ok(entry);
-            const live = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ worker_id: env.workerId, entry_id: entry.id });
+            const live = await db.test_get_subscription_by_entry.get<{ closed_at: string | null }>({ session_id: env.sessionId, entry_id: entry.id });
             assert.equal(live?.closed_at, null);
             const killed = await engine.dispatch({ ...env, statement: statement(`KILL (${target})`), sequence: 2, origin: "model" });
             assert.equal(killed.status, 200, JSON.stringify(killed));
             assert.deepEqual(closed, [{ code: 1000, reason: "killed" }]);
             await schemes.close();
-            const terminal = await db.test_get_subscription_by_entry.get<{ close_status: number; closed_at: string | null }>({ worker_id: env.workerId, entry_id: entry.id });
+            const terminal = await db.test_get_subscription_by_entry.get<{ close_status: number; closed_at: string | null }>({ session_id: env.sessionId, entry_id: entry.id });
             assert.equal(terminal?.close_status, 200, "an opened socket's normal close is a successful terminal result");
             assert.ok(terminal?.closed_at);
         } finally {

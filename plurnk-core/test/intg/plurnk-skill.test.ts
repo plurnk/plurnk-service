@@ -10,7 +10,7 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import EnvDefaults from "../../src/core/env-defaults.ts";
 import { connect, rpcCall, runLoopToTerminal, withDaemon } from "./_rpc.ts";
 import { copyStmt, editStmt, findStmt, readStmt, regex } from "./_dsl.ts";
-import { modelOperation, namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelSession } from "./_sessions.ts";
 
 test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable operand examples", async (t) => {
     await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
@@ -36,23 +36,23 @@ test("{§plurnk-skill} the discoverable COPY/MOVE chapter provides executable op
         assert.deepEqual(parsed.items.filter((item) => item.kind === "error"), []);
         const examples = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
         assert.deepEqual(examples.map(writtenOp), ["COPY", "COPY", "MOVE"]);
-        assert.equal((await dispatch(editStmt(parsePath("worker:///src.md"), "one\ntwo\nthree\nfour\n"))).status, 201);
+        assert.equal((await dispatch(editStmt(parsePath("workspace:///src.md"), "one\ntwo\nthree\nfour\n"))).status, 201);
         for (const [index, statement] of examples.entries()) {
             const result = await dispatch(statement);
             assert.equal(result.status, index === 1 ? 200 : 201, JSON.stringify(result));
         }
-        assert.equal((await read("worker:///archive.md")).content, "two\nthree\none");
-        assert.equal((await read("worker:///src.md")).content, "one\ntwo\nthree\nfour");
+        assert.equal((await read("workspace:///archive.md")).content, "two\nthree\none");
+        assert.equal((await read("workspace:///src.md")).content, "one\ntwo\nthree\nfour");
         const content = async (pathname: string) => (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname, name: "body" }))?.content;
         assert.equal(await content("/archive.md"), "two\nthree\none\n", "transfers retain source line separators, not the READ projection");
         assert.equal(await content("/src.md"), "one\ntwo\nthree\nfour\n", "COPY leaves source bytes unchanged");
-        const moved = await read("worker:///slice.md");
+        const moved = await read("workspace:///slice.md");
         assert.equal(moved.status, 404, "MOVE removes the transferred source channel");
-        assert.equal((moved.problem as { type: string }).type, "https://problems.plurnk.xyz/scheme/worker/entry-not-found");
+        assert.equal((moved.problem as { type: string }).type, "https://problems.plurnk.xyz/scheme/workspace/entry-not-found");
     });
 });
 
-test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operator catalog through ordinary READ and Worker enablement", async (t) => {
+test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operator catalog through ordinary READ and Session enablement", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-own-skill-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {
@@ -60,7 +60,7 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
         t.after(() => ws.close());
         const created = await rpcCall(ws, 1, "workspace.create", { projectRoot: root });
         const workspaceId = (created.result as { id: number }).id;
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
         const dispatch = async (statement: PlurnkStatement) =>
             (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const read = (uri: string) => dispatch(readStmt(parsePath(uri), { marks: [1, -1] }));
@@ -80,15 +80,15 @@ test("{§skills-installation-boundary} {§plurnk-skill} defaults are the operato
         const matches = await dispatch({ ...findStmt(parsePath("skill://plurnk/.env.defaults"), regex("PLURNK_PROVIDERS_OUTPUT_BUDGET")), lineMarker: { marks: [1, -1] } });
         assert.equal(matches.status, 200);
         assert.match(JSON.stringify(matches.results), /PLURNK_PROVIDERS_OUTPUT_BUDGET/);
-        assert.equal((await dispatch(copyStmt(parsePath("skill://plurnk/.env.defaults")!, parsePath("worker:///defaults.md")!))).status, 201);
-        assert.equal((await read("worker:///defaults.md")).content, expected.trimEnd(), "COPY consumes the generated resource through ordinary source access");
+        assert.equal((await dispatch(copyStmt(parsePath("skill://plurnk/.env.defaults")!, parsePath("workspace:///defaults.md")!))).status, 201);
+        assert.equal((await read("workspace:///defaults.md")).content, expected.trimEnd(), "COPY consumes the generated resource through ordinary source access");
         const config = await read("skill://plurnk/references/configuration.md");
         assert.equal(config.status, 200);
         assert.equal(config.content, (await readFile("INSTALL.md", "utf8")).trimEnd(), "configuration has one package owner");
         const context = { scope: "workspace" as const, workspaceId };
-        const child = await daemon.forkWorker({ workspaceId, workerId });
+        const child = await daemon.forkSession({ workspaceId, sessionId });
         // The child's own READ.
-        const childRead = () => modelOperation(daemon, db, { workspaceId, workerId: child.workerId, statement: readStmt(parsePath("skill://plurnk/.env.defaults"), { marks: [1, 3] }) });
+        const childRead = () => modelOperation(daemon, db, { workspaceId, sessionId: child.sessionId, statement: readStmt(parsePath("skill://plurnk/.env.defaults"), { marks: [1, 3] }) });
         assert.equal((await childRead()).status, 200, "children use the same workspace skill");
         await daemon.invokeModuleAction("workspace.skills.disable", { alias: "plurnk" }, context);
         assert.equal((await read("skill://plurnk/.env.defaults")).status, 404);

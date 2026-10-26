@@ -1,7 +1,7 @@
-// {§message-abandonment} — a loop that ends with another worker's message unanswered answers it 499 by the
+// {§message-abandonment} — a loop that ends with another session's message unanswered answers it 499 by the
 // daemon's hand: one SEND to each message's address, in a maintenance turn of the loop that ended, so the
 // sender wakes and reads the decline instead of waiting on a loop that is gone. No loop is opened: a cancelled
-// scope stays cancelled ({§worker-lifecycle-no-resurrection}); the turn belongs to the ended loop.
+// scope stays cancelled ({§session-lifecycle-no-resurrection}); the turn belongs to the ended loop.
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { Db } from "../core/Db.ts";
 import type Engine from "../core/Engine.ts";
@@ -15,7 +15,7 @@ export default class MessageAbandonment {
 
     // The messages the ended loop still holds without a completion, each completed 499 with the fact of the
     // ending as the body. Returns how many were completed; none is the ordinary case.
-    static async complete(engine: Engine, db: Db, workspaceId: number, workerId: number, loopId: number, status: number): Promise<number> {
+    static async complete(engine: Engine, db: Db, workspaceId: number, sessionId: number, loopId: number, status: number): Promise<number> {
         const open = await db.drain_abandoned_messages.all<{ path: string }>({ loop_id: loopId });
         if (open.length === 0) return 0;
         const text = open
@@ -36,7 +36,7 @@ export default class MessageAbandonment {
                 emission: null,
                 origin: "_plurnk",
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 fromSequence: 1,

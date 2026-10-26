@@ -14,11 +14,11 @@ export interface PacketBoundaries {
 }
 
 export interface CompletionEvidence {
-    pending: Array<"streams" | "workers" | "messages" | "receipts" | "failed-stream-results" | "worker-results">;
+    pending: Array<"streams" | "sessions" | "messages" | "receipts" | "failed-stream-results" | "session-results">;
     receipts: string[];
 }
 
-type TurnContext = { workerId: number; loopId: number; turnId: number; origin: WriterTier };
+type TurnContext = { sessionId: number; loopId: number; turnId: number; origin: WriterTier };
 
 export default class TurnDispositionHandler {
     static configuredWaitSeconds(): number {
@@ -28,14 +28,14 @@ export default class TurnDispositionHandler {
     readonly #db: Db;
     readonly #lifecycle: LoopLifecycle;
     readonly #unobservedFailureCount: (turnId: number) => Promise<number>;
-    readonly #pendingSet: (workerId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
+    readonly #pendingSet: (sessionId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
     readonly #hasLiveWork: (loopId: number) => Promise<boolean>;
 
     constructor({ db, lifecycle, unobservedFailureCount, pendingSet, hasLiveWork }: {
         db: Db;
         lifecycle: LoopLifecycle;
         unobservedFailureCount: (turnId: number) => Promise<number>;
-        pendingSet: (workerId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
+        pendingSet: (sessionId: number, turnId: number, loopId: number) => Promise<CompletionEvidence>;
         hasLiveWork: (loopId: number) => Promise<boolean>;
     }) {
         this.#db = db;
@@ -76,18 +76,18 @@ export default class TurnDispositionHandler {
     }
 
     async #assess(ctx: TurnContext, wait: boolean, completionAllowed: boolean): Promise<DispatchResult> {
-        const { workerId, loopId, turnId, origin } = ctx;
+        const { sessionId, loopId, turnId, origin } = ctx;
         const status = await this.#lifecycle.status(loopId);
         if (![100, 102, 202].includes(status)) return { status: 102, detail: "This loop is already concluded." };
-        // Administrative programs do not conclude the worker's model loop (including turn0).
+        // Administrative programs do not conclude the session's model loop (including turn0).
         if (origin !== "model") return { status: 200 };
         const arrival = await this.#db.drain_has_unpublished_messages.get({ loop_id: loopId });
         if (arrival !== undefined) return { status: 102 };
         const recovery = await this.#unobservedFailureCount(turnId) > 0;
         if ((recovery || !completionAllowed) && !wait) return { status: 102 };
-        const { pending } = await this.#pendingSet(workerId, turnId, loopId);
-        // {§worker-obligations} — the three held kinds; everything else pending is a result owed next packet.
-        const held = (kind: string): boolean => kind === "streams" || kind === "workers" || kind === "messages";
+        const { pending } = await this.#pendingSet(sessionId, turnId, loopId);
+        // {§session-obligations} — the three held kinds; everything else pending is a result owed next packet.
+        const held = (kind: string): boolean => kind === "streams" || kind === "sessions" || kind === "messages";
         const live = pending.some(held);
         if (live && wait) {
             // The obligation itself is the waker: a concluding stream or child, or a completed message, requeues this loop.

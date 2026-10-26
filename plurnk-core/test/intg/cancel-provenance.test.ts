@@ -8,7 +8,7 @@ import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor, waitForDb } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { insertLoop, insertTurn, insertWorker } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession } from "./_db.ts";
 
 type LoopRow = { id: number; status: number; terminal_result: string | null; terminated_by: string | null };
 
@@ -58,8 +58,8 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
             assert.equal(turns.find(({ kind }) => kind === "inference")?.status, 499);
             assert.equal(mock.received.length, 0, "cancelled preparation makes no provider request");
             assert.equal(terminalResult(loop!).problem?.reason, "cancel during preparation");
-            const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loop!.id });
-            assert.deepEqual(await db.test_error_rows_for_worker.all({ worker_id: worker!.worker_id }), [], "cancellation does not publish a provider failure");
+            const session = await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loop!.id });
+            assert.deepEqual(await db.test_error_rows_for_session.all({ session_id: session!.session_id }), [], "cancellation does not publish a provider failure");
         } finally { release.resolve(); ws.close(); }
     });
 });
@@ -102,13 +102,13 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
             );
             const cancelled = notes.find((n) => n.result.status === 499);
             assert.equal(cancelled?.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
-            assert.equal(cancelled?.result.problem?.detail, "The worker scope was cancelled: operator redirected the task."); // {§problems-functionality}
+            assert.equal(cancelled?.result.problem?.detail, "The session scope was cancelled: operator redirected the task."); // {§problems-functionality}
             assert.equal(cancelled?.result.problem?.reason, "operator redirected the task");
             assert.equal(cancelled?.result.problem?.stage, "loop");
             assert.equal(cancelled?.result.problem?.retryable, false);
-            const worker = await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: row!.id });
+            const session = await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: row!.id });
             assert.deepEqual(
-                await db.test_error_rows_for_worker.all({ worker_id: worker!.worker_id }),
+                await db.test_error_rows_for_session.all({ session_id: session!.session_id }),
                 [],
                 "lifecycle cancellation never fabricates a provider failure",
             );
@@ -118,7 +118,7 @@ test("{§loop-terminal-authorship}: cancelling a live loop records who and why",
 
 test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async (t) => {
     serverProposals(t, "accept");
-    // A worker parked on a live obligation has no active drain, so cancellation
+    // A session parked on a live obligation has no active drain, so cancellation
     // terminalizes the durable 202 row directly.
     const previousSettlement = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
@@ -155,20 +155,20 @@ test("{§methods-loop-cancel}: cancelling a parked loop terminalizes it", async 
     });
 });
 
-test("{§worker-lifecycle-total-reap}: external cancellation terminalizes the durable subtree and emits each loop's turns", async () => {
+test("{§session-lifecycle-total-reap}: external cancellation terminalizes the durable subtree and emits each loop's turns", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "cancel-prov-tree" });
             const workspaceId = (created.result as { id: number }).id;
-            const root = await insertWorker(db, workspaceId, null, "root");
+            const root = await insertSession(db, workspaceId, null, "root");
             const rootLoop = await insertLoop(db, root, 1, "root");
             const rootTurn = await insertTurn(db, rootLoop, 1, 102);
-            const child = await insertWorker(db, workspaceId, root, "child");
+            const child = await insertSession(db, workspaceId, root, "child");
             const childLoop = await insertLoop(db, child, 1, "child");
             const childTurn = await insertTurn(db, childLoop, 1, 102);
-            const grandchild = await insertWorker(db, workspaceId, child, "grandchild");
+            const grandchild = await insertSession(db, workspaceId, child, "grandchild");
             const grandchildLoop = await insertLoop(db, grandchild, 1, "grandchild");
             const grandchildTurn = await insertTurn(db, grandchildLoop, 1, 102);
             const terminated = subscribeNotifications(ws, "loop/terminated");
@@ -213,8 +213,8 @@ for (const mode of ["immediate", "awaited"] as const) {
         const mock = new Mock({ contextWindow: 16384, responses: [] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `cancel-stop-${mode}` });
-            const workerId = await insertWorker(db, workspaceId, null, "cancelled");
-            const loopId = await insertLoop(db, workerId, 1, "cancel this task");
+            const sessionId = await insertSession(db, workspaceId, null, "cancelled");
+            const loopId = await insertLoop(db, sessionId, 1, "cancel this task");
             const turnId = await insertTurn(db, loopId, 1, 102);
             const events: Array<{ loopId: number; result: { status: number }; turnIds: number[] }> = [];
             const order: string[] = [];
@@ -233,16 +233,16 @@ for (const mode of ["immediate", "awaited"] as const) {
                 }
                 return loopUsage.call(this, id);
             });
-            const cancelWorkerTree = DrainSupervisor.prototype.cancelWorkerTree;
+            const cancelSessionTree = DrainSupervisor.prototype.cancelSessionTree;
             let settlement: Promise<void> | undefined;
-            t.mock.method(DrainSupervisor.prototype, "cancelWorkerTree", function (this: DrainSupervisor, id: number, reason: string) {
-                const result = cancelWorkerTree.call(this, id, reason);
-                if (id === workerId) settlement = result;
+            t.mock.method(DrainSupervisor.prototype, "cancelSessionTree", function (this: DrainSupervisor, id: number, reason: string) {
+                const result = cancelSessionTree.call(this, id, reason);
+                if (id === sessionId) settlement = result;
                 return result;
             });
             const cancellation = mode === "awaited"
-                ? daemon.cancelWorker({ workspaceId, workerId, reason: "operator cancelled" })
-                : daemon.cancelDrain(workerId, "operator cancelled");
+                ? daemon.cancelSession({ workspaceId, sessionId, reason: "operator cancelled" })
+                : daemon.cancelDrain(sessionId, "operator cancelled");
             if (mode === "immediate") assert.equal(cancellation, false, "no active drain does not mean no cancellation work");
             await collecting.promise;
             let stopped = false;

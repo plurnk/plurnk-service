@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Http from "@plurnk/plurnk-schemes-http";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 
@@ -40,20 +40,20 @@ const setup = async () => {
     await mimetypes.ready();
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `http-scope-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "scope");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "scope");
     const turnId = await insertTurn(db, loopId, 1, 102);
     const schemes = new SchemeRegistry();
     schemes.register("https", new Http());
     const engine = new Engine({ db, schemes, mimetypes });
-    return { db, engine, mimetypes, ids: { workspaceId, workerId, loopId, turnId } };
+    return { db, engine, mimetypes, ids: { workspaceId, sessionId, loopId, turnId } };
 };
 
 const readContent = async (
-    db: Db, ids: { workspaceId: number; workerId: number; loopId: number; turnId: number }, sequence: number,
+    db: Db, ids: { workspaceId: number; sessionId: number; loopId: number; turnId: number }, sequence: number,
 ): Promise<{ content: string | null; status: number }> => {
     const row = await db.log_read_by_coordinate.get<{ rx: string }>({
-        worker_id: ids.workerId, loop_seq: 1, turn_seq: 1, sequence,
+        session_id: ids.sessionId, loop_seq: 1, turn_seq: 1, sequence,
     });
     if (row === undefined) throw new Error(`no stored result for sequence ${sequence}`);
     return JSON.parse(row.rx) as { content: string | null; status: number };
@@ -192,7 +192,7 @@ test("{§universal-read-composition} #283: a scoped READ of a project file still
             statement: {
                 metadata: null,
                 op: "EDIT", aside: null,
-                target: { kind: "url", raw: "worker:///scope.md", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/scope.md", query: null, fragment: null },
+                target: { kind: "url", raw: "workspace:///scope.md", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/scope.md", query: null, fragment: null },
                 lineMarker: null,
                 matcher: null, body: content,
                 position: { line: 1, column: 0 },
@@ -200,12 +200,12 @@ test("{§universal-read-composition} #283: a scoped READ of a project file still
             ...ids, sequence: ++sequence, origin: "model",
         }) as { status: number };
         assert.equal(seeded.status, 201, "seed edit succeeds");
-        await dispatch(parseRead(`\`\`\`\`READ (worker:///scope.md) <3,16>\`\`\`\``));
+        await dispatch(parseRead(`\`\`\`\`READ (workspace:///scope.md) <3,16>\`\`\`\``));
         const result = await readContent(db, ids, sequence);
         assert.equal(
             result.content,
             windowOf(content, 3, 16),
-            "the worker-entry read returns exactly lines 3..16",
+            "the session-entry read returns exactly lines 3..16",
         );
     } finally {
         await db.close();

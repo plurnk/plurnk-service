@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import Exec from "../../src/schemes/Exec.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
@@ -15,7 +15,7 @@ import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { readThroughScheme, mimetypesFixture, makeSchemeCtx, schemeManifest } from "./_scheme.ts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { urlPath, editStmt, findStmt, fullReplace, readStmt, regex } from "./_dsl.ts";
 import { resourcePaths } from "./_find.ts";
@@ -23,18 +23,18 @@ import { resourcePaths } from "./_find.ts";
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    return { db, workspaceId, workerId };
+    const sessionId = await insertSession(db, workspaceId);
+    return { db, workspaceId, sessionId };
 };
 
 // Seed a multi-channel exec entry (stdout + stderr) directly, bypassing the
-// subprocess. exec is the production multi-channel vehicle (Worker is single-
+// subprocess. exec is the production multi-channel vehicle (Session is single-
 // channel); fragment routing in _entry-ops.ts is exercised through Exec's
 // manifest (defaultChannel="stdout").
 const seedExecEntry = async (
     db: Db,
     workspaceId: number,
-    _workerId: number,
+    _sessionId: number,
     pathname: string,
     stdout: string,
     stderr: string,
@@ -51,14 +51,14 @@ const seedExecEntry = async (
 };
 
 test("{§channels} fragment targets the named channel; fragment-less targets default", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
+        await seedExecEntry(db, workspaceId, sessionId, "/run/abc", "OUT-content", "ERR-content");
         const readExec = (statement: ReturnType<typeof readStmt>) => readThroughScheme(
             "exec",
             null,
             statement,
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
 
         // Fragment `#stderr` selects the named (non-default) channel.
@@ -76,12 +76,12 @@ test("{§channels} fragment targets the named channel; fragment-less targets def
 });
 
 test("{§find-channel-selection}: FIND matches the explicitly addressed channel", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         await seedExecEntry(
             db,
             workspaceId,
-            workerId,
+            sessionId,
             "/run/abc",
             "ordinary output",
             "stderr-only diagnostic",
@@ -90,7 +90,7 @@ test("{§find-channel-selection}: FIND matches the explicitly addressed channel"
         const core = makeSchemeCtx({
             db,
             workspaceId,
-            workerId,
+            sessionId,
             defaultChannelFor: () => Exec.manifest.defaultChannel,
         });
         const result = await exec.find(
@@ -116,9 +116,9 @@ test("{§find-channel-selection}: FIND matches the explicitly addressed channel"
 });
 
 test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources lacking that channel", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        await seedExecEntry(db, workspaceId, workerId, "/run/complete", "out", "err");
+        await seedExecEntry(db, workspaceId, sessionId, "/run/complete", "out", "err");
         await seedEntryWithChannel(db, {
             workspaceId,
             scheme: "exec",
@@ -131,7 +131,7 @@ test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources
         const core = makeSchemeCtx({
             db,
             workspaceId,
-            workerId,
+            sessionId,
             defaultChannelFor: () => Exec.manifest.defaultChannel,
         });
 
@@ -161,15 +161,15 @@ test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources
 });
 
 test("{§channel-selection-missing}: FIND reports an undeclared channel with the declared universe", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        await seedExecEntry(db, workspaceId, workerId, "/run/abc", "out", "err");
+        await seedExecEntry(db, workspaceId, sessionId, "/run/abc", "out", "err");
         const result = await new Exec(undefined, () => { throw new Error("this test materializes nothing"); }).find(
             findStmt(urlPath("exec", "/run/abc", "results"), regex("anything")),
             makeSchemeCtx({
                 db,
                 workspaceId,
-                workerId,
+                sessionId,
                 defaultChannelFor: () => Exec.manifest.defaultChannel,
             }),
         );
@@ -183,7 +183,7 @@ test("{§channel-selection-missing}: FIND reports an undeclared channel with the
 });
 
 test("{§find-fulltext-selection}: full-text FIND ranks the addressed channel's derivation", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         const manifest = schemeManifest(
             "multi",
@@ -208,7 +208,7 @@ test("{§find-fulltext-selection}: full-text FIND ranks the addressed channel's 
         const ctx = makeSchemeCtx({
             db,
             workspaceId,
-            workerId,
+            sessionId,
             defaultChannelFor: () => manifest.defaultChannel,
         });
         await SearchIndex.maintain(ctx);
@@ -229,7 +229,7 @@ test("{§find-fulltext-selection}: full-text FIND ranks the addressed channel's 
 });
 
 test("{§relation-indexed-dialects}: graph FIND resolves evidence in the addressed channel", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         const manifest = schemeManifest(
             "multi",
@@ -271,7 +271,7 @@ test("{§relation-indexed-dialects}: graph FIND resolves evidence in the address
         const ctx = makeSchemeCtx({
             db,
             workspaceId,
-            workerId,
+            sessionId,
             mimetypes,
             defaultChannelFor: () => manifest.defaultChannel,
         });
@@ -294,17 +294,17 @@ test("{§relation-indexed-dialects}: graph FIND resolves evidence in the address
 });
 
 test("{§persistent-search-index}: changing one channel invalidates and re-derives only that channel", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         const entryId = await seedExecEntry(
             db,
             workspaceId,
-            workerId,
+            sessionId,
             "/run/abc",
             "stable stdout",
             "initial stderr",
         );
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         await SearchIndex.maintain(ctx);
         const before = await db.test_channel_hashes_for_entry.all<{
             name: string;
@@ -349,16 +349,16 @@ test("{§persistent-search-index}: changing one channel invalidates and re-deriv
 });
 
 test("{§persistent-search-index}: model EDIT invalidates its channel without making derivation attachment a catalog touch", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const worker = new Worker();
-        const created = await worker.edit(
-            editStmt(urlPath("worker", "/indexed-note"), "first representation"),
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        const session = new Workspace();
+        const created = await session.edit(
+            editStmt(urlPath("workspace", "/indexed-note"), "first representation"),
             ctx,
         );
         assert.equal(created.status, 201);
-        if (created.entryId === null) throw new Error("Worker EDIT created no entry");
+        if (created.entryId === null) throw new Error("Session EDIT created no entry");
 
         const sentinel = "2000-01-01T00:00:00.000Z";
         await db.test_set_entry_updated_at.run({ entry_id: created.entryId, updated_at: sentinel });
@@ -377,8 +377,8 @@ test("{§persistent-search-index}: model EDIT invalidates its channel without ma
             "private derivation attachment does not reorder the model-facing catalog",
         );
 
-        const edited = await worker.edit(
-            editStmt(urlPath("worker", "/indexed-note"), "second representation", fullReplace),
+        const edited = await session.edit(
+            editStmt(urlPath("workspace", "/indexed-note"), "second representation", fullReplace),
             ctx,
         );
         assert.equal(edited.status, 200);
@@ -395,7 +395,7 @@ test("{§persistent-search-index}: model EDIT invalidates its channel without ma
 });
 
 test("{§persistent-search-index}: a concurrent channel change cannot attach stale search evidence", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     let releaseDerivation = (): void => {};
     try {
         const entryId = await seedEntryWithChannel(db, {
@@ -422,7 +422,7 @@ test("{§persistent-search-index}: a concurrent channel change cannot attach sta
                 return baseMimetypes.process(...args);
             },
         });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
         const maintenance = SearchIndex.maintain(ctx);
         await derivationStarted;
 
@@ -454,26 +454,26 @@ test("{§persistent-search-index}: a concurrent channel change cannot attach sta
 });
 
 test("{§channel-selection-missing} READ and EDIT retain topology facts on channel misses", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        await seedExecEntry(db, workspaceId, workerId, "/run/abc", "OUT-content", "ERR-content");
+        await seedExecEntry(db, workspaceId, sessionId, "/run/abc", "OUT-content", "ERR-content");
         const read = await readThroughScheme(
             "exec",
             null,
             readStmt(urlPath("exec", "/run/abc", "results")),
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
         assert.equal(read.status, 404);
         assert.equal(read.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(read.problem?.requestedChannel, "results");
         assert.deepEqual(read.problem?.availableChannels, ["stdout", "stderr"]);
         assert.equal(read.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§problems-content}
-        // EDIT side via Worker (exec streams are not model-editable): same fact shape.
-        const k = new Worker();
-        await k.edit(editStmt(urlPath("worker", "/note"), "seeded"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const edit = await k.edit(editStmt(urlPath("worker", "/note", "nope"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
+        // EDIT side via Session (exec streams are not model-editable): same fact shape.
+        const k = new Workspace();
+        await k.edit(editStmt(urlPath("workspace", "/note"), "seeded"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const edit = await k.edit(editStmt(urlPath("workspace", "/note", "nope"), "x"), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(edit.status, 404);
-        assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/worker/channel-not-found");
+        assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/workspace/channel-not-found");
         assert.equal(edit.problem?.requestedChannel, "nope");
         assert.deepEqual(edit.problem?.availableChannels, ["body", "readable"]);
         assert.equal(edit.problem?.recovery, "Use one of the available channels: #body, #readable."); // {§problems-content}
@@ -481,20 +481,20 @@ test("{§channel-selection-missing} READ and EDIT retain topology facts on chann
 });
 
 test("{§channels} fragment EDIT on absent entry → 404; default-channel (fragment-less) EDIT creates", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
-        const k = new Worker();
+        const k = new Workspace();
 
         // Explicit fragment on a path with no existing entry → 404 (the
         // fragment-targeted write requires the entry to already exist), even
         // when the fragment names the default channel.
-        const missing = await k.edit(editStmt(urlPath("worker", "/ghost", "body"), "x"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const missing = await k.edit(editStmt(urlPath("workspace", "/ghost", "body"), "x"), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(missing.status, 404);
         assert.equal(missing.entryId, null);
         assert.equal(missing.channel, "body");
 
         // Fragment-less EDIT to the same (still absent) path creates the entry.
-        const created = await k.edit(editStmt(urlPath("worker", "/ghost"), "made"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const created = await k.edit(editStmt(urlPath("workspace", "/ghost"), "made"), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(created.status, 201);
         assert.equal(created.channel, "body");
         assert.notEqual(created.entryId, null);
@@ -502,10 +502,10 @@ test("{§channels} fragment EDIT on absent entry → 404; default-channel (fragm
 });
 
 test("{§channels-entry-name-key} channels are keyed by (entry_id, name); same key collides, distinct names coexist", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         // Two distinct channel names on one entry are two rows under the same key space.
-        const entryId = await seedExecEntry(db, workspaceId, workerId, "run/keys", "first-out", "first-err");
+        const entryId = await seedExecEntry(db, workspaceId, sessionId, "run/keys", "first-out", "first-err");
         const channels = await db.test_list_channels_for_entry.all<{ name: string; content: string }>({ entry_id: entryId });
         assert.deepEqual(channels.map((c) => c.name), ["stderr", "stdout"], "distinct names coexist under one entry");
 
@@ -522,13 +522,13 @@ test("{§channels-entry-name-key} channels are keyed by (entry_id, name); same k
 });
 
 test("{§channels} the exec scheme transitions channel state across the connection lifecycle", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         const schemes = new SchemeRegistry();
         const engine = new Engine({ db, schemes });
         engine.setExecutors(await testExecutors());
         const exec = schemes.get("exec") as Exec;
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, writer: "model", executors: await testExecutors() });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, writer: "model", executors: await testExecutors() });
         const pathname = "r-statelife";
 
         // Drive the real applyResolution path: it seeds channels as "active",
@@ -554,23 +554,23 @@ test("{§channels} the exec scheme transitions channel state across the connecti
 });
 
 test("{§channels} channel state does not gate reads — errored/closed channels still return content", async () => {
-    const { db, workspaceId, workerId } = await setup();
+    const { db, workspaceId, sessionId } = await setup();
     try {
         // Seed an entry whose channel is in the 'errored' terminal state with
         // partial content still present.
         await seedEntryWithChannel(db, {
-            workspaceId, scheme: "worker", pathname: "/partial", channel: "body",
+            workspaceId, scheme: "workspace", pathname: "/partial", channel: "body",
             content: "partial-but-readable", mimetype: "text/markdown", state: "errored",
         });
         // READ returns the accumulated content regardless of the errored state —
         // state is metadata, not an engine gate.
-        const r = await readThroughScheme("worker", null, readStmt(urlPath("worker", "/partial")), makeSchemeCtx({ db, workspaceId, workerId }));
+        const r = await readThroughScheme("session", null, readStmt(urlPath("workspace", "/partial")), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal(r.status, 200, "errored state does not gate the read");
         assert.equal(r.content, "partial-but-readable");
         assert.equal(r.channel, "body");
 
         // Confirm the stored state really is 'errored' (the read ignored it).
-        const stored = await db.test_get_channel.get<{ state: string }>({ entry_id: (await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname: "/partial" }))?.id, name: "body" });
+        const stored = await db.test_get_channel.get<{ state: string }>({ entry_id: (await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname: "/partial" }))?.id, name: "body" });
         assert.equal(stored?.state, "errored", "state persisted as errored — read succeeded anyway");
     } finally { await db.close(); }
 });

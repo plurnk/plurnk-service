@@ -75,7 +75,7 @@ const setup = async () => {
     const ctx = makeSchemeCtx({
         db,
         workspaceId: env.workspaceId,
-        workerId: env.workerId,
+        sessionId: env.sessionId,
     });
 
     const seed = (pathname: string, entry: EntryData) =>
@@ -87,7 +87,7 @@ const setup = async () => {
         engine.dispatch({
             statement,
             workspaceId: env.workspaceId,
-            workerId: env.workerId,
+            sessionId: env.sessionId,
             loopId: env.loopId,
             turnId: env.turnId,
             sequence: sequence += 1,

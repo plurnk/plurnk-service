@@ -8,7 +8,7 @@ import test from "node:test";
 import { Mock } from "@plurnk/plurnk-providers";
 import { connect, rpcCall, runLoopToTerminal, waitForDb, withDaemon } from "./_rpc.ts";
 import { makeRawMockResponse } from "./_mock.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 const refusal = async (fence: string, name: string): Promise<{ status: number; problem: { type: string; detail: string; recovery?: string } }> => {
     const mock = new Mock({ contextWindow: 100_000, responses: [
@@ -21,9 +21,9 @@ const refusal = async (fence: string, name: string): Promise<{ status: number; p
         try {
             await rpcCall(client, 1, "workspace.create", { name });
             const [workspace] = await daemon.listWorkspaces();
-            const workerId = await namedModelWorker(daemon, workspace.id, "main");
-            await runLoopToTerminal(client, 2, { prompt: "Run it.", workerId });
-            const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: workerId });
+            const sessionId = await namedModelSession(daemon, workspace.id, "main");
+            await runLoopToTerminal(client, 2, { prompt: "Run it.", sessionId });
+            const rows = await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: sessionId });
             const refused = rows.find(({ op, origin }) => op === "sh" && origin === "model");
             assert.ok(refused, `the refused execution is a row: ${JSON.stringify(rows.map(({ op, status_rx }) => [op, status_rx]))}`);
             row = { status: refused.status_rx, problem: JSON.parse(refused.rx).problem };
@@ -70,8 +70,8 @@ test("{§exec-lifetime}: a turn-scoped run is reaped at the next pre-turn; a loo
         try {
             await rpcCall(client, 1, "workspace.create", { name: "exec-lifetime-turn" });
             const [workspace] = await daemon.listWorkspaces();
-            const workerId = await namedModelWorker(daemon, workspace.id, "main");
-            const { finalStatus } = await runLoopToTerminal(client, 2, { prompt: "Background it.", workerId });
+            const sessionId = await namedModelSession(daemon, workspace.id, "main");
+            const { finalStatus } = await runLoopToTerminal(client, 2, { prompt: "Background it.", sessionId });
             assert.equal(finalStatus, 200, "the loop concluded without waiting on a stream it no longer holds");
             const open = await db.test_count_active_subscriptions.get<{ n: number }>({});
             assert.equal(open?.n, 0, "the turn-scoped stream did not survive into the subsequent turn");
@@ -97,7 +97,7 @@ for (const spawnedBy of ["the ending segment", "a segment before a park"] as con
         ] });
         await withDaemon(mock, async (db, daemon) => {
             const { workspaceId } = await daemon.createWorkspace({ name: `exec-lifetime-${parks ? "parked" : "ending"}` });
-            const workerId = await namedModelWorker(daemon, workspaceId, "main");
+            const sessionId = await namedModelSession(daemon, workspaceId, "main");
             const order: string[] = [];
             const off = daemon.subscribeToEvents((_workspaceId: number | null, method: string, params: unknown) => {
                 const event = params as { scheme?: string; loopId?: number; result?: { status: number } };
@@ -106,7 +106,7 @@ for (const spawnedBy of ["the ending segment", "a segment before a park"] as con
             });
             try {
                 // The turn ceiling ends the loop in the segment after its spawn, or after the park, while the run still runs.
-                const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Background it.", maxTurns: parks ? 2 : 1 });
+                const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Background it.", maxTurns: parks ? 2 : 1 });
                 await waitForDb(async () => order, (events) => events.some((event) => event.startsWith("terminated")), { timeoutMs: 60_000 });
                 assert.deepEqual(order, ["concluded 499", `terminated ${loopId} 429`], "the run is reaped before its loop's terminal is announced");
                 const open = await db.test_count_active_subscriptions.get<{ n: number }>({});

@@ -48,13 +48,13 @@ test("{§rpc} entry.read returns the contracts-owned client projection", async (
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "entry-read-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///france/capital", content: "Paris" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///france/capital", content: "Paris" });
 
-            const r = await rpcCall(ws, 3, "entry.read", { target: "worker:///france/capital" });
+            const r = await rpcCall(ws, 3, "entry.read", { target: "workspace:///france/capital" });
             const result = entryRead(r);
             assert.equal(result.status, 200);
             assert.ok(result.entry !== null);
-            assert.equal(result.entry.target, "worker:///france/capital");
+            assert.equal(result.entry.target, "workspace:///france/capital");
             assert.equal(result.entry.channels.body.content, "Paris");
             assert.equal(result.entry.channels.body.contentOffset, 0);
             assert.equal(result.entry.channels.body.mimetype, "text/markdown");
@@ -68,10 +68,10 @@ test("{§entry-read-result}: entry.read channel+offset returns a suffix and full
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "entry-read-offset" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///doc", content: "Hello, World" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///doc", content: "Hello, World" });
 
             // A full read reports contentLength on every channel (the unit offset uses).
-            const full = await rpcCall(ws, 3, "entry.read", { target: "worker:///doc" });
+            const full = await rpcCall(ws, 3, "entry.read", { target: "workspace:///doc" });
             const fullResult = entryRead(full);
             assert.ok(fullResult.entry !== null);
             const fullCh = fullResult.entry.channels.body;
@@ -80,7 +80,7 @@ test("{§entry-read-result}: entry.read channel+offset returns a suffix and full
             assert.equal(fullCh.contentLength, 12);
 
             // Delta read: only the channel, content from the offset, full length back.
-            const delta = await rpcCall(ws, 4, "entry.read", { target: "worker:///doc", channel: "body", offset: 7 });
+            const delta = await rpcCall(ws, 4, "entry.read", { target: "workspace:///doc", channel: "body", offset: 7 });
             const deltaResult = entryRead(delta);
             assert.equal(deltaResult.status, 200);
             assert.ok(deltaResult.entry !== null);
@@ -90,18 +90,18 @@ test("{§entry-read-result}: entry.read channel+offset returns a suffix and full
             assert.deepEqual(Object.keys(deltaResult.entry.channels), ["body"], "channel scopes the read to just that channel");
 
             // offset 0 → whole channel; offset past the end → caught up (empty).
-            const whole = await rpcCall(ws, 5, "entry.read", { target: "worker:///doc", channel: "body", offset: 0 });
+            const whole = await rpcCall(ws, 5, "entry.read", { target: "workspace:///doc", channel: "body", offset: 0 });
             const wholeResult = entryRead(whole);
             assert.ok(wholeResult.entry !== null);
             assert.equal(wholeResult.entry.channels.body.content, "Hello, World");
-            const past = await rpcCall(ws, 6, "entry.read", { target: "worker:///doc", channel: "body", offset: 100 });
+            const past = await rpcCall(ws, 6, "entry.read", { target: "workspace:///doc", channel: "body", offset: 100 });
             const pastResult = entryRead(past);
             assert.ok(pastResult.entry !== null);
             assert.equal(pastResult.entry.channels.body.content, "");
             assert.equal(pastResult.entry.channels.body.contentOffset, 12);
 
             // offset without channel is a contract violation (which channel to slice?).
-            const bad = await rpcCall(ws, 7, "entry.read", { target: "worker:///doc", offset: 3 });
+            const bad = await rpcCall(ws, 7, "entry.read", { target: "workspace:///doc", offset: 3 });
             const problem = rpcProblem(bad);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
             assert.equal(problem.offset, 3);
@@ -115,7 +115,7 @@ test("{§rpc} entry.read returns 404 for missing entry", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "404-test" });
-            const r = await rpcCall(ws, 2, "entry.read", { target: "worker:///does-not-exist" });
+            const r = await rpcCall(ws, 2, "entry.read", { target: "workspace:///does-not-exist" });
             const result = entryRead(r);
             assert.equal(result.status, 404);
             assert.equal(result.entry, null);
@@ -145,15 +145,15 @@ test("{§rpc} entry.read with fragment strips fragment (channel selection is per
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "fragment-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "body content" });
-            const r = await rpcCall(ws, 3, "entry.read", { target: "worker:///x#anything" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///x", content: "body content" });
+            const r = await rpcCall(ws, 3, "entry.read", { target: "workspace:///x#anything" });
             if (r.result === undefined) {
                 throw new Error(`entry.read failed: ${JSON.stringify(r)}`);
             }
             const result = entryRead(r);
             assert.equal(result.status, 200);
             assert.ok(result.entry !== null);
-            assert.equal(result.entry.target, "worker:///x");
+            assert.equal(result.entry.target, "workspace:///x");
             assert.ok(result.entry.channels.body !== undefined);
         } finally { ws.close(); }
     });
@@ -164,8 +164,8 @@ test("{§rpc} log.read returns recent entries from the attached workspace", asyn
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-read-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///a", content: "alpha" });
-            await rpcCall(ws, 3, "op.edit", { target: "worker:///b", content: "beta" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///a", content: "alpha" });
+            await rpcCall(ws, 3, "op.edit", { target: "workspace:///b", content: "beta" });
 
             const r = await rpcCall(ws, 4, "log.read");
             const result = r.result as {
@@ -189,7 +189,7 @@ test("{§rpc} log.read respects limit", async () => {
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "limit-test" });
             for (let i = 0; i < 5; i++) {
-                await rpcCall(ws, 10 + i, "op.edit", { target: `worker:///e${i}`, content: `v${i}` });
+                await rpcCall(ws, 10 + i, "op.edit", { target: `workspace:///e${i}`, content: `v${i}` });
             }
             const r = await rpcCall(ws, 20, "log.read", { limit: 3 });
             const result = r.result as { entries: Array<unknown> };
@@ -203,12 +203,12 @@ test("{§rpc} log.read filters by sinceId for incremental fetch", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "since-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///a", content: "first" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///a", content: "first" });
             const firstFetch = await rpcCall(ws, 3, "log.read");
             const firstResult = firstFetch.result as { entries: Array<{ id: number }> };
             const lastSeenId = firstResult.entries[0].id;
 
-            await rpcCall(ws, 4, "op.edit", { target: "worker:///b", content: "second" });
+            await rpcCall(ws, 4, "op.edit", { target: "workspace:///b", content: "second" });
 
             const incremental = await rpcCall(ws, 5, "log.read", { sinceId: lastSeenId });
             const incrementalResult = incremental.result as { entries: Array<{ id: number; tx: { op: string; target: { pathname: string } } }> };
@@ -223,7 +223,7 @@ test("{§rpc} log.read entries have hydrated JSON columns", async () => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "hydration-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///x", content: "body" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///x", content: "body" });
 
             const r = await rpcCall(ws, 3, "log.read");
             const result = r.result as {
@@ -245,7 +245,7 @@ test("{§methods-log-read}: a full L/T/S coordinate resolves the single entry's 
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: "log-coord-test" });
-            await rpcCall(ws, 2, "op.edit", { target: "worker:///a", content: "alpha" });
+            await rpcCall(ws, 2, "op.edit", { target: "workspace:///a", content: "alpha" });
             await rpcCall(ws, 3, "op.dispatch", { statement: Dsl.parseSingleStatement("````SEND\nParis\n````") });
 
             // Discover the SEND entry's DISPLAY coordinate (no hardcoded ids).
@@ -273,8 +273,8 @@ test("{§rpc} log.read is workspace-scoped — doesn't see other workspaces' log
             await rpcCall(wsA, 1, "workspace.create", { name: "workspace-A" });
             await rpcCall(wsB, 1, "workspace.create", { name: "workspace-B" });
 
-            await rpcCall(wsA, 2, "op.edit", { target: "worker:///a", content: "from A" });
-            await rpcCall(wsB, 2, "op.edit", { target: "worker:///b", content: "from B" });
+            await rpcCall(wsA, 2, "op.edit", { target: "workspace:///a", content: "from A" });
+            await rpcCall(wsB, 2, "op.edit", { target: "workspace:///b", content: "from B" });
 
             const rA = await rpcCall(wsA, 3, "log.read");
             const rB = await rpcCall(wsB, 3, "log.read");

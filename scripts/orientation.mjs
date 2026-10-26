@@ -199,7 +199,7 @@ try {
         resolve(clientRoot, "bin", "plurnk.js"),
         "--json",
         "--workspace", workspace,
-        "--worker", "meta",
+        "--session", "meta",
         "--model", model,
         "--project-root", projectRoot,
         "--repo", "**",

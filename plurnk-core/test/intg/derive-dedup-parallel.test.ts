@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { waitForDb } from "./_rpc.ts";
 
@@ -29,11 +29,11 @@ const runPump = async (concurrency: string): Promise<{ stamped: number; maxActiv
             },
         });
         const workspaceId = await insertWorkspace(db, `derive-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         // A mix: distinct contents + a triplet of identical content (the dedup case).
-        for (let i = 0; i < 8; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/u${i}`, channel: "body", content: `distinct entry number ${i}`, mimetype: "text/markdown" });
-        for (let i = 0; i < 3; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/dup${i}`, channel: "body", content: "identical shared body across three entries", mimetype: "text/markdown" });
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        for (let i = 0; i < 8; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: `/u${i}`, channel: "body", content: `distinct entry number ${i}`, mimetype: "text/markdown" });
+        for (let i = 0; i < 3; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: `/dup${i}`, channel: "body", content: "identical shared body across three entries", mimetype: "text/markdown" });
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
         // Every body entry has a stamped deep_hash — fully derived exactly once.
         const stamped = await db.test_count_stamped_deep_hash.get<{ n: number }>({ workspace_id: workspaceId });
         return { stamped: stamped?.n ?? 0, maxActive };
@@ -75,16 +75,16 @@ test("{§derivation-dedup-parallel} a completed representative releases its dupl
             },
         });
         const workspaceId = await insertWorkspace(db, `progressive-dedup-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         for (let i = 0; i < 3; i++) {
-            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/dup${i}`, channel: "body", content: "same", mimetype: "text/markdown" });
+            await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: `/dup${i}`, channel: "body", content: "same", mimetype: "text/markdown" });
         }
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/slow", channel: "body", content: `slow unique ${"content ".repeat(40)}`, mimetype: "text/markdown" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/slow", channel: "body", content: `slow unique ${"content ".repeat(40)}`, mimetype: "text/markdown" });
 
         const pump = SearchIndex.maintain(makeSchemeCtx({
             db,
             workspaceId,
-            workerId,
+            sessionId,
             mimetypes,
         }));
         try {

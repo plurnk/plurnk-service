@@ -52,10 +52,10 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
     await daemon.start();
     try {
         const workspace = await daemon.createWorkspace({ name: `entry-wire-${crypto.randomUUID()}` });
-        const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "entry-parent" });
-        const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "entry-child" });
+        const parent = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "entry-parent" });
+        const child = await daemon.forkSession({ workspaceId: workspace.workspaceId, sessionId: parent.sessionId, name: "entry-child" });
 
-        // A person seeds each named space; an authority is a namespace, not a principal ({§worker-authority-carving}).
+        // A person seeds each named space; an authority is a namespace, not a principal ({§session-authority-carving}).
         for (const [name, content] of [
             ["entry-parent", "A😀éZ"],
             ["entry-child", "child"],
@@ -73,7 +73,7 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
 
         const parentRead = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: parent.workerId,
+            sessionId: parent.sessionId,
             target: "notes://entry-parent/same",
         }));
         assert.deepEqual(parentRead, {
@@ -93,7 +93,7 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
 
         const childRead = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: child.workerId,
+            sessionId: child.sessionId,
             target: "notes://entry-child/same",
         }));
         assert.equal(childRead.channels.body?.content, "child");
@@ -101,7 +101,7 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
 
         const slice = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: parent.workerId,
+            sessionId: parent.sessionId,
             target: "notes://entry-parent/same",
             channel: "body",
             offset: 2,
@@ -117,7 +117,7 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
 
         const caughtUp = body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: parent.workerId,
+            sessionId: parent.sessionId,
             target: "notes://entry-parent/same#ignored",
             channel: "body",
             offset: 100,
@@ -131,14 +131,14 @@ test("{§client-entry-address} entry.read resolves one owner-aware client entry 
     }
 });
 
-test("{§client-entry-address} entry.read applies worker authority across the workspace: a child reads its parent's named space (#394)", async () => {
+test("{§client-entry-address} entry.read applies session authority across the workspace: a child reads its parent's named space (#394)", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     await daemon.start();
     try {
         const workspace = await daemon.createWorkspace({ name: `entry-owner-${crypto.randomUUID()}` });
-        const parent = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "owner-parent" });
-        const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent.workerId, name: "owner-child" });
+        const parent = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "owner-parent" });
+        const child = await daemon.forkSession({ workspaceId: workspace.workspaceId, sessionId: parent.sessionId, name: "owner-child" });
         for (const [name, content] of [
             ["owner-parent", "parent"],
             ["owner-child", "child"],
@@ -146,37 +146,37 @@ test("{§client-entry-address} entry.read applies worker authority across the wo
             const [written] = await daemon.dispatchClientAction({
                 workspaceId: workspace.workspaceId,
                 actor: TEST_OWNER,
-                statements: [Dsl.buildEdit({ target: `worker://${name}/same`, content })],
+                statements: [Dsl.buildEdit({ target: `session://${name}/same`, content })],
             });
             assert.equal(written.status, 201);
         }
 
         assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: parent.workerId,
-            target: "worker://owner-parent/same",
+            sessionId: parent.sessionId,
+            target: "session://owner-parent/same",
         })).channels.body?.content, "parent");
         assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: child.workerId,
-            target: "worker://owner-child/same",
+            sessionId: child.sessionId,
+            target: "session://owner-child/same",
         })).channels.body?.content, "child");
         assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: parent.workerId,
-            target: "worker://owner-child/same",
+            sessionId: parent.sessionId,
+            target: "session://owner-child/same",
         })).channels.body?.content, "child");
 
-        // {§worker-read-scope} — any worker of the workspace reads a named space: the child its parent's (#394).
+        // {§session-read-scope} — any session of the workspace reads a named space: the child its parent's (#394).
         assert.equal(body(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: child.workerId,
-            target: "worker://owner-parent/same",
+            sessionId: child.sessionId,
+            target: "session://owner-parent/same",
         })).channels.body?.content, "parent");
         const unknown = Validator.assertEntryReadResult(await daemon.readEntry({
             workspaceId: workspace.workspaceId,
-            workerId: child.workerId,
-            target: "worker://no-such-worker/same",
+            sessionId: child.sessionId,
+            target: "session://no-such-session/same",
         }));
         assert.equal(unknown.status, 404);
         assert.equal(unknown.entry, null);

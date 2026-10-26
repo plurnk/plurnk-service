@@ -7,7 +7,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import ModelCall from "../../src/core/ModelCall.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 
 test("{§digest-navigation}: pending, rejected and retired evidence remains distinguishable and navigable", async () => {
@@ -19,8 +19,8 @@ test("{§digest-navigation}: pending, rejected and retired evidence remains dist
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "request-states");
-        const workerId = await insertWorker(db, workspaceId, null, "witness");
-        const loopId = await insertLoop(db, workerId, 1, "inspect attempts");
+        const sessionId = await insertSession(db, workspaceId, null, "witness");
+        const loopId = await insertLoop(db, sessionId, 1, "inspect attempts");
         const turnId = await insertPacketTurn(db, loopId, 1, {
             weight: 0, sections: [{ name: "prompt", slot: "user", header: null, content: "Inspect.", weight: 0 }],
             attributions: [],

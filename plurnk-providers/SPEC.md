@@ -41,7 +41,7 @@ The package exposes three runtime-neutral public surfaces:
 All three re-export the package's sole implementations without evaluating
 Node-only provider discovery, filesystem defaults, or runtime construction.
 The package root remains the Node provider-runtime composition surface and is
-not a Worker entrypoint.
+not a Session entrypoint.
 
 ## §2 Provider interface
 
@@ -52,7 +52,7 @@ not a Worker entrypoint.
 | {§provider-prompt-measurement} | `PromptTokenMeasurement` is a discriminated request-level result: |
 | {§provider-capacity-admission} | `assessRequestCapacity` intersects every known physical input constraint |
 | {§provider-monetary-evidence} | One precedence path converts each physical provider request into {§provider-cost} evidence before the request… |
-| {§provider-cache-identity} | `generate` requires a non-empty, stable, opaque `workerId`. |
+| {§provider-cache-identity} | `generate` requires a non-empty, stable, opaque `sessionId`. |
 | {§provider-call-kind} | `callKind` is either `emission` (the response is a PLURNK turn emission) or `bare` (the response is… |
 | {§provider-native-tools-disabled} | Generation requests declare no native tools and select the SDK's portable `none` tool choice, for emissions… |
 | {§provider-generation-completion} | Stream consumption follows the provider's completion boundary, subject to caller cancellation and configured… |
@@ -175,10 +175,10 @@ See [OpenRouter usage accounting](https://openrouter.ai/docs/cookbook/administra
 ### Generation
 
 §provider-cache-identity `generate` requires a non-empty, stable, opaque
-`workerId`. A durable worker uses one globally unique value for its lifetime;
+`sessionId`. A durable session uses one globally unique value for its lifetime;
 independent databases and processes cannot mint the same local sequence. A
 `bare` call instead uses a fresh per-call value, preventing unrelated prompts
-from acquiring affinity with either the parent worker or another BARE call.
+from acquiring affinity with either the parent session or another BARE call.
 Providers MUST NOT interpret either value.
 
 `generate` accepts:
@@ -193,7 +193,7 @@ Providers MUST NOT interpret either value.
 §provider-call-kind `callKind` is either `emission` (the response is a PLURNK
 turn emission) or `bare` (the response is unconstrained answer text). The
 consumer states this semantic fact explicitly; providers MUST NOT infer it from
-message count, grammar presence, worker identity, or another incidental request
+message count, grammar presence, session identity, or another incidental request
 shape. The signal never enters model-facing messages. Generic
 provider callers MAY omit it; Core supplies it for every model call.
 
@@ -443,7 +443,7 @@ than disappearing in transport internals.
 
 §provider-cache-affinity **Cache affinity is route-owned request projection.**
 When a provider documents a semantics-preserving conversation, session, or
-prompt-cache routing key, its catalog adapter projects `workerId` through that
+prompt-cache routing key, its catalog adapter projects `sessionId` through that
 provider's documented header, body field, or native SDK option. The common
 transport neither guesses from protocol resemblance nor sends a generic cache
 field to an unknown provider. The operator may disable affinity globally or per
@@ -615,7 +615,7 @@ Provider and model facts resolve independently:
 | Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
 | Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Curation reservation: percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. The response grant flexes under {§provider-flexed-allowance}. |
 | Output floor | None. | `PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped as `10%`. | The least response room any request keeps: percentage of the effective output ceiling (`min(contextWindow, maxOutputTokens)` when both are known, otherwise `contextWindow`) or absolute count, capped by the output budget; `window − floor` is the input wall ({§provider-output-floor}). |
-| Effort | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_EFFORT`, initially; durable worker selection thereafter. | A supported member of {§effort-wire}, projected under {§provider-effort}. The shipped selection is `adaptive`. |
+| Effort | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_EFFORT`, initially; durable session selection thereafter. | A supported member of {§effort-wire}, projected under {§provider-effort}. The shipped selection is `adaptive`. |
 | Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
 | Cost override | None. | Optional `PLURNK_PROVIDERS_COST`. | {§operator-cost-override} — comma-separated `key=value` per-1M-token USD rates over `input, output, reasoning, cacheRead, cacheWrite`; merges over the Models.dev catalog block (the catalog is the starting point), alias-scoped like every knob. Without catalog rates the override must declare `input` and `output`. The cost estimate's `source` names the override; a provider-reported response cost still outranks any estimate. |
 | Reasoning capability | Catalog `reasoning` and route-specific `reasoning_options`. | Adapter wire style only where the catalog cannot name the native field. | Catalog controls determine admissible policy; the adapter determines its wire projection. |
@@ -726,7 +726,7 @@ also expose:
 - the actual served model and per-slot context window;
 - request-scoped reasoning parsing and a cumulative response-wide allowance;
 - GBNF constrained sampling;
-- slot count and worker-sticky slot affinity;
+- slot count and session-sticky slot affinity;
 - EOS marker removal;
 - exact complete-request counting through `/v1/chat/completions/input_tokens`;
 - exact content token IDs through `/tokenize`;
@@ -1163,16 +1163,16 @@ alias scoping. Zero, other negative values and non-integers are invalid.
 | Cancellation | A queued abort removes that waiter and preserves the caller's reason. It opens no physical request or accounting row. In-flight cancellation signals the transport; capacity is released when that attempt unwinds. A transport still running despite abort does not authorize exceeding the limit. |
 | Retries | Backoff holds no lease. Each retry rejoins admission as a new physical attempt. |
 | Deadline | The whole-call operation deadline includes queueing, every physical attempt and retry wait. Transport adds no generation deadline. |
-| Scope | Workers, tools, messages, waits, token measurement and endpoint discovery are not serialized by inference admission. Independent endpoints progress independently. No cross-process or machine-wide capacity guarantee is implied. |
+| Scope | Sessions, tools, messages, waits, token measurement and endpoint discovery are not serialized by inference admission. Independent endpoints progress independently. No cross-process or machine-wide capacity guarantee is implied. |
 
-Admission neither changes worker lifecycle nor selects another model or endpoint.
-Core consumes the same asynchronous Provider contract. A waiting worker holds no
+Admission neither changes session lifecycle nor selects another model or endpoint.
+Core consumes the same asynchronous Provider contract. A waiting session holds no
 inference lease; BARE and ordinary generation use the same physical boundary.
 
 ### Pool
 
 §provider-capacity-pool `Pool` fronts interchangeable `Provider` instances. It
-keeps workers sticky for
+keeps sessions sticky for
 cache locality, selects a healthy sibling for overflow, and preserves the same
 Provider contract. Whether endpoints are interchangeable is a consumer
 decision, not inferred from provider names. Overflow is limited to transport

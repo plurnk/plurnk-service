@@ -14,7 +14,7 @@ import type ClientInteractions from "./ClientInteractions.ts";
 import type { AppliedProposalResolution, ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import { entryAddress, foldAuthorityIntoPath, renderAddress, renderAuthoredTarget, renderTarget, schemeNameOf } from "./plurnk-uri.ts";
-import WorkerName from "./WorkerName.ts";
+import SessionName from "./SessionName.ts";
 import Namespace from "./namespace.ts";
 import FileAddress from "./FileAddress.ts";
 import type { SchemeManifest, WriterTier, PlurnkSchemeContext } from "./scheme-types.ts";
@@ -41,8 +41,8 @@ import PacketWire, { type StoredLogRow } from "./packet-wire.ts";
 import { isContextReceipt, reserved, resultPrefix, resultSize, unfitResult, type ContextFit } from "./ContextFit.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import EntryAddressBinding, { type BoundEntryAddress as ResolvedDataEntryAddress, type EntryAddressResolution as PreparedRepresentation } from "./EntryAddressBinding.ts";
-import WorkerControlHandler from "./WorkerControlHandler.ts";
-import WorkerControlAddress from "./WorkerControlAddress.ts";
+import SessionControlHandler from "./SessionControlHandler.ts";
+import SessionControlAddress from "./SessionControlAddress.ts";
 import KillHandler from "./KillHandler.ts";
 import TurnDispositionHandler, { type CompletionEvidence, type PacketBoundaries } from "./TurnDispositionHandler.ts";
 import ReplyMetadata from "./ReplyMetadata.ts";
@@ -63,14 +63,14 @@ export type DispatchContext = {
     // {§emission-history}: ordinal in this turn's frozen content program, preserved through fan-out.
     emissionIndex?: number;
     workspaceId: number;
-    workerId: number;
+    sessionId: number;
     loopId: number;
     turnId: number;
     sequence: number;
     origin: WriterTier;
-    // {§actor-boundary-client-operations} — a person's client operation: the worker whose log its `log:///`
+    // {§actor-boundary-client-operations} — a person's client operation: the session whose log its `log:///`
     // addresses read (null: none).
-    client?: { readonly contextWorkerId: number | null };
+    client?: { readonly contextSessionId: number | null };
     // The append-only log boundary visible when this admitted program entered
     // execution. Direct single-operation dispatch captures its own boundary.
     logSelectionMaxId?: number;
@@ -178,14 +178,14 @@ export default class Dispatcher {
     // indexed dialect met a still-deriving index.
     #settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
     readonly #notify: EngineNotifications;
-    // Per-turn running-worker READ obligations. {§join-blocking-collect}
+    // Per-turn running-session READ obligations. {§join-blocking-collect}
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
     #resourceSelector: ResourceSelector;
     #entryAddresses: EntryAddressBinding;
     #capabilities: CapabilityResolver;
-    readonly #workerControl: WorkerControlHandler;
+    readonly #sessionControl: SessionControlHandler;
     readonly #kill: KillHandler;
     readonly #disposition: TurnDispositionHandler;
     readonly #logWriter: LogWriter;
@@ -235,7 +235,7 @@ export default class Dispatcher {
             liveSubscriptions,
             checkWritable: (statement, origin, workspaceId) => this.#checkWritable(statement, origin, workspaceId),
             checkCapabilities: (statement, ctx) => this.#checkCapabilities(statement, ctx),
-            editTargetIdentity: (statement, workspaceId, workerId) => this.#editTargetIdentity(statement, workspaceId, workerId),
+            editTargetIdentity: (statement, workspaceId, sessionId) => this.#editTargetIdentity(statement, workspaceId, sessionId),
             selection: this.#resourceSelector,
             resolveDataEntryAddress: (args) => this.#entryAddresses.resolve(args),
             readEntry: (scheme, address, ctx) => this.#readEntry(scheme, address, ctx),
@@ -243,10 +243,10 @@ export default class Dispatcher {
             deleteChannel: (scheme, address, channel, ctx) =>
                 this.#deleteChannel(scheme, address, channel, ctx),
             applyProposal: (statement, result, resolution, ids) =>
-                this.#proposals.workerApply(statement, result, resolution, ids),
+                this.#proposals.sessionApply(statement, result, resolution, ids),
         });
-        this.#workerControl = new WorkerControlHandler({ db: this.#db, failure: Dispatcher.#failure });
-        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelWorker: this.#notify.cancelWorker, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
+        this.#sessionControl = new SessionControlHandler({ db: this.#db, failure: Dispatcher.#failure });
+        this.#kill = new KillHandler({ db: this.#db, schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, cancelSession: this.#notify.cancelSession, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), boundEntryContext: this.#boundEntryContext.bind(this), handlerContext: this.#handlerContext.bind(this), deleteEntry: this.#deleteEntry.bind(this), failure: Dispatcher.#failure });
         this.#disposition = new TurnDispositionHandler({ db: this.#db, lifecycle: this.#lifecycle, unobservedFailureCount: this.#unobservedFailureCount.bind(this), pendingSet: this.#pendingSet.bind(this), hasLiveWork: this.hasLiveWork.bind(this) });
         this.#logWriter = new LogWriter({ db: this.#db, weighContent: this.#weighContent, extractTarget: this.#extractTarget.bind(this), canonColumns: this.#canonColumns.bind(this), signalToJson: this.#signalToJson.bind(this), isProposal: Dispatcher.#isProposal });
         this.#dataRun = new DataStatementRunner({ schemes: this.#schemes, liveSubscriptions: this.#liveSubscriptions, resolveDataEntryAddress: this.#resolveDataEntryAddress.bind(this), prepareDataRepresentation: this.#prepareDataRepresentation.bind(this), failure: Dispatcher.#failure });
@@ -428,7 +428,7 @@ export default class Dispatcher {
     async #editTargetIdentity(
         statement: EditStatement,
         workspaceId: number,
-        _workerId: number,
+        _sessionId: number,
     ): Promise<string | null> {
         const target = this.#extractTarget(statement.target, workspaceId);
         await this.#canonColumns(target, workspaceId);
@@ -479,7 +479,7 @@ export default class Dispatcher {
 
     // {§file-path-normalization} Authored operands, once, before internal fan-out: an absolute or home spelling
     // whose canonical address reads differently — the key inside the root, the absolute path beyond it.
-    async #noticeFilePaths({ statement, origin, workspaceId, workerId, loopId }: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "workerId" | "loopId">): Promise<void> {
+    async #noticeFilePaths({ statement, origin, workspaceId, sessionId, loopId }: Pick<DispatchContext, "statement" | "origin" | "workspaceId" | "sessionId" | "loopId">): Promise<void> {
         if (origin !== "model" || isExecution(statement) || TurnDisposition.is(statement) || statement.op === "NOTE") return;
         const targets = statement.op === "COPY" || statement.op === "MOVE"
             ? [statement.source.target, statement.destination.target]
@@ -498,7 +498,7 @@ export default class Dispatcher {
             if (key === null) continue;
             const address = renderTarget({ scheme: null, pathname: key }, root, target);
             if (address === null || address.startsWith("file://") || address === pathname) continue;
-            this.#notices.push(workspaceId, workerId, loopId, {
+            this.#notices.push(workspaceId, sessionId, loopId, {
                 source: "scheme:file", kind: "path_normalized", level: "warn",
                 directive: "YOU SHOULD address the resolved path.",
                 message: `Path resolved to '${address || "."}'.`,
@@ -507,11 +507,11 @@ export default class Dispatcher {
     }
 
     // {§notifications-operation-event} One dispatch can produce several log rows.
-    async #operationEvent(context: Pick<DispatchContext, "workspaceId" | "workerId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult): Promise<void> {
+    async #operationEvent(context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin" | "statement">, phase: "started" | "settled", result?: DispatchResult): Promise<void> {
         if (this.#notify.operationEventNotify === undefined) return;
-        const { workspaceId, workerId, loopId, turnId, sequence, origin, statement } = context;
+        const { workspaceId, sessionId, loopId, turnId, sequence, origin, statement } = context;
         this.#notify.operationEventNotify(workspaceId, {
-            workerId, loopId, turnId, sequence, origin, statement,
+            sessionId, loopId, turnId, sequence, origin, statement,
             projectRoot: await this.#workspaceRoot(workspaceId), phase,
             ...(result === undefined ? {} : { result }),
         });
@@ -578,8 +578,8 @@ export default class Dispatcher {
     static #globTarget(target: ParsedPath | null): boolean {
         if (target === null) return false;
         if (target.kind === "local") return PathSyntax.hasGlob(target.raw);
-        // Authority-only worker addresses name actors, not their resource trees.
-        if (target.scheme === "worker" && (target.pathname === "" || target.pathname === "/")) return false;
+        // Authority-only session addresses name actors, not their resource trees.
+        if (target.scheme === "session" && (target.pathname === "" || target.pathname === "/")) return false;
         return PathSyntax.hasGlob(target.pathname) || PathSyntax.hasGlob(target.hostname ?? "");
     }
 
@@ -634,7 +634,7 @@ export default class Dispatcher {
             ? { status: 204, matched: 0, matcher: statement.matcher.raw, detail: `No line under ${statement.target!.raw} matched the pattern.` }
             : { status: 204, detail: `No path matched ${statement.target!.raw}.` }) };
         if (statement.op === "READ" && found.matched > found.targets.length) {
-            this.#notices.push(ctx.workspaceId, ctx.workerId, ctx.loopId, {
+            this.#notices.push(ctx.workspaceId, ctx.sessionId, ctx.loopId, {
                 source: "engine:dispatcher", kind: "read_fanout_bounded", level: "warn",
                 directive: "YOU SHOULD narrow the glob, or FIND first.",
                 message: `READ ${statement.target!.raw} matched ${found.matched} paths; the first ${found.targets.length} were selected.`,
@@ -671,7 +671,7 @@ export default class Dispatcher {
         const {
             statement,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence,
@@ -697,14 +697,14 @@ export default class Dispatcher {
         }
         // Persist log curation for forensics; packet rendering suppresses its
         // successful receipts while the exact state effects remain durable.
-        // A running-worker READ arms this turn's blocking collect.
+        // A running-session READ arms this turn's blocking collect.
         // {§join-blocking-collect}
         const logEntryId = await this.#logWriter.writeLog({
             statement,
             emissionIndex: context.emissionIndex,
             result,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence,
@@ -727,7 +727,7 @@ export default class Dispatcher {
         resolved: Exclude<TargetSelection, { result: DispatchResult }> | null;
         curationPlan: LogCurationPlan | null;
     }> {
-        const { statement, workspaceId, workerId, loopId, turnId, sequence, origin } = context;
+        const { statement, workspaceId, sessionId, loopId, turnId, sequence, origin } = context;
         let result: DispatchResult | undefined;
         let resolved: Exclude<TargetSelection, { result: DispatchResult }> | null = null;
         let curationPlan: LogCurationPlan | null = null;
@@ -756,13 +756,13 @@ export default class Dispatcher {
                     await Turn.recordSource(this.#db, turnId, "note", statement.body ?? "", { sequence });
                     const coordinate = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
                     if (coordinate === undefined) throw new Error(`NOTE has no turn coordinate for ${turnId}`);
-                    const workerName = await WorkerName.forId(this.#db, workerId);
+                    const sessionName = await SessionName.forId(this.#db, sessionId);
                     const distilled = this.#distillations.get(statement);
-                    result = { ...(distilled === undefined ? {} : { attrs: { distilled } }), status: 200, resource: renderAddress({ scheme: "note", authority: workerName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
+                    result = { ...(distilled === undefined ? {} : { attrs: { distilled } }), status: 200, resource: renderAddress({ scheme: "note", authority: sessionName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
                     // {§turn-disposition} — WAIT is the park; whatever it names is its label in the
                     // row, never a selected waker; arrivals or its duration end the park.
-                    result = await this.#disposition.handle({ workerId, loopId, turnId, origin }, statement);
+                    result = await this.#disposition.handle({ sessionId, loopId, turnId, origin }, statement);
                 } else if (
                     statement.op === "KILL" && schemeNameOf(statement.target) === "log"
                 ) {
@@ -774,9 +774,9 @@ export default class Dispatcher {
                     result = curation.result;
                     curationPlan = curation.plan;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
-                    // {§worker-spawn-prompt-resource} — a non-address path is the child's prompt resource.
+                    // {§session-spawn-prompt-resource} — a non-address path is the child's prompt resource.
                     const seeded = await this.#seedSpawnPrompt(statement, schemeCtx);
-                    result = "result" in seeded ? seeded.result : await this.#workerControl.handleWorkerControl(seeded.statement, schemeCtx);
+                    result = "result" in seeded ? seeded.result : await this.#sessionControl.handleSessionControl(seeded.statement, schemeCtx);
                 } else if (statement.op === "COPY") {
                     result = await this.#resourceMutations.handleCopy(statement, schemeCtx);
                 } else if (statement.op === "MOVE") {
@@ -848,7 +848,7 @@ export default class Dispatcher {
     // resume, core-owned disposition, or timeout). The post-resolution status replaces 202 in the result the caller
     // sees, so runTurn never branches on a pending state.
     async #settleProposedRow(context: DispatchContext, schemeCtx: PlurnkSchemeContext, result: DispatchResult, logEntryId: number, autoAccept: boolean): Promise<DispatchExecution> {
-        const { statement, workspaceId, workerId, loopId, turnId } = context;
+        const { statement, workspaceId, sessionId, loopId, turnId } = context;
         if (autoAccept) {
             await this.#proposals.recordDecision(logEntryId, { decision: "accept" });
             const initialSettlement = await this.#applyProposal(context, schemeCtx, result, { decision: "accept" }, logEntryId);
@@ -857,7 +857,7 @@ export default class Dispatcher {
                 result,
                 settlement: initialSettlement,
                 ctx: schemeCtx,
-                ids: { workspaceId, workerId, loopId, turnId, logEntryId },
+                ids: { workspaceId, sessionId, loopId, turnId, logEntryId },
             });
             const post = await this.#proposals.applyResolution(logEntryId, effective);
             await this.#notifySettled(context, logEntryId);
@@ -896,7 +896,7 @@ export default class Dispatcher {
             result,
             settlement: initialSettlement,
             ctx: schemeCtx,
-            ids: { workspaceId, workerId, loopId, turnId, logEntryId },
+            ids: { workspaceId, sessionId, loopId, turnId, logEntryId },
         });
         const post = await this.#proposals.applyResolution(logEntryId, effective);
         await this.#notifySettled(context, logEntryId);
@@ -939,8 +939,8 @@ export default class Dispatcher {
     }
 
     // The tokens the row would charge the packet, rendered as the log renders it ({§context-fit}).
-    async #rowTokens({ workspaceId, workerId, loopId, turnId, sequence, origin }: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<number> {
-        const record = await this.#logWriter.record({ statement, result, workspaceId, workerId, loopId, turnId, sequence, origin, curationPlan: null, modelCallId: null });
+    async #rowTokens({ workspaceId, sessionId, loopId, turnId, sequence, origin }: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<number> {
+        const record = await this.#logWriter.record({ statement, result, workspaceId, sessionId, loopId, turnId, sequence, origin, curationPlan: null, modelCallId: null });
         const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });
         if (seqs === undefined) throw new Error(`Dispatcher.#rowTokens: loop_turn_seqs returned no row for loop=${loopId} turn=${turnId}`);
         const row: StoredLogRow = {
@@ -957,7 +957,7 @@ export default class Dispatcher {
 
     // {§actor-boundary-catalog-preview} Whether a survey selects anything: its FIND run through the scheme context and
     // owner its dispatch would use, writing no row. A survey the FIND refuses counts as selecting, so its dispatch reports it.
-    async selects(survey: FindStatement, ids: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }): Promise<boolean> {
+    async selects(survey: FindStatement, ids: { workspaceId: number; sessionId: number; loopId: number; turnId: number; origin: WriterTier }): Promise<boolean> {
         const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(ids),
             (ctx) => this.#dataRun.run(schemeNameOf(survey.target), survey, ctx));
         return found.status >= 300 || !Array.isArray(found.results) || found.results.length > 0;
@@ -967,19 +967,19 @@ export default class Dispatcher {
         return this.#capabilities.projection(workspaceId);
     }
 
-    // {§client-entry-address} A client read acquires `target` as exact READ does, from the worker's perspective: the
+    // {§client-entry-address} A client read acquires `target` as exact READ does, from the session's perspective: the
     // representation a core scheme computes, or a data entry. Only core's own acquisition runs for it: a core scheme's
     // preparation, and the materialization of a message core retains, whichever module minted its address
     // ({§message-source-scheme}); never an extension's. Null for a target no data or computing scheme claims.
     async readClientEntry(context: {
         target: ParsedPath;
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
     }): Promise<ClientEntryAcquisition | null> {
-        const { target, workspaceId, workerId } = context;
+        const { target, workspaceId, sessionId } = context;
         const routedScheme = schemeNameOf(target);
         if (routedScheme === null) return null;
-        const coreCtx = this.#buildSchemeCtx({ workspaceId, workerId, loopId: 0, turnId: 0, origin: "client" });
+        const coreCtx = this.#buildSchemeCtx({ workspaceId, sessionId, loopId: 0, turnId: 0, origin: "client" });
         return ResourceBindings.using(this.#schemes, coreCtx, async (ctx) => {
             try {
                 const binding = await ResourceBindings.resolve(target, ctx);
@@ -1191,13 +1191,13 @@ export default class Dispatcher {
     // ({§actor-boundary-attached-functionality}); consumers read the built PlurnkSchemeContext
     // and never re-derive.
     #buildSchemeCtx(ids: {
-        workspaceId: number; workerId: number; loopId: number; turnId: number; sequence?: number; origin: WriterTier;
-        client?: { readonly contextWorkerId: number | null };
+        workspaceId: number; sessionId: number; loopId: number; turnId: number; sequence?: number; origin: WriterTier;
+        client?: { readonly contextSessionId: number | null };
     }): PlurnkSchemeContext {
-        const { workspaceId, workerId, loopId, turnId, sequence, origin, client } = ids;
+        const { workspaceId, sessionId, loopId, turnId, sequence, origin, client } = ids;
         const context: PlurnkSchemeContext = {
             db: this.#db,
-            workspaceId, workerId, loopId, turnId,
+            workspaceId, sessionId, loopId, turnId,
             ...(sequence === undefined ? {} : { sequence }),
             writer: origin,
             ...(client === undefined ? {} : { client }),
@@ -1206,26 +1206,26 @@ export default class Dispatcher {
             replyToMessage: (statement) => this.#respond(statement, context, loopId),
             signal: this.#loopSignal(loopId),
             streamEventNotify: this.#notify.streamEventNotify,
-            wakeWorkerNotify: this.#notify.wakeWorkerNotify,
-            injectWorker: this.#notify.injectWorker,
+            wakeSessionNotify: this.#notify.wakeSessionNotify,
+            injectSession: this.#notify.injectSession,
             mimetypes: this.#mimetypes,
             weigh: this.#weighContent,
             // {§exec-stream} — a runtime scheme's default channel is its own (stdout), never the
             // catalog fallback `body`; resolved through the same registry the writable gate reads.
             defaultChannelFor: (scheme) => this.#schemes.defaultChannelFor(scheme, context.workspaceId),
             settleDerivations: () => this.#settleDerivations(context),
-            pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+            pushNotice: (notice) => this.#notices.push(workspaceId, sessionId, loopId, notice),
             // {§membership-auto-add} — the model's reads reach the untracked universe and admit what they read.
             ...(origin === "model" && this.#notify.admitMembers !== undefined && AmbientMembers.enabled() ? {
                 ambientMembers: AmbientMembers.seam({
                     db: this.#db, workspaceId, signal: this.#loopSignal(loopId), mimetypes: this.#mimetypes,
-                    admit: (files) => this.#notify.admitMembers!({ workspaceId, workerId }, files),
-                    notice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+                    admit: (files) => this.#notify.admitMembers!({ workspaceId, sessionId }, files),
+                    notice: (notice) => this.#notices.push(workspaceId, sessionId, loopId, notice),
                 }),
             } : {}),
             requestInteraction: (request, signal = this.#loopSignal(loopId)) => this.#interactions.request(
                 request,
-                { workspaceId, workerId, loopId, turnId },
+                { workspaceId, sessionId, loopId, turnId },
                 signal,
             ),
             executors: this.#executors(),
@@ -1256,10 +1256,10 @@ export default class Dispatcher {
             if (target !== null && this.#schemes.isRuntimeScheme(target, workspaceId)) return null;
         }
 
-        // Worker control (FORK/WORK → worker://<name>, spawn or fork) is gated by worker://'s writableBy — its
+        // Session control (FORK/WORK → session://<name>, spawn or fork) is gated by session://'s writableBy — its
         // body is a seed prompt, not a dst path, so the entry-COPY dst-parse below doesn't apply.
         // {§machine-processes}
-        if (this.#isWorkerControl(statement)) return this.#denyIfDisallowed("worker", origin, workspaceId, statement.target);
+        if (this.#isSessionControl(statement)) return this.#denyIfDisallowed("session", origin, workspaceId, statement.target);
 
         if (statement.op === "COPY" || statement.op === "MOVE") {
             const dst = statement.destination.target;
@@ -1333,7 +1333,7 @@ export default class Dispatcher {
             ctx.workspaceId,
             ctx.writer,
             async (target) => (await ResourceBindings.resolve(target, ctx))?.manifest,
-            ctx.workerId,
+            ctx.sessionId,
         );
         if (denied === null) return null;
         const { descriptor, scope } = denied;
@@ -1364,25 +1364,25 @@ export default class Dispatcher {
     }
 
     referenceVisibility(ctx: PlurnkSchemeContext): Promise<(pathname: string) => boolean> {
-        return this.#capabilities.referenceVisibility(ctx.workspaceId, ctx.workerId);
+        return this.#capabilities.referenceVisibility(ctx.workspaceId, ctx.sessionId);
     }
 
-    // Worker control is FORK/WORK (grammar 0.74.55), not COPY — its body
-    // is the new worker's seed prompt, not a destination path. The COPY gates and ResourceMutations.handleCopy
+    // Session control is FORK/WORK (grammar 0.74.55), not COPY — its body
+    // is the new session's seed prompt, not a destination path. The COPY gates and ResourceMutations.handleCopy
     // branch on this so they never parse the prompt as a dst path.
-    #isWorkerControl(statement: PlurnkStatement): statement is ForkStatement | WorkStatement {
-        return statement.op === "FORK" || statement.op === "WORK"; // worker control targets worker://<name> (grammar 0.74.55)
+    #isSessionControl(statement: PlurnkStatement): statement is ForkStatement | WorkStatement {
+        return statement.op === "FORK" || statement.op === "WORK"; // session control targets session://<name> (grammar 0.74.55)
     }
 
     // {§rejected-emission-entry} — rejected provider bytes, never an admitted program.
-    async writeEmissionAttempt({ verbatim, workerId, loopId, turnId, sequence, modelCallId }: {
-        verbatim: string; workerId: number; loopId: number; turnId: number; sequence: number;
+    async writeEmissionAttempt({ verbatim, sessionId, loopId, turnId, sequence, modelCallId }: {
+        verbatim: string; sessionId: number; loopId: number; turnId: number; sequence: number;
         modelCallId: number;
     }): Promise<number> {
         const durableAttrs = { kind: "emissionAttempt" };
         const rx = JSON.stringify({ content: verbatim, mimetype: "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
             origin: "model", source: null, model_call_id: modelCallId,
             op: null, signal: null,
             scheme: null, username: null, password: null, hostname: null, port: null,
@@ -1409,27 +1409,27 @@ export default class Dispatcher {
 
     // {§emission-row} — the announcement of an admitted emission: the harness's born-folded READ of its
     // own turn's ops source, whose frozen body is the complete canonical content program.
-    async writeEmission({ content, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence }: {
-        content: string; workerName: string; loopSeq: number; turnSeq: number;
-        workerId: number; loopId: number; turnId: number; sequence: number;
+    async writeEmission({ content, sessionName, loopSeq, turnSeq, sessionId, loopId, turnId, sequence }: {
+        content: string; sessionName: string; loopSeq: number; turnSeq: number;
+        sessionId: number; loopId: number; turnId: number; sequence: number;
     }): Promise<number> {
         if (content.length === 0) throw new Error("Dispatcher.writeEmission: an admitted emission is never empty");
         const pathname = `/${loopSeq}/${turnSeq}`;
         const statement: ReadStatement = {
             op: "READ", aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
             target: {
-                kind: "url", raw: `ops://${workerName}${pathname}`, scheme: "ops",
-                username: null, password: null, hostname: workerName, port: null, pathname, query: null, fragment: null,
+                kind: "url", raw: `ops://${sessionName}${pathname}`, scheme: "ops",
+                username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
             },
         };
         const durableAttrs = { kind: "emission" };
         const tx = JSON.stringify(DurableStatement.project(statement));
         const rx = JSON.stringify({ status: 200, content, mimetype: "text/vnd.plurnk" });
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
             origin: "_plurnk", source: null, model_call_id: null,
             op: "READ", signal: null,
-            scheme: "ops", username: null, password: null, hostname: workerName, port: null,
+            scheme: "ops", username: null, password: null, hostname: sessionName, port: null,
             pathname, query: null, fragment: null, lineMarker: null,
             tx, mimetype_tx: "application/json",
             rx,
@@ -1455,9 +1455,9 @@ export default class Dispatcher {
     // source immediately before the emission row: whole when it fits the row's page, otherwise its last page
     // (#999: a turn's conclusions sit at its end), only when the packet has room for it after everything else
     // this turn lands; without room, no row and nothing else changes.
-    async writeReasoning({ content: reasoning, workerName, loopSeq, turnSeq, workerId, loopId, turnId, sequence, fit }: {
-        content: string; workerName: string; loopSeq: number; turnSeq: number;
-        workerId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
+    async writeReasoning({ content: reasoning, sessionName, loopSeq, turnSeq, sessionId, loopId, turnId, sequence, fit }: {
+        content: string; sessionName: string; loopSeq: number; turnSeq: number;
+        sessionId: number; loopId: number; turnId: number; sequence: number; fit: ContextFit | undefined;
     }): Promise<number | null> {
         if (reasoning.length === 0) return null;
         const pathname = `/${loopSeq}/${turnSeq}`;
@@ -1469,8 +1469,8 @@ export default class Dispatcher {
         const statement: ReadStatement = {
             op: "READ", aside: null, metadata: null, lineMarker, matcher: null, body: null, position: UNKNOWN_POSITION,
             target: {
-                kind: "url", raw: `reasoning://${workerName}${pathname}`, scheme: "reasoning",
-                username: null, password: null, hostname: workerName, port: null, pathname, query: null, fragment: null,
+                kind: "url", raw: `reasoning://${sessionName}${pathname}`, scheme: "reasoning",
+                username: null, password: null, hostname: sessionName, port: null, pathname, query: null, fragment: null,
             },
         };
         const durableAttrs = { kind: "reasoning" };
@@ -1486,10 +1486,10 @@ export default class Dispatcher {
             if (remaining !== null && weight > remaining) return null;
         }
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
+            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
             origin: "_plurnk", source: null, model_call_id: null,
             op: "READ", signal: null,
-            scheme: "reasoning", username: null, password: null, hostname: workerName, port: null,
+            scheme: "reasoning", username: null, password: null, hostname: sessionName, port: null,
             pathname, query: null, fragment: null, lineMarker: lineMarker === null ? null : JSON.stringify(lineMarker),
             tx, mimetype_tx: "application/json",
             rx,
@@ -1504,7 +1504,7 @@ export default class Dispatcher {
         return row.id;
     }
 
-    // {§worker-spawn-prompt-resource} WORK and FORK overload their slot by scheme: a `worker://`
+    // {§session-spawn-prompt-resource} WORK and FORK overload their slot by scheme: a `session://`
     // path is always the child's address (and keeps the address rules); a path of any other scheme
     // is read whole and becomes the child's prompt, composed with the body as BARE's combined form.
     // The durable row keeps the authored statement; only the handler sees the composed one, with no
@@ -1513,7 +1513,7 @@ export default class Dispatcher {
         statement: WorkStatement | ForkStatement,
         ctx: PlurnkSchemeContext,
     ): Promise<{ statement: WorkStatement | ForkStatement } | { result: DispatchResult }> {
-        if (statement.target === null || WorkerControlAddress.isWorkerScheme(statement.target)) return { statement };
+        if (statement.target === null || SessionControlAddress.isSessionScheme(statement.target)) return { statement };
         const read: ReadStatement = { ...statement, op: "READ", matcher: null, body: null, lineMarker: { marks: [1, -1] } };
         const denial = await this.#checkCapabilities(read, ctx);
         if (denial !== null) return { result: denial };
@@ -1534,7 +1534,7 @@ export default class Dispatcher {
 
     // {§bare-inference} Reuse exact READ projection without its log/presentation layer.
     async prepareBarePrompt(
-        context: Pick<DispatchContext, "workspaceId" | "workerId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
+        context: Pick<DispatchContext, "workspaceId" | "sessionId" | "loopId" | "turnId" | "sequence" | "origin"> & { statement: BareStatement },
     ): Promise<{ prompt: string } | { result: DispatchResult }> {
         await this.#operationEvent(context, "started");
         await this.#noticeFilePaths(context);
@@ -1633,24 +1633,24 @@ export default class Dispatcher {
             ...(captured.attachments.length === 0 ? {} : { attachments: MessageAttachments.receipts(captured.attachments) }) };
     }
 
-    async settleProgram(ctx: { workspaceId: number; workerId: number; loopId: number; turnId: number; origin: WriterTier }, waits: readonly DispositionStatement[], completionAllowed: boolean): Promise<number> {
+    async settleProgram(ctx: { workspaceId: number; sessionId: number; loopId: number; turnId: number; origin: WriterTier }, waits: readonly DispositionStatement[], completionAllowed: boolean): Promise<number> {
         const result = await this.#disposition.settle(ctx, waits, completionAllowed);
-        if (typeof result.detail === "string") this.#notices.push(ctx.workspaceId, ctx.workerId, ctx.loopId, {
+        if (typeof result.detail === "string") this.#notices.push(ctx.workspaceId, ctx.sessionId, ctx.loopId, {
             source: "engine:turn", kind: "results_pending", level: "info", message: result.detail,
         });
         return result.status;
     }
 
     // {§send-premature-terminate}: judge observation boundaries after the whole program settles.
-    async #pendingSet(workerId: number, turnId: number, loopId: number): Promise<CompletionEvidence> {
+    async #pendingSet(sessionId: number, turnId: number, loopId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];
-        // {§worker-obligations} — all held work shares one durable projection.
-        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
+        // {§session-obligations} — all held work shares one durable projection.
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; sessions: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
         if (held === undefined) throw new Error(`loop ${loopId} does not exist`);
         if (held.streams === 1) pending.push("streams");
-        if (held.workers === 1) pending.push("workers");
+        if (held.sessions === 1) pending.push("sessions");
         if (held.messages === 1) pending.push("messages");
-        const boundaries = await this.#nextPacketBoundaries(workerId, turnId);
+        const boundaries = await this.#nextPacketBoundaries(sessionId, turnId);
         const receipts = [...new Set(boundaries.operations
             .filter(({ op }) => op !== "KILL")
             .map((row) => LogEntryProjection.leaf(row)))];
@@ -1658,18 +1658,18 @@ export default class Dispatcher {
         if (receipts.length > 0) pending.push("receipts");
         // A failed stream result is still owed to the model before ordinary completion.
         if (boundaries.streamTerminations.some(({ closeStatus }) => closeStatus >= 400)) pending.push("failed-stream-results");
-        if (boundaries.childTerminations) pending.push("worker-results");
+        if (boundaries.childTerminations) pending.push("session-results");
         return { pending, receipts };
     }
 
     // {§wait-obligation-matrix}: completion and an empty wait use the same execution evidence.
-    async #nextPacketBoundaries(workerId: number, turnId: number): Promise<PacketBoundaries> {
+    async #nextPacketBoundaries(sessionId: number, turnId: number): Promise<PacketBoundaries> {
         const [turnBoundaries, streamTerminations, childTermination] = await Promise.all([
             this.#db.engine_turn_packet_boundaries.all<{ op: string; tx: string | null }>({ turn_id: turnId }),
-            this.#db.engine_worker_has_undelivered_stream_term
-                .all<{ closeStatus: number }>({ worker_id: workerId }),
-            this.#db.engine_worker_has_undelivered_child_term
-                .get<{ pending: number }>({ worker_id: workerId }),
+            this.#db.engine_session_has_undelivered_stream_term
+                .all<{ closeStatus: number }>({ session_id: sessionId }),
+            this.#db.engine_session_has_undelivered_child_term
+                .get<{ pending: number }>({ session_id: sessionId }),
         ]);
         return {
             operations: turnBoundaries,
@@ -1686,8 +1686,8 @@ export default class Dispatcher {
 
     // {§wait-obligation-matrix}: retrievals land next turn; only held work permits parking.
     async hasLiveWork(loopId: number): Promise<boolean> {
-        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; workers: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
-        return held !== undefined && (held.streams === 1 || held.workers === 1 || held.messages === 1);
+        const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; sessions: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
+        return held !== undefined && (held.streams === 1 || held.sessions === 1 || held.messages === 1);
     }
 
     async #runLogCuration(
@@ -1719,10 +1719,10 @@ export default class Dispatcher {
             throw new Error("the core log curation owner is not registered");
         }
         const maxId = admittedMaxId ?? (await this.#db.engine_log_selection_high_water.get<{ max_id: number }>({
-            worker_id: ctx.workerId,
+            session_id: ctx.sessionId,
         }))?.max_id;
         if (maxId === undefined) {
-            throw new Error(`log selection boundary could not be resolved for worker ${ctx.workerId}`);
+            throw new Error(`log selection boundary could not be resolved for session ${ctx.sessionId}`);
         }
         const schemeCtx = new SchemeCtxImpl(ctx, "log", manifest, this.#liveSubscriptions, { });
         const outcome = await handler.curate(statement, schemeCtx, maxId);
@@ -1736,10 +1736,10 @@ export default class Dispatcher {
     async #applyProposal(
         context: DispatchContext, schemeCtx: PlurnkSchemeContext, result: DispatchResult, resolution: AppliedProposalResolution, logEntryId: number,
     ): Promise<ProposalSettlement> {
-        const { statement, workspaceId, workerId, loopId, turnId } = context;
+        const { statement, workspaceId, sessionId, loopId, turnId } = context;
         const admission = AmbientMembers.admissionOf(result);
         if (admission === null || (statement.op !== "READ" && statement.op !== "FIND")) {
-            return this.#proposals.workerApply(statement, result, resolution, { workspaceId, workerId, loopId, turnId, logEntryId, resources: schemeCtx.resources });
+            return this.#proposals.sessionApply(statement, result, resolution, { workspaceId, sessionId, loopId, turnId, logEntryId, resources: schemeCtx.resources });
         }
         if (resolution.decision !== "accept") return { resolution };
         // What the members scope refuses stays unadmitted, and the operation run again misses it as a non-member.

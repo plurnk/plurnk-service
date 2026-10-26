@@ -12,7 +12,7 @@ test("{§fs-home} file address renderers protect literal home-like names", () =>
         assert.equal(renderTarget({ scheme: null, pathname: key }), expected);
         assert.equal(missExtensions("file", entryAddress("file", "", key)).target, expected);
     }
-    assert.equal(entryAddress("worker", "alice", "/~/x"), "worker://alice/~/x", "non-file paths are untouched");
+    assert.equal(entryAddress("session", "alice", "/~/x"), "session://alice/~/x", "non-file paths are untouched");
     const escaped = entryAddress("file", "", "~/a\\b", "/project");
     assert.equal(escaped, "file:///project/%7E/a%5Cb");
     assert.equal(missExtensions("file", escaped).target, escaped, "a rendered address is not escaped twice");
@@ -29,10 +29,10 @@ test("{§scheme-address-namespace-fold} foldAuthorityIntoPath folds a namespace 
 test("{§manifest-authority} {§scheme-address-namespace-fold} entryCoordinateOf distinguishes namespace and resource authority", () => {
     const notes = parsePath("notes://docs/fact.md");
     const mcp = parsePath("mcp://researcher/tasks/t-1");
-    const worker = parsePath("worker://ada/task");
+    const session = parsePath("session://ada/task");
     assert.ok(notes);
     assert.ok(mcp);
-    assert.ok(worker);
+    assert.ok(session);
     assert.deepEqual(entryCoordinateOf(notes, "namespace"), {
         authority: "",
         pathname: "/docs/fact.md",
@@ -41,7 +41,7 @@ test("{§manifest-authority} {§scheme-address-namespace-fold} entryCoordinateOf
         authority: "researcher",
         pathname: "/tasks/t-1",
     });
-    assert.deepEqual(entryCoordinateOf(worker, "resource"), {
+    assert.deepEqual(entryCoordinateOf(session, "resource"), {
         authority: "ada",
         pathname: "/task",
     });
@@ -91,13 +91,13 @@ test("{§path-parentheses} renderTarget is the non-secret inverse for decomposed
         fragment: "pre(view)",
     }), String.raw`https://example.org:8443/a%28b%29?b=\(2\)&a=%281%29&a=3#pre\(view\)`);
     assert.equal(renderTarget({
-        scheme: "worker",
+        scheme: "session",
         hostname: "ada",
         port: null,
         pathname: "/task",
         query: null,
         fragment: null,
-    }), "worker://ada/task");
+    }), "session://ada/task");
     assert.equal(renderTarget({
         scheme: null,
         pathname: "/docs/a(b).md",

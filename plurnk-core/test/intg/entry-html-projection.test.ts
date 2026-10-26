@@ -12,7 +12,7 @@ import Http from "@plurnk/plurnk-schemes-http";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { testExecutors, quiesceExecs } from "./_execs.ts";
 
@@ -21,7 +21,7 @@ const ROSTER = "<html><body><h1>Team Roster</h1><user email=\"alice@x.com\">Alic
 const readStmt = (pathname: string, body: ReadStatement["body"] = null): ReadStatement => ({
     metadata: null,
     op: "READ", aside: null,
-    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
+    target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
@@ -29,10 +29,10 @@ test("{§readable-channel} an AUTHORED html write is verbatim — attribute data
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `authored-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
 
-        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "workspace");
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         // {§readable-channel} — the source is verbatim; its projection rides beside it, never over it.
@@ -42,7 +42,7 @@ test("{§readable-channel} an AUTHORED html write is verbatim — attribute data
         assert.equal(body.content, ROSTER, "the source channel is exactly what was authored");
         assert.equal(rows.find((r) => r.name === "readable")?.mimetype, "text/markdown");
 
-        const read = await readThroughScheme("worker", null, readStmt("roster.html"), ctx);
+        const read = await readThroughScheme("workspace", null, readStmt("roster.html"), ctx);
         assert.match(read.content ?? "", /alice@x\.com/, "a default READ sees the email — attributes intact");
     } finally { await db.close(); }
 });
@@ -51,13 +51,13 @@ test("{§naked-pattern} {§readable-channel}: `READ (page.html) #readable`, the 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `trailing-channel-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
-        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "worker");
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/roster.html" }, { channels: { body: { content: ROSTER, mimetype: "text/html" } } }, ctx, "workspace");
         assert.equal(written.status, 201);
-        const parsed = PlurnkParser.parseStatements("```READ (worker:///roster.html) #readable\n```\n").items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])[0] as ReadStatement;
+        const parsed = PlurnkParser.parseStatements("```READ (workspace:///roster.html) #readable\n```\n").items.flatMap((item) => item.kind === "statement" ? [item.statement] : [])[0] as ReadStatement;
         assert.equal(parsed.matcher, null, "the token is the channel, not a pattern");
-        const read = await readThroughScheme("worker", null, parsed, ctx);
+        const read = await readThroughScheme("workspace", null, parsed, ctx);
         assert.equal(read.status, 200);
         assert.equal((read as { channel?: string }).channel, "readable", "the readable projection was selected");
         assert.equal(read.mimetype, "text/markdown");
@@ -94,10 +94,10 @@ test("{§exec-entry-sink} a FETCHED html page (via the exec sink) keeps its sour
     } as never);
     try {
         const workspaceId = await insertWorkspace(db, `fetched-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "fetch test");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "fetch test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await engine.dispatch({ statement: { runtime: "fetchstub", aside: null, target: null, metadata: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } }, workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: { runtime: "fetchstub", aside: null, target: null, metadata: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } }, workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         await quiesceExecs(schemes); // {§exec-entry-sink}: settle materialization before db.close().
 
         const entry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
@@ -125,8 +125,8 @@ test("{§universal-read-composition} a scoped HTTP READ slices the materialized 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `http-scope-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         await EntryCrud.writeEntry({ authority: "example.org", pathname: "/page" }, {
             channels: {
                 body: { content: "one\ntwo\nthree\nfour", mimetype: "text/markdown" },
@@ -155,8 +155,8 @@ test("{§universal-read-composition} a scoped HTTP READ slices the selected auxi
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `http-header-scope-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         await EntryCrud.writeEntry({ authority: "example.org", pathname: "/empty" }, {
             channels: {
                 body: { content: "", mimetype: "text/plain" },

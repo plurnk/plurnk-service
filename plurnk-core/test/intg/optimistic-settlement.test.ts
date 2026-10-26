@@ -1,6 +1,6 @@
 import { serverProposals } from "./_approval.ts";
-// {§worker-optimistic-settlement} — terminal stream and child arrivals remain
-// independent durable wake edges while one bounded worker-local opportunity
+// {§session-optimistic-settlement} — terminal stream and child arrivals remain
+// independent durable wake edges while one bounded session-local opportunity
 // coalesces provider dispatch over sibling obligations.
 
 import assert from "node:assert/strict";
@@ -47,7 +47,7 @@ const response = (
     };
 };
 
-class ControlledWorkerProvider implements Provider {
+class ControlledSessionProvider implements Provider {
     readonly contextWindow = 100_000;
     readonly maxInputTokens = null;
     readonly maxOutputTokens = null;
@@ -101,7 +101,7 @@ class ControlledWorkerProvider implements Provider {
 
     async generate({
         messages,
-        workerId,
+        sessionId,
         signal,
         grammar,
         observeRequest,
@@ -112,9 +112,9 @@ class ControlledWorkerProvider implements Provider {
             provider: requestAccounting.provider,
             model: requestAccounting.model,
         });
-        // The parent worker is whoever calls first; children spawn from its turn.
-        this.#parentIdentity ??= workerId;
-        if (workerId === this.#parentIdentity) {
+        // The parent session is whoever calls first; children spawn from its turn.
+        this.#parentIdentity ??= sessionId;
+        if (sessionId === this.#parentIdentity) {
             const index = this.#parentCalls++;
             const content = this.#parentTurns[index];
             if (content === undefined) throw new Error(`Unexpected parent provider call ${index + 1}.`);
@@ -145,15 +145,15 @@ child ${index + 1} done
     }
 }
 
-test("{§worker-optimistic-settlement} near-simultaneous child conclusions share one parent provider turn", async (approvalContext) => {
+test("{§session-optimistic-settlement} near-simultaneous child conclusions share one parent provider turn", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
-    const provider = new ControlledWorkerProvider({
+    const provider = new ControlledSessionProvider({
         childCount: 2,
         parentTurns: [
-            "````WORK (worker://first)\nfinish first\n\n````\n"
-            + "````WORK (worker://second)\nfinish second\n\n````\n"
+            "````WORK (session://first)\nfinish first\n\n````\n"
+            + "````WORK (session://second)\nfinish second\n\n````\n"
             + "````WAIT\nwaiting for both\n````",
             "````SEND [200]\nboth children landed\n````",
         ],
@@ -211,14 +211,14 @@ test("{§worker-optimistic-settlement} near-simultaneous child conclusions share
     }
 });
 
-test("{§worker-optimistic-settlement} a lone child conclusion resumes immediately without paying the settlement cap", async (approvalContext) => {
+test("{§session-optimistic-settlement} a lone child conclusion resumes immediately without paying the settlement cap", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
-    const provider = new ControlledWorkerProvider({
+    const provider = new ControlledSessionProvider({
         childCount: 1,
         parentTurns: [
-            "````WORK (worker://only)\nfinish the only job\n````\n\n````WAIT\nwaiting\n````",
+            "````WORK (session://only)\nfinish the only job\n````\n\n````WAIT\nwaiting\n````",
             "````SEND [200]\nonly child landed\n````",
         ],
     });
@@ -263,7 +263,7 @@ test("{§worker-optimistic-settlement} a lone child conclusion resumes immediate
     }
 });
 
-test("{§worker-optimistic-settlement} stream conclusions coalesce across the same worker-local settlement window", async (approvalContext) => {
+test("{§session-optimistic-settlement} stream conclusions coalesce across the same session-local settlement window", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "200";
@@ -299,14 +299,14 @@ test("{§worker-optimistic-settlement} stream conclusions coalesce across the sa
     }
 });
 
-test("{§worker-optimistic-settlement} a child and stream conclusion share the same settlement window", async (approvalContext) => {
+test("{§session-optimistic-settlement} a child and stream conclusion share the same settlement window", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "300";
-    const provider = new ControlledWorkerProvider({
+    const provider = new ControlledSessionProvider({
         childCount: 1,
         parentTurns: [
-            "````WORK (worker://child)\nfinish independently\n\n````\n"
+            "````WORK (session://child)\nfinish independently\n\n````\n"
             + "````sh\nsleep 0.50; echo stream-done\n\n````\n"
             + "````WAIT\nwaiting for child and stream\n````",
             "````SEND [200]\nchild and stream landed\n````",
@@ -351,16 +351,16 @@ test("{§worker-optimistic-settlement} a child and stream conclusion share the s
     }
 });
 
-test("{§worker-optimistic-settlement} the settlement deadline is bounded and does not slide on later conclusions", async (approvalContext) => {
+test("{§session-optimistic-settlement} the settlement deadline is bounded and does not slide on later conclusions", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "500";
-    const provider = new ControlledWorkerProvider({
+    const provider = new ControlledSessionProvider({
         childCount: 3,
         parentTurns: [
-            "````WORK (worker://first)\nfinish first\n\n````\n"
-            + "````WORK (worker://second)\nfinish second\n\n````\n"
-            + "````WORK (worker://third)\nfinish third\n\n````\n"
+            "````WORK (session://first)\nfinish first\n\n````\n"
+            + "````WORK (session://second)\nfinish second\n\n````\n"
+            + "````WORK (session://third)\nfinish third\n\n````\n"
             + "````WAIT\nwaiting for all three\n````",
             "````WAIT\ntwo landed; still waiting\n````",
             "````SEND [200]\nall three landed\n````",
@@ -378,7 +378,7 @@ test("{§worker-optimistic-settlement} the settlement deadline is bounded and do
         return pending;
     });
     const tracing = await mountMemoryTracing((span) => {
-        if (span.name !== "worker.wake.settlement") return;
+        if (span.name !== "session.wake.settlement") return;
         approvalContext.mock.timers.enable({ apis: ["setTimeout"] });
         windowOpened.resolve();
     });
@@ -408,12 +408,12 @@ test("{§worker-optimistic-settlement} the settlement deadline is bounded and do
                 assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: parentLoopId }))?.status, 202,
                     "the parent remains parked before the original deadline while one child is still live");
                 assert.equal(provider.parentCalls, 1);
-                assert.equal(tracing.spans().some(({ name }) => name === "worker.wake.settlement"), false,
+                assert.equal(tracing.spans().some(({ name }) => name === "session.wake.settlement"), false,
                     "the opportunity has not expired at 499ms");
                 approvalContext.mock.timers.tick(1);
                 approvalContext.mock.timers.reset();
                 await provider.waitForParentCall(2);
-                const window = tracing.spans().find(({ name }) => name === "worker.wake.settlement");
+                const window = tracing.spans().find(({ name }) => name === "session.wake.settlement");
                 assert.equal(window?.attributes.release, "deadline");
                 assert.equal(window?.attributes.conclusions, 2,
                     "the second arrival shares the first deadline, rather than starting a new opportunity");

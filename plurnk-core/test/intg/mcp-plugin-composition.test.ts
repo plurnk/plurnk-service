@@ -9,7 +9,7 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import type { FunctionalityListResult, PlurnkStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { insertSession, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse, userText } from "./_mock.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { mcpFixture, stdioEntry } from "./_mcp-config.ts";
@@ -96,9 +96,9 @@ test("{§mcp-plugin-configuration} unsupported entries reach the model as diagno
     t.after(daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") ended.push((params as { loopId: number }).loopId); }));
     await daemon.start();
     const workspace = await daemon.createWorkspace({ name: "plugin-repair", projectRoot: project });
-    const workerId = await insertWorker(db, workspace.workspaceId, null, "model", "model");
+    const sessionId = await insertSession(db, workspace.workspaceId, null, "model", "model");
     const turn = async () => {
-        const started = await daemon.runLoop({ ...workspace, workerId, prompt: "Inspect configuration." });
+        const started = await daemon.runLoop({ ...workspace, sessionId, prompt: "Inspect configuration." });
         await waitFor(() => ended, (ids) => ids.includes(started.loopId), { timeoutMs: 10_000 });
     };
     await turn();

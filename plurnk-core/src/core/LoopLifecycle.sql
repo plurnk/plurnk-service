@@ -5,7 +5,7 @@
 -- PREP: lifecycle_execution_budget
 UPDATE loops SET execution_budget_ms = COALESCE(execution_budget_ms, $budget_ms)
 WHERE id = $loop_id AND status = 102
-RETURNING worker_id, execution_budget_ms, execution_elapsed_ms;
+RETURNING session_id, execution_budget_ms, execution_elapsed_ms;
 
 -- PREP: lifecycle_checkpoint_execution
 UPDATE loops SET execution_elapsed_ms = $elapsed_ms WHERE id = $loop_id;
@@ -26,12 +26,12 @@ SET status = 100,
 WHERE id = $loop_id AND status = 202
   AND ($revision IS NULL OR wait_revision = $revision)
   AND ($due_at IS NULL OR wait_poll_at <= $due_at)
-  AND ($event_only = 0 OR observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id))
+  AND ($event_only = 0 OR observed_wake_revision < (SELECT wake_revision FROM sessions WHERE id = loops.session_id))
 RETURNING id;
 
 -- PREP: lifecycle_parked_loops
 SELECT id, wait_revision, wait_poll_at
-FROM loops WHERE worker_id = $worker_id AND status = 202
+FROM loops WHERE session_id = $session_id AND status = 202
 ORDER BY sequence;
 
 -- PREP: lifecycle_finish_loop
@@ -44,7 +44,7 @@ SET status = $status,
 WHERE id = $loop_id AND status IN (100, 102, 202)
   AND ($require_observed = 0 OR NOT EXISTS (SELECT 1 FROM loop_messages WHERE loop_id = loops.id AND log_entry_id IS NULL))
   AND ($require_observed = 0 OR NOT EXISTS (SELECT 1 FROM unanswered_messages WHERE loop_id = loops.id))
-  AND ($require_observed = 0 OR observed_wake_revision = (SELECT wake_revision FROM workers WHERE id = loops.worker_id))
+  AND ($require_observed = 0 OR observed_wake_revision = (SELECT wake_revision FROM sessions WHERE id = loops.session_id))
 RETURNING terminal_result;
 
 -- PREP: lifecycle_loop_status
@@ -71,19 +71,19 @@ WHERE loop_id = $loop_id
   AND kind = 'inference'
   AND completed_at IS NOT NULL;
 
--- PREP: lifecycle_worker_tree
+-- PREP: lifecycle_session_tree
 WITH RECURSIVE tree(id, depth) AS (
-    SELECT id, 0 FROM workers WHERE id = $worker_id
+    SELECT id, 0 FROM sessions WHERE id = $session_id
     UNION ALL
     SELECT child.id, tree.depth + 1
-    FROM workers child
-    JOIN tree ON child.parent_worker_id = tree.id
+    FROM sessions child
+    JOIN tree ON child.parent_session_id = tree.id
 )
--- CROSS JOIN fixes the nesting: the walked tree is the outer loop and each worker is a
--- primary-key probe, instead of a scan of every worker probing the tree ({§db-fk-indexes}).
-SELECT tree.id AS worker_id, tree.depth, workers.cancelled_through_sequence
-FROM tree CROSS JOIN workers ON workers.id = tree.id
-WHERE $include_root = 1 OR tree.id <> $worker_id
+-- CROSS JOIN fixes the nesting: the walked tree is the outer loop and each session is a
+-- primary-key probe, instead of a scan of every session probing the tree ({§db-fk-indexes}).
+SELECT tree.id AS session_id, tree.depth, sessions.cancelled_through_sequence
+FROM tree CROSS JOIN sessions ON sessions.id = tree.id
+WHERE $include_root = 1 OR tree.id <> $session_id
 ORDER BY tree.depth DESC, tree.id;
 
 -- PREP: lifecycle_checkpoint_executions
@@ -96,19 +96,19 @@ SET execution_elapsed_ms = (
 )
 WHERE id IN (SELECT json_extract(value, '$.loop_id') FROM json_each($executions));
 
--- PREP: lifecycle_cancel_workers
--- {§worker-causal-admission}: the cutoff and the cancellation are one durable decision — this
--- statement writes both onto the worker, and workers_cancel_live_loops retires the loops inside it.
-UPDATE workers
+-- PREP: lifecycle_cancel_sessions
+-- {§session-causal-admission}: the cutoff and the cancellation are one durable decision — this
+-- statement writes both onto the session, and sessions_cancel_live_loops retires the loops inside it.
+UPDATE sessions
 SET cancelled_through_sequence = MAX(cancelled_through_sequence, COALESCE(
-        (SELECT MAX(sequence) FROM loops WHERE worker_id = workers.id), 0
+        (SELECT MAX(sequence) FROM loops WHERE session_id = sessions.id), 0
     )),
     cancellation = $result
-WHERE id IN (SELECT value FROM json_each($worker_ids));
+WHERE id IN (SELECT value FROM json_each($session_ids));
 
 -- PREP: lifecycle_cancelled_loops
-SELECT loops.id AS loop_id, loops.worker_id, loops.terminal_result FROM loops
-JOIN json_each($worker_cutoffs) cutoff ON loops.worker_id = json_extract(cutoff.value, '$.worker_id')
+SELECT loops.id AS loop_id, loops.session_id, loops.terminal_result FROM loops
+JOIN json_each($session_cutoffs) cutoff ON loops.session_id = json_extract(cutoff.value, '$.session_id')
 WHERE loops.sequence > json_extract(cutoff.value, '$.cancelled_through_sequence')
   AND loops.status = 499 AND loops.terminated_by = 'cancel'
 ORDER BY loops.id;
@@ -134,8 +134,8 @@ BEGIN
 END;
 
 -- INIT: loops_stamp_terminated_at
--- {§worker-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
--- workers observe the terminal outcome uniformly across every conclusion path.
+-- {§session-scheme}: a loop crossing into a terminal status stamps terminated_at, so sibling
+-- sessions observe the terminal outcome uniformly across every conclusion path.
 -- The stamp updates terminated_at,
 -- never status, so it cannot re-fire this trigger. Terminals: 200 done · 413 budget ·
 -- 429 turn-ceiling · 499 cancel · 500 fail · 504 execution timeout · 508 runaway. (202 = parked/sleeping, NOT terminal.)
@@ -147,13 +147,13 @@ BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
 END;
 
--- INIT: workers_cancel_live_loops
--- {§worker-cancel-trigger}: writing a worker's cancellation retires its live loops in the same
+-- INIT: sessions_cancel_live_loops
+-- {§session-cancel-trigger}: writing a session's cancellation retires its live loops in the same
 -- statement — 499, waits cleared, the
 -- Problem instanced per loop. Loops already terminal keep their own outcome.
-DROP TRIGGER IF EXISTS workers_cancel_live_loops;
-CREATE TRIGGER workers_cancel_live_loops
-AFTER UPDATE OF cancellation ON workers
+DROP TRIGGER IF EXISTS sessions_cancel_live_loops;
+CREATE TRIGGER sessions_cancel_live_loops
+AFTER UPDATE OF cancellation ON sessions
 WHEN NEW.cancellation IS NOT NULL
 BEGIN
     UPDATE loops
@@ -165,7 +165,7 @@ BEGIN
             'ops://' || NEW.name || '/' || sequence
         ),
         terminated_by = 'cancel'
-    WHERE worker_id = NEW.id
+    WHERE session_id = NEW.id
       AND status IN (100, 102, 202);
 END;
 
@@ -174,36 +174,36 @@ SELECT sequence FROM loops WHERE id = $loop_id;
 
 -- PREP: loop_resource_identity
 SELECT 'ops://' || w.name || '/' || l.sequence AS resource
-FROM loops l JOIN workers w ON w.id = l.worker_id WHERE l.id = $loop_id;
+FROM loops l JOIN sessions w ON w.id = l.session_id WHERE l.id = $loop_id;
 
 -- PREP: loop_live_obligations
--- {§worker-obligations}: the live work a loop is held on — its worker's open streams, live children, and the
--- messages it sent to other workers that await completion.
-SELECT streams, workers, messages FROM loop_obligations WHERE loop_id = $loop_id;
+-- {§session-obligations}: the live work a loop is held on — its session's open streams, live children, and the
+-- messages it sent to other sessions that await completion.
+SELECT streams, sessions, messages FROM loop_obligations WHERE loop_id = $loop_id;
 
 -- PREP: lifecycle_tree_budget
--- {§turn-cap-counts-the-tree} — the budget of the worker tree a loop belongs to. The owner is
--- the current loop (id at or below this loop's) of the topmost non-runtime ancestor-or-self worker
--- that has one: for a tree a client started, the root worker's loop current when this loop began; a loop
+-- {§turn-cap-counts-the-tree} — the budget of the session tree a loop belongs to. The owner is
+-- the current loop (id at or below this loop's) of the topmost non-runtime ancestor-or-self session
+-- that has one: for a tree a client started, the root session's loop current when this loop began; a loop
 -- with no such ancestor owns its own budget. Every model call on the owner's loop and on any
 -- later loop of the owner's descendants spends it, emission and BARE alike, open or settled, one
 -- per call however many physical requests it took.
-WITH RECURSIVE up(id, parent_worker_id, origin, depth) AS (
-    SELECT w.id, w.parent_worker_id, w.origin, 0 FROM workers w
-    WHERE w.id = (SELECT worker_id FROM loops WHERE id = $loop_id)
+WITH RECURSIVE up(id, parent_session_id, origin, depth) AS (
+    SELECT w.id, w.parent_session_id, w.origin, 0 FROM sessions w
+    WHERE w.id = (SELECT session_id FROM loops WHERE id = $loop_id)
     UNION ALL
-    SELECT w.id, w.parent_worker_id, w.origin, up.depth + 1 FROM workers w JOIN up ON w.id = up.parent_worker_id
+    SELECT w.id, w.parent_session_id, w.origin, up.depth + 1 FROM sessions w JOIN up ON w.id = up.parent_session_id
 ),
 owner AS (
-    SELECT l.id AS loop_id, l.max_turns, up.id AS worker_id FROM up
-    JOIN loops l ON l.worker_id = up.id
+    SELECT l.id AS loop_id, l.max_turns, up.id AS session_id FROM up
+    JOIN loops l ON l.session_id = up.id
     WHERE l.id <= $loop_id AND up.origin != '_plurnk'
     ORDER BY up.depth DESC, l.id DESC LIMIT 1
 ),
 tree(id) AS (
-    SELECT worker_id FROM owner
+    SELECT session_id FROM owner
     UNION ALL
-    SELECT w.id FROM workers w JOIN tree ON w.parent_worker_id = tree.id
+    SELECT w.id FROM sessions w JOIN tree ON w.parent_session_id = tree.id
 )
 SELECT
     (SELECT loop_id FROM owner) AS root_loop_id,
@@ -212,7 +212,7 @@ SELECT
         JOIN turns t ON t.id = ic.turn_id
         JOIN loops l ON l.id = t.loop_id
         WHERE l.id = (SELECT loop_id FROM owner)
-           OR (l.worker_id IN (SELECT id FROM tree)
-               AND l.worker_id != (SELECT worker_id FROM owner)
+           OR (l.session_id IN (SELECT id FROM tree)
+               AND l.session_id != (SELECT session_id FROM owner)
                AND l.id > (SELECT loop_id FROM owner))
     ) AS count;

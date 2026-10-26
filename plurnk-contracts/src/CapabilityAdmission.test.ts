@@ -50,8 +50,8 @@ test("{§capability-policy-matching} an empty only list denies every capability"
 
 test("{§capability-policy-cascade} layers intersect and no narrower layer can restore an upstream denial", () => {
     const service: CapabilityPolicy = { deny: [{ traits: ["web"] }] };
-    const worker: CapabilityPolicy = { only: [{ runtime: "brave" }] };
-    assert.equal(CapabilityAdmission.allowsAcross([service, worker], search), false);
+    const session: CapabilityPolicy = { only: [{ runtime: "brave" }] };
+    assert.equal(CapabilityAdmission.allowsAcross([service, session], search), false);
     assert.equal(CapabilityAdmission.allowsAcross([{}, { deny: [{ operation: "EDIT" }] }], editFile), false);
     assert.equal(CapabilityAdmission.allowsAcross([{}, {}], readFile), true);
 });

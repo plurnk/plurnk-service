@@ -6,41 +6,41 @@ import assert from "node:assert/strict";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 
 const seedEntryWithChannel = async (channelName: string, channelMime: string, initialContent: string, channelState: "static" | "active" | "closed" | "errored" = "active") => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-        workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/x",
+        workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/x",
     });
     if (entry === undefined) throw new Error("seed entry failed");
     await db.test_seed_channel.run({
         entry_id: entry.id, name: channelName, content: initialContent, mimetype: channelMime, state: channelState,
     });
-    return { db, workspaceId, workerId, entryId: entry.id };
+    return { db, workspaceId, sessionId, entryId: entry.id };
 };
 
 test("{§chunk-accumulation-chunks-accumulate} appendToChannel: appends chunk to existing channel content", async () => {
-    const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "hello");
+    const { db, entryId, sessionId } = await seedEntryWithChannel("body", "text/plain", "hello");
     try {
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "body", chunk: " world" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "body", chunk: " world" });
         const row = await db.test_get_channel.get<{ content: string }>({ entry_id: entryId, name: "body" });
         assert.equal(row?.content, "hello world");
     } finally { await db.close(); }
 });
 
 test("{§tokenomics-weight-stored-at-write} appendToChannel: every append stores the ruler weight of the complete channel", async () => {
-    const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "A😀");
+    const { db, entryId, sessionId } = await seedEntryWithChannel("body", "text/plain", "A😀");
     try {
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "body", chunk: "é" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "body", chunk: "é" });
         const first = await db.test_get_channel.get<{ content: string; weight: number }>({ entry_id: entryId, name: "body" });
         assert.equal(first?.content, "A😀é");
         assert.equal(first?.weight, contentWeight("A😀é"));
 
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "body", chunk: "Z" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "body", chunk: "Z" });
         const second = await db.test_get_channel.get<{ content: string; weight: number }>({ entry_id: entryId, name: "body" });
         assert.equal(second?.content, "A😀éZ");
         assert.equal(second?.weight, contentWeight("A😀éZ"));
@@ -48,14 +48,14 @@ test("{§tokenomics-weight-stored-at-write} appendToChannel: every append stores
 });
 
 test("{§notifications-stream-event-on-channel-change} appendToChannel: invokes notify with producer, current state, and content length", async () => {
-    const { db, workspaceId, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "hi", "active");
+    const { db, workspaceId, entryId, sessionId } = await seedEntryWithChannel("body", "text/plain", "hi", "active");
     try {
         const events: Array<{ workspaceId: number; event: StreamEventPayload }> = [];
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "body", chunk: "!", notify: (sid, ev) => events.push({ workspaceId: sid, event: ev }) });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "body", chunk: "!", notify: (sid, ev) => events.push({ workspaceId: sid, event: ev }) });
         assert.equal(events.length, 1);
         assert.equal(events[0].workspaceId, workspaceId);
         assert.equal(events[0].event.entryId, entryId);
-        assert.equal(events[0].event.workerId, workerId);
+        assert.equal(events[0].event.sessionId, sessionId);
         assert.equal(events[0].event.channel, "body");
         assert.equal(events[0].event.state, "active");
         assert.equal(events[0].event.contentLength, 3);
@@ -63,10 +63,10 @@ test("{§notifications-stream-event-on-channel-change} appendToChannel: invokes 
 });
 
 test("{§notifications-stream-event-on-channel-change} setChannelState: transitions state and notifies", async () => {
-    const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "data", "active");
+    const { db, entryId, sessionId } = await seedEntryWithChannel("body", "text/plain", "data", "active");
     try {
         const events: StreamEventPayload[] = [];
-        await ChannelWrite.setChannelState(db, { entryId, producerWorkerId: workerId, channel: "body", state: "closed", notify: (_sid, ev) => events.push(ev) });
+        await ChannelWrite.setChannelState(db, { entryId, producerSessionId: sessionId, channel: "body", state: "closed", notify: (_sid, ev) => events.push(ev) });
         const state = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "body" }))?.state;
         assert.equal(state, "closed");
         assert.equal(events.length, 1);
@@ -75,10 +75,10 @@ test("{§notifications-stream-event-on-channel-change} setChannelState: transiti
 });
 
 test("{§channel-state-state-is-metadata} setChannelState: accepts all four valid states", async () => {
-    const { db, entryId, workerId } = await seedEntryWithChannel("body", "text/plain", "x", "active");
+    const { db, entryId, sessionId } = await seedEntryWithChannel("body", "text/plain", "x", "active");
     try {
         for (const s of ["static", "active", "closed", "errored"] as const) {
-            await ChannelWrite.setChannelState(db, { entryId, producerWorkerId: workerId, channel: "body", state: s });
+            await ChannelWrite.setChannelState(db, { entryId, producerSessionId: sessionId, channel: "body", state: s });
             const got = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "body" }))?.state;
             assert.equal(got, s);
         }
@@ -86,9 +86,9 @@ test("{§channel-state-state-is-metadata} setChannelState: accepts all four vali
 });
 
 test("{§subscriptions-subscription-registry-routes-cancellation} openSubscription: inserts a row and returns its id", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "abc-123" });
+        const subId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "abc-123" });
         assert.ok(subId > 0);
         const row = await db.test_get_subscription.get<{ scheme: string; handle: string; closed_at: string | null }>({ id: subId });
         assert.equal(row?.scheme, "sse");
@@ -98,81 +98,81 @@ test("{§subscriptions-subscription-registry-routes-cancellation} openSubscripti
 });
 
 test("{§exec-lifetime} open streams remain live obligations regardless of their lifetime", async () => {
-    const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, workspaceId, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const first = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "first" });
+        const first = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "first" });
         assert.deepEqual(
-            await db.worker_live_obligations.get({ worker_id: workerId }),
-            { streams: 1, workers: 0 },
-            "an open stream holds the worker's join",
+            await db.session_live_obligations.get({ session_id: sessionId }),
+            { streams: 1, sessions: 0 },
+            "an open stream holds the session's join",
         );
         const row = await db.test_seed_entry_workspace.get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/second",
+            workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/second",
         });
         if (row === undefined) throw new Error("seed /second failed");
         await db.test_seed_channel.run({
             entry_id: row.id, name: "body", content: "", mimetype: "text/plain", state: "active",
         });
-        await ChannelWrite.openSubscription(db, { workerId, entryId: row.id, scheme: "sh", handle: "second", turnScoped: true });
+        await ChannelWrite.openSubscription(db, { sessionId, entryId: row.id, scheme: "sh", handle: "second", turnScoped: true });
         await ChannelWrite.closeSubscription(db, { subscriptionId: first, result: { status: 200 } });
         assert.deepEqual(
-            await db.worker_live_obligations.get({ worker_id: workerId }),
-            { streams: 1, workers: 0 },
+            await db.session_live_obligations.get({ session_id: sessionId }),
+            { streams: 1, sessions: 0 },
             "the turn-scoped stream alone still holds the join after the first stream closes",
         );
     } finally { await db.close(); }
 });
 
 test("{§subscriptions-causal-resource} openSubscription: rejects a second active producer for the same entry", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h1" });
+        await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h1" });
         await assert.rejects(
-            () => ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h2" }),
+            () => ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h2" }),
             /UNIQUE constraint/i,
         );
     } finally { await db.close(); }
 });
 
-test("{§subscriptions-causal-resource}: another workspace Worker subscribes, but a foreign workspace cannot", async () => {
+test("{§subscriptions-causal-resource}: another workspace Session subscribes, but a foreign workspace cannot", async () => {
     const { db, workspaceId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const otherWorker = await insertWorker(db, workspaceId);
+        const otherSession = await insertSession(db, workspaceId);
         const otherWorkspace = await insertWorkspace(db, "foreign-subscription");
-        const foreignWorker = await insertWorker(db, otherWorkspace);
+        const foreignSession = await insertSession(db, otherWorkspace);
         await assert.rejects(() => ChannelWrite.openSubscription(db, {
-            workerId: foreignWorker, entryId, scheme: "sse", handle: "foreign",
+            sessionId: foreignSession, entryId, scheme: "sse", handle: "foreign",
         }), /subscription and resource must share a workspace/);
         const subscriptionId = await ChannelWrite.openSubscription(db, {
-            workerId: otherWorker, entryId, scheme: "sse", handle: "shared", source: "log:///1/2/3/sse",
+            sessionId: otherSession, entryId, scheme: "sse", handle: "shared", source: "log:///1/2/3/sse",
         });
         assert.equal((await ChannelWrite.findActiveSubscription(db, { entryId }))?.id, subscriptionId);
         await assert.rejects(() => db.test_subscription_reassign_source.run({ id: subscriptionId, source: "log:///1/9/3/sse" }),
             /subscription identity is immutable/);
-        await assert.rejects(() => db.test_delete_worker.run({ id: otherWorker }), /subscription identity is immutable/,
-            "a causal worker cannot disappear while its execution is still active");
+        await assert.rejects(() => db.test_delete_session.run({ id: otherSession }), /subscription identity is immutable/,
+            "a causal session cannot disappear while its execution is still active");
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
-        await db.test_delete_worker.run({ id: otherWorker });
-        const retained = await db.test_get_subscription.get<{ worker_id: number | null; close_status: number }>({ id: subscriptionId });
-        assert.equal(retained?.worker_id, null);
+        await db.test_delete_session.run({ id: otherSession });
+        const retained = await db.test_get_subscription.get<{ session_id: number | null; close_status: number }>({ id: subscriptionId });
+        assert.equal(retained?.session_id, null);
         assert.equal(retained?.close_status, 200);
     } finally { await db.close(); }
 });
 
 test("{§subscriptions-causal-resource} openSubscription: allows new subscription after previous one is closed", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const sub1 = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h1" });
+        const sub1 = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h1" });
         await ChannelWrite.closeSubscription(db, { subscriptionId: sub1, result: { status: 200 } });
-        const sub2 = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h2" });
+        const sub2 = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h2" });
         assert.ok(sub2 > sub1);
     } finally { await db.close(); }
 });
 
 test("{§subscriptions} closeSubscription: persists the exact result and indexed status", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
+        const subId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h" });
         const result = Results.failure("scheme:test", "cancelled", 499, "The test stream was cancelled.");
         await ChannelWrite.closeSubscription(db, { subscriptionId: subId, result });
         const row = await db.test_get_subscription.get<{ closed_at: string; close_status: number; close_result: string; channel_results: string }>({ id: subId });
@@ -190,9 +190,9 @@ test("{§subscriptions} closeSubscription: persists the exact result and indexed
 });
 
 test("{§subscription-finalization} closeSubscription: idempotent — already-closed subscription is a no-op", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
+        const subId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h" });
         await ChannelWrite.closeSubscription(db, { subscriptionId: subId, result: { status: 200 } });
         const first = await db.test_get_subscription.get<{ closed_at: string }>({ id: subId });
         await ChannelWrite.closeSubscription(db, {
@@ -206,13 +206,13 @@ test("{§subscription-finalization} closeSubscription: idempotent — already-cl
     } finally { await db.close(); }
 });
 
-test("{§exec-lifetime} findOpenTurnScopedSubscriptionsForWorker selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
-    const { db, workspaceId, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+test("{§exec-lifetime} findOpenTurnScopedSubscriptionsForSession selects only turn-scoped (<0>) subs; closed ones drop out", async () => {
+    const { db, workspaceId, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         // A turn-scoped (`<0>`) sub and an ordinary (unbounded) sub — on different entries, since
         // there's one active sub per entry. Only the turn-scoped one is reaped at pre-turn.
-        const scoped = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
-        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/y" });
+        const scoped = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "scoped", turnScoped: true });
+        const e2 = await db.test_seed_entry_workspace.get<{ id: number }>({ workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/y" });
         if (e2 === undefined) throw new Error("seed entry 2 failed");
         await db.test_seed_channel.run({
             entry_id: e2.id,
@@ -221,9 +221,9 @@ test("{§exec-lifetime} findOpenTurnScopedSubscriptionsForWorker selects only tu
             mimetype: "text/plain",
             state: "active",
         });
-        const ordinary = await ChannelWrite.openSubscription(db, { workerId, entryId: e2.id, scheme: "sh", handle: "ordinary" });
+        const ordinary = await ChannelWrite.openSubscription(db, { sessionId, entryId: e2.id, scheme: "sh", handle: "ordinary" });
 
-        const open = await ChannelWrite.findOpenTurnScopedSubscriptionsForWorker(db, workerId);
+        const open = await ChannelWrite.findOpenTurnScopedSubscriptionsForSession(db, sessionId);
         assert.deepEqual(open.map((s) => s.id), [scoped], "only the <0> sub is turn-scoped — the unbounded one is not reaped at pre-turn");
         assert.ok(!open.some((s) => s.id === ordinary), "the unbounded sub is excluded");
 
@@ -232,14 +232,14 @@ test("{§exec-lifetime} findOpenTurnScopedSubscriptionsForWorker selects only tu
             subscriptionId: scoped,
             result: Results.failure("scheme:test", "cancelled", 499, "The test stream was cancelled."),
         });
-        assert.equal((await ChannelWrite.findOpenTurnScopedSubscriptionsForWorker(db, workerId)).length, 0, "a closed turn-scoped sub is no longer selected");
+        assert.equal((await ChannelWrite.findOpenTurnScopedSubscriptionsForSession(db, sessionId)).length, 0, "a closed turn-scoped sub is no longer selected");
     } finally { await db.close(); }
 });
 
 test("{§subscriptions-causal-resource} findActiveSubscription: returns active sub for the entry", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h-abc" });
+        const subId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h-abc" });
         const found = await ChannelWrite.findActiveSubscription(db, { entryId });
         assert.ok(found !== null);
         assert.equal(found.id, subId);
@@ -249,9 +249,9 @@ test("{§subscriptions-causal-resource} findActiveSubscription: returns active s
 });
 
 test("{§subscriptions-causal-resource} findActiveSubscription: returns null when nothing active", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        const subId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
+        const subId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h" });
         await ChannelWrite.closeSubscription(db, { subscriptionId: subId, result: { status: 200 } });
         const found = await ChannelWrite.findActiveSubscription(db, { entryId });
         assert.equal(found, null);
@@ -259,9 +259,9 @@ test("{§subscriptions-causal-resource} findActiveSubscription: returns null whe
 });
 
 test("{§subscriptions-causal-resource} subscriptions CASCADE on entry delete", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
-        await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "h" });
+        await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "h" });
         await db.test_delete_entry.run({ id: entryId });
         const count = (await db.test_count_subscriptions_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n;
         assert.equal(count, 0);
@@ -269,14 +269,14 @@ test("{§subscriptions-causal-resource} subscriptions CASCADE on entry delete", 
 });
 
 test("{§validation-topology} subscriptions must open before any settlement fields can be stored", async () => {
-    const { db, workerId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
+    const { db, sessionId, entryId } = await seedEntryWithChannel("body", "text/plain", "");
     try {
         await assert.rejects(
-            () => db.test_invalid_subscription_only_closed_at.run({ worker_id: workerId, entry_id: entryId }),
+            () => db.test_invalid_subscription_only_closed_at.run({ session_id: sessionId, entry_id: entryId }),
             /subscription must open before it can settle/,
         );
         await assert.rejects(
-            () => db.test_invalid_subscription_only_close_status.run({ worker_id: workerId, entry_id: entryId }),
+            () => db.test_invalid_subscription_only_close_status.run({ session_id: sessionId, entry_id: entryId }),
             /subscription must open before it can settle/,
         );
     } finally { await db.close(); }

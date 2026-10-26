@@ -14,7 +14,7 @@ import { openMigrated } from "./_db.ts";
 import { parseDsl } from "./_mock.ts";
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
 import { waitForDb } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 test("{§share-snapshot}: restore preserves history, decisions and attachments without rewinding project files or service configuration", async (t) => {
     serverProposals(t, "accept");
@@ -50,23 +50,23 @@ test("{§share-snapshot}: restore preserves history, decisions and attachments w
     const db = await openMigrated(dbPath);
     const daemon = new Daemon({ db, provider });
     let workspaceId: number;
-    let workerId: number;
+    let sessionId: number;
     let loopId: number;
     let messages: Awaited<ReturnType<Daemon["readMessages"]>>;
     let history: ReturnType<EvidenceReader["rows"]>;
     try {
         await daemon.start();
         ({ workspaceId } = await daemon.createWorkspace({ name: "restore-witness", projectRoot }));
-        workerId = await namedModelWorker(daemon, workspaceId, "main");
+        sessionId = await namedModelSession(daemon, workspaceId, "main");
         await daemon.invokeModuleAction("workspace.env.add", {
             alias: "RESTORE_DURABLE", definition: { value: "workspace-owned" },
         }, { scope: "workspace", workspaceId });
-        ({ loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Update the document.",
+        ({ loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Update the document.",
             attachments: [{ name: "input.bin", mediaType: "application/octet-stream", bytes: new Uint8Array([4, 3, 2, 1]) }] }));
         const lifecycle = new LoopLifecycle(db);
         assert.equal(await waitForDb(() => lifecycle.status(loopId), (status) => status === 200 || status >= 400), 200);
         assert.equal(provider.received.length, 3);
-        messages = await daemon.readMessages({ workspaceId, workerId, loopId });
+        messages = await daemon.readMessages({ workspaceId, sessionId, loopId });
         using evidence = EvidenceReader.open(dbPath);
         history = evidence.rows();
         const edit = history.logEntries.find(({ op, origin }) => op === "EDIT" && origin === "model");
@@ -94,19 +94,19 @@ test("{§share-snapshot}: restore preserves history, decisions and attachments w
     try {
         await restored.start();
         assert.equal(idleProvider.received.length, 0, "restoring a completed loop does not replay its effects");
-        assert.deepEqual(await restored.readMessages({ workspaceId, workerId, loopId }), messages);
+        assert.deepEqual(await restored.readMessages({ workspaceId, sessionId, loopId }), messages);
         using evidence = EvidenceReader.open(restoredPath);
         const recovered = evidence.rows();
         for (const key of ["loops", "turns", "inferenceCalls", "modelCalls", "turnAttempts", "providerRequests", "logEntries", "emissionRows", "reasoningRows"] as const) {
             assert.deepEqual(recovered[key], history[key], `${key} survives the consistent snapshot and normal startup`);
         }
-        const environment = await restored.invokeModuleAction("worker.env.list", {}, {
-            scope: "worker", workspaceId, workerId,
+        const environment = await restored.invokeModuleAction("session.env.list", {}, {
+            scope: "session", workspaceId, sessionId,
         }) as FunctionalityListResult;
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_DURABLE")?.definition, { value: "workspace-owned" });
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_AMBIENT")?.definition, { value: "changed" },
             "ambient configuration is taken from this startup, not replayed from the database");
-        const [changed] = await restored.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: parseDsl("````READ (doc.md)\n````") });
+        const [changed] = await restored.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: parseDsl("````READ (doc.md)\n````") });
         assert.equal(changed?.status, 200);
         assert.equal(changed.content, "External edit after the snapshot.\n", "startup materializes current filesystem bytes, not the old database projection");
         assert.equal(await readFile(filePath, "utf8"), "External edit after the snapshot.\n");
@@ -118,11 +118,11 @@ test("{§share-snapshot}: restore preserves history, decisions and attachments w
     const reconfigured = new Daemon({ db: restoredDb, provider: idleProvider });
     try {
         await reconfigured.start();
-        const environment = await reconfigured.invokeModuleAction("worker.env.list", {}, {
-            scope: "worker", workspaceId, workerId,
+        const environment = await reconfigured.invokeModuleAction("session.env.list", {}, {
+            scope: "session", workspaceId, sessionId,
         }) as FunctionalityListResult;
         assert.deepEqual(environment.definitions.find(({ alias }) => alias === "RESTORE_AMBIENT")?.definition, { value: "original" });
-        const [restoredFile] = await reconfigured.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: workerId, statements: parseDsl("````READ (doc.md)\n````") });
+        const [restoredFile] = await reconfigured.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: parseDsl("````READ (doc.md)\n````") });
         assert.equal(restoredFile?.status, 200);
         assert.equal(restoredFile.content, "Preserved project version.\n");
         assert.equal(idleProvider.received.length, 0);

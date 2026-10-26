@@ -1,23 +1,23 @@
--- TurnMaterialization: the harness rows a turn opens with — stream deltas the worker observes.
+-- TurnMaterialization: the harness rows a turn opens with — stream deltas the session observes.
 
--- INIT: unobserved_worker_completions
+-- INIT: unobserved_session_completions
 -- {§loop-wake-identity}: packet acknowledgement and program settlement share
 -- the same durable publication boundary.
-DROP VIEW IF EXISTS unobserved_worker_completions;
-CREATE VIEW unobserved_worker_completions AS
-SELECT s.worker_id, 'stream' AS kind, s.close_status AS status
+DROP VIEW IF EXISTS unobserved_session_completions;
+CREATE VIEW unobserved_session_completions AS
+SELECT s.session_id, 'stream' AS kind, s.close_status AS status
 FROM subscriptions s
 JOIN subscription_publications sp ON sp.subscription_id = s.id
 WHERE s.closed_at IS NOT NULL AND sp.terminal_published = 0
 UNION ALL
 SELECT w.id, 'ambient', ae.status_rx
 FROM ambient_events ae
-JOIN workers w ON w.id = ae.recipient_worker_id
+JOIN sessions w ON w.id = ae.recipient_session_id
 WHERE ae.kind IN ('loop_termination', 'reply')
   AND ae.id > w.ambient_event_cursor;
 
--- PREP: engine_worker_stream_channels
--- {§exec-stream} — every not-yet-terminally-published stream channel the worker
+-- PREP: engine_session_stream_channels
+-- {§exec-stream} — every not-yet-terminally-published stream channel the session
 -- owns, with its durable per-subscription cursor. Log curation never rewinds it.
 SELECT s.id AS subscription_id, sp.id AS publication_id,
     sp.published_end, sp.terminal_published,
@@ -29,7 +29,7 @@ FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN subscription_publications sp ON sp.subscription_id = s.id
 JOIN entry_channels ec ON ec.entry_id = s.entry_id AND ec.name = sp.channel
-WHERE s.worker_id = $worker_id
+WHERE s.session_id = $session_id
   AND sp.terminal_published = 0
 ORDER BY s.id, ec.name;
 
@@ -50,11 +50,11 @@ WHERE id = $publication_id
 -- attrs.streamEnd is the next turn's cursor; rx.terminal owns the observation's liveness. Only terminal observations
 -- materialize here, initially visible; active progress stays in the Open Work streams list. {§exec-stream}
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, model_call_id,
+    session_id, loop_id, turn_id, sequence, origin, model_call_id,
     subscription_publication_id,
     op, scheme, hostname, port, pathname, fragment, tx, mimetype_tx, rx, mimetype_rx, status_rx, weight, attrs, initial_folded
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL,
+    $session_id, $loop_id, $turn_id, $sequence, '_plurnk', NULL,
     $subscription_publication_id,
     'READ', $scheme, $hostname, $port, $pathname, $fragment, '', 'text/plain', $rx, 'application/json', $status, $weight, $attrs, $folded
 )

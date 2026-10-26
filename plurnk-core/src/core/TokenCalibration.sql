@@ -16,7 +16,7 @@ LIMIT 1;
 
 -- PREP: engine_calibration_model_sample
 -- {§tokenomics-calibrated-readout} — the model's latest settled emission response across any loop
--- or worker, for a loop that has not settled one of its own.
+-- or session, for a loop that has not settled one of its own.
 SELECT json_extract(t.packet, '$.weight') AS weight, pr.usage_input AS reported
 FROM provider_requests pr
 JOIN inference_calls ic ON ic.id = pr.inference_call_id

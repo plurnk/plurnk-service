@@ -12,7 +12,7 @@ import { type ProposalResolution,
     type CapabilityPolicy,
     type ClientInteractionResolution,
     type MessageResource, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
-import WorkerName, { WorkerNameError } from "../core/WorkerName.ts";
+import SessionName, { SessionNameError } from "../core/SessionName.ts";
 
 
 export default class ClientInput {
@@ -129,15 +129,15 @@ export default class ClientInput {
         return name;
     }
 
-    static assertOptionalWorkerName(context: string, field: string, value: unknown): string | undefined {
-        const workerName = ClientInput.assertOptionalName(context, field, value);
-        if (workerName === undefined) return undefined;
+    static assertOptionalSessionName(context: string, field: string, value: unknown): string | undefined {
+        const sessionName = ClientInput.assertOptionalName(context, field, value);
+        if (sessionName === undefined) return undefined;
         try {
-            return WorkerName.assert(workerName);
+            return SessionName.assert(sessionName);
         } catch (error) {
-            if (!(error instanceof WorkerNameError)) throw error;
+            if (!(error instanceof SessionNameError)) throw error;
             throw new OperationFailureError(Results.failure(
-                "daemon:worker",
+                "daemon:session",
                 error.code,
                 400,
                 error.message,
@@ -145,7 +145,7 @@ export default class ClientInput {
                 {
                     context,
                     field,
-                    name: error.workerName,
+                    name: error.sessionName,
                     recovery: error.recovery,
                     retryable: false,
                 },

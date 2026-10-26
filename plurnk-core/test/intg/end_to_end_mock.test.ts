@@ -9,7 +9,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import { parsePath } from "@plurnk/plurnk-parser";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -20,7 +20,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: urlPath("worker", pathname),
+    target: urlPath("workspace", pathname),
     lineMarker: null, body,
     matcher: null, position: { line: 1, column: 1 },
 });
@@ -29,16 +29,16 @@ const response = (ops: PlurnkStatement[], content: string = ""): MockResponse =>
     assistant: { content, ops, reasoning: null },
 });
 
-const seedEnvelopeNoTurn = async (db: Db, label: string): Promise<{ workspaceId: number; workerId: number; loopId: number }> => {
+const seedEnvelopeNoTurn = async (db: Db, label: string): Promise<{ workspaceId: number; sessionId: number; loopId: number }> => {
     const workspaceId = await insertWorkspace(db, label);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "main");
-    return { workspaceId, workerId, loopId };
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "main");
+    return { workspaceId, sessionId, loopId };
 };
 
 const dispatchTurn = async (
     engine: Engine, provider: Mock, db: Db,
-    ctx: { workspaceId: number; workerId: number; loopId: number },
+    ctx: { workspaceId: number; sessionId: number; loopId: number },
 ): Promise<{ turnId: number; statuses: number[] }> => {
     const { assistant } = await provider.generate({ messages: [] });
     const ops = (assistant.ops ?? []) as PlurnkStatement[];
@@ -46,7 +46,7 @@ const dispatchTurn = async (
     const statuses: number[] = [];
     for (const [i, statement] of ops.entries()) {
         const result = await engine.dispatch({
-            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId,
+            statement, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId,
             turnId, sequence: i + 1, origin: "model",
         });
         statuses.push(result.status);
@@ -69,7 +69,7 @@ test("{§send-premature-terminate} e2e: single-turn EDIT + SEND — entry create
         assert.deepEqual(result.statuses, [201, 200], "EDIT created → 201; NOTE retained → 200");
 
         const entry = await db.test_get_entry_by_path.get<{ id: number }>({
-            workspace_id: env.workspaceId, scheme: "worker", pathname: "/france/capital",
+            workspace_id: env.workspaceId, scheme: "workspace", pathname: "/france/capital",
         });
         assert.ok(entry !== undefined);
 
@@ -118,7 +118,7 @@ test("{§op-execution-order} e2e: cross-turn state — turn 2 sees entry written
         const readStmt = (pathname: string): PlurnkStatement => ({
             metadata: null,
             op: "READ", aside: null,
-            target: urlPath("worker", pathname),
+            target: urlPath("workspace", pathname),
             lineMarker: null, matcher: null, body: null,
             position: { line: 1, column: 1 },
         });

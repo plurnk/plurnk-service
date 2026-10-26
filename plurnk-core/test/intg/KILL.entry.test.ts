@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import type { KillStatement, MatcherBody, SendStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { urlPath, editStmt, killStmt, sendStmt } from "./_dsl.ts";
@@ -17,17 +17,17 @@ const setup = async () => {
     return { db, ...env, engine };
 };
 
-const dispatch = (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: SendStatement | KillStatement, sequence = 1) =>
+const dispatch = (engine: Engine, env: { workspaceId: number; sessionId: number; loopId: number; turnId: number }, statement: SendStatement | KillStatement, sequence = 1) =>
     engine.dispatch({ statement, ...env, sequence, origin: "client" });
 
-test("{§kill-scope-entry} KILL(worker:///x) deletes the entry (side-effect; not model-facing)", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+test("{§kill-scope-entry} KILL(workspace:///x) deletes the entry (side-effect; not model-facing)", async () => {
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/doomed"), "tomorrow"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/doomed"), "tomorrow"), makeSchemeCtx({ db, workspaceId, sessionId }));
         const beforeDelete = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
         assert.ok(beforeDelete !== undefined);
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/doomed")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/doomed")));
         assert.equal(r.status, 200);
 
         const afterDelete = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
@@ -36,18 +36,18 @@ test("{§kill-scope-entry} KILL(worker:///x) deletes the entry (side-effect; not
 });
 
 test("{§kill-scope-entry} KILL on missing entry returns 404", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/nope")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/nope")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
 test("{§kill-scope-entry} KILL with #fragment deletes that channel only; entry remains", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/x", "body")));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/x"), "body"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/x", "body")));
         assert.equal(r.status, 200);
 
         const stillThere = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/x" });
@@ -58,20 +58,20 @@ test("{§kill-scope-entry} KILL with #fragment deletes that channel only; entry 
 });
 
 test("{§kill-scope-entry} KILL with #fragment on missing channel returns 404", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/y"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/y", "nonexistent")));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/y"), "body"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/y", "nonexistent")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
 // {§kill-scope-entry}
 test("{§edit-receipt-removed-text} a scoped KILL deletes one span of an entry through the EDIT path; the log row records the KILL", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), { marks: [2] }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/notes.md"), { marks: [2] }));
         assert.equal(r.status, 200, `the span deletion lands: ${JSON.stringify(r)}`);
         const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
         assert.equal(body?.content, "alpha\ngamma", "exactly the scoped line is gone");
@@ -85,11 +85,11 @@ test("{§edit-receipt-removed-text} a scoped KILL deletes one span of an entry t
 
 // {§kill-pattern}
 test("{§kill-pattern} an entry KILL with a pattern deletes exactly the matching spans and records the KILL", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma\nbeta again\ndelta"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/notes.md"), "alpha\nbeta\ngamma\nbeta again\ndelta"), makeSchemeCtx({ db, workspaceId, sessionId }));
         const matcher: MatcherBody = { dialect: "regex", raw: "/beta/", pattern: "beta", flags: "" };
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), null, matcher));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/notes.md"), null, matcher));
         assert.equal(r.status, 200, `the pattern deletion lands: ${JSON.stringify(r)}`);
         assert.equal(r.matched, 2, "every match counts once");
         const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" });
@@ -105,15 +105,15 @@ test("{§kill-pattern} an entry KILL with a pattern deletes exactly the matching
 
 // {§kill-pattern} — a scope bounds the lines the pattern may touch; zero matches change nothing.
 test("{§kill-pattern} a scoped entry KILL with a pattern matches only inside the scope and reports zero matches as 204", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta\ngamma\nbeta again"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/notes.md"), "alpha\nbeta\ngamma\nbeta again"), makeSchemeCtx({ db, workspaceId, sessionId }));
         const literal: MatcherBody = { dialect: "glob", raw: "beta" };
-        const nothing = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), { marks: [3] }, literal));
+        const nothing = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/notes.md"), { marks: [3] }, literal));
         assert.equal(nothing.status, 204, `no line in scope matches: ${JSON.stringify(nothing)}`);
         assert.equal(nothing.matched, 0);
         assert.equal((await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" }))?.content, "alpha\nbeta\ngamma\nbeta again", "nothing was deleted");
-        const one = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), { marks: [1, 2] }, literal), 2);
+        const one = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/notes.md"), { marks: [1, 2] }, literal), 2);
         assert.equal(one.status, 200, `the in-scope match is deleted: ${JSON.stringify(one)}`);
         assert.equal(one.matched, 1);
         assert.equal((await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" }))?.content, "alpha\n\ngamma\nbeta again", "the out-of-scope match and unmatched separator stay");
@@ -122,10 +122,10 @@ test("{§kill-pattern} a scoped entry KILL with a pattern matches only inside th
 
 // {§kill-pattern}
 test("{§kill-scope-entry} an entry KILL with a full-text pattern deletes the matching source span", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/notes.md"), "alpha\nbeta"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/notes.md"), null, { dialect: "fts", raw: "~beta" }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/notes.md"), "alpha\nbeta"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/notes.md"), null, { dialect: "fts", raw: "~beta" }));
         assert.equal(r.status, 200, JSON.stringify(r));
         assert.equal(r.matched, 1);
         assert.equal((await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/notes.md", name: "body" }))?.content, "alpha\n", "only the matched token was deleted");
@@ -133,20 +133,20 @@ test("{§kill-scope-entry} an entry KILL with a full-text pattern deletes the ma
 });
 
 test("{§kill-scope-entry} a recipient SEND to an entry scheme returns 501 (entry schemes carry no messages)", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/x"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, sendStmt(urlPath("worker", "/x"), "hello"));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/x"), "body"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, sendStmt(urlPath("workspace", "/x"), "hello"));
         assert.equal(r.status, 501);
     } finally { await db.close(); }
 });
 
-test("{§kill-scope-entry} KILL(worker:///x) deletes unknown entry", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+test("{§kill-scope-entry} KILL(workspace:///x) deletes unknown entry", async () => {
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/topic")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/topic")));
         assert.equal(r.status, 200);
         const gone = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/topic" });
         assert.equal(gone, undefined);
@@ -154,15 +154,15 @@ test("{§kill-scope-entry} KILL(worker:///x) deletes unknown entry", async () =>
 });
 
 test("{§kill-scope-entry} KILL cascades to entry channels", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        const k = new Worker();
-        await k.edit(editStmt(urlPath("worker", "/doomed"), "body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const k = new Workspace();
+        await k.edit(editStmt(urlPath("workspace", "/doomed"), "body"), makeSchemeCtx({ db, workspaceId, sessionId }));
         const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/doomed" });
         const entryId = entryRow!.id;
         assert.ok(((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n ?? 0) > 0);
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, killStmt(urlPath("worker", "/doomed")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, killStmt(urlPath("workspace", "/doomed")));
         assert.equal(r.status, 200);
 
         assert.equal((await db.test_count_channels_for_entry.get<{ n: number }>({ entry_id: entryId }))?.n, 0);

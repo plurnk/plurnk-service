@@ -1,4 +1,4 @@
-// {§workspace-env} {§env-functionality} — workspace defaults and worker overrides
+// {§workspace-env} {§env-functionality} — workspace defaults and session overrides
 // compose through one family; lifecycle verbs and persistence belong to the coordinator.
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type {
@@ -22,7 +22,7 @@ import Paths from "../Paths.ts";
 import type { Db } from "../core/Db.ts";
 
 const ENV_FAMILY = "env";
-// The family's namespace owner — also the key a spawn reads its Worker's state under.
+// The family's namespace owner — also the key a spawn reads its Session's state under.
 export const ENV_OWNER = "@plurnk/plurnk-service";
 
 // A refusal is the verb's own operation result, the shape both projections convert; anything else
@@ -36,7 +36,7 @@ const actionError = (code: string, status: number, detail: string, extensions: R
 const reservedNameError = (alias: string): OperationFailureError => actionError("name-reserved", 400,
     `'${alias}' is reserved in env entries.`, {
         alias,
-        recovery: "READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths.",
+        recovery: "READ workspace:///_plurnk/tools/plurnk/env.json for supported configuration paths.",
     });
 
 // POSIX-ish, and deliberately narrow: a name the shell can actually export. This is the family's
@@ -63,7 +63,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     readonly namespaceOwner = ENV_OWNER;
     readonly summary = "Read and shape the environment your commands run in";
     readonly definitionSchema = DEFINITION;
-    readonly scopes = ["worker", "workspace"] as const;
+    readonly scopes = ["session", "workspace"] as const;
     readonly aliasPattern = NAME;
     readonly docsDir = Paths.packageRoot;
     readonly example = { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } };
@@ -90,11 +90,11 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     }
 
     // Service origin: every ambient name the operator's ceiling admits, exactly as a
-    // service-declared MCP server is a service definition. A Worker may disable one for itself
-    // — that is how `CI=1` goes away for one Worker without the operator changing anything.
+    // service-declared MCP server is a service definition. A Session may disable one for itself
+    // — that is how `CI=1` goes away for one Session without the operator changing anything.
     //
     // Values are projected because the ceiling is the security boundary, not this projection:
-    // anything admitted is already readable by any command the Worker runs. Withholding it here
+    // anything admitted is already readable by any command the Session runs. Withholding it here
     // would be theatre, and would make `list` lie about the environment its commands see.
     async available(_identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<EnvDefinition>[]> {
         return Object.entries(ExecEnv.scoped(process.env, this.#hostPaths))
@@ -106,7 +106,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     }
 
     async discover(query: FunctionalityDiscoverQuery, _identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]> {
-        // The catalog is filtered to what a Worker may set (#586, the converged shape): plurnk's own
+        // The catalog is filtered to what a Session may set (#586, the converged shape): plurnk's own
         // configuration and provider credential names are the operator's, refused by `add`, and would
         // only bury the few names that matter under the operator's knobs.
         const reserved = ExecEnv.ownSecretTest();
@@ -169,7 +169,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     static compose(
         ambient: NodeJS.ProcessEnv,
         state: unknown,
-        scope: "worker" | "workspace" = "worker",
+        scope: "session" | "workspace" = "session",
     ): { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> } {
         if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) throw new Error("env state is not a version 1 record");
         const env: NodeJS.ProcessEnv = { ...ambient };
@@ -183,7 +183,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
                 record[name] = { source: "masked", ...from };
                 continue;
             }
-            if (entry.origin === "service" || (scope === "worker" && entry.origin === "workspace")) continue;
+            if (entry.origin === "service" || (scope === "session" && entry.origin === "workspace")) continue;
             if (entry.origin !== scope) throw new Error(`env state for '${name}' has origin '${String(entry.origin)}'`);
             if (!isRecord(entry.definition) || typeof entry.definition.value !== "string") throw new Error(`env state for '${name}' holds no string value`);
             reserved ??= ExecEnv.ownSecretTest();
@@ -210,23 +210,23 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     static async resolve(
         db: Db,
         workspaceId: number,
-        workerId?: number,
+        sessionId?: number,
         ambient?: NodeJS.ProcessEnv,
         hostPaths?: HostPaths,
     ): Promise<{ env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const empty = { version: 1, definitions: {} };
         const shared = (await this.workspace(db, workspaceId, hostPaths))(ambient ?? ExecEnv.scoped(process.env, hostPaths));
-        const worker = workerId === undefined ? undefined : await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
-        const result = this.compose(shared.env, worker === undefined ? empty : JSON.parse(worker.state));
+        const session = sessionId === undefined ? undefined : await db.session_module_state_get.get<{ state: string }>({ session_id: sessionId, namespace_owner: ENV_OWNER });
+        const result = this.compose(shared.env, session === undefined ? empty : JSON.parse(session.state));
         return { env: result.env, record: { ...shared.record, ...Object.fromEntries(Object.entries(result.record).filter(([, item]) => item.source !== "host")) } };
     }
 }
 
 // One name's provenance in a spawn's environment ({§exec-env-scoped}): the host through the
-// ceiling, this Worker's own value (`from` names an ancestor when it was inherited), or a name
-// withheld — by this Worker, by the ancestor named, or by the invariant.
+// ceiling, this Session's own value (`from` names an ancestor when it was inherited), or a name
+// withheld — by this Session, by the ancestor named, or by the invariant.
 export interface EnvRecord {
-    readonly source: "host" | "workspace" | "worker" | "masked";
+    readonly source: "host" | "workspace" | "session" | "masked";
     readonly from?: string;
     readonly value?: string;
 }

@@ -3,7 +3,7 @@ import test from "node:test";
 import { routeForSpec, specForRoute } from "../../src/server/model-route.ts";
 import { openMigrated } from "./_db.ts";
 
-test("{§worker-model-selection}: concurrent first selections share one immutable resolved route", async (t) => {
+test("{§session-model-selection}: concurrent first selections share one immutable resolved route", async (t) => {
     const db = await openMigrated();
     try {
         const query = db.model_route_lookup;

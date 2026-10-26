@@ -4,30 +4,30 @@ import Daemon from "../../src/server/Daemon.ts";
 import { openMigrated } from "./_db.ts";
 import { connect, rpcCall, withDaemon } from "./_rpc.ts";
 import { editStmt, readStmt, urlPath } from "./_dsl.ts";
-import { modelOperation, namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelSession } from "./_sessions.ts";
 import { TEST_OWNER } from "./_approval.ts";
 
-test("{§capability-admission}: workspace policy changes apply to independent workers, descendants, and a person's operations without private bounds", async () => {
+test("{§capability-admission}: workspace policy changes apply to independent sessions, descendants, and a person's operations without private bounds", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     try {
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `shared-policy-${crypto.randomUUID()}` });
-        const parent = await namedModelWorker(daemon, workspace.workspaceId, "main");
-        const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
-        const target = urlPath("worker", "/shared.txt");
+        const parent = await namedModelSession(daemon, workspace.workspaceId, "main");
+        const sibling = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "sibling" });
+        const target = urlPath("workspace", "/shared.txt");
         const person = async (workspaceId: number, statement: ReturnType<typeof readStmt> | ReturnType<typeof editStmt>) =>
             (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [statement] }))[0];
         const source = await person(workspace.workspaceId, editStmt(target, "shared content"));
         assert.equal(source.status, 201);
-        const denied = { deny: [{ access: "observe" as const, scheme: "worker" }] };
+        const denied = { deny: [{ access: "observe" as const, scheme: "workspace" }] };
         const projection = await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: denied });
         assert.deepEqual(projection, { service: {}, workspace: denied, effective: denied });
-        const child = await daemon.forkWorker({ workspaceId: workspace.workspaceId, workerId: parent, name: "child" });
-        // Each worker's own READ, and a person's.
+        const child = await daemon.forkSession({ workspaceId: workspace.workspaceId, sessionId: parent, name: "child" });
+        // Each session's own READ, and a person's.
         const reads = [
-            ...[parent, sibling.workerId, child.workerId].map((workerId) => () =>
-                modelOperation(daemon, db, { workspaceId: workspace.workspaceId, workerId, statement: readStmt(target) })),
+            ...[parent, sibling.sessionId, child.sessionId].map((sessionId) => () =>
+                modelOperation(daemon, db, { workspaceId: workspace.workspaceId, sessionId, statement: readStmt(target) })),
             () => person(workspace.workspaceId, readStmt(target)),
         ];
         for (const read of reads) {
@@ -54,21 +54,21 @@ test("{§capability-admission}: workspace policy changes apply to independent wo
     }
 });
 
-test("{§workspace-capability-inspection}: client actions inspect and replace policy without creating a model worker", async () => {
+test("{§workspace-capability-inspection}: client actions inspect and replace policy without creating a model session", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `policy-client-${crypto.randomUUID()}` });
             const [workspace] = await daemon.listWorkspaces();
             assert.ok(workspace);
-            const before = await daemon.listWorkers(workspace.id);
+            const before = await daemon.listSessions(workspace.id);
             const empty = { service: {}, workspace: {}, effective: {} };
             const read = await rpcCall(ws, 2, "workspace.capabilities.get", {});
             assert.deepEqual(read.result, empty);
             const policy = { deny: [{ traits: ["interaction"] }] };
             const updated = await rpcCall(ws, 3, "workspace.capabilities.set", { policy });
             assert.deepEqual(updated.result, { service: {}, workspace: policy, effective: policy });
-            assert.deepEqual(await daemon.listWorkers(workspace.id), before, "policy management allocates no worker");
+            assert.deepEqual(await daemon.listSessions(workspace.id), before, "policy management allocates no session");
             await assert.rejects(daemon.setWorkspaceCapabilities({ workspaceId: workspace.id, policy: { deny: [{}] } }),
                 /settings\.capabilities is not a valid capability policy/);
             assert.deepEqual(await daemon.readWorkspaceCapabilities({ workspaceId: workspace.id }), updated.result,
@@ -102,24 +102,24 @@ test("{§operator-config-workspace-capabilities} {§capability-policy-projection
     }
 });
 
-test("{§workspace-capability-inspection}: existing workers reconcile their tool catalog after workspace policy changes", async () => {
+test("{§workspace-capability-inspection}: existing sessions reconcile their tool catalog after workspace policy changes", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     try {
         await daemon.start();
         const workspace = await daemon.createWorkspace({ name: `policy-docs-${crypto.randomUUID()}` });
-        const model = await namedModelWorker(daemon, workspace.workspaceId, "main");
-        const sibling = await daemon.createWorker({ workspaceId: workspace.workspaceId, name: "sibling" });
-        const reference = (workerId: number, runtime: string) => modelOperation(daemon, db, { workspaceId: workspace.workspaceId, workerId,
-            statement: readStmt({ ...urlPath("worker", `/_plurnk/plurnk/${runtime}.md`), hostname: null }) });
-        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "js")).status, 200);
+        const model = await namedModelSession(daemon, workspace.workspaceId, "main");
+        const sibling = await daemon.createSession({ workspaceId: workspace.workspaceId, name: "sibling" });
+        const reference = (sessionId: number, runtime: string) => modelOperation(daemon, db, { workspaceId: workspace.workspaceId, sessionId,
+            statement: readStmt({ ...urlPath("workspace", `/_plurnk/plurnk/${runtime}.md`), hostname: null }) });
+        for (const sessionId of [model, sibling.sessionId]) assert.equal((await reference(sessionId, "js")).status, 200);
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: { deny: [{ runtime: "js" }] } });
-        for (const workerId of [model, sibling.workerId]) {
-            assert.equal((await reference(workerId, "js")).status, 404, "the withdrawn reference cannot leak through a stale catalog");
-            assert.equal((await reference(workerId, "sh")).status, 200, "unrelated admitted tooling stays discoverable");
+        for (const sessionId of [model, sibling.sessionId]) {
+            assert.equal((await reference(sessionId, "js")).status, 404, "the withdrawn reference cannot leak through a stale catalog");
+            assert.equal((await reference(sessionId, "sh")).status, 200, "unrelated admitted tooling stays discoverable");
         }
         await daemon.setWorkspaceCapabilities({ workspaceId: workspace.workspaceId, policy: {} });
-        for (const workerId of [model, sibling.workerId]) assert.equal((await reference(workerId, "js")).status, 200);
+        for (const sessionId of [model, sibling.sessionId]) assert.equal((await reference(sessionId, "js")).status, 200);
     } finally {
         await daemon.stop();
         await db.close();

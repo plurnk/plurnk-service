@@ -27,7 +27,7 @@ test("{§test-artifact-retention} a run's databases live under the one artifact 
     );
 });
 
-test("{§tier-census} a stamped tier run is one directory under the home; an unstamped worker has none", (t) => {
+test("{§tier-census} a stamped tier run is one directory under the home; an unstamped session has none", (t) => {
     const prior = { PLURNK_BENCHMARKS: process.env.PLURNK_BENCHMARKS, PLURNK_TIER_RUN: process.env.PLURNK_TIER_RUN };
     t.after(() => {
         for (const [key, value] of Object.entries(prior)) {

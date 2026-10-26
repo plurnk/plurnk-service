@@ -6,14 +6,14 @@
 -- triggers the proposal lifecycle (engine pauses dispatch; client resolves
 -- via proposal resolution; entry transitions through engine_resolve_log_entry).
 INSERT INTO log_entries (
-    worker_id, loop_id, turn_id, sequence, origin, source, model_call_id,
+    session_id, loop_id, turn_id, sequence, origin, source, model_call_id,
     op, signal,
     scheme, username, password, hostname, port,
     pathname, query, fragment, lineMarker,
     tx, mimetype_tx, rx, mimetype_rx, status_rx, weight,
     state, outcome, attrs, initial_folded
 ) VALUES (
-    $worker_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
+    $session_id, $loop_id, $turn_id, $sequence, $origin, $source, $model_call_id,
     $op, $signal,
     $scheme, $username, $password, $hostname, $port,
     $pathname, $query, $fragment, $lineMarker,

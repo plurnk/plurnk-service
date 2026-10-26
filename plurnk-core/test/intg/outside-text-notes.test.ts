@@ -6,21 +6,21 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
 test("{§outside-text} prose before, between and after fences lands as NOTEs in order and is replayed in the model's voice", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `outside-notes-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Look around.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Look around.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
-            "Thinking out loud first.\n\n```FIND (worker:///*)\n```\n\nBetween the two.\n\n```FIND (worker:///*)\n```\n\nAnd a trailing remark.",
+            "Thinking out loud first.\n\n```FIND (workspace:///*)\n```\n\nBetween the two.\n\n```FIND (workspace:///*)\n```\n\nAnd a trailing remark.",
             "```SEND [200]\nDone.\n```",
         ].map((content) => ({ assistant: { content, reasoning: null, finishReason: "stop" } })) });
         const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
+            provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
         });
         assert.equal(result.result.status, 200, JSON.stringify(result.result));
         const [, prosed, final] = result.turnIds;

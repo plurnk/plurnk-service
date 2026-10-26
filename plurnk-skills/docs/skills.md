@@ -64,7 +64,7 @@ Git/archive sources are materialized into workspace-owned storage, never a
 project or global configuration root. They remain stable across enable and
 restart until their source definition changes. A git addition may name a branch or tag
 as `ref`; the service records its commit and refuses to refetch a moved ref
-silently. An addition is reviewed by the worker's owner unless
+silently. An addition is reviewed by the session's owner unless
 `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
 
 An unavailable skill retains its exact Problem in `list`; other skills remain

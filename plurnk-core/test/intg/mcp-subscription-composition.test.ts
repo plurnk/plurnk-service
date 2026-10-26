@@ -10,7 +10,7 @@ import { resourcePath } from "../../../plurnk-mcp/src/McpResources.ts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { insertSession, openMigrated } from "./_db.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { waitForDb } from "./_rpc.ts";
 import { httpEntry, mcpFixture } from "./_mcp-config.ts";
@@ -21,7 +21,7 @@ process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "60000";
 const step = (op = "NOTE") => PlurnkParser.frame(op, op === "NOTE" ? "Inspect the result." : "Resource inspected.");
 const read = (uri: string) => PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
 
-test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource updates refresh a later READ without changing history or waking unrelated workers", { timeout: 20_000 }, async (t) => {
+test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource updates refresh a later READ without changing history or waking unrelated sessions", { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
     const alpha = "fixture://alpha";
     const beta = "fixture://beta";
@@ -58,11 +58,11 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "mcp-resource-observation" });
-    const alice = await insertWorker(db, workspaceId, null, "alice", "model");
-    const bob = await insertWorker(db, workspaceId, null, "bob", "model");
+    const alice = await insertSession(db, workspaceId, null, "alice", "model");
+    const bob = await insertSession(db, workspaceId, null, "bob", "model");
     const lifecycle = new LoopLifecycle(db);
-    const run = async (workerId: number) => {
-        const result = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the resource." });
+    const run = async (sessionId: number) => {
+        const result = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect the resource." });
         await waitForDb(() => lifecycle.status(result.loopId), (status) => status === 200);
         return result;
     };
@@ -99,7 +99,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     assert.equal(provider.received.length, 2, "neither resource notifications nor client READs invoke a model");
     assert.deepEqual(await db.test_log_entries_by_loop.all({ loop_id: first.loopId }), history,
         "refreshing a source never rewrites the earlier operation receipts");
-    assert.deepEqual(await db.test_loops_statuses_by_worker.all({ worker_id: bob }), [], "an unrelated worker acquired no loop");
+    assert.deepEqual(await db.test_loops_statuses_by_session.all({ session_id: bob }), [], "an unrelated session acquired no loop");
 
     await run(bob);
     assert.equal(provider.received.length, 3);
@@ -107,7 +107,7 @@ test("{§mcp-host-composition} {§actor-boundary-lineage-attention} resource upd
     await run(alice);
     assert.equal(provider.received.length, 5);
     assert.match(packet(3), /alpha-version-one/u, "the next loop still sees its own original observation");
-    assert.doesNotMatch(packet(3), /alpha-version-two/u, "updated content is not pushed into the worker's packet");
+    assert.doesNotMatch(packet(3), /alpha-version-two/u, "updated content is not pushed into the session's packet");
     assert.match(packet(4), /alpha-version-two/u, "an explicit model READ receives the updated source");
     assert.deepEqual([...reads.values()], [2, 1], "the model shares the refreshed cache rather than fetching again");
     assert.deepEqual(await db.test_log_entries_by_loop.all({ loop_id: first.loopId }), history);

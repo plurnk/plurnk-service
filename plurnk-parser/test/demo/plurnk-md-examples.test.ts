@@ -6,9 +6,9 @@ import { PlurnkParser } from "../../src/index.ts";
 import { PLURNK_OPS } from "@plurnk/plurnk-contracts";
 
 const teaching = readFileSync(new URL("./plurnk.md", import.meta.resolve("@plurnk/plurnk-contracts/package.json")), "utf8");
-// BARE is taught on the worker reference page and FORK on the delegation page the card links from WORK,
+// BARE is taught on the session reference page and FORK on the delegation page the card links from WORK,
 // not on the card (#893, #1063).
-const workerReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/worker.md")), "utf8");
+const sessionReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/session.md")), "utf8");
 const delegationReference = readFileSync(new URL(import.meta.resolve("@plurnk/plurnk-meta/docs/delegation.md")), "utf8");
 
 test("concrete core-operation examples in plurnk.md parse verbatim as one clean operation", () => {
@@ -26,8 +26,8 @@ test("concrete core-operation examples in plurnk.md parse verbatim as one clean 
     }
 });
 
-test("every operation is taught on the card or on the worker or delegation reference page, without pinning prose", () => {
+test("every operation is taught on the card or on the session or delegation reference page, without pinning prose", () => {
     for (const op of PLURNK_OPS) {
-        assert.match(`${teaching}\n${workerReference}\n${delegationReference}`, new RegExp("^(?:`{3,}" + op + "(?: |$)|[*-] " + op + "(?: \\([^)]*\\)(?: <[^>]+>\\??)?)*:)", "m"), `operation reference is missing ${op}`);
+        assert.match(`${teaching}\n${sessionReference}\n${delegationReference}`, new RegExp("^(?:`{3,}" + op + "(?: |$)|[*-] " + op + "(?: \\([^)]*\\)(?: <[^>]+>\\??)?)*:)", "m"), `operation reference is missing ${op}`);
     }
 });

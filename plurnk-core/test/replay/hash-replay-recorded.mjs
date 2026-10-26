@@ -22,9 +22,9 @@ const CARDS = {
 const recorded = readFileSync(`${FIXTURE}.user.md`, "utf8");
 // The task, as one more arrival at the end of the log, before the packet's closing sections.
 const task = "In django/core/management/commands/inspectdb.py, replace the line `column_to_field_name = {}  # Maps column names to names of model fields` with the same line followed by a new line `used_relations = set()  # Holds foreign keys used in the table.` (same indentation). One EDIT, nothing else this turn.";
-const marker = "\n## Worker\n";
+const marker = "\n## Session\n";
 const at = recorded.indexOf(marker);
-if (at < 0) throw new Error("recorded packet has no Worker section");
+if (at < 0) throw new Error("recorded packet has no Session section");
 const RENDER = {
     A: (line) => line,
     B: (line) => line.replace(/^@([0-9A-Za-z]{5}) +(\d+):/u, (_, h, n) => `${n.padStart(3)} @${h}:`),
@@ -69,14 +69,14 @@ const score = (content) => {
 const cells = [];
 for (const rendering of renderingsArg.split(",")) for (const card of cardsArg.split(",")) for (let i = 0; i < samples; i += 1) cells.push({ rendering, card, i });
 let next = 0;
-const worker = async () => {
+const session = async () => {
     while (next < cells.length) {
         const cell = cells[next++];
         const messages = [{ role: "system", content: CARDS[cell.card] }, { role: "user", content: packetFor(cell.rendering) }];
         const t0 = Date.now();
         let result;
         try {
-            const r = await provider.generate({ workerId: `recorded-${cell.rendering}-${cell.card}-${cell.i}`, messages });
+            const r = await provider.generate({ sessionId: `recorded-${cell.rendering}-${cell.card}-${cell.i}`, messages });
             const content = r.assistant?.content ?? "";
             const usage = r.accounting?.[0]?.usage ?? {};
             result = { ...score(content), seconds: Math.round((Date.now() - t0) / 1000), inputTokens: usage.inputTokens ?? null, reasoningTokens: usage.outputTokenDetails?.reasoningTokens ?? null, head: content.slice(0, 200) };
@@ -88,5 +88,5 @@ const worker = async () => {
         console.log(JSON.stringify(row).slice(0, 200));
     }
 };
-await Promise.all(Array.from({ length: concurrency }, worker));
+await Promise.all(Array.from({ length: concurrency }, session));
 console.log("done");

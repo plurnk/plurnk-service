@@ -26,7 +26,7 @@ test("{§tools-resource-discovery} turn 0 exposes executable inline-program bodi
         const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "Inspect the available tools." });
         assert.equal(finalStatus, 200);
         const row = await db.test_get_packet.get<{ packet: string }>({ id: turnIds![1] });
-        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "worker:///_plurnk/plurnk/*.md");
+        const survey = logEntries(JSON.parse(row!.packet)).find((entry) => entry.path === "workspace:///_plurnk/plurnk/*.md");
         assert.ok(survey && typeof survey.body === "string", "turn 0 carries the generated tool catalog");
         const body = survey.body.replace(/^ *\d+:/gm, "");
         const groups = JSON.parse(body) as Array<Array<{ path: string; aside?: string }>>;
@@ -68,14 +68,14 @@ test("{§tools-resource-materialization} turn 0 surveys an expanded server's too
             const row = await db.test_get_packet.get<{ packet: string }>({ id: first });
             const packet = JSON.parse(row!.packet);
             const entries = logEntries(packet);
-            const survey = entries.find((e) => e.path === "worker:///_plurnk/tools/fixture.md");
+            const survey = entries.find((e) => e.path === "workspace:///_plurnk/tools/fixture.md");
             assert.ok(survey, `the expanded server is surveyed; got ${JSON.stringify(entries.map((e) => [e.logPath, e.path]))}`);
             assert.match(survey.logPath, /\/FIND$/, "the survey is a FIND, not a document READ");
             assert.equal(survey.aside, undefined, "the target and +tools classification already orient the survey");
             const log = packetSection(packet, "log");
-            assert.match(log, /"matched":"```fixture \(echo\) <!-- Echo one message\. Schema: worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n```"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
+            assert.match(log, /"matched":"```fixture \(echo\) <!-- Echo one message\. Schema: workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json -->\\n\{\\"message\\": \\"\\"\}\\n```"/, "one row per tool: opening fence, aside, preview, schema link, closing fence");
             assert.match(log, /"matched":"```fixture \(fail\) /, "every tool is a row");
-            assert.doesNotMatch(log, /^### log:\/\/\/\S+\/READ \(worker:\/\/\/_plurnk\/tools\/fixture\/echo\.json\)/m, "schema documents are not individual Turn0 discovery rows");
+            assert.doesNotMatch(log, /^### log:\/\/\/\S+\/READ \(workspace:\/\/\/_plurnk\/tools\/fixture\/echo\.json\)/m, "schema documents are not individual Turn0 discovery rows");
         } finally {
             ws.close();
         }

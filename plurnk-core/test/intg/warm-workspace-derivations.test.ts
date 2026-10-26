@@ -17,15 +17,15 @@ import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type { Db } from "../../src/core/Db.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
 const weigh = (text: string): number => Math.ceil(text.length / 4);
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
@@ -46,7 +46,7 @@ test("{§mimetype-parser-coordinates}: startup warming accepts CRLF Python comme
     const workspaceId = await insertWorkspace(db, `warm-crlf-${crypto.randomUUID()}`);
     const content = "# 😀\r\ndef value():\r\n    return helper() # trailing\r\n";
     await seedEntryWithChannel(db, {
-        workspaceId, scheme: "worker", pathname: "/example.py",
+        workspaceId, scheme: "workspace", pathname: "/example.py",
         channel: "body", mimetype: "text/x-python", content,
     });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh, mimetypes });
@@ -56,7 +56,7 @@ test("{§mimetype-parser-coordinates}: startup warming accepts CRLF Python comme
     assert.equal(engine.workspaceDerivationStatus(workspaceId)?.phase, "complete");
     assert.deepEqual(await fts(db, workspaceId, "helper"), ["/example.py"]);
     const body = await db.ops_read_channel.get<{ content: string }>({
-        workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/example.py", channel: "body",
+        workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/example.py", channel: "body",
     });
     assert.equal(body?.content, content, "derivation preserves the original line endings");
 });
@@ -70,13 +70,13 @@ test("{§derivation-exhaustive}: workspace warming derives deep channels without
             noticeNotify: (workspaceId, { loopId, notice }) => notices.push({ workspaceId, loopId, notice: notice }),
         });
         const workspaceId = await insertWorkspace(db, `warm-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
 
         // A multi-entry corpus — exactly the "initial ingest" case that otherwise looks frozen on turn 1.
-        await new Worker().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
-        await new Worker().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
-        await new Worker().edit(editStmt(url("cart.ts"), "export function addToCart() {}\n"), ctx);
+        await new Workspace().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
+        await new Workspace().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
+        await new Workspace().edit(editStmt(url("cart.ts"), "export function addToCart() {}\n"), ctx);
 
         // Warm at workspace scope — the seam workspace.create fires. No loop/turn exists.
         await engine.warmWorkspaceDerivations(workspaceId);
@@ -151,12 +151,12 @@ test("{§derivation-exhaustive} a model turn joins an in-flight startup warm bef
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `warm-join-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "wait for semantics");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "wait for semantics");
         const mimetypes = new Mimetypes();
         await mimetypes.ready();
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Worker().edit(editStmt(url("orientation.md"), "semantic orientation evidence\n"), ctx);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        await new Workspace().edit(editStmt(url("orientation.md"), "semantic orientation evidence\n"), ctx);
 
         let release!: () => void;
         const blocked = new Promise<void>((resolve) => { release = resolve; });
@@ -186,7 +186,7 @@ test("{§derivation-exhaustive} a model turn joins an in-flight startup warm bef
         const warm = engine.warmWorkspaceDerivations(workspaceId);
         await processing;
         const turn = engine.runTurn({
-            provider, workspaceId, workerId, loopId, turnNumber: 1,
+            provider, workspaceId, sessionId, loopId, turnNumber: 1,
             messages: [{ role: "system", content: "test" }, { role: "user", content: "go" }],
         });
         await new Promise<void>((resolve) => setImmediate(resolve));

@@ -12,7 +12,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import type { ChatMessage, MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import { completeStmt, noteStmt } from "./_dsl.ts";
 const response = (ops: PlurnkStatement[]): MockResponse => ({
@@ -117,21 +117,21 @@ const exactCharAt = (capacity: number, responses: MockResponse[], window = 1_000
     });
     return provider;
 };
-const envelope = async (db: Db): Promise<{ workspaceId: number; workerId: number; loopId: number }> => {
+const envelope = async (db: Db): Promise<{ workspaceId: number; sessionId: number; loopId: number }> => {
     const workspaceId = await insertWorkspace(db, `ge-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "go");
-    return { workspaceId, workerId, loopId };
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "go");
+    return { workspaceId, sessionId, loopId };
 };
 
 test("{§tokenomics-window-partition} the cold-start ceiling subtracts no additional reserves", async () => {
     const db = await openMigrated();
     try {
         const b = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const provider = mockAt(9998, [], 10_000);
         const packet = await b.buildRequestPacket({
-            workspaceId, workerId, loopId, provider, currentTurnSeq: 1,
+            workspaceId, sessionId, loopId, provider, currentTurnSeq: 1,
             initialMessages: MESSAGES, gitStatus: null,
         });
         assert.equal(b.curationBudgetFor(packet), 9998, "no usage evidence means a conversion factor of one");
@@ -141,12 +141,12 @@ test("{§tokenomics-window-partition} the cold-start ceiling subtracts no additi
 test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measurement} an exact prompt over the reservation but under the wall is admitted with its grant flexed", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         await engine.runTurn({
             provider: mockAt(999_000, [response([noteStmt("continue")])], 1_000_000),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: MESSAGES,
             turnNumber: 1,
@@ -158,7 +158,7 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
         const probe = await probeBuilder.buildRequestPacket({
             initialMessages: MESSAGES,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             currentTurnSeq: next.next,
             provider: probeProvider,
@@ -174,7 +174,7 @@ test("{§tokenomics-context-envelope-admission} {§provider-surface-prompt-measu
         const roomy = exactCharAt(capacity, [response([noteStmt("admitted")])]);
         assert.equal(roomy.inputCapacity, capacity);
         assert.ok(roomy.inputWall !== null && roomy.inputWall > exactChars, "a million-token window's wall is far above the exact count");
-        const admitted = await engine.runTurn({ provider: roomy, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const admitted = await engine.runTurn({ provider: roomy, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
         assert.equal(admitted.status, 102, "between the reservation and the wall the request is admitted");
         assert.equal(roomy.remaining, 0, "the response was generated");
         const admittedCalls = (await db.test_model_calls.all<{ capacity: string | null }>({ turn_id: admitted.turnId }))
@@ -190,10 +190,10 @@ test("{§context-wall-measure}: an upstream capacity refusal is the provider's o
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prompt-capacity-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(
             db,
-            workerId,
+            sessionId,
             1,
             `${PROMPT_CAPACITY_SENTINEL}\n${"large prompt body\n".repeat(3_000)}`,
         );
@@ -204,7 +204,7 @@ test("{§context-wall-measure}: an upstream capacity refusal is the provider's o
         const result = await plainEngine(db).runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: MESSAGES,
             turnNumber: 1,
@@ -229,7 +229,7 @@ test("{§context-wall-measure}: an upstream capacity refusal is the provider's o
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
         const arrival = logEntries(packet).find(({ logPath: path }) => path.endsWith("/SEND"));
         assert.ok(arrival && typeof arrival.body === "string" && arrival.body.includes(PROMPT_CAPACITY_SENTINEL), "the stored request is the request that was sent: the arrival, whole");
-        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        const errors = await db.test_error_rows_for_session.all<{ rx: string }>({ session_id: sessionId });
         assert.equal(errors.length, 1, "the failure is one durable error row");
         assert.equal((JSON.parse(errors[0].rx) as { problem?: { status?: number } }).problem?.status, 413);
     } finally {
@@ -240,7 +240,7 @@ test("{§context-wall-measure}: an upstream capacity refusal is the provider's o
 test("{§packet-wire-envelope} an estimate defers physical admission to the upstream provider", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         const messages = [MESSAGES[0], { role: "user" as const, content: "漢".repeat(256) }];
         let measuredMessages: readonly { role: string; content: string }[] | undefined;
@@ -255,7 +255,7 @@ test("{§packet-wire-envelope} an estimate defers physical admission to the upst
                 };
             },
         });
-        const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages, maxTurns: 5 });
+        const result = await engine.runLoop({ provider: mock, workspaceId, sessionId, loopId, messages, maxTurns: 5 });
         assert.equal(result.result.status, 200);
         assert.equal(mock.remaining, 2, "an empirical estimate neither admits nor rejects; the upstream mock receives the request");
         // {§packet-wire-envelope} — the provider measured the envelope PacketWire dispatched: the system
@@ -264,7 +264,7 @@ test("{§packet-wire-envelope} an estimate defers physical admission to the upst
         assert.equal(roles[0], "system");
         assert.equal(roles.at(-1), "user");
         assert.ok(roles.every((role) => role === "system" || role === "user" || role === "assistant"), `unexpected role in ${roles.join(",")}`);
-        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        const errors = await db.test_error_rows_for_session.all<{ rx: string }>({ session_id: sessionId });
         assert.equal(errors.length, 0, "deferred admission is not an error");
     } finally {
         await db.close();
@@ -274,7 +274,7 @@ test("{§packet-wire-envelope} an estimate defers physical admission to the upst
 test("{§context-wall-measure} a proven request-token upper bound can authorize provider admission", async () => {
     const db = await openMigrated();
     try {
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         const engine = plainEngine(db);
         const mock = Object.assign(mockAt(199_998, [response([completeStmt("recovered")])], 200_000), {
             countPromptTokens: async () => ({
@@ -283,7 +283,7 @@ test("{§context-wall-measure} a proven request-token upper bound can authorize 
                 source: "test:proven-request-bound",
             }),
         });
-        const result = await engine.runLoop({ provider: mock, workspaceId, workerId, loopId, messages: MESSAGES, maxTurns: 5 });
+        const result = await engine.runLoop({ provider: mock, workspaceId, sessionId, loopId, messages: MESSAGES, maxTurns: 5 });
         assert.equal(result.result.status, 200);
         assert.equal(mock.remaining, 0, "the proven bound admits the request to generation");
     } finally {

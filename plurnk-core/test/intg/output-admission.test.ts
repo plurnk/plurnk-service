@@ -7,7 +7,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import Turn from "../../src/core/Turn.ts";
 import { Results } from "@plurnk/plurnk-schemes";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
 import { readStmt, urlPath } from "./_dsl.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
@@ -38,9 +38,9 @@ const receipt = (row: Record<string, unknown>): { lines: number; tokens: number;
 
 // {§markerless-first-page} — the room a test pins is measured, not guessed: the first packet's weight
 // plus the margin the story needs.
-const floorWeight = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, workerId: number, loopId: number): Promise<number> => {
+const floorWeight = async (db: Awaited<ReturnType<typeof openMigrated>>, workspaceId: number, sessionId: number, loopId: number): Promise<number> => {
     const builder = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
-    const packet = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, workerId, loopId, provider: providerAt(999_000, []), currentTurnSeq: 1, gitStatus: null });
+    const packet = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, sessionId, loopId, provider: providerAt(999_000, []), currentTurnSeq: 1, gitStatus: null });
     return packet.weight;
 };
 const pageLines = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES);
@@ -50,17 +50,17 @@ test("{§markerless-first-page}: a READ without a scope lands as its first page,
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `first-page-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const content = Array.from({ length: 600 }, (_, i) => `${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
         const provider = providerAt(999_000, [
-            response(`\`\`\`\`READ (worker:///large.md)\`\`\`\`\n${continuing}`),
-            response(`\`\`\`\`READ (worker:///large.md) <2,3>\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`READ (workspace:///large.md)\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`READ (workspace:///large.md) <2,3>\`\`\`\`\n${continuing}`),
             response(continuing),
         ]);
-        const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
+        const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: first.turnId }))
             .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.status_rx, 200, "the page is an ordinary result");
@@ -71,7 +71,7 @@ test("{§markerless-first-page}: a READ without a scope lands as its first page,
         assert.ok(stored.content.length <= pageChars + 1, "and by characters");
         assert.equal(stored.content, content.split("\n").slice(0, to).join("\n"), "the page is the first lines, cut at a line boundary");
         assert.equal(stored.range.total, 600, "the whole is named beside the page");
-        const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
+        const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const row = logEntries(packet).find((entry) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(entry.logPath))!;
         assert.equal(row.range, `<1,${to}> of 600 lines`, "{§packet-extent-metadata}: one fact, one notation");
@@ -80,7 +80,7 @@ test("{§markerless-first-page}: a READ without a scope lands as its first page,
             .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;
         assert.equal(sliced.status_rx, 200, "an explicit scope is exact");
         assert.equal((JSON.parse(sliced.rx) as { content: string }).content, content.split("\n").slice(1, 3).join("\n"));
-        const whole = await clientRead(engine, db, { statement: readStmt(urlPath("worker", "/large.md"), { marks: [1, -1] }), workspaceId, workerId });
+        const whole = await clientRead(engine, db, { statement: readStmt(urlPath("workspace", "/large.md"), { marks: [1, -1] }), workspaceId, sessionId });
         assert.equal((whole as { content?: string }).content, content, "`<1,-1>` is the whole thing");
     } finally { await db.close(); }
 });
@@ -89,19 +89,19 @@ test("{§context-fit}: a page that does not fit the room lands as the longest pr
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `context-fit-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const content = Array.from({ length: 600 }, (_, i) => `${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
         await seedEntryWithChannel(db, { workspaceId, pathname: "/large.md", content });
         // A room 1,500 over the floor: the first page (about 8,000) cannot land whole, a few lines can.
-        const room = await floorWeight(db, workspaceId, workerId, loopId) + 1_500;
+        const room = await floorWeight(db, workspaceId, sessionId, loopId) + 1_500;
         const provider = providerAt(room, [
-            response(`\`\`\`\`READ (worker:///large.md)\`\`\`\`\n${continuing}`),
-            response(`\`\`\`\`KILL (log:///**/READ)\`\`\`\`\n\`\`\`\`READ (worker:///large.md) <2,3>\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`READ (workspace:///large.md)\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`KILL (log:///**/READ)\`\`\`\`\n\`\`\`\`READ (workspace:///large.md) <2,3>\`\`\`\`\n${continuing}`),
             response(continuing),
         ]);
-        const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
+        const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: first.turnId }))
             .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.status_rx, 413, "the page does not fit the remaining budget");
@@ -113,7 +113,7 @@ test("{§context-fit}: a page that does not fit the room lands as the longest pr
         assert.match(stored.problem.detail, new RegExp(`^${stored.problem.lines} lines, \\d+ tokens; \\d+ tokens remain: ${delivered} lines? delivered; READ a range, or KILL first\\.$`, "u"));
         assert.ok(stored.problem.tokens > stored.problem.remaining, "the page did not fit");
         assert.deepEqual(stored.range?.returned, [1, delivered], "the returned range closes on the last line delivered");
-        const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
+        const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         assert.ok(packet.weight <= room, "the receipt and its prefix fit where the page could not");
         const row = logEntries(packet).find((entry) => entry.status === 413 && /^log:\/\/\/1\/2\/\d+\/READ$/u.test(entry.logPath))!;
@@ -127,7 +127,7 @@ test("{§context-fit}: a page that does not fit the room lands as the longest pr
             .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;
         assert.equal(sliced.status_rx, 200, "{§context-verbs}: the prefix held the room; KILL first, then a range READ takes a piece of what did not fit");
         assert.equal((JSON.parse(sliced.rx) as { content: string }).content, content.split("\n").slice(1, 3).join("\n"));
-        const whole = await clientRead(engine, db, { statement: readStmt(urlPath("worker", "/large.md"), { marks: [1, -1] }), workspaceId, workerId });
+        const whole = await clientRead(engine, db, { statement: readStmt(urlPath("workspace", "/large.md"), { marks: [1, -1] }), workspaceId, sessionId });
         assert.equal((whole as { content?: string }).content, content, "the complete result is where it was read from");
     } finally { await db.close(); }
 });
@@ -136,14 +136,14 @@ test("{§context-fit}: a READ whose first line does not fit is a bodiless receip
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `context-fit-line-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         // One line longer than the page's characters: the page is a cut of that line, about 8,000 tokens.
         await seedEntryWithChannel(db, { workspaceId, pathname: "/line.md", content: "evidence ".repeat(4_000) });
-        const room = await floorWeight(db, workspaceId, workerId, loopId) + 1_500;
-        const provider = providerAt(room, [response(`\`\`\`\`READ (worker:///line.md)\`\`\`\`\n${continuing}`)]);
-        const turn = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
+        const room = await floorWeight(db, workspaceId, sessionId, loopId) + 1_500;
+        const provider = providerAt(room, [response(`\`\`\`\`READ (workspace:///line.md)\`\`\`\`\n${continuing}`)]);
+        const turn = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const read = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: turn.turnId }))
             .find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))!;
         assert.equal(read.status_rx, 413);
@@ -158,8 +158,8 @@ test("{§context-verbs}: KILL first — the fit measure honours curation within 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `context-verbs-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const filler = Array.from({ length: 100 }, (_, i) => `filler ${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
         const wanted = Array.from({ length: 100 }, (_, i) => `wanted ${i + 1}: ${"evidence ".repeat(30)}`).join("\n");
@@ -167,18 +167,18 @@ test("{§context-verbs}: KILL first — the fit measure honours curation within 
         await seedEntryWithChannel(db, { workspaceId, pathname: "/wanted.md", content: wanted });
         // `<1,-1>` asks for the whole file, so each READ is the whole 14,000 and not its page ({§markerless-first-page}).
         const provider = providerAt(24_000, [
-            response(`\`\`\`\`READ (worker:///filler.md) <1,-1>\`\`\`\`\n${continuing}`),
+            response(`\`\`\`\`READ (workspace:///filler.md) <1,-1>\`\`\`\`\n${continuing}`),
             response([
-                "````READ (worker:///wanted.md) <1,-1>````",
+                "````READ (workspace:///wanted.md) <1,-1>````",
                 "````KILL (log:///1/*/*/READ)````",
-                "````READ (worker:///wanted.md) <1,-1>````",
+                "````READ (workspace:///wanted.md) <1,-1>````",
                 continuing,
             ].join("\n")),
         ]);
-        const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 1, provider });
+        const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 1, provider });
         const filled = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number }>({ turn_id: first.turnId })).find((row) => row.op === "READ")!;
         assert.equal(filled.status_rx, 200, "the first file fits an empty room");
-        const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, turnNumber: 2, provider });
+        const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
         const reads = (await db.test_log_entries_by_turn.all<{ sequence: number; op: string; status_rx: number }>({ turn_id: second.turnId }))
             .filter((row) => row.op === "READ" && !LogEntryProjection.isEmission(row))
             .toSorted((a, b) => a.sequence - b.sequence)
@@ -193,13 +193,13 @@ test("{§context-wall}: an impossible window terminates the loop without provide
     const reasoning = process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
     try {
         const workspaceId = await insertWorkspace(db, `output-floor-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
         // An eleven-token window with a two-token output budget: no packet fits it.
         process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "2";
         delete process.env.PLURNK_PROVIDERS_REASONING_BUDGET;
         const provider = new Mock({ contextWindow: 11, responses: [response(continuing)] });
-        const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, messages, provider, maxTurns: 3 });
+        const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, messages, provider, maxTurns: 3 });
         assert.equal(result.result.status, 413);
         assert.equal(result.result.problem?.detail, "Context window overflow: the packet exceeds the model's window."); // {§pinned-wording-core}
         assert.equal(result.reason, "token_budget");
@@ -219,16 +219,16 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-authorship-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Review the evidence.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Review the evidence.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const note = "Remember ".repeat(5000);
         const wide = providerAt(999_000, [response(`\`\`\`\`NOTE\n${note}\n\`\`\`\``)]);
-        const first = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: wide });
-        const before = await db.engine_render_log.all({ worker_id: workerId });
+        const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: wide });
+        const before = await db.engine_render_log.all({ session_id: sessionId });
         // A 12,000-token budget inside a million-token window: far over the budget, far under the wall.
         const small = providerAt(12_000, [response(continuing), response(continuing)]);
-        const second = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
+        const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: small });
         assert.equal(second.status, 102, "the over-budget packet is submitted, not ended");
         assert.equal(small.remaining, 1, "the provider was asked once");
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
@@ -240,14 +240,14 @@ test("{§context-over-budget-row}: over budget but under the wall, the packet go
         assert.equal(problem.detail, "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."); // {§pinned-wording-core}
         assert.equal(problem.excess, undefined, "{§context-gauge}: the gauge is the one home for the numbers");
         assert.equal(rows[0].origin, "_plurnk");
-        const third = await engine.runTurn({ workspaceId, workerId, loopId, messages, provider: small });
+        const third = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider: small });
         const next = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: third.turnId }))!.packet);
         const nextRows = logEntries(next).filter((row) => row.logPath.endsWith("/error"));
         assert.equal(nextRows.length, 1, "shown once: the earlier mandate has retired from the projection; a packet that is still over carries its own (#1097)");
         assert.notEqual(nextRows[0].logPath, rows[0].logPath, "the row in the next packet is that packet's own");
         const minted = await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; active: number }>({ turn_id: second.turnId });
         assert.ok(minted.some(({ op, status_rx, active }) => op === "error" && status_rx === 413 && active === 1), "the retired mandate stays durable and active at its coordinate; only the packet projection drops it");
-        const after = await db.engine_render_log.all<{ id: number }>({ worker_id: workerId });
+        const after = await db.engine_render_log.all<{ id: number }>({ session_id: sessionId });
         for (const row of before as Array<{ id: number }>) assert.deepEqual(after.find(({ id }) => id === row.id), row, "authored state cannot be removed or folded to manufacture a fit");
         const firstRows = await db.test_log_entries_by_turn.all<{ op: string; tx: string; folded: string }>({ turn_id: first.turnId });
         assert.ok(firstRows.some(({ op, tx }) => op === "NOTE" && JSON.parse(tx).body === note), "the authored NOTE stands whole");
@@ -258,14 +258,14 @@ for (const origin of ["client", "_plurnk"] as const) test(`{§context-fit}: ${or
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `output-origin-${origin}-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const earlier = await Turn.open(db, { loopId, producer: origin, kind: "operation" });
         const content = "result ".repeat(1_000);
-        const result = { ...Results.failure("scheme:worker", "output-failure", 503, "Connection closed."), content, mimetype: "text/plain", startLine: 1 };
+        const result = { ...Results.failure("scheme:session", "output-failure", 503, "Connection closed."), content, mimetype: "text/plain", startLine: 1 };
         const inserted = await db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: workerId, loop_id: loopId, turn_id: earlier.id, sequence: 1, origin,
-            source: null, model_call_id: null, op: "READ", scheme: "worker", pathname: "/result",
+            session_id: sessionId, loop_id: loopId, turn_id: earlier.id, sequence: 1, origin,
+            source: null, model_call_id: null, op: "READ", scheme: "workspace", pathname: "/result",
             username: null, password: null, hostname: null, port: null, query: null, fragment: null, lineMarker: null,
             tx: "{}", mimetype_tx: "application/json", rx: JSON.stringify(result), mimetype_rx: "application/json",
             status_rx: 503, weight: 0, state: "resolved", outcome: null, attrs: "{}",
@@ -273,21 +273,21 @@ for (const origin of ["client", "_plurnk"] as const) test(`{§context-fit}: ${or
         await Turn.complete(db, earlier.id, 102);
         const maintenance = await Turn.open(db, { loopId, producer: "_plurnk", kind: "maintenance" });
         await Turn.complete(db, maintenance.id, 200);
-        const laterLoop = await insertLoop(db, workerId, 2);
+        const laterLoop = await insertLoop(db, sessionId, 2);
         const schemes = new SchemeRegistry();
         const provider = providerAt(999_000, [response(continuing)]);
         const builder = new PacketBuilder({ db, schemes, executors: () => undefined });
-        await builder.buildRequestPacket({ initialMessages: messages, workspaceId, workerId, loopId: laterLoop, provider, currentTurnSeq: 1, gitStatus: null });
-        const before = await db.engine_render_log.all<{ id: number; folded: string; rx: string }>({ worker_id: workerId });
+        await builder.buildRequestPacket({ initialMessages: messages, workspaceId, sessionId, loopId: laterLoop, provider, currentTurnSeq: 1, gitStatus: null });
+        const before = await db.engine_render_log.all<{ id: number; folded: string; rx: string }>({ session_id: sessionId });
         assert.equal(before.find(({ id }) => id === inserted!.id)!.folded, "[]", "speculative construction has no projection effects");
-        const next = await new Engine({ db, schemes }).runTurn({ workspaceId, workerId, loopId: laterLoop, messages, provider });
+        const next = await new Engine({ db, schemes }).runTurn({ workspaceId, sessionId, loopId: laterLoop, messages, provider });
         assert.equal(provider.remaining, 0);
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: next.turnId }))!.packet);
         const row = logEntries(packet).find(({ logPath: path }) => path === `log:///1/${earlier.sequence}/1/READ`)!;
         assert.equal(row.status, 503, "the actual operation result is not restamped");
         assert.equal((row.problem as { detail: string }).detail, "Connection closed.");
         assert.match(String(row.body), /result result/u, "the retained result arrives whole: nothing is withheld");
-        const projected = await db.engine_render_log.all<{ id: number; folded: string; rx: string }>({ worker_id: workerId });
+        const projected = await db.engine_render_log.all<{ id: number; folded: string; rx: string }>({ session_id: sessionId });
         assert.equal(projected.find(({ id }) => id === inserted!.id)!.folded, "[]");
         assert.deepEqual(JSON.parse(projected.find(({ id }) => id === inserted!.id)!.rx), result);
     } finally { await db.close(); }

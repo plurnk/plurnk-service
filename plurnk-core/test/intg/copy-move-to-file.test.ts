@@ -12,11 +12,11 @@ import { join, dirname } from "node:path";
 import Engine from "../../src/core/Engine.ts";
 import type { ProposalPendingEvent } from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { ownWorker } from "./_approval.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import { ownSession } from "./_approval.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { ParsedPath, KillStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { assertResourceEffects } from "../../src/content/index.ts";
@@ -28,7 +28,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
     return { promise, resolve };
 };
 
-type Ctx = { db: Db; engine: Engine; workspaceId: number; workerId: number; loopId: number; turnId: number };
+type Ctx = { db: Db; engine: Engine; workspaceId: number; sessionId: number; loopId: number; turnId: number };
 
 const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Promise<void> => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-cpmv-"));
@@ -37,19 +37,19 @@ const withWorkspace = async (fn: (root: string, ctx: Ctx) => Promise<void>): Pro
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
         const workspaceId = await insertWorkspace(db, `cpmv-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "cpmv");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "cpmv");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        await fn(root, { db, engine, workspaceId, workerId, loopId, turnId });
+        await fn(root, { db, engine, workspaceId, sessionId, loopId, turnId });
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 };
 
-const seedWorker = (ctx: Ctx, pathname: string, content: string) =>
-    new Worker().edit(editStmt(urlPath("worker", `/${pathname}`), content), makeSchemeCtx({ db: ctx.db, workspaceId: ctx.workspaceId, workerId: ctx.workerId }));
+const seedSession = (ctx: Ctx, pathname: string, content: string) =>
+    new Workspace().edit(editStmt(urlPath("workspace", `/${pathname}`), content), makeSchemeCtx({ db: ctx.db, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId }));
 
-const workerEntry = (ctx: Ctx, pathname: string) =>
-    ctx.db.test_get_entry_by_pathname_scheme.get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "worker" });
+const sessionEntry = (ctx: Ctx, pathname: string) =>
+    ctx.db.test_get_entry_by_pathname_scheme.get<{ pathname: string }>({ pathname: `/${pathname}`, scheme: "workspace" });
 
 // {§file-snapshot-revision}: materialize through the production snapshot owner.
 const seedFileMember = async (ctx: Ctx, root: string, rel: string, content: string): Promise<void> => {
@@ -76,7 +76,7 @@ const proposeAndResolve = async (
 ) => {
     const id = deferred<number>();
     const dispatchPromise = ctx.engine.dispatch({
-        statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId,
+        statement, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId,
         sequence: 1, origin: "model", onDispatch: (logId) => id.resolve(logId),
     });
     const logEntryId = await id.promise;
@@ -88,17 +88,17 @@ const proposeAndResolve = async (
     return dispatchPromise;
 };
 
-test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY worker:/// → file proposes then lands on accept", async () => {
+test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY workspace:/// → file proposes then lands on accept", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "note", "copied content\n");
-        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), localPath("copied.txt")), "accept");
+        await seedSession(ctx, "note", "copied content\n");
+        const result = await proposeAndResolve(ctx, copyStmt(urlPath("workspace", "/note"), localPath("copied.txt")), "accept");
         assert.equal(result.status, 200);
         assert.deepEqual(result.effects, [{
             target: "copied.txt",
             action: "create",
         }]);
         assert.equal(await readFile(join(root, "copied.txt"), "utf8"), "copied content\n");
-        assert.notEqual(await workerEntry(ctx, "note"), undefined, "COPY leaves the source intact");
+        assert.notEqual(await sessionEntry(ctx, "note"), undefined, "COPY leaves the source intact");
         assert.deepEqual(await generatedPicks(ctx), [
             { effect: "include", glob: "copied.txt", source: "create" },
         ], "COPY destination creation uses the ordinary generated-pick contract");
@@ -106,13 +106,13 @@ test("{§fs-create-copy} {§copy-cross-scheme-copy}: COPY worker:/// → file pr
 });
 
 for (const transfer of [copyStmt, moveStmt]) {
-    const op = transfer(urlPath("worker", "/note"), localPath("copied.txt")).op;
+    const op = transfer(urlPath("workspace", "/note"), localPath("copied.txt")).op;
     for (const decision of ["accept", "reject"] as const) {
         test(`{§mimetype-verbatim-transfer}: ${op} plain text to a file respects ${decision} before changing either resource`, async () => {
             await withWorkspace(async (root, ctx) => {
                 const content = "## Result\r\n\t<verbatim> café\r\n";
                 await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, pathname: "/note", content, mimetype: "text/plain" });
-                const result = await proposeAndResolve(ctx, transfer(urlPath("worker", "/note"), localPath("copied.txt")), decision);
+                const result = await proposeAndResolve(ctx, transfer(urlPath("workspace", "/note"), localPath("copied.txt")), decision);
                 if (decision === "accept") {
                     assert.equal(result.status, 200);
                     assert.equal(await readFile(join(root, "copied.txt"), "utf8"), content);
@@ -123,7 +123,7 @@ for (const transfer of [copyStmt, moveStmt]) {
                     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/proposal/rejected");
                     await assert.rejects(readFile(join(root, "copied.txt")), { code: "ENOENT" });
                 }
-                const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string; mimetype: string }>({ scheme: "worker", pathname: "/note", name: "body" });
+                const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string; mimetype: string }>({ scheme: "workspace", pathname: "/note", name: "body" });
                 if (op === "MOVE" && decision === "accept") assert.equal(source, undefined);
                 else {
                     assert.equal(source?.content, content);
@@ -136,13 +136,13 @@ for (const transfer of [copyStmt, moveStmt]) {
 
 test("{§notifications-loop-proposal} live and reconnect use one COPY destination proposal projection", async () => {
     await withWorkspace(async (_root, ctx) => {
-        await seedWorker(ctx, "note", "copied content\n");
+        await seedSession(ctx, "note", "copied content\n");
         const observed = deferred<ProposalPendingEvent>();
         ctx.engine.onProposalPending((event) => observed.resolve(event));
         const dispatched = ctx.engine.dispatch({
-            statement: copyStmt(urlPath("worker", "/note"), localPath("parity.txt")),
+            statement: copyStmt(urlPath("workspace", "/note"), localPath("parity.txt")),
             workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
+            sessionId: ctx.sessionId,
             loopId: ctx.loopId,
             turnId: ctx.turnId,
             sequence: 1,
@@ -165,11 +165,11 @@ test("{§notifications-loop-proposal} live and reconnect use one COPY destinatio
 
 test("{§copy-cross-scheme-copy} a scoped COPY into a new file reports the accepted creation receipt", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "note", "alpha\nbeta\ngamma\n");
+        await seedSession(ctx, "note", "alpha\nbeta\ngamma\n");
         const result = await proposeAndResolve(
             ctx,
             copyStmt(
-                urlPath("worker", "/note"),
+                urlPath("workspace", "/note"),
                 localPath("slice.md"),
                 { marks: [2, 3] },
             ),
@@ -196,11 +196,11 @@ test("{§copy-cross-scheme-copy} a scoped COPY into a new file reports the accep
 
 test("{§copy-cross-scheme-copy} a scoped COPY receipt reports parser recovery for the complete landed file", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "broken.go", "package sample\nfunc broken(\n");
+        await seedSession(ctx, "broken.go", "package sample\nfunc broken(\n");
         const result = await proposeAndResolve(
             ctx,
             copyStmt(
-                urlPath("worker", "/broken.go"),
+                urlPath("workspace", "/broken.go"),
                 localPath("copied.go"),
                 { marks: [1, 2] },
             ),
@@ -225,8 +225,8 @@ test("{§copy-cross-scheme-copy} a scoped COPY receipt reports parser recovery f
 
 test("{§proposal-reject-fails}: a rejected COPY into a file never touches disk", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "note", "nope\n");
-        const result = await proposeAndResolve(ctx, copyStmt(urlPath("worker", "/note"), localPath("rejected.txt")), "reject");
+        await seedSession(ctx, "note", "nope\n");
+        const result = await proposeAndResolve(ctx, copyStmt(urlPath("workspace", "/note"), localPath("rejected.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
         assert.equal(result.effects, undefined, "a rejected destination proposal lands no effect");
         await assert.rejects(readFile(join(root, "rejected.txt"), "utf8"), "the rejected COPY never created the file");
@@ -235,12 +235,12 @@ test("{§proposal-reject-fails}: a rejected COPY into a file never touches disk"
 
 test("{§copy-cross-scheme-copy} a regional COPY into a file reports the accepted text receipt", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "note", "alpha\nbeta\ngamma\n");
+        await seedSession(ctx, "note", "alpha\nbeta\ngamma\n");
         await seedFileMember(ctx, root, "destination.md", "before\nreplace\nafter\n");
         const result = await proposeAndResolve(
             ctx,
             copyStmt(
-                urlPath("worker", "/note"),
+                urlPath("workspace", "/note"),
                 localPath("destination.md"),
                 { marks: [2] },
                 { marks: [2] },
@@ -264,15 +264,15 @@ test("{§copy-cross-scheme-copy} a regional COPY into a file reports the accepte
 
 test("{§move-cross-scheme-move}: accepted MOVE lands the file and deletes the source", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "movee", "moved content\n");
-        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/movee"), localPath("moved.txt")), "accept");
+        await seedSession(ctx, "movee", "moved content\n");
+        const result = await proposeAndResolve(ctx, moveStmt(urlPath("workspace", "/movee"), localPath("moved.txt")), "accept");
         assert.equal(result.status, 200);
         assert.deepEqual(result.effects, [
             { target: "moved.txt", action: "create" },
-            { target: "worker:///movee", action: "delete" },
+            { target: "workspace:///movee", action: "delete" },
         ]);
         assert.equal(await readFile(join(root, "moved.txt"), "utf8"), "moved content\n");
-        assert.equal(await workerEntry(ctx, "movee"), undefined, "MOVE deletes the source on accept");
+        assert.equal(await sessionEntry(ctx, "movee"), undefined, "MOVE deletes the source on accept");
     });
 });
 
@@ -361,13 +361,13 @@ test("{§copy-cross-scheme-copy} a reviewer-rewritten same-file MOVE reports its
 
 test("{§copy-cross-scheme-copy} a reviewer-rewritten cross-resource MOVE still reports its landed source removal (#172)", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "source", "alpha\nbeta\ngamma\n");
+        await seedSession(ctx, "source", "alpha\nbeta\ngamma\n");
         await seedFileMember(ctx, root, "destination.md", "before\nreplace\nafter\n");
         const reviewed = "reviewer\ndestination\n";
         const result = await proposeAndResolve(
             ctx,
             moveStmt(
-                urlPath("worker", "/source"),
+                urlPath("workspace", "/source"),
                 localPath("destination.md"),
                 { marks: [2] },
                 { marks: [2] },
@@ -380,7 +380,7 @@ test("{§copy-cross-scheme-copy} a reviewer-rewritten cross-resource MOVE still 
         assert.equal(await readFile(join(root, "destination.md"), "utf8"), reviewed);
         const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{
             content: string;
-        }>({ pathname: "/source", scheme: "worker", name: "body" });
+        }>({ pathname: "/source", scheme: "workspace", name: "body" });
         assert.equal(source?.content, "alpha\ngamma\n");
         assert.ok(Array.isArray(result.effects));
         const effects = result.effects as Array<{
@@ -397,7 +397,7 @@ test("{§copy-cross-scheme-copy} a reviewer-rewritten cross-resource MOVE still 
             effects.map(({ target, action }) => ({ target, action })),
             [
                 { target: "destination.md", action: "update" },
-                { target: "worker:///source", action: "update" },
+                { target: "workspace:///source", action: "update" },
             ],
         );
         assert.equal(effects[0]?.receipt?.disposition, "superseded");
@@ -409,17 +409,17 @@ test("{§copy-cross-scheme-copy} a reviewer-rewritten cross-resource MOVE still 
 
 test("{§proposal-reject-fails}: a rejected MOVE into a file preserves the source", async () => {
     await withWorkspace(async (_root, ctx) => {
-        await seedWorker(ctx, "keepme", "keep\n");
-        const result = await proposeAndResolve(ctx, moveStmt(urlPath("worker", "/keepme"), localPath("rejected-move.txt")), "reject");
+        await seedSession(ctx, "keepme", "keep\n");
+        const result = await proposeAndResolve(ctx, moveStmt(urlPath("workspace", "/keepme"), localPath("rejected-move.txt")), "reject");
         assert.ok(result.status >= 400, "rejected proposal is a 4xx");
         assert.equal(result.effects, undefined, "a rejected destination proposal lands no effect");
-        assert.notEqual(await workerEntry(ctx, "keepme"), undefined, "the source MUST survive a rejected MOVE — the delete was deferred behind the dest write");
+        assert.notEqual(await sessionEntry(ctx, "keepme"), undefined, "the source MUST survive a rejected MOVE — the delete was deferred behind the dest write");
     });
 });
 
 test("{§fs-create-move} {§move-relocation-deletes-source}: file MOVE into a new subdir lands and unlinks", async () => {
     // The file→file MOVE that was a silent noop: File lacked deleteEntry, so #handleMove returned a
-    // bare 501 before any write — the model's correct MOVE did nothing while the worker concluded 200.
+    // bare 501 before any write — the model's correct MOVE did nothing while the session concluded 200.
     await withWorkspace(async (root, ctx) => {
         await seedFileMember(ctx, root, "brief.md", "the brief\n");
         const source = await fileMember(ctx, "brief.md");
@@ -466,34 +466,34 @@ test("{§move-decomposition} MOVE from a file to an internal destination applies
         await seedFileMember(ctx, root, "source.md", "source content\n");
         const result = await proposeAndResolve(
             ctx,
-            moveStmt(localPath("source.md"), urlPath("worker", "/moved")),
+            moveStmt(localPath("source.md"), urlPath("workspace", "/moved")),
             "accept",
         );
         assert.equal(result.status, 200);
         assert.deepEqual(result.effects, [
-            { target: "worker:///moved", action: "create" },
+            { target: "workspace:///moved", action: "create" },
             { target: "source.md", action: "delete" },
         ]);
-        assert.notEqual(await workerEntry(ctx, "moved"), undefined);
+        assert.notEqual(await sessionEntry(ctx, "moved"), undefined);
         await assert.rejects(readFile(join(root, "source.md"), "utf8"));
         assert.equal(await fileMember(ctx, "source.md"), undefined);
     });
 });
 
-for (const destinationKind of ["file", "worker"] as const) {
+for (const destinationKind of ["file", "session"] as const) {
     for (const scoped of [false, true]) {
         test(`{§move-decomposition} MOVE ${scoped ? "regional" : "whole"} file source to ${destinationKind} applies both effects`, async () => {
             await withWorkspace(async (root, ctx) => {
                 await seedFileMember(ctx, root, "source.md", "keep\nmove\n");
                 const statement = moveStmt(
                     localPath("source.md"),
-                    destinationKind === "file" ? localPath("destination.md") : urlPath("worker", "/destination"),
+                    destinationKind === "file" ? localPath("destination.md") : urlPath("workspace", "/destination"),
                     scoped ? { marks: [2] } : null,
                 );
                 const result = await proposeAndResolve(ctx, statement, "accept");
                 assert.equal(result.status, 200, JSON.stringify(result));
                 assert.deepEqual(assertResourceEffects(result.effects).map(({ target, action }) => ({ target, action })), [
-                    { target: destinationKind === "file" ? "destination.md" : "worker:///destination", action: "create" },
+                    { target: destinationKind === "file" ? "destination.md" : "workspace:///destination", action: "create" },
                     { target: "source.md", action: scoped ? "update" : "delete" },
                 ]);
                 if (scoped) assert.equal(await readFile(join(root, "source.md"), "utf8"), "keep\n");
@@ -501,7 +501,7 @@ for (const destinationKind of ["file", "worker"] as const) {
                 const expected = scoped ? "move\n" : "keep\nmove\n";
                 if (destinationKind === "file") assert.equal(await readFile(join(root, "destination.md"), "utf8"), expected);
                 else assert.equal((await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
-                    pathname: "/destination", scheme: "worker", name: "body",
+                    pathname: "/destination", scheme: "workspace", name: "body",
                 }))?.content, expected);
             });
         });
@@ -513,17 +513,17 @@ test("{§copy-cross-scheme-copy} rejecting a source-side MOVE proposal reports t
         await seedFileMember(ctx, root, "source.md", "source content\n");
         const result = await proposeAndResolve(
             ctx,
-            moveStmt(localPath("source.md"), urlPath("worker", "/copied")),
+            moveStmt(localPath("source.md"), urlPath("workspace", "/copied")),
             "reject",
         );
         assert.equal(result.status, 409);
         assert.equal(result.problem?.destinationWritten, true);
-        assert.equal(result.problem?.destination, "worker:///copied");
+        assert.equal(result.problem?.destination, "workspace:///copied");
         assert.deepEqual(result.effects, [{
-            target: "worker:///copied",
+            target: "workspace:///copied",
             action: "create",
         }]);
-        assert.notEqual(await workerEntry(ctx, "copied"), undefined);
+        assert.notEqual(await sessionEntry(ctx, "copied"), undefined);
         assert.equal(await readFile(join(root, "source.md"), "utf8"), "source content\n");
         assert.notEqual(await fileMember(ctx, "source.md"), undefined);
     });
@@ -539,7 +539,7 @@ test("{§copy-cross-scheme-copy} EDIT onto an existing NON-member file is refuse
         // A refused create returns 403 outright — it never PROPOSES (no review to accept), so dispatch directly.
         const result = await ctx.engine.dispatch({
             statement: editStmt(localPath("AGENTS.md"), "# the model's clobbering content"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403, "create over an existing non-member is refused outright, never a proposal, never clobbered");
         assert.equal(await readFile(join(root, "AGENTS.md"), "utf8"), "SECRET untracked policy\n", "the untracked file is untouched");
@@ -570,7 +570,7 @@ test("{§fs-write-surface} KILL of a NON-member file is 404 — the model can't 
         await writeFile(join(root, "untracked.txt"), "not yours\n", "utf8"); // on disk, NOT a member
         const result = await ctx.engine.dispatch({
             statement: killStmt(localPath("untracked.txt")),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 404, "a non-member KILL is 404 — invisible, never touched");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
@@ -583,12 +583,12 @@ test("{§fs-write-surface} KILL of a NON-member file is 404 — the model can't 
 test("{§fs-write-surface}: COPY destination scopes resolve against an empty absent entry", async () => {
     await withWorkspace(async (_root, ctx) => {
         const source = "first prompt\nsecond prompt\nthird prompt\n";
-        await seedWorker(ctx, "note", source);
+        await seedSession(ctx, "note", source);
         type DestinationMarker = NonNullable<Parameters<typeof copyStmt>[3]>;
         let sequence = 0;
         const dispatch = (dst: string, marker: DestinationMarker | null) => ctx.engine.dispatch({
-            statement: copyStmt(urlPath("worker", "/note"), urlPath("worker", dst), null, marker),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: ++sequence, origin: "model",
+            statement: copyStmt(urlPath("workspace", "/note"), urlPath("workspace", dst), null, marker),
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: ++sequence, origin: "model",
         });
 
         const cases = [
@@ -602,41 +602,41 @@ test("{§fs-write-surface}: COPY destination scopes resolve against an empty abs
         for (const [pathname, marks] of cases) {
             const created = await dispatch(`/${pathname}`, { marks: [...marks] });
             assert.equal(created.status, 201, `<${marks.join(",")}> creates an absent destination`);
-            const entry = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: `/${pathname}`, scheme: "worker", name: "body" });
+            const entry = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: `/${pathname}`, scheme: "workspace", name: "body" });
             assert.equal(entry?.content, source, `<${marks.join(",")}> applies the source to the empty destination`);
         }
 
-        await seedWorker(ctx, "empty.md", "");
+        await seedSession(ctx, "empty.md", "");
         const intoEmpty = await dispatch("/empty.md", { marks: [1] });
         assert.equal(intoEmpty.status, 200);
-        const emptyDestination = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/empty.md", scheme: "worker", name: "body" });
+        const emptyDestination = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/empty.md", scheme: "workspace", name: "body" });
         assert.equal(emptyDestination?.content, source, "an existing empty destination uses the same coordinate rule");
 
         const appended = await dispatch("/append.md", { marks: [-1] });
         assert.equal(appended.status, 200);
-        const twice = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/append.md", scheme: "worker", name: "body" });
+        const twice = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/append.md", scheme: "workspace", name: "body" });
         assert.equal(twice?.content, source + source, "the second COPY appends after the last line");
 
         const outsideEmptyDestination = await dispatch("/absent.md", { marks: [2] });
         assert.equal(outsideEmptyDestination.status, 416, "a coordinate outside the empty destination remains unsatisfiable");
         assert.equal(outsideEmptyDestination.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.match(outsideEmptyDestination.problem?.detail ?? "", /Line 2 cannot select from empty content/);
-        assert.equal(await workerEntry(ctx, "absent.md"), undefined);
+        assert.equal(await sessionEntry(ctx, "absent.md"), undefined);
     });
 });
 
-test("{§fs-write-surface}: MOVE <0> onto an absent worker entry creates it and removes the source", async () => {
+test("{§fs-write-surface}: MOVE <0> onto an absent session entry creates it and removes the source", async () => {
     await withWorkspace(async (_root, ctx) => {
-        await seedWorker(ctx, "brief.md", "the brief\n");
+        await seedSession(ctx, "brief.md", "the brief\n");
         const result = await ctx.engine.dispatch({
             statement: moveStmt(
-                urlPath("worker", "/brief.md"),
-                urlPath("worker", "/drafts/brief.md"),
+                urlPath("workspace", "/brief.md"),
+                urlPath("workspace", "/drafts/brief.md"),
                 { marks: [1, -1] },
                 { marks: [0] },
             ),
             workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
+            sessionId: ctx.sessionId,
             loopId: ctx.loopId,
             turnId: ctx.turnId,
             sequence: 1,
@@ -644,19 +644,19 @@ test("{§fs-write-surface}: MOVE <0> onto an absent worker entry creates it and 
         });
 
         assert.equal(result.status, 201);
-        const destination = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/drafts/brief.md", scheme: "worker", name: "body" });
+        const destination = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/drafts/brief.md", scheme: "workspace", name: "body" });
         assert.equal(destination?.content, "the brief\n");
-        assert.equal(await workerEntry(ctx, "brief.md"), undefined, "MOVE removes its source after destination creation succeeds");
+        assert.equal(await sessionEntry(ctx, "brief.md"), undefined, "MOVE removes its source after destination creation succeeds");
     });
 });
 
 test("{§fs-write-surface}: an impossible destination scope refuses MOVE before any write or source removal", async () => {
     await withWorkspace(async (root, ctx) => {
-        await seedWorker(ctx, "source.md", "keep this\n");
+        await seedSession(ctx, "source.md", "keep this\n");
         const result = await ctx.engine.dispatch({
-            statement: moveStmt(urlPath("worker", "/source.md"), localPath("missing.md"), null, { marks: [37] }),
+            statement: moveStmt(urlPath("workspace", "/source.md"), localPath("missing.md"), null, { marks: [37] }),
             workspaceId: ctx.workspaceId,
-            workerId: ctx.workerId,
+            sessionId: ctx.sessionId,
             loopId: ctx.loopId,
             turnId: ctx.turnId,
             sequence: 1,
@@ -665,7 +665,7 @@ test("{§fs-write-surface}: an impossible destination scope refuses MOVE before 
         assert.equal(result.status, 416);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.match(result.problem?.detail ?? "", /Line 37 cannot select from empty content/);
-        const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/source.md", scheme: "worker", name: "body" });
+        const source = await ctx.db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: "/source.md", scheme: "workspace", name: "body" });
         assert.equal(source?.content, "keep this\n");
         await assert.rejects(readFile(join(root, "missing.md")), { code: "ENOENT" });
         assert.equal(await fileMember(ctx, "missing.md"), undefined);

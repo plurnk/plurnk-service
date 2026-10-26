@@ -174,7 +174,7 @@ const makeCtx = () => {
         chunks.push({ channel, chunk, mimetype });
         notify.streamEvent("sub", channel, "active", chunk.length);
     };
-    // close composites the worker wake: the rich, summary-bearing wake lives
+    // close composites the session wake: the rich, summary-bearing wake lives
     // where the close context is.
     const close: StreamSubscription["close"] = async (result, summary, channelResults) => {
         closed = {
@@ -289,7 +289,7 @@ test("{§scheme-subscriptions} ctx: the subscription's close composites state + 
             stderr: Results.failure("scheme:test", "stderr-failed", 500, "The stderr channel failed."),
         },
     });
-    assert.equal(woken, 1); // close fires the worker wake
+    assert.equal(woken, 1); // close fires the session wake
 });
 
 test("{§capability-ctx} ctx: ProposalAware hook applies a resolution and returns a result", async () => {

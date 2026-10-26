@@ -8,18 +8,18 @@
 CREATE TABLE IF NOT EXISTS loops (
     id       INTEGER NOT NULL PRIMARY KEY,
     version  INTEGER NOT NULL DEFAULT 0   CHECK (version >= 0),
-    worker_id   INTEGER NOT NULL,
+    session_id   INTEGER NOT NULL,
     sequence INTEGER NOT NULL             CHECK (sequence >= 1),
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
     -- {§message-causal-source}: canonical actor address for the initial message;
-    -- NULL means the owning worker itself. Denormalized headline of the loop's
+    -- NULL means the owning session itself. Denormalized headline of the loop's
     -- first message ({§message-arrival}); the inbox row below is the one published.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
     -- Every insert states the complete policy; a column default would
     -- be a second home for a choice the panel owns. Likewise max_turns below.
     policy   TEXT    NOT NULL CHECK (json_valid(policy)),
-    -- {§worker-model-selection}: immutable loop snapshots of the resolved model route and the
+    -- {§session-model-selection}: immutable loop snapshots of the resolved model route and the
     -- effective spawn route (was provider_spec/child_provider_spec JSON).
     model_route_id       INTEGER          REFERENCES model_routes(id),
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS loops (
     execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
     execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),
     -- {§loop-wake-identity}: the wait generation; wait_poll_at below is the next inherited
-    -- observation of the worker's open streams ({§exec-lifetime}), epoch milliseconds.
+    -- observation of the session's open streams ({§exec-lifetime}), epoch milliseconds.
     wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (wait_revision >= 0),
     -- {§loop-rail-continuity}: one loop-owned streak and bounded repetition window.
     strike_streak INTEGER NOT NULL DEFAULT 0 CHECK (strike_streak >= 0),
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§loop-claim-latency}: the first time the loop was claimed to run (status 102), stamped by
     -- trigger; its first model turn's start minus this is the wake latency a stall shows up as.
     claimed_at       TEXT,
-    -- {§worker-scheme} loop-termination delta: terminated_at is stamped by the trigger
+    -- {§session-scheme} loop-termination delta: terminated_at is stamped by the trigger
     -- below when status crosses into terminal (every death-path, uniformly).
     terminated_at    TEXT,
     terminal_result  TEXT,
@@ -91,11 +91,11 @@ CREATE TABLE IF NOT EXISTS loops (
                 END
         END
     ),
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
     FOREIGN KEY (orphan_source_loop_id) REFERENCES loops(id)
 ) STRICT;
 
-CREATE UNIQUE INDEX IF NOT EXISTS loops_worker_id_sequence ON loops (worker_id, sequence);
+CREATE UNIQUE INDEX IF NOT EXISTS loops_session_id_sequence ON loops (session_id, sequence);
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
 
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS loop_messages (
     ordinal      INTEGER NOT NULL CHECK (ordinal >= 1),
     message_key  TEXT NOT NULL DEFAULT (lower(hex(randomblob(4)))),
     address      TEXT CHECK (address IS NULL OR length(address) > 0),
-    -- {§message-causal-source}: NULL means the owning worker itself.
+    -- {§message-causal-source}: NULL means the owning session itself.
     source       TEXT CHECK (source IS NULL OR length(source) > 0),
     body         TEXT NOT NULL CHECK (length(body) > 0),
     evidence     TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence) AND json_type(evidence) = 'object'),
@@ -135,9 +135,9 @@ BEFORE INSERT ON loop_messages
 WHEN NEW.address IS NOT NULL AND EXISTS (
     SELECT 1 FROM loop_messages m
     JOIN loops l ON l.id = m.loop_id
-    JOIN workers w ON w.id = l.worker_id
+    JOIN sessions w ON w.id = l.session_id
     WHERE m.address = NEW.address AND w.workspace_id = (
-        SELECT w2.workspace_id FROM loops l2 JOIN workers w2 ON w2.id = l2.worker_id
+        SELECT w2.workspace_id FROM loops l2 JOIN sessions w2 ON w2.id = l2.session_id
         WHERE l2.id = NEW.loop_id
     )
 )
@@ -159,15 +159,15 @@ BEGIN
 END;
 
 -- {§message-short-identity}: `key_path` is the model's address for a message — always short, always
--- `message://<worker>/<key>`, exactly as the worker docs teach. `path` stays the durable identity a
+-- `message://<session>/<key>`, exactly as the session docs teach. `path` stays the durable identity a
 -- client minted (an ACP message UUID, say), which correlation and delivery keep using.
 CREATE VIEW IF NOT EXISTS message_sources AS
-SELECT m.*, w.workspace_id, w.id AS worker_id,
+SELECT m.*, w.workspace_id, w.id AS session_id,
        'message://' || w.name || '/' || m.message_key AS key_path,
        COALESCE(m.address, 'message://' || w.name || '/' || m.message_key) AS path
 FROM loop_messages m
 JOIN loops l ON l.id = m.loop_id
-JOIN workers w ON w.id = l.worker_id;
+JOIN sessions w ON w.id = l.session_id;
 
 -- turns
 -- finish_reason / model: accepted provider-call metadata from the provider

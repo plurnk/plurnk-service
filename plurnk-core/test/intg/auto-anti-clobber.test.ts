@@ -57,9 +57,9 @@ done
                 // Loop 2 reconciles V2 before the model attempts its V1-anchored edit.
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit it" });
                 assert.equal(second.result.status, 200, "the stale EDIT was exercised and the model concluded normally");
-                assert.equal(second.modelWorkerId, first.modelWorkerId, "both loops use the same worker memory");
+                assert.equal(second.modelSessionId, first.modelSessionId, "both loops use the same session memory");
                 const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({
-                    worker_id: second.modelWorkerId!,
+                    session_id: second.modelSessionId!,
                 });
                 const rejected = rows.find(({ op, status_rx }) => op === "EDIT" && status_rx === 409);
                 assert.equal(

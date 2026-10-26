@@ -21,8 +21,8 @@ import capabilityDescriptorSchema from "../schema/CapabilityDescriptor.json" wit
 import capabilityPolicySchema from "../schema/CapabilityPolicy.json" with { type: "json" };
 import capabilityProjectionSchema from "../schema/CapabilityProjection.json" with { type: "json" };
 import capabilitySelectorSchema from "../schema/CapabilitySelector.json" with { type: "json" };
-import workerOwnerSchema from "../schema/WorkerOwner.json" with { type: "json" };
-import type { WorkerOwner, RollbackReport, AcpClientConformance, AcpConformanceKit, AcpDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
+import sessionOwnerSchema from "../schema/SessionOwner.json" with { type: "json" };
+import type { SessionOwner, RollbackReport, AcpClientConformance, AcpConformanceKit, AcpDiscovery, CapabilityDescriptor, CapabilityPolicy, ClientDisplayCapabilities, ClientInteractionProjection, ClientInteractionRequest, ClientInteractionResolution, EntryReadResult, FunctionalityDiscoverResult, FunctionalityListResult, FunctionalityMutationResult, McpOAuth, McpServerDefinition, ModelCatalogPage, ModelCatalogQuery, ModelReadiness, ModelRoute, Notice, OperationResult, ProblemDetails, ProblemProjection, ProposalProjection, RangeExtent, Effort, SkillDefinition, TextRegion, JsonSchema, ParsedPath, PlurnkStatement } from "./types.generated.ts";
 import clientDisplayCapabilitiesSchema from "../schema/ClientDisplayCapabilities.json" with { type: "json" };
 import mcpServerDefinitionSchema from "../schema/McpServerDefinition.json" with { type: "json" };
 import skillDefinitionSchema from "../schema/SkillDefinition.json" with { type: "json" };
@@ -65,7 +65,7 @@ export class InvalidTextRegionError extends TypeError {}
 export class InvalidRangeExtentError extends TypeError {}
 export class InvalidCapabilityDescriptorError extends TypeError {}
 export class InvalidCapabilityPolicyError extends TypeError {}
-export class InvalidWorkerOwnerError extends TypeError {}
+export class InvalidSessionOwnerError extends TypeError {}
 export class InvalidProposalProjectionError extends TypeError {}
 export class InvalidClientDisplayCapabilitiesError extends TypeError {}
 export class InvalidMcpServerDefinitionError extends TypeError {}
@@ -124,7 +124,7 @@ export default class Validator {
         capabilityPolicySchema,
         [capabilitySelectorSchema],
     );
-    static #workerOwner = Validator.#compile(workerOwnerSchema);
+    static #sessionOwner = Validator.#compile(sessionOwnerSchema);
     static #proposalProjection = Validator.#withRefs(
         proposalProjectionSchema,
         [proposalDispositionSchema, capabilityPolicySchema, capabilitySelectorSchema],
@@ -359,13 +359,13 @@ export default class Validator {
         return Validator.#validate(Validator.#capabilityPolicy, value);
     }
 
-    static validateWorkerOwner(value: unknown): ValidationResult {
-        return Validator.#validate(Validator.#workerOwner, value);
+    static validateSessionOwner(value: unknown): ValidationResult {
+        return Validator.#validate(Validator.#sessionOwner, value);
     }
 
-    static assertWorkerOwner(value: unknown): WorkerOwner {
-        const result = Validator.validateWorkerOwner(value);
-        if (!Validator.#accepted<WorkerOwner>(value, result)) throw new InvalidWorkerOwnerError(`invalid WorkerOwner: ${JSON.stringify(result.errors)}`);
+    static assertSessionOwner(value: unknown): SessionOwner {
+        const result = Validator.validateSessionOwner(value);
+        if (!Validator.#accepted<SessionOwner>(value, result)) throw new InvalidSessionOwnerError(`invalid SessionOwner: ${JSON.stringify(result.errors)}`);
         return value;
     }
 

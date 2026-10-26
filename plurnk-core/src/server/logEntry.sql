@@ -4,7 +4,7 @@
 -- PREP: log_entry_by_id
 -- loop_seq / turn_seq are the loop+turn ordinals (the logical coordinate clients
 -- render, e.g. 01/02/03) — distinct from the loop_id/turn_id DB keys ({§methods-log-coordinate}).
-SELECT le.*, w.name AS worker_name, l.sequence AS loop_seq, t.sequence AS turn_seq,
+SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_seq,
        CASE
            WHEN le.origin = 'model'
             AND le.op IS NOT NULL
@@ -38,7 +38,7 @@ SELECT le.*, w.name AS worker_name, l.sequence AS loop_seq, t.sequence AS turn_s
             JOIN turns opened ON opened.id = m.opened_turn_id
             JOIN loops sender ON sender.id = opened.loop_id
             JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
-            WHERE ae.id = le.ambient_event_id AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+            WHERE ae.id = le.ambient_event_id AND (sender.session_id = le.session_id OR le.inherited_history = 1)
             LIMIT 1)
        ) AS invocation,
        -- {§methods-answering} The operation of this log that sent the message a reply answers, whether the reply
@@ -47,16 +47,16 @@ SELECT le.*, w.name AS worker_name, l.sequence AS loop_seq, t.sequence AS turn_s
         FROM ambient_events ae
         JOIN log_responses r ON r.id = ae.source_record_id
         JOIN json_each(r.rx, '$.answers') answer
-        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM workers w WHERE w.id = le.worker_id)
+        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
         JOIN loop_messages m ON m.id = ms.id
         JOIN turns opened ON opened.id = m.opened_turn_id
         JOIN loops sender ON sender.id = opened.loop_id
         JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
         WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
-          AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+          AND (sender.session_id = le.session_id OR le.inherited_history = 1)
         LIMIT 1) AS answering
 FROM log_entries le
-JOIN workers w ON w.id = le.worker_id
+JOIN sessions w ON w.id = le.session_id
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
 WHERE le.id = $id;
@@ -64,7 +64,7 @@ WHERE le.id = $id;
 -- PREP: log_entries_recent
 -- {§methods-log-read}: the newest rows a client asks for, hydrated exactly as log_entry_by_id
 -- hydrates one — a page is one statement, never one statement per row.
-SELECT le.*, w.name AS worker_name, l.sequence AS loop_seq, t.sequence AS turn_seq,
+SELECT le.*, w.name AS session_name, l.sequence AS loop_seq, t.sequence AS turn_seq,
        CASE
            WHEN le.origin = 'model'
             AND le.op IS NOT NULL
@@ -98,7 +98,7 @@ SELECT le.*, w.name AS worker_name, l.sequence AS loop_seq, t.sequence AS turn_s
             JOIN turns opened ON opened.id = m.opened_turn_id
             JOIN loops sender ON sender.id = opened.loop_id
             JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
-            WHERE ae.id = le.ambient_event_id AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+            WHERE ae.id = le.ambient_event_id AND (sender.session_id = le.session_id OR le.inherited_history = 1)
             LIMIT 1)
        ) AS invocation,
        -- {§methods-answering} The operation of this log that sent the message a reply answers, whether the reply
@@ -107,19 +107,19 @@ SELECT le.*, w.name AS worker_name, l.sequence AS loop_seq, t.sequence AS turn_s
         FROM ambient_events ae
         JOIN log_responses r ON r.id = ae.source_record_id
         JOIN json_each(r.rx, '$.answers') answer
-        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM workers w WHERE w.id = le.worker_id)
+        JOIN message_sources ms ON ms.path = answer.value AND ms.workspace_id = (SELECT w.workspace_id FROM sessions w WHERE w.id = le.session_id)
         JOIN loop_messages m ON m.id = ms.id
         JOIN turns opened ON opened.id = m.opened_turn_id
         JOIN loops sender ON sender.id = opened.loop_id
         JOIN log_entries o ON o.turn_id = m.opened_turn_id AND o.sequence = m.opened_sequence
         WHERE ae.id = le.ambient_event_id AND ae.kind = 'reply'
-          AND (sender.worker_id = le.worker_id OR le.inherited_history = 1)
+          AND (sender.session_id = le.session_id OR le.inherited_history = 1)
         LIMIT 1) AS answering
 FROM log_entries le
-JOIN workers w ON w.id = le.worker_id
+JOIN sessions w ON w.id = le.session_id
 JOIN loops l ON l.id = le.loop_id
 JOIN turns t ON t.id = le.turn_id
-WHERE le.worker_id = $worker_id
+WHERE le.session_id = $session_id
   AND ($loop_id IS NULL OR le.loop_id = $loop_id)
   AND ($turn_id IS NULL OR le.turn_id = $turn_id)
   AND ($since_id IS NULL OR le.id > $since_id)

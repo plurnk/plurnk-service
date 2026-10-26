@@ -7,12 +7,12 @@ import type {
     UrlPath,
 } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { completeStmt, } from "./_dsl.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection } from "./_packet.ts";
 
@@ -23,7 +23,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 
 
 const target: UrlPath = {
-    kind: "url", raw: "worker:///interrupted.md", scheme: "worker",
+    kind: "url", raw: "workspace:///interrupted.md", scheme: "workspace",
     username: null, password: null, hostname: null, port: null,
     pathname: "/interrupted.md", query: null, fragment: null,
 };
@@ -37,8 +37,8 @@ test("{§derivation-dedup-parallel} an interrupted artifact remains unattached u
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interrupt-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const abort = new AbortController();
         let failOnce = true;
@@ -54,13 +54,13 @@ test("{§derivation-dedup-parallel} an interrupted artifact remains unattached u
         });
 
         await assert.rejects(
-            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes, signal: abort.signal })),
+            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes, signal: abort.signal })),
             /interrupted/,
         );
         const interrupted = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
         assert.deepEqual(interrupted, { deep_hash: null, building: 1, complete: 0 }, "no partial artifact becomes visible through the entry");
 
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
         const recovered = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
         assert.ok(recovered?.deep_hash);
         assert.deepEqual({ building: recovered?.building, complete: recovered?.complete }, { building: 0, complete: 1 }, "retry completes the same artifact and only then attaches it");
@@ -79,20 +79,20 @@ test("{§derivation-dedup-parallel} a failed derivation joins every launched sib
     let releaseIssued = false;
     try {
         const workspaceId = await insertWorkspace(db, `joined-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         for (const [pathname, body] of [
             ["/fails.md", "this derivation fails after its sibling starts"],
             ["/slow.md", "this derivation completes only after an explicit release"],
         ] as const) {
-            await new Worker().edit({
+            await new Workspace().edit({
                 ...statement,
                 target: {
                     ...target,
-                    raw: `worker://${pathname}`,
+                    raw: `workspace://${pathname}`,
                     pathname,
                 },
                 body,
-            }, makeSchemeCtx({ db, workspaceId, workerId }));
+            }, makeSchemeCtx({ db, workspaceId, sessionId }));
         }
 
         const mimetypes = mimetypesFixture({
@@ -111,7 +111,7 @@ test("{§derivation-dedup-parallel} a failed derivation joins every launched sib
         const maintenance = SearchIndex.maintain(makeSchemeCtx({
             db,
             workspaceId,
-            workerId,
+            sessionId,
             mimetypes,
         })).then(
             () => { state = "fulfilled"; },
@@ -152,8 +152,8 @@ test("{§derivation-member-failure} an entry-local derivation failure is termina
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `failed-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const inputFailure = Object.assign(new Error("fixture reader rejected malformed input"), {
             name: "MimetypeInputError",
@@ -163,7 +163,7 @@ test("{§derivation-member-failure} an entry-local derivation failure is termina
             process: async () => { throw inputFailure; },
         });
 
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
         const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
         const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
         assert.equal(disposition?.disposition, "failed");
@@ -180,8 +180,8 @@ test("{§derivation-member-failure} an internal projection defect propagates and
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `projection-defect-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const failure = new Error("fixture projection implementation failed");
         const mimetypes = mimetypesFixture({
@@ -189,7 +189,7 @@ test("{§derivation-member-failure} an internal projection defect propagates and
         });
 
         await assert.rejects(
-            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes })),
+            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes })),
             (error) => error === failure,
         );
         const state = await db.test_derivation_interruption_state.get<{
@@ -235,13 +235,13 @@ test("{§derivation-member-failure} {§mimetype-derivation-evidence} a handler's
     const notices: Notice[] = [];
     try {
         const workspaceId = await insertWorkspace(db, `member-failure-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
-        await new Worker().edit({
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+        await new Workspace().edit({
             ...statement,
-            target: { ...target, raw: "worker:///healthy.md", pathname: "/healthy.md" },
+            target: { ...target, raw: "workspace:///healthy.md", pathname: "/healthy.md" },
             body: "a sibling the failing handler derives cleanly",
-        }, makeSchemeCtx({ db, workspaceId, workerId }));
+        }, makeSchemeCtx({ db, workspaceId, sessionId }));
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), mimetypes,
             noticeNotify: (_workspaceId, { notice }) => notices.push(notice),
@@ -290,9 +290,9 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
     const mimetypes = failingMimetypes(failure, "interrupted");
     try {
         const workspaceId = await insertWorkspace(db, `member-failure-turn-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
-        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
         const provider = new Mock({ contextWindow: 100000, responses: [{
             assistant: {
@@ -303,7 +303,7 @@ test("{§derivation-member-failure} the model's turn proceeds past a member whos
         }] });
 
         const turn = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],
         });
 
@@ -324,17 +324,17 @@ test("{§derivation-member-failure} successful projection degradations surface o
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `projection-notice-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
-        await new Worker().edit({
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+        await new Workspace().edit({
             ...statement,
             target: {
                 ...target,
-                raw: "worker:///second.md",
+                raw: "workspace:///second.md",
                 pathname: "/second.md",
             },
             body: "a second source with the same optional grammar degradation",
-        }, makeSchemeCtx({ db, workspaceId, workerId }));
+        }, makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const projectionNotice: Notice = {
             source: "mimetype:text-markdown",
@@ -359,7 +359,7 @@ test("{§derivation-member-failure} successful projection degradations surface o
         await SearchIndex.maintain(makeSchemeCtx({
             db,
             workspaceId,
-            workerId,
+            sessionId,
             mimetypes,
             pushNotice: (notice) => { notices.push(notice); },
         }));
@@ -389,8 +389,8 @@ test("{§derivation-member-failure} an index-persistence contract failure propag
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `persistence-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await new Worker().edit(statement, makeSchemeCtx({ db, workspaceId, workerId }));
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const mimetypes = mimetypesFixture({
             process: async (input: { content: string }) => ({
@@ -408,7 +408,7 @@ test("{§derivation-member-failure} an index-persistence contract failure propag
         });
 
         await assert.rejects(
-            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, workerId, mimetypes })),
+            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes })),
             /length\(name\) > 0/,
         );
         const state = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });

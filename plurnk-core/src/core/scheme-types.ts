@@ -8,7 +8,7 @@ import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type ResourceBindings from "./ResourceBindings.ts";
 import type { ResourceCaps, MessageCaps } from "@plurnk/plurnk-schemes";
-import type { StreamEventNotify, WakeWorkerNotify, InjectWorkerNotify } from "./ChannelWrite.ts";
+import type { StreamEventNotify, WakeSessionNotify, InjectSessionNotify } from "./ChannelWrite.ts";
 import type { WriterTier } from "./types.ts";
 import type {
     ClientInteractionRequest,
@@ -41,7 +41,7 @@ export interface AmbientMembers {
     candidates(prefix: string | null): Promise<string[]>;
     // The admission proposal for the candidates among these keys, or null when none is a candidate.
     propose(keys: readonly string[]): Promise<AdmissionProposal | null>;
-    // Admit these as the Worker's own member definitions; the keys admitted come back, with a notice each.
+    // Admit these as the Session's own member definitions; the keys admitted come back, with a notice each.
     admit(keys: readonly string[]): Promise<string[]>;
     // A candidate's text for matching and listing only, never stored; `content` is null when it is
     // binary or larger than the matching ceiling.
@@ -53,7 +53,7 @@ export interface PlurnkSchemeContext {
     readonly hostPaths?: HostPaths;
     readonly ambientMembers?: AmbientMembers;
     readonly workspaceId: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly resourceBindings?: ResourceBindings;
     readonly resources?: ResourceCaps;
     readonly replyToMessage?: MessageCaps["reply"];
@@ -66,18 +66,18 @@ export interface PlurnkSchemeContext {
     readonly logEntryId?: number;
     readonly writer: WriterTier;
     readonly signal: AbortSignal | undefined;
-    // {§actor-boundary-client-operations} — present on a person's client operation: the worker whose log its
+    // {§actor-boundary-client-operations} — present on a person's client operation: the session whose log its
     // `log:///` addresses read, or null when the person acts for none.
-    readonly client?: { readonly contextWorkerId: number | null };
+    readonly client?: { readonly contextSessionId: number | null };
     // {§file-delete-revision}: a selected file revision survives composed mutations and approval.
     readonly fileRevision?: string;
     readonly streamEventNotify?: StreamEventNotify;
-    readonly wakeWorkerNotify?: WakeWorkerNotify;
-    // Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
+    readonly wakeSessionNotify?: WakeSessionNotify;
+    // Start/deliver-to a sister session — the session:// op family's loop-start primitive
     // (spawn/fork/irc). Engine-populated (daemon-wired to Daemon.inject); absent
-    // in bare test fixtures. The worker scheme handler fail-hards if absent rather
+    // in bare test fixtures. The session scheme handler fail-hards if absent rather
     // than silently dropping a spawn/irc.
-    readonly injectWorker?: InjectWorkerNotify;
+    readonly injectSession?: InjectSessionNotify;
     readonly mimetypes?: Mimetypes;
     // Boot-discovered runtime executors (tag → probe/effect/run). Engine-
     // populated; absent in bare test fixtures. Exec dispatch fail-hards if
@@ -100,7 +100,7 @@ export interface PlurnkSchemeContext {
     // Push a transient Notice. The engine drains it into the next packet's
     // Notices section and broadcasts it through `notice/event`.
     readonly pushNotice?: (notice: Notice) => void;
-    // {§owner-interaction-ring} — the asking worker's face of the shared reserved tree. Absent in
+    // {§owner-interaction-ring} — the asking session's face of the shared reserved tree. Absent in
     // bare fixtures, which register no interaction runtime to hide.
     readonly referenceVisibility?: () => Promise<(pathname: string) => boolean>;
     // Standard client-owned interaction, bound to this exact operation by

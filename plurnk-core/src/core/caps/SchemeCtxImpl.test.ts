@@ -19,12 +19,12 @@ test("{§scheme-surface} {§capability-ctx} SchemeCtxImpl exposes only the publi
     const internal: PlurnkSchemeContext = {
         db: {} as Db,
         workspaceId: 1,
-        workerId: 2,
+        sessionId: 2,
         loopId: 3,
         turnId: 4,
         writer: "model",
         signal: undefined,
-        injectWorker: async () => ({ action: "enqueued_new_loop", loopId: 1, message: "message://child/1" }),
+        injectSession: async () => ({ action: "enqueued_new_loop", loopId: 1, message: "message://child/1" }),
         weigh: () => 0,
     };
 
@@ -40,16 +40,16 @@ test("{§scheme-surface} {§capability-ctx} SchemeCtxImpl exposes only the publi
         "notify",
         "projection",
         "resources",
+        "sessionId",
         "signal",
         "subscriptions",
         "turnId",
-        "workerId",
         "workspaceId",
         "writer",
     ]);
     assert.equal("db" in ctx, false);
     assert.equal("mimetypes" in ctx, false);
     assert.equal("executors" in ctx, false);
-    assert.equal("injectWorker" in ctx, false);
+    assert.equal("injectSession" in ctx, false);
     assert.equal("pushNotice" in ctx, false);
 });

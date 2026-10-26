@@ -1,5 +1,5 @@
 // {§digest-forensic-fidelity} — settled requests without any usage are named on the
-// worker's Cost line instead of silently pricing the run as if they were free.
+// session's Cost line instead of silently pricing the run as if they were free.
 import test from "node:test";
 import { testArtifactPath } from "../../../scripts/lib/test-artifacts.ts";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertPacketTurn } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
@@ -62,8 +62,8 @@ test("{§digest-forensic-fidelity}: a settled request without usage is named on 
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "usage-less");
-        const worker = await insertWorker(db, workspaceId, null, "biller");
-        const loopId = await insertLoop(db, worker, 1, "go");
+        const session = await insertSession(db, workspaceId, null, "biller");
+        const loopId = await insertLoop(db, session, 1, "go");
         const turnOne: { id: number } = { id: await insertPacketTurn(db, loopId, 1, MODEL_PACKET, 200) };
         assert.ok(turnOne);
         await recordAttempt(db, turnOne.id, {

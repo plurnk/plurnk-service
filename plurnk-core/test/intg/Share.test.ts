@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Digest, Share } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§share} {§share-scope}: a scoped share preserves a checkpointed source and holds one workspace", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-share-"));
@@ -15,8 +15,8 @@ test("{§share} {§share-scope}: a scoped share preserves a checkpointed source 
     const db = await openMigrated(dbPath);
     const kept = await insertWorkspace(db, "kept");
     const other = await insertWorkspace(db, "other");
-    await insertLoop(db, await insertWorker(db, kept, null, "alice"), 1, "kept task");
-    await insertLoop(db, await insertWorker(db, other, null, "bob"), 1, "other task");
+    await insertLoop(db, await insertSession(db, kept, null, "alice"), 1, "kept task");
+    await insertLoop(db, await insertSession(db, other, null, "bob"), 1, "other task");
     // Main-file byte equality requires committed pages outside the WAL first.
     try {
         await db.test_checkpoint.run();

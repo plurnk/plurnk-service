@@ -39,13 +39,13 @@ WHERE e.workspace_id = $workspace_id
 GROUP BY e.scheme
 ORDER BY e.scheme;
 
--- PREP: engine_worker_has_inference_history
+-- PREP: engine_session_has_inference_history
 -- Administrative turns may legitimately precede the first provider exchange.
 -- Initialization is therefore keyed to inference history, never loop ordinals.
 SELECT EXISTS (
     SELECT 1
     FROM turns t
     JOIN loops l ON l.id = t.loop_id
-    WHERE l.worker_id = $worker_id
+    WHERE l.session_id = $session_id
       AND (t.producer = 'model' OR t.kind = 'initialization')
 ) AS present;

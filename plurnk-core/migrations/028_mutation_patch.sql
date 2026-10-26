@@ -7,7 +7,7 @@ ALTER TABLE log_entries ADD COLUMN patch TEXT;
 
 DROP VIEW active_log_entries;
 CREATE VIEW active_log_entries AS
-SELECT le.id, le.version, le.worker_id, le.loop_id, le.turn_id, le.sequence,
+SELECT le.id, le.version, le.session_id, le.loop_id, le.turn_id, le.sequence,
        le.at, le.origin, le.source, le.ambient_event_id, le.inherited_history,
        le.deep_hash, le.model_call_id, le.subscription_publication_id,
        le.op, le.signal, le.scheme, le.username, le.password,

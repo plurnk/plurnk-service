@@ -17,7 +17,7 @@ import { renderAddress } from "../core/plurnk-uri.ts";
 
 type Source = { authority: string; pathname: string; content: string; deep_hash: string | null };
 
-// {§turn-source-resources}: immutable, worker-qualified history within a workspace.
+// {§turn-source-resources}: immutable, session-qualified history within a workspace.
 export default class TurnSource extends CoreSchemeAdapterBase implements CoreRepresentationProvider {
     readonly manifest: SchemeManifest;
     readonly #kind: "ops" | "reasoning" | "note";
@@ -54,10 +54,10 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         if (loop !== null && this.#named(target)) return await this.#answer(target, Number(loop[1]), db, workspaceId);
         const coordinate = (this.#kind === "note" ? /^\/(\d+)\/(\d+)\/(\d+)\/?$/ : /^\/(\d+)\/(\d+)\/?$/).exec(pathname ?? "");
         if (!this.#named(target) || coordinate === null) return { result: this.#failure(
-            400, "coordinate-malformed", `Use ${this.#kind}://<worker>/<loop>/<turn>${this.#kind === "note" ? "/<item>" : ""}, without userinfo, a port, or a query.`,
+            400, "coordinate-malformed", `Use ${this.#kind}://<session>/<loop>/<turn>${this.#kind === "note" ? "/<item>" : ""}, without userinfo, a port, or a query.`,
         ) };
         const row = await db.turn_source_read.get<{ content: string | null }>({
-            workspace_id: workspaceId, worker_name: target.hostname,
+            workspace_id: workspaceId, session_name: target.hostname,
             loop_seq: Number(coordinate[1]), turn_seq: Number(coordinate[2]), kind: this.#kind,
             sequence: Number(coordinate[3] ?? 0),
         });
@@ -70,7 +70,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         };
     }
 
-    // {§loop-answer} ops://<worker>/<loop> is what the loop said: the latest reply to the message
+    // {§loop-answer} ops://<session>/<loop> is what the loop said: the latest reply to the message
     // that started it. Still running without one is 425; ended without one is the loop's outcome.
     async #answer(target: UrlPath & { hostname: string }, loopSeq: number, db: Db, workspaceId: number): Promise<CoreRepresentationResolution> {
         if (!Number.isSafeInteger(loopSeq) || loopSeq < 1) {
@@ -93,12 +93,12 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         if (mimetypes === undefined) throw new Error("TurnSource.find requires mimetypes.");
         const target = statement.target;
         const failed = (status: number, code: string, detail: string): FindResult => ({ ...this.#failure(status, code, detail), ...emptyFindFields() });
-        if (!this.#named(target)) return failed(400, "coordinate-malformed", `Use ${this.#kind}://<worker>/ with loop/turn coordinates or a path pattern, without userinfo, a port, or a query.`);
+        if (!this.#named(target)) return failed(400, "coordinate-malformed", `Use ${this.#kind}://<session>/ with loop/turn coordinates or a path pattern, without userinfo, a port, or a query.`);
         const pathname = target.pathname;
         const authorityScope = pathScope(target.hostname, false);
         const scope = pathScope(/^\/\d+$/.test(pathname) ? `${pathname}/` : pathname, true);
         const load = async () => (await db.turn_source_candidates.all<Source>({
-            workspace_id: workspaceId, worker_name: PathSyntax.hasGlob(target.hostname) ? null : target.hostname, kind: this.#kind,
+            workspace_id: workspaceId, session_name: PathSyntax.hasGlob(target.hostname) ? null : target.hostname, kind: this.#kind,
         })).filter((row) => pathScopeMatches(authorityScope, row.authority)).map((row) => ({
             ...row, key: renderAddress({ scheme: this.#kind, authority: row.authority, pathname: row.pathname }),
         }));
@@ -112,7 +112,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
             await core.settleDerivations();
             all = await loadMatchable();
         }
-        // {§loop-answer}: `ops://<worker>/<loop>` is both a folder of that loop's emissions and the
+        // {§loop-answer}: `ops://<session>/<loop>` is both a folder of that loop's emissions and the
         // loop's own answer, so a loop coordinate selects the turns beneath it and the answer itself.
         const loopItself = this.#kind === "ops" && /^\/\d+$/.test(pathname) ? pathname : null;
         const selected = all.filter((row) => pathScopeMatches(scope, row.pathname) || row.pathname === loopItself);

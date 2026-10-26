@@ -1,34 +1,34 @@
-import WorkerName from "../../src/core/WorkerName.ts";
+import SessionName from "../../src/core/SessionName.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { provider } from "./reasoning-fixture.ts";
 
-test("{§worker-initialization-entry}: packet preflight preserves stream growth until an actual provider request", async (t) => {
+test("{§session-initialization-entry}: packet preflight preserves stream growth until an actual provider request", async (t) => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "packet-preflight");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const schemes = new SchemeRegistry();
         const entryId = await seedEntryWithChannel(db, {
-            workspaceId, authority: await WorkerName.forId(db, workerId), scheme: "worker", pathname: "/progress",
+            workspaceId, authority: await SessionName.forId(db, sessionId), scheme: "workspace", pathname: "/progress",
             channel: "stdout", content: "running\n", mimetype: "text/stream", state: "active",
         });
         await db.test_seed_channel.run({
             entry_id: entryId, name: "body", content: "", mimetype: "text/plain", state: "static",
         });
         const subscriptionId = await ChannelWrite.openSubscription(db, {
-            workerId, entryId, scheme: "worker", handle: "fixture", publishedChannel: "stdout",
+            sessionId, entryId, scheme: "session", handle: "fixture", publishedChannel: "stdout",
         });
         const model = provider();
         const packets = new PacketBuilder({ db, schemes, executors: () => undefined });
         const build = () => packets.buildRequestPacket({
-            initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 1, provider: model, gitStatus: null,
+            initialMessages: [], workspaceId, sessionId, loopId, currentTurnSeq: 1, provider: model, gitStatus: null,
         });
         const cursor = async () => (await db.test_subscription_publications.all<{ published_end: number }>({ id: subscriptionId }))[0].published_end;
         const now = Date.now();
@@ -42,12 +42,12 @@ test("{§worker-initialization-entry}: packet preflight preserves stream growth 
         assert.equal(packets.curationOverflow(attributed), null, "ordinary attribution copies preserve measured admission identity");
         await packets.recordObservations(attributed);
         assert.equal(await cursor(), 8);
-        await ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "stdout", chunk: "more\n" });
+        await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "stdout", chunk: "more\n" });
         const newer = await build();
         assert.equal(await cursor(), 8);
         assert.match(newer.sections.find(({ name }) => name === "work")!.content, /\(\+5 bytes\)/);
         const engine = new Engine({ db, schemes });
-        await engine.runTurn({ workspaceId, workerId, loopId, provider: model, messages: [] });
+        await engine.runTurn({ workspaceId, sessionId, loopId, provider: model, messages: [] });
         assert.equal(await cursor(), 13, "the composed provider path acknowledges the actual request");
         await packets.recordObservations(first);
         assert.equal(await cursor(), 13, "acknowledging an earlier snapshot never rewinds the cursor");

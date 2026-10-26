@@ -607,7 +607,7 @@ Authored dispatch order ({§op-execution-order}) lets either write follow the
 opening READ in the same turn, after acquisition establishes the live owner.
 
 The in-instance registry is keyed by workspace and complete canonical network
-URL, matching the commons entry. Workers share the connection and may SEND or
+URL, matching the commons entry. Sessions share the connection and may SEND or
 KILL it; acquisition attribution and settlement remain with its initiating
 operation ({§runtime-resource-binding}). The claim remains registered through terminal
 cleanup, so a new READ cannot overlap an owner's subscription settlement. Every

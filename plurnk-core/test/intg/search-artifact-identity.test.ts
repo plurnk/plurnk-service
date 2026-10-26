@@ -5,15 +5,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type { UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import EntryFts from "../../src/schemes/_entry-fts.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx, mimetypesFixture, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
@@ -28,7 +28,7 @@ test("{§persistent-search-index} identical entries attach one complete search a
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `artifact-share-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         let processCalls = 0;
         const mimetypes = mimetypesFixture({
             process: async (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
@@ -36,16 +36,16 @@ test("{§persistent-search-index} identical entries attach one complete search a
                 return DEFAULT_MIMETYPES.process(...args);
             },
         });
-        const writeCtx = makeSchemeCtx({ db, workspaceId, workerId });
-        const deriveCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        const writeCtx = makeSchemeCtx({ db, workspaceId, sessionId });
+        const deriveCtx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
 
         const body = "shared search artifact";
-        await new Worker().edit(edit("a.md", body), writeCtx);
-        await new Worker().edit(edit("b.md", body), writeCtx);
+        await new Workspace().edit(edit("a.md", body), writeCtx);
+        await new Workspace().edit(edit("b.md", body), writeCtx);
         await SearchIndex.maintain(deriveCtx);
 
         const rows = await db.test_entries_with_hash_by_scheme_prefix.all<{ pathname: string; deep_hash: string }>({
-            workspace_id: workspaceId, scheme: "worker", prefix: "/%",
+            workspace_id: workspaceId, scheme: "workspace", prefix: "/%",
         });
         assert.equal(rows.length, 2);
         assert.equal(rows[0].deep_hash, rows[1].deep_hash, "both pathnames point at the same derivation identity");
@@ -70,7 +70,7 @@ test("{§persistent-search-index} resolved binary classification participates in
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `classification-identity-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         let binary = false;
         let projectionIdentityCalls = 0;
         const mimetypes = mimetypesFixture({
@@ -81,13 +81,13 @@ test("{§persistent-search-index} resolved binary classification participates in
             },
             process: async () => ({ symbols: [], references: [] }),
         });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Worker().edit(edit("classified.md", "classification needle"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        await new Workspace().edit(edit("classified.md", "classification needle"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const hash = async (): Promise<string> => {
             const [row] = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string }>({
                 workspace_id: workspaceId,
-                scheme: "worker",
+                scheme: "workspace",
                 prefix: "/classified.md",
             });
             assert.ok(row);
@@ -124,7 +124,7 @@ test("{§persistent-search-index} mimetype projection identity invalidates deriv
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `projection-identity-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         let projectionIdentity = "projection-a";
         let symbolName = "Alpha";
         let processCalls = 0;
@@ -138,16 +138,16 @@ test("{§persistent-search-index} mimetype projection identity invalidates deriv
                 };
             },
         });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
-        await new Worker().edit(
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        await new Workspace().edit(
             edit("projection.md", "one stable readable body"),
-            makeSchemeCtx({ db, workspaceId, workerId }),
+            makeSchemeCtx({ db, workspaceId, sessionId }),
         );
 
         const hash = async (): Promise<string> => {
             const [row] = await db.test_entries_with_hash_by_scheme_prefix.all<{ deep_hash: string }>({
                 workspace_id: workspaceId,
-                scheme: "worker",
+                scheme: "workspace",
                 prefix: "/projection.md",
             });
             assert.ok(row);

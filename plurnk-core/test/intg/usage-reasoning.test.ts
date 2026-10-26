@@ -14,7 +14,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { completeStmt, } from "./_dsl.ts";
 
@@ -28,8 +28,8 @@ for (const [label, reasoning, reasoningLine] of [
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, `ur-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const resp: MockResponse = {
             assistant: { content: "", reasoning, ops: [completeStmt("done")] },
@@ -42,7 +42,7 @@ for (const [label, reasoning, reasoningLine] of [
             },
         };
         const provider = new Mock({ contextWindow: 100000, responses: [resp] });
-        const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const r = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const requests = await db.test_provider_requests.all<{
             usage_output: number;
             usage_output_text: number;

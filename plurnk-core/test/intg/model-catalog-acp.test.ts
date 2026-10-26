@@ -5,7 +5,7 @@ import Daemon from "../../src/server/Daemon.ts";
 import { bindListener } from "./_http.ts";
 import { openMigrated } from "./_db.ts";
 
-test("{§model-catalog}: ACP delivers route reasoning choices without creating a workspace or worker", async (t) => {
+test("{§model-catalog}: ACP delivers route reasoning choices without creating a workspace or session", async (t) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: null, http });

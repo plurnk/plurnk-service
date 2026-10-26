@@ -63,7 +63,7 @@ test("{§loop-terminals} a later cancellation cannot overwrite a successful conc
             content: "", reasoning: null, ops: [completeStmt("Answer.")],
         } }] });
         assert.equal((await engine.runTurn({ ...env, provider, messages: [] })).status, 200);
-        await lifecycle.cancelTree(env.workerId, "Late cancellation.", true);
+        await lifecycle.cancelTree(env.sessionId, "Late cancellation.", true);
         assert.equal(await lifecycle.status(env.loopId), 200);
         assert.equal((await lifecycle.result(env.loopId))?.content, undefined);
         assert.equal(await lastReply(db, env.loopId), "Answer.");

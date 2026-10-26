@@ -34,7 +34,7 @@ test("{§edit-marker-required-on-existing} Floor-scope capstone: full DSL surfac
         engine.dispatch({ statement, ...env, sequence, origin: "client" });
 
     try {
-        const [editQuestion] = parse("````EDIT (worker:///france/capital)\nwhat is the capital of france?\n````");
+        const [editQuestion] = parse("````EDIT (workspace:///france/capital)\nwhat is the capital of france?\n````");
         const r1 = await dispatch(editQuestion, 1);
         assert.equal(r1.status, 201);
         const questionEntryId = r1.entryId as number;
@@ -45,14 +45,14 @@ test("{§edit-marker-required-on-existing} Floor-scope capstone: full DSL surfac
 
         // {§edit-marker-required-on-existing} — the entry already exists (created above), so
         // the re-edit needs a marker; <1,-1> states the deliberate full rewrite.
-        const [editQuestionAgain] = parse("````EDIT (worker:///france/capital) <1,-1>\nrephrased question\n````");
+        const [editQuestionAgain] = parse("````EDIT (workspace:///france/capital) <1,-1>\nrephrased question\n````");
         const r2 = await dispatch(editQuestionAgain, 2);
         assert.equal(r2.status, 200);
         assert.equal(r2.entryId, questionEntryId);
         const body2 = (await db.test_get_channel.get<{ content: string }>({ entry_id: questionEntryId, name: "body" }))?.content;
         assert.equal(body2, "rephrased question");
 
-        const [copyOp] = parse("````COPY (worker:///france/capital) (fixture:///france/capital)````");
+        const [copyOp] = parse("````COPY (workspace:///france/capital) (fixture:///france/capital)````");
         const r3 = await dispatch(copyOp, 3);
         assert.equal(r3.status, 201);
 
@@ -77,12 +77,12 @@ test("{§edit-marker-required-on-existing} Floor-scope capstone: full DSL surfac
         assert.equal(r7.status, 200);
         assert.deepEqual((r7.results as Array<[{ path: string }]>).map(([resource]) => resource.path), ["fixture:///france/capital"]);
 
-        const [moveOp] = parse("````MOVE (worker:///france/capital) (worker:///archive/france/capital)````");
+        const [moveOp] = parse("````MOVE (workspace:///france/capital) (workspace:///archive/france/capital)````");
         const r10 = await dispatch(moveOp, 9);
         assert.equal(r10.status, 201);
-        const oldGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname: "/france/capital" });
+        const oldGone = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname: "/france/capital" });
         assert.equal(oldGone, undefined);
-        const archive = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname: "/archive/france/capital" });
+        const archive = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname: "/archive/france/capital" });
         const archiveBody = (await db.test_get_channel.get<{ content: string }>({ entry_id: archive?.id, name: "body" }))?.content;
         assert.equal(archiveBody, "rephrased question"); // the commons original — Paris lives on the skill copy
 
@@ -98,12 +98,12 @@ test("{§edit-marker-required-on-existing} Floor-scope capstone: full DSL surfac
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: env.loopId }))?.status, 102, "delivering a message does not complete work");
 
         const allEntries = (await db.test_list_entries_by_workspace_workspace_pathname.all<{ scheme: string; pathname: string }>({ workspace_id: env.workspaceId })).map((r) => ({ scheme: r.scheme, pathname: r.pathname }));
-        assert.deepEqual(allEntries, [{ scheme: "worker", pathname: "/archive/france/capital" }]);
+        assert.deepEqual(allEntries, [{ scheme: "workspace", pathname: "/archive/france/capital" }]);
 
-        const logCount = (await db.test_count_log_entries_by_worker.get<{ n: number }>({ worker_id: env.workerId }))?.n;
+        const logCount = (await db.test_count_log_entries_by_session.get<{ n: number }>({ session_id: env.sessionId }))?.n;
         assert.equal(logCount, 9);
 
-        const clientLogCount = (await db.test_count_log_entries_worker_origin.get<{ n: number }>({ worker_id: env.workerId, origin: "client" }))?.n;
+        const clientLogCount = (await db.test_count_log_entries_session_origin.get<{ n: number }>({ session_id: env.sessionId, origin: "client" }))?.n;
         assert.equal(clientLogCount, 9);
     } finally { await db.close(); }
 });

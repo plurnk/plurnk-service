@@ -41,13 +41,13 @@ test("{§fs-namei} file URLs preserve native filename identity through reads and
                 const { id: workspaceId } = created.result as { id: number };
                 const loop = await runLoopToTerminal(client, 2, { prompt: "Read the files." });
                 assert.equal(loop.result.status, 200);
-                const rows = (await db.engine_render_log.all<{ op: string; origin: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ worker_id: loop.modelWorkerId! }))
+                const rows = (await db.engine_render_log.all<{ op: string; origin: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! }))
                     .filter(({ origin, op }) => origin === "model" && op === "READ");
                 assert.deepEqual(rows.map(({ pathname, status_rx }) => ({ pathname, status_rx })), names.map((pathname) => ({ pathname, status_rx: 200 })));
                 for (const row of rows) {
                     const target = renderTarget(row, root);
                     assert.ok(target);
-                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
+                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
                     assert.equal(read.status, 200, `reuse ${target}`);
                     assert.equal(read.content, `Content of ${row.pathname}\n`, `identity of ${target}`);
                 }
@@ -87,7 +87,7 @@ test("{§file-url} encoded file operands compose across mutations, attachments, 
                 const { id: workspaceId } = created.result as { id: number };
                 const loop = await runLoopToTerminal(client, 2, { prompt: "Exercise the encoded addresses.", openPaths: names.map(uri) });
                 assert.equal(loop.result.status, 200);
-                const rows = await db.engine_render_log.all<{ op: string; origin: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ worker_id: loop.modelWorkerId! });
+                const rows = await db.engine_render_log.all<{ op: string; origin: string; scheme: string | null; pathname: string | null; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! });
                 const authored = rows.filter(({ origin }) => origin === "model");
                 assert.deepEqual(authored.filter(({ status_rx }) => status_rx >= 400), [], "no operation failed through address confusion");
                 assert.deepEqual(rows.filter(({ origin, op }) => origin === "_plurnk" && op === "READ").map(({ pathname, status_rx }) => ({ pathname, status_rx })),
@@ -103,11 +103,11 @@ test("{§file-url} encoded file operands compose across mutations, attachments, 
                     await assert.rejects(readFile(join(root, key(`copy-${name}`))), { code: "ENOENT" });
                     await assert.rejects(readFile(join(root, key(`moved-${name}`))), { code: "ENOENT" });
                     const address = renderTarget({ scheme: null, pathname: key(name) }, root)!;
-                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${address})`, null))[0]] }))[0];
+                    const read = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(frame(`READ (${address})`, null))[0]] }))[0];
                     assert.equal(read.status, 200, address);
                     assert.equal(read.content, `Revised ${name}\n`);
                     assert.ok(userText(provider.received[1]).includes(address), "the exact FIND advertised a reusable address");
-                    const entry = Validator.assertEntryReadResult(await daemon.readEntry({ workspaceId, workerId: loop.modelWorkerId!, target: address }));
+                    const entry = Validator.assertEntryReadResult(await daemon.readEntry({ workspaceId, sessionId: loop.modelSessionId!, target: address }));
                     assert.equal(entry.entry?.channels.body?.content, `Revised ${name}\n`, "the client entry API resolves the same resource");
                 }
                 const survey = JSON.parse(authored.find(({ op, pathname }) => op === "FIND" && pathname === "*")!.rx);
@@ -176,7 +176,7 @@ test("{§file-url} malformed URLs refuse only their operation and preserve durab
                 await rpcCall(client, 1, "workspace.create", { name: "invalid-file-urls", projectRoot: root });
                 const loop = await runLoopToTerminal(client, 2, { prompt: "Inspect the URLs." });
                 assert.equal(loop.result.status, 200);
-                const rows = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ worker_id: loop.modelWorkerId! }))
+                const rows = (await db.engine_render_log.all<{ op: string; origin: string; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! }))
                     .filter(({ op, origin }) => op === "READ" && origin === "model");
                 assert.equal(rows.length, invalid.length);
                 for (const row of rows) {
@@ -232,7 +232,7 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-home} {
                     prompt: "Exercise the filesystem addresses.", openPaths: [relativeSource, source, spelling("source.txt")],
                 });
                 assert.equal(loop.result.status, 200);
-                const rows = await db.engine_render_log.all<{ op: string; origin: string; pathname: string | null; status_rx: number; rx: string }>({ worker_id: loop.modelWorkerId! });
+                const rows = await db.engine_render_log.all<{ op: string; origin: string; pathname: string | null; status_rx: number; rx: string }>({ session_id: loop.modelSessionId! });
                 const authored = rows.filter(({ origin }) => origin === "model");
                 const attached = rows.filter(({ origin, op, pathname }) => origin === "_plurnk" && op === "READ" && pathname === key("source.txt"));
                 assert.deepEqual(attached.map(({ status_rx }) => status_rx), [200, 200, 200], "all client attachment spellings resolve the same member");
@@ -266,11 +266,11 @@ for (const form of ["absolute", "home", "literal"] as const) test(`{§fs-home} {
                 }
 
                 for (const target of [relativeSource, spelling("source.txt"), source, pathToFileURL(source).href]) {
-                    const result = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextWorkerId: loop.modelWorkerId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
+                    const result = (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, contextSessionId: loop.modelSessionId!, statements: [parseDsl(frame(`READ (${target})`, null))[0]] }))[0];
                     assert.equal(result.status, 200, target);
                     assert.equal(result.content, "revised\n", target);
                 }
-                const entry = Validator.assertEntryReadResult(await daemon.readEntry({ workspaceId, workerId: loop.modelWorkerId!, target: pathToFileURL(source).href }));
+                const entry = Validator.assertEntryReadResult(await daemon.readEntry({ workspaceId, sessionId: loop.modelSessionId!, target: pathToFileURL(source).href }));
                 assert.equal(entry.status, 200);
                 assert.equal(entry.entry?.channels.body?.content, "revised\n");
                 const keys = await db.test_file_pathnames.all<{ pathname: string }>({ workspace_id: workspaceId });

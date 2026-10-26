@@ -125,7 +125,7 @@ retry, and teardown retain one connection-level owner.
 
 Task handles belong to the connection and operation that created them. They
 are process-local, never persisted or automatically replayed. Ordinary host
-lifecycle owns interruption and recovery ({§worker-lifecycle-restart-recovery});
+lifecycle owns interruption and recovery ({§session-lifecycle-restart-recovery});
 MCP adds no second scheduler or client-disconnect policy.
 
 | Boundary | Behaviour |
@@ -327,7 +327,7 @@ source repair replaces them, rather than retaining a historical warning.
 that cannot connect or complete discovery during workspace activation remains
 enabled and client-visible as `unavailable`. It publishes no tools, resources, or
 documentation, only its alias out of service ({§mcp-unavailable-runtime}), and cannot
-prevent other capabilities or the daemon from starting or serving dormant workers. Enabling that already-enabled alias is an explicit reconnect
+prevent other capabilities or the daemon from starting or serving dormant sessions. Enabling that already-enabled alias is an explicit reconnect
 attempt; failure preserves the unavailable snapshot, while success atomically
 replaces it. An interactive enable continues to reject an unavailable candidate
 without changing durable state.
@@ -421,7 +421,7 @@ other configuration error surfaces in the family's diagnostics at runtime, and a
 offline check ({§operator-config-offline-validation}). It claims no HTTP mounts.
 
 §mcp-launch-environment **Ambient inheritance and explicit bindings are distinct.** A stdio
-server receives these layers in order; it never receives the invoking worker's overrides.
+server receives these layers in order; it never receives the invoking session's overrides.
 
 | Layer | Environment |
 |---|---|
@@ -480,7 +480,7 @@ common grammar:
 
 Expected preparation failures cross the boundary as MCP-management Problems
 rather than generic failures; an explicit client action rejects them and a
-Worker's own accepted mutation publishes them as unavailable
+Session's own accepted mutation publishes them as unavailable
 ({§functionality-model-mutation}):
 
 | Endpoint condition | Problem |
@@ -772,7 +772,7 @@ workspace attachment. The host does not reproduce SDK protocol machinery.
 | Task input | Routes through the operation's client interaction, then sends `tasks/update`; it never asks the model to manufacture protocol state. |
 | Task cancellation | The owning execution's cancellation invokes `tasks/cancel` before settling the ordinary stream cancellation. |
 | List invalidation | Invalidates SDK catalogs and atomically refreshes the attachment snapshot. |
-| Selected resource update | Invalidates that URI's SDK cache entry; a subsequent READ acquires current content. Private entries remain authorization-partitioned. Earlier READ receipts stay unchanged; ordinary remote changes neither broadcast nor wake workers ({§actor-boundary-lineage-attention}). |
+| Selected resource update | Invalidates that URI's SDK cache entry; a subsequent READ acquires current content. Private entries remain authorization-partitioned. Earlier READ receipts stay unchanged; ordinary remote changes neither broadcast nor wake sessions ({§actor-boundary-lineage-attention}). |
 | Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
 
 The general executor interaction contract, not this package, owns client
@@ -787,7 +787,7 @@ start a fresh budget. Expiry aborts the input's ordinary Core waiter, removes it
 from pending/reconnect discovery, and enters the same bounded protocol cleanup
 as other operation failures. A late response is no longer pending. No response
 or tool replay is fabricated; the failed operation remains available to the
-worker for recovery. SDK wire-leg timeouts retain ownership of transport waits.
+session for recovery. SDK wire-leg timeouts retain ownership of transport waits.
 
 §mcp-tool-replay A tool call is effectful unless host policy proves otherwise.
 After dispatch, a transport failure cannot prove that the MCP server did not
@@ -905,15 +905,15 @@ it as a skill. The design review is tracked in #654.
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server | One registered runtime, `worker:///_plurnk/tools/<server>.md`, and matching resource scheme |
-| Enabled tool | One annotated call in the compact runtime document plus one exact `worker:///_plurnk/tools/<server>/<encoded-tool>.json` input-contract document |
-| Complete tool definitions | `worker:///_plurnk/tools/<server>.json`, containing `{"tools":[...]}` from the same effective snapshot |
+| Server | One registered runtime, `workspace:///_plurnk/tools/<server>.md`, and matching resource scheme |
+| Enabled tool | One annotated call in the compact runtime document plus one exact `workspace:///_plurnk/tools/<server>/<encoded-tool>.json` input-contract document |
+| Complete tool definitions | `workspace:///_plurnk/tools/<server>.json`, containing `{"tools":[...]}` from the same effective snapshot |
 | Tool survey | Ordinary FIND summary metadata from the standard executable-tool resource tree |
 | Resource catalog | `<server>:///` and `<server>:///resources` |
 | Resources | `<server>:///resources` and encoded resource-URI descendants |
 | Prompts | `<server>:///prompts` and encoded prompt-name descendants |
 
-Qualified `<server>://<worker>/…` resources, prompts, and catalogs follow
+Qualified `<server>://<session>/…` resources, prompts, and catalogs follow
 {§runtime-resource-binding}: the qualifier selects the stored projection, not
 a private attachment. Acquisition uses the workspace attachment; the requesting
 operation retains its policy and client interactions.
@@ -978,8 +978,8 @@ servers are composition evidence only.
 
 | code | status | contract |
 |---|---:|---|
-| `tool-required` | 400 | An MCP tool target is required. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
-| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: Select a target documented under worker:///_plurnk/tools/*runtime*/. |
+| `tool-required` | 400 | An MCP tool target is required. Recovery: Select a target documented under workspace:///_plurnk/tools/*runtime*/. |
+| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: Select a target documented under workspace:///_plurnk/tools/*runtime*/. |
 | `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). Recovery: the tool's working invocation fence with its schema note and schema link (#1228). |
 | `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: One JSON object per MCP tool call, followed by the tool's working invocation fence (#1228). |
 | `resource-address-invalid` | 400 | The MCP resource address is invalid (a malformed encoded address); not retryable. |

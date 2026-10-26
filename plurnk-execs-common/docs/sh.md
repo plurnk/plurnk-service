@@ -14,7 +14,7 @@ a nonempty body is tokenized by shell quoting and passed as its arguments
 (plain words split on whitespace, quoted arguments stay whole, nothing is
 expanded). The interpreter reads the script directly, so it needs no executable
 bit; a script path authored inside a shell body still follows the kernel's
-ordinary executable-bit rules. The same applies to local, `worker://`, and
+ordinary executable-bit rules. The same applies to local, `session://`, and
 `skill://` script targets across every interpreter.
 
 ## Environment
@@ -22,7 +22,7 @@ ordinary executable-bit rules. The same applies to local, `worker://`, and
 The command receives a scoped environment: provider keys and every `PLURNK_*`
 setting are stripped before the child starts, so `printenv` cannot read
 plurnk's credentials, and the project's environment passes through, overlaid
-with the `env` registry (`worker:///_plurnk/tools/plurnk/env.json`).
+with the `env` registry (`workspace:///_plurnk/tools/plurnk/env.json`).
 
 ## Working directory
 

@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER } from "./_approval.ts";
+import { ownSession, TEST_OWNER } from "./_approval.ts";
 // {§functionality-coordinator} — lifecycle parity across the real
 // families. One family-neutral matrix runs against Agent Skills and MCP
 // with their representative standards peers beneath: the
@@ -24,13 +24,13 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import type { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { mcpEnvironment, stdioEntry } from "./_mcp-config.ts";
-import { modelOperation } from "./_workers.ts";
+import { modelOperation } from "./_sessions.ts";
 
 type Definition = { readonly alias: string; readonly definition: object; readonly probe: (context: Context) => Promise<number> };
 
@@ -38,7 +38,7 @@ interface Context {
     readonly daemon: Daemon;
     readonly db: Db;
     readonly workspaceId: number;
-    readonly modelWorkerId: number;
+    readonly modelSessionId: number;
     // The person whose client operations probe the workspace ({§connection-lifecycle}).
     readonly actor: string;
 }
@@ -80,15 +80,15 @@ const LIVE = new Set([102, 200]);
 // Absent: unknown or disabled (404/501) or unavailable with its exact Problem (5xx).
 const isAbsent = (status: number): boolean => status >= 400;
 
-// A person's operation, acting for the context's model worker ({§actor-boundary-client-operations}).
+// A person's operation, acting for the context's model session ({§actor-boundary-client-operations}).
 const dispatch = async (context: Context, statement: PlurnkStatement) => (await context.daemon.dispatchClientAction({
-    workspaceId: context.workspaceId, actor: context.actor, contextWorkerId: context.modelWorkerId, statements: [statement],
+    workspaceId: context.workspaceId, actor: context.actor, contextSessionId: context.modelSessionId, statements: [statement],
 }))[0];
 
-// Generated documents are workspace resources ({§worker-generated-subtree}): the client reads them,
-// leaving the model worker's packets to the loops under test.
+// Generated documents are workspace resources ({§session-generated-subtree}): the client reads them,
+// leaving the model session's packets to the loops under test.
 const documentPresent = async (context: Context, pathname: string): Promise<number> => {
-    const target = pathname.includes("://") ? pathname : `worker://${pathname}`;
+    const target = pathname.includes("://") ? pathname : `workspace://${pathname}`;
     return (await dispatch(context, parseOne(`\`\`\`\`READ (${target})\`\`\`\``))).status;
 };
 
@@ -226,15 +226,15 @@ const matrix = async (family: Family): Promise<void> => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `parity-${family.family}-${crypto.randomUUID()}`);
     if (family.projectRoot !== undefined) await db.test_set_workspace_root.run({ id: workspaceId, project_root: family.projectRoot });
-    const model = await insertWorker(db, workspaceId, null, "model", "model");
-    const peer = await insertWorker(db, workspaceId, null, "peer", "model");
-    for (const workerId of [model, peer]) await ownWorker(db, workspaceId, workerId);
+    const model = await insertSession(db, workspaceId, null, "model", "model");
+    const peer = await insertSession(db, workspaceId, null, "peer", "model");
+    for (const sessionId of [model, peer]) await ownSession(db, workspaceId, sessionId);
     const personA = TEST_OWNER;
     const personB = "test://secondary";
     let provider = mockProvider();
     let { daemon } = await family.boot(db, provider);
     await daemon.start();
-    const context = (modelWorkerId = model, actor = personA): Context => ({ daemon, db, workspaceId, modelWorkerId, actor });
+    const context = (modelSessionId = model, actor = personA): Context => ({ daemon, db, workspaceId, modelSessionId, actor });
     // A client retries the one retryable refusal: 409 workspace-busy while a
     // just-settled stream still holds the workspace ({§module-workspace-quiescence}).
     const invoke = async <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> => {
@@ -254,15 +254,15 @@ const matrix = async (family: Family): Promise<void> => {
     type Listed = { alias: string; origin: string; state: string; definition: object; problem?: ProblemDetails };
     const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
     const stateOf = async (alias: string): Promise<string | undefined> => (await listed()).find((entry) => entry.alias === alias)?.state;
-    const live = async (definition: Definition, workerId = model, actor = personA): Promise<boolean> => {
-        const status = await definition.probe(context(workerId, actor));
+    const live = async (definition: Definition, sessionId = model, actor = personA): Promise<boolean> => {
+        const status = await definition.probe(context(sessionId, actor));
         assert.ok(LIVE.has(status) || isAbsent(status), `${family.family}: probe of ${definition.alias} answered ${status}`);
         return LIVE.has(status);
     };
     const document = (alias: string) => documentPresent(context(), family.documentOf(alias));
     // Model verbs: the model's own operations through the plurnk execution manager, which streams JSON
     // into its output entry; its owner reviews what they propose.
-    const exec = (program: string) => modelOperation(daemon, db, { workspaceId, workerId: model, statement: parseOne(program) });
+    const exec = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", timeoutMs: 10_000 });
     const proposals: number[] = [];
     const events: Array<{ method: string; params: unknown }> = [];
@@ -290,7 +290,7 @@ const matrix = async (family: Family): Promise<void> => {
     // A model loop: the next packet is what the model actually sees.
     const nextPacket = async (): Promise<string> => {
         const before = provider.requests.length;
-        const started = await daemon.runLoop({ workspaceId, workerId: model, prompt: `parity ${provider.requests.length}` });
+        const started = await daemon.runLoop({ workspaceId, sessionId: model, prompt: `parity ${provider.requests.length}` });
         await waitFor(() => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === started.loopId), (t) => t.length > 0, { timeoutMs: 20_000 });
         const packet = provider.requests[before];
         assert.ok(packet !== undefined, `${family.family}: the loop produced no packet`);
@@ -316,7 +316,7 @@ const matrix = async (family: Family): Promise<void> => {
         const toolSchemaPath = `/_plurnk/tools/plurnk/${family.family}.json`;
         const toolDoc = references.find(({ pathname }) => pathname === toolSchemaPath)!;
         assert.ok(managerDoc && toolDoc, "the manager catalog links to a materialized input schema");
-        assert.ok(managerDoc.content.includes(`Schema: worker://${toolSchemaPath}`));
+        assert.ok(managerDoc.content.includes(`Schema: workspace://${toolSchemaPath}`));
         const toolSchema = JSON.parse(toolDoc.content);
         assert.ok(toolSchema.properties.verb.enum.includes("add") && toolSchema.properties.verb.enum.includes("replace"));
         assert.ok(toolSchema.properties.definition !== undefined, "the tool schema includes the definition schema");
@@ -406,8 +406,8 @@ ${JSON.stringify({ verb: "disable", alias: family.addable.alias })}
             assert.equal(await stateOf(family.collidingAlias), undefined, "a publication the host refuses rolls back");
             assert.equal(await live(family.service), true, "the previous snapshot stays authoritative");
         }
-        // 9. Independent workers and people see and use the workspace state.
-        assert.equal(await live(family.addable, peer, personB), true, "a second person, acting for an independent worker, uses the same workspace definition");
+        // 9. Independent sessions and people see and use the workspace state.
+        assert.equal(await live(family.addable, peer, personB), true, "a second person, acting for an independent session, uses the same workspace definition");
         await invoke("disable", { alias: family.addable.alias });
         assert.equal(await live(family.addable, peer, personB), false, "a mutation through one client is observed by the other");
         await invoke("enable", { alias: family.addable.alias });
@@ -468,7 +468,7 @@ ${JSON.stringify({ verb: "disable", alias: family.addable.alias })}
         if (restoredAttachment !== undefined) assert.equal(await family.attachmentIdentity!(context()), restoredAttachment,
             "an identical replacement keeps its current attachment");
         // 11. A child's environment remains the same shared workspace, not a copied snapshot.
-        const child = await insertWorker(db, workspaceId, model, "child", "model");
+        const child = await insertSession(db, workspaceId, model, "child", "model");
         assert.equal(await live(family.addable, child), true);
         await invoke("disable", { alias: family.addable.alias });
         assert.equal(await live(family.addable, child), false, "an existing child sees workspace withdrawal");
@@ -502,7 +502,7 @@ ${JSON.stringify({ verb: "disable", alias: family.addable.alias })}
         assert.equal(await stateOf(family.addable.alias), "active");
         assert.equal(await document(family.addable.alias), 200);
         assert.equal(await live(family.addable, child), true, "the child sees the restored workspace definition");
-        assert.equal(await live(family.addable, peer), true, "the independent worker sees the same definition");
+        assert.equal(await live(family.addable, peer), true, "the independent session sees the same definition");
         // 14. Remove forgets the workspace definition and withdraws its capability.
         assert.equal((await invoke<{ removed: boolean }>("remove", { alias: family.addable.alias })).removed, true);
         assert.equal(await live(family.addable), false);

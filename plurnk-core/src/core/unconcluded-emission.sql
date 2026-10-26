@@ -8,7 +8,7 @@ SELECT CASE WHEN NOT EXISTS (
        'ops://' || w.name || '/' || l.sequence || '/' || t.sequence AS resource
 FROM turns t
 JOIN loops l ON l.id = t.loop_id
-JOIN workers w ON w.id = l.worker_id
+JOIN sessions w ON w.id = l.session_id
 LEFT JOIN turn_sources s ON s.turn_id = t.id AND s.kind = 'ops' AND s.sequence = 0
 WHERE t.loop_id = $loop_id AND t.kind = 'inference'
 ORDER BY t.sequence DESC LIMIT 1;

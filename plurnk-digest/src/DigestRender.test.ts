@@ -7,7 +7,7 @@ test("{§share-packet-names}: readable requests retain roles, order and complete
         { role: "system" as const, content: "Rules\n" },
         { role: "user" as const, content: "## Log\n\n1: ## 3. assistant" },
         { role: "assistant" as const, content: "````EDIT (a.md)\n```NOTE\nLiteral nested example\n```\n````" },
-        { role: "user" as const, content: "## Worker\n{}" },
+        { role: "user" as const, content: "## Session\n{}" },
     ];
     const rendered = DigestRender.request(messages);
     assert.match(rendered, /system → user → assistant → user/u);
@@ -39,13 +39,13 @@ test("{§exec-env-scoped} the digest names a spawn's environment with each value
     const line = DigestRender.envLine({
         PATH: { source: "host", value: "/usr/bin" },
         HOME: { source: "host", value: "/home/x" },
-        CARGO_TARGET_DIR: { source: "worker", value: "/tmp/shared" },
-        TOOLCHAIN: { source: "worker", from: "alice", value: "stable" },
+        CARGO_TARGET_DIR: { source: "session", value: "/tmp/shared" },
+        TOOLCHAIN: { source: "session", from: "alice", value: "stable" },
         CI: { source: "masked" },
         NO_COLOR: { source: "masked", from: "alice" },
         NODE_ENV: { source: "workspace", value: "production" },
     });
-    assert.equal(line, "env: host HOME,PATH · CARGO_TARGET_DIR=/tmp/shared (worker) · CI (masked) · NO_COLOR (masked by alice) · NODE_ENV=production (workspace) · TOOLCHAIN=stable (from alice)");
+    assert.equal(line, "env: host HOME,PATH · CARGO_TARGET_DIR=/tmp/shared (session) · CI (masked) · NO_COLOR (masked by alice) · NODE_ENV=production (workspace) · TOOLCHAIN=stable (from alice)");
     assert.equal(DigestRender.envLine({}), "env: (empty)", "an empty environment is a fact, not an absence");
     assert.equal(DigestRender.envLine(undefined), null, "an output without a recorded environment renders none");
 });

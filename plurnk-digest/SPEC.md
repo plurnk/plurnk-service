@@ -49,7 +49,7 @@ does not turn a failed or unpriced request into a free or absent request.
 | {§digest-forensic-fidelity} | Forensic fidelity and cardinality. |
 | {§digest-executor-evidence} | A red command is work, not a defect. |
 | {§digest-capacity-evidence} | A 413 is the contract working, not a defect. |
-| {§digest-requiem} | A requiem is an out-of-band forensic interview, not a worker turn. |
+| {§digest-requiem} | A requiem is an out-of-band forensic interview, not a session turn. |
 | {§digest-requiem-evidence-budget} | Quoted evidence fits the witness. |
 <!-- /map -->
 
@@ -66,8 +66,8 @@ turns by durable chronology; and names each by its log coordinate ({§share-pack
 producer does not affect projection.
 
 §share-packet-names **Packet artifacts carry the coordinate the log uses.** A turn's files are named
-`<worker>-<loop>-<turn>`, the worker's name and the loop and turn sequences that `log:///<loop>/<turn>/…`
-addresses: the model's first turn in its first loop is `<worker>-1-2`, because the initialization
+`<session>-<loop>-<turn>`, the session's name and the loop and turn sequences that `log:///<loop>/<turn>/…`
+addresses: the model's first turn in its first loop is `<session>-1-2`, because the initialization
 survey is turn 1 and writes no packet. A digest spanning several workspaces nests each workspace's
 files in a folder named for it; a name that cannot name a file (a workspace named by its path,
 `~/ptl/x`) is slugged for the folder, `ptl-x`, while the digest text keeps the name verbatim, and
@@ -95,7 +95,7 @@ to project and writes no files.
 
 §digest-navigation The main Markdown report links each turn's available input,
 output, reasoning and physical requests outside code fences. Request pages
-link back to the digest, to previous/next stored requests of the same worker,
+link back to the digest, to previous/next stored requests of the same session,
 and to exact channel files. Their attempt table distinguishes physical outcomes
 from emission admission and BARE calls; native attachment descriptors are
 visible but are not presented as proof of dispatch or provider acceptance.
@@ -124,14 +124,14 @@ accepted response, an empty response, or free inference.
 | `digestDir`                            | Selects a nonempty output path. `run` refuses a folder that exists and is not empty, and `requiem` refuses an existing `requiem.json` or `requiem.md`, before database or provider I/O; neither deletes ({§share}). Concurrent callers use distinct folders. |
 | Reader lifetime                       | `run` reads heavy evidence on demand while rendering, then closes its reader on success or failure. `requiem` closes its reader before awaiting witness inference. |
 | Export completion                     | Packet and response bodies are read and serialized one record at a time, without discarding evidence. `digest.json` is promoted from a partial file only after every artifact is written; its absence identifies an incomplete export. |
-| `workerId`                             | Narrows workers and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one worker. |
-| `workspaceId`                          | Narrows workers plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. A workspace selected alone is the digest's workspace even when it holds no worker. |
+| `sessionId`                             | Narrows sessions and every dependent loop, turn, turn-attached logical inference, specialization, physical request, and log row to that one session. |
+| `workspaceId`                          | Narrows sessions plus every logical inference and dependent evidence owned by one workspace, when both selectors are present they intersect. A workspace selected alone is the digest's workspace even when it holds no session. |
 
 §digest-cost-kind **Cost basis named.** A rendered Cost line carries the basis of its dollar figure: `(charged)` only when every settled request's cost is provider-charged; `(estimated — catalog rates)` when any settled request's cost is an estimate, because a mixed sum is no more trustworthy than its weakest term. A dollar figure without its basis reads as billed truth, and an estimate must never impersonate a charge.
 
-§digest-wire-line **Wire health aggregated.** Each worker summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
+§digest-wire-line **Wire health aggregated.** Each session summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
 
-§digest-room-line **The room in provider tokens.** Each worker summary renders a `Room:` line over its packet-bearing inference requests that record a known input capacity and wall and a provider count: the exact preflight measurement, else the reported input. It names the largest budget the model was shown, converted at that request's own ratio (`count ÷ weight`), as a share of the capacity; the range of the wall's estimate as the packet's conversion reconstructs it (`weight × capacity ÷ budget`) against the count; and, marked ⚠, the requests the estimate put under the wall while the count was over it ({§context-wall-measure}). A worker without such requests reads `(no measured requests)`. Every run checks the ruler, pass or fail.
+§digest-room-line **The room in provider tokens.** Each session summary renders a `Room:` line over its packet-bearing inference requests that record a known input capacity and wall and a provider count: the exact preflight measurement, else the reported input. It names the largest budget the model was shown, converted at that request's own ratio (`count ÷ weight`), as a share of the capacity; the range of the wall's estimate as the packet's conversion reconstructs it (`weight × capacity ÷ budget`) against the count; and, marked ⚠, the requests the estimate put under the wall while the count was over it ({§context-wall-measure}). A session without such requests reads `(no measured requests)`. Every run checks the ruler, pass or fail.
 
 §digest-cache-ledger **Measured cache reuse and estimated prompt overlap are separate.**
 
@@ -149,7 +149,7 @@ neither provider tokenization nor a cache ceiling, and never supplies a cache-ra
 denominator. Caching across loops or against other provider-resident prefixes
 does not make the measured counters inconsistent.
 
-§digest-edit-census **Every model EDIT by the form it authored, how it landed, and whether it came back.** For each worker the digest reads every model-authored EDIT row and classifies the form from the row's stored marker and the durable statement's pattern. It counts the EDITs, those refused (status ≥ 400), and the *revisits*: an EDIT of a path the same worker had edited within its previous two model turns — the shape of a repair without the claim of one. Each worker summary renders `EDITs: <n> · <form>=<count>… · refused=<k> · revisits=<r>` (`(no edits)` for none); `digest.json` carries the census as `edit_census` on every worker and stamps every EDIT log entry with its `edit_form` and `edit_revisit`. A form is a fact about what was written, never about intent; the bench sheet reads the counts as friction and leaves the judgement to the reader.
+§digest-edit-census **Every model EDIT by the form it authored, how it landed, and whether it came back.** For each session the digest reads every model-authored EDIT row and classifies the form from the row's stored marker and the durable statement's pattern. It counts the EDITs, those refused (status ≥ 400), and the *revisits*: an EDIT of a path the same session had edited within its previous two model turns — the shape of a repair without the claim of one. Each session summary renders `EDITs: <n> · <form>=<count>… · refused=<k> · revisits=<r>` (`(no edits)` for none); `digest.json` carries the census as `edit_census` on every session and stamps every EDIT log entry with its `edit_form` and `edit_revisit`. A form is a fact about what was written, never about intent; the bench sheet reads the counts as friction and leaves the judgement to the reader.
 
 | Form | Marker |
 | --- | --- |
@@ -174,10 +174,10 @@ does not make the measured counters inconsistent.
 | Each stored packet | validates independently: one malformed historical packet remains exact raw evidence with its complete validation error chain and never prevents healthy turns from being projected |
 | Targets | reconstruct the model-visible address, including hostname, port, serialized query, and fragment; an authority-bearing URL must never degrade from `https://host/path` to `https:///path`, and durable resource coordinates render back to their authority form |
 
-| Each worker summary | Counts |
+| Each session summary | Counts |
 | --- | --- |
-| `Emissions:` | its announced emission rows, those the worker KILLed, and the headings it echoed ({§emission-row}) |
-| `Reasonings:` | its landed reasoning rows, those the worker KILLed, and the turns that reasoned ({§reasoning-row}); the op mix leaves both harness rows out |
+| `Emissions:` | its announced emission rows, those the session KILLed, and the headings it echoed ({§emission-row}) |
+| `Reasonings:` | its landed reasoning rows, those the session KILLed, and the turns that reasoned ({§reasoning-row}); the op mix leaves both harness rows out |
 | Cost | how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero |
 | The reasoning chronology | distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred |
 
@@ -207,15 +207,15 @@ any row but never count toward a loop's error total, its error-item count, its
 health verdict, or the per-turn `errs=` badge: a loop that concluded green under
 a binding budget is CLEAN. Refusals of the model's own statements still count.
 
-§digest-requiem **A requiem is an out-of-band forensic interview, not a worker
+§digest-requiem **A requiem is an out-of-band forensic interview, not a session
 turn.** It cannot execute operations or alter the audited history.
 
 | Aspect    | Contract                                                                                                                                                        |
 |-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Scope     | One interview for each worker with model-bearing inference turns; workers without inference evidence are omitted.                                                |
-| Evidence  | The worker's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. Quoted evidence is budgeted to the witness window ({§digest-requiem-evidence-budget}). |
+| Scope     | One interview for each session with model-bearing inference turns; sessions without inference evidence are omitted.                                                |
+| Evidence  | The session's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. Quoted evidence is budgeted to the witness window ({§digest-requiem-evidence-budget}). |
 | Witness   | An explicitly supplied provider; CLI composition may resolve the active configured provider. Absence fails hard; the report package never selects a route.                                                                          |
-| Identity  | The worker's durable provider identity ({§worker-provider-identity}) is sent as the `workerId`, without asserting a live worker topology. |
+| Identity  | The session's durable provider identity ({§session-provider-identity}) is sent as the `sessionId`, without asserting a live session topology. |
 | Attempts  | One call at `PLURNK_DIGEST_REQUIEM_MAX_TOKENS`; only an empty length-limited response receives one retry at `PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS`.         |
 | Artifacts | `requiem.md` carries testimony and exact nullable USD accounting. `requiem.json` is durably materialized before each call and preserves logical call state, messages, normalized responses, every physical request's state and accounting, and their shared aggregate projection. |
 

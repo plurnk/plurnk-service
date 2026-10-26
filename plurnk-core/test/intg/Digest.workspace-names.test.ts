@@ -9,12 +9,12 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 const packet = (turn: number): DurablePacket => ({
     weight: 0,
     sections: [
-        { name: "system", slot: "system", header: null, content: "You are a worker.", weight: contentWeight("You are a worker.") },
+        { name: "system", slot: "system", header: null, content: "You are a session.", weight: contentWeight("You are a session.") },
         { name: "log", slot: "user", header: "Log", content: `turn ${turn}`, weight: 1 },
     ],
     attributions: [],
@@ -28,10 +28,10 @@ test("{§share-packet-names}: a workspace named by its path is slugged for its p
     const dbPath = join(dir, "plurnk.db");
     const db = await openMigrated(dbPath);
     try {
-        for (const [name, worker] of [["~/ptl/plurnk-service", "clerk9"], ["~/ptl/plurnk-service/", "scout"], ["service", "mx1"]] as const) {
+        for (const [name, session] of [["~/ptl/plurnk-service", "clerk9"], ["~/ptl/plurnk-service/", "scout"], ["service", "mx1"]] as const) {
             const workspaceId = await insertWorkspace(db, name);
-            const workerId = await insertWorker(db, workspaceId, null, worker);
-            const loopId = await insertLoop(db, workerId, 1, "work");
+            const sessionId = await insertSession(db, workspaceId, null, session);
+            const loopId = await insertLoop(db, sessionId, 1, "work");
             await insertPacketTurn(db, loopId, 1, packet(1), 200);
         }
     } finally { await db.close(); }
@@ -41,7 +41,7 @@ test("{§share-packet-names}: a workspace named by its path is slugged for its p
     assert.ok(folders.includes("ptl-plurnk-service"), `the first path-named workspace slugs to ptl-plurnk-service: ${folders.join(", ")}`);
     assert.ok(folders.some((name) => /^ptl-plurnk-service-\d+$/u.test(name)), `the second, slugging alike, carries its id: ${folders.join(", ")}`);
     assert.ok(folders.includes("service"), "a name that can name a file is kept as it is");
-    assert.ok((await readdir(join(digestDir, "ptl-plurnk-service"))).some((name) => name.startsWith("clerk9-1-1")), "the worker's packet files sit in the slugged folder");
+    assert.ok((await readdir(join(digestDir, "ptl-plurnk-service"))).some((name) => name.startsWith("clerk9-1-1")), "the session's packet files sit in the slugged folder");
     const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
     assert.match(markdown, /~\/ptl\/plurnk-service/u, "the digest text keeps the workspace's name verbatim");
     const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as { turns: Array<{ artifact: string }> };
@@ -49,7 +49,7 @@ test("{§share-packet-names}: a workspace named by its path is slugged for its p
     for (const { artifact } of json.turns) {
         const page = await readFile(join(digestDir, `${artifact}.request.md`), "utf8");
         assert.match(page, /\[Digest\]\(\.\.\/digest\.md\)/u);
-        assert.doesNotMatch(page, /\[(?:Previous|Next)\]/u, "navigation cannot cross workers or workspaces");
+        assert.doesNotMatch(page, /\[(?:Previous|Next)\]/u, "navigation cannot cross sessions or workspaces");
         assert.ok(markdown.includes(`](${artifact}.request.md)`));
     }
 });

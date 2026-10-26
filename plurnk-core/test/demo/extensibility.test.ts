@@ -24,7 +24,7 @@ const integrate = async (t: TestContext, label: string, prompt: string): Promise
         assert.equal(result.finalStatus, 200, `[${label}] the request concludes`);
         assert.ok(result.lastContent.trim().length > 0, `[${label}] an answer arrives`);
         assert.deepEqual(await ResourceState.check(s.db), [], `[${label}] the workspace stays lawful`);
-        const log = await s.daemon.readLog({ workspaceId: s.workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
+        const log = await s.daemon.readLog({ workspaceId: s.workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
         const read = log.some((row) => row.op === "READ" && JSON.stringify(row).includes(CHAPTER));
         t.diagnostic(`[${label}] read ${CHAPTER}: ${read}`);
     } finally { await s.cleanup(); }
@@ -39,5 +39,5 @@ test("demo: integrate plurnk into a chat bot", { timeout: 1_800_000 }, async (t)
 });
 
 test("demo: integrate plurnk with webhooks served by its own daemon", { timeout: 1_800_000 }, async (t) => {
-    await integrate(t, "extend-webhook", "Create an extension that integrates plurnk with GitHub webhooks: GitHub should POST to an endpoint that plurnk's own daemon serves, and each new issue should start a new plurnk worker. Put whatever it needs in this project.");
+    await integrate(t, "extend-webhook", "Create an extension that integrates plurnk with GitHub webhooks: GitHub should POST to an endpoint that plurnk's own daemon serves, and each new issue should start a new plurnk session. Put whatever it needs in this project.");
 });

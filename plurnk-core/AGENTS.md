@@ -12,7 +12,7 @@ Core owns:
 
 - daemon startup and shutdown;
 - SQLite persistence and schema initialization;
-- workspaces, workers, loops, turns, and log entries;
+- workspaces, sessions, loops, turns, and log entries;
 - packet assembly and model-loop orchestration;
 - operation dispatch and proposal lifecycle;
 - the internal API used by `plurnk-acp`.
@@ -29,10 +29,10 @@ Core's internal owners compose without becoming new package or public seams:
 |-------|---------|
 | `Daemon` | Process lifecycle, dependency composition, notifications, and the external client façade. |
 | `DaemonModules` | The daemon's modules: composed and discovered, their HTTP mount claims, their setup/start/stop/close phases, and the actions they register. |
-| `MessageDelivery` | A message's delivery to a worker: the seam's `runLoop` and the worker scheme's `injectWorker`, the model and effort they resolve, the card they read, the message's preparation and source attribution, and the injection into the drain. |
-| `ClientOperations` | A person's client operations: each one an administrative loop in the runtime worker with its own cancellation scope, the statements it dispatches as client turns, its cancellation, and the rollback that runs as one. |
-| `WorkerModels` | A worker's model, effort and spawn override: the durable selection and its client get/set surface, the loop's immutable snapshot and the conflicts an injection may not introduce, and the catalog a client lists. |
-| `DrainSupervisor` | One worker's queue consumer, message admission and orphan recovery, drain identity, wake obligations, cancellation scope, poll/park timers, and terminal cleanup. |
+| `MessageDelivery` | A message's delivery to a session: the seam's `runLoop` and the session scheme's `injectSession`, the model and effort they resolve, the card they read, the message's preparation and source attribution, and the injection into the drain. |
+| `ClientOperations` | A person's client operations: each one an administrative loop in the runtime session with its own cancellation scope, the statements it dispatches as client turns, its cancellation, and the rollback that runs as one. |
+| `SessionModels` | A session's model, effort and spawn override: the durable selection and its client get/set surface, the loop's immutable snapshot and the conflicts an injection may not introduce, and the catalog a client lists. |
+| `DrainSupervisor` | One session's queue consumer, message admission and orphan recovery, drain identity, wake obligations, cancellation scope, poll/park timers, and terminal cleanup. |
 | `Engine` | Loop lifecycle and the public turn, dispatch, derivation, and proposal façades. |
 | `TurnRunner` | Model inference and `_plurnk` initialization, from materialization and output admission through operation settlement. |
 | `Dispatcher` | Operation admission/routing, scheme execution, proposal waiting, curation, and durable log writes. |

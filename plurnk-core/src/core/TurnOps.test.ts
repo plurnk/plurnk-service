@@ -7,20 +7,20 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 test("{§emission-row} the frozen projection keeps every header and body whole, and adds no nested operations", () => {
     const headers = [
-        "READ (worker:///notes.md) <1,-1> /needle/ <!-- inspect -->",
-        "EDIT (worker:///notes.md) <@abcde> <!-- replace -->",
-        "COPY (worker:///a.md) <2,4> (worker:///b.md) <0>",
-        "MOVE (worker:///b.md) <1,2> (worker:///c.md) <-1>",
+        "READ (workspace:///notes.md) <1,-1> /needle/ <!-- inspect -->",
+        "EDIT (workspace:///notes.md) <@abcde> <!-- replace -->",
+        "COPY (workspace:///a.md) <2,4> (workspace:///b.md) <0>",
+        "MOVE (workspace:///b.md) <1,2> (workspace:///c.md) <-1>",
         "sh [{\"env\":{\"LANG\":\"C\"}}] <!-- verify -->",
         "gitea (list_issues)",
-        "WORK (worker://helper)",
-        "SEND (worker://helper)",
+        "WORK (session://helper)",
+        "SEND (session://helper)",
         "NOTE",
         "SEND [200]",
     ];
     const bodies = [
         null,
-        "A literal example:\n```KILL (worker:///not-an-operation)\n```\nReplacement text.",
+        "A literal example:\n```KILL (workspace:///not-an-operation)\n```\nReplacement text.",
         null,
         null,
         "printf '%s\\n' verification",
@@ -46,8 +46,8 @@ for (const [name, body] of [
     ["empty", ""],
     ["nonempty", "The original body."],
 ] as const) {
-    for (const header of ["EDIT (worker:///notes.md)", "SEND (worker://helper)"]) {
-        test(`{§emission-row} ${header}: an ${name} body renders as the worker wrote it`, () => {
+    for (const header of ["EDIT (workspace:///notes.md)", "SEND (session://helper)"]) {
+        test(`{§emission-row} ${header}: an ${name} body renders as the session wrote it`, () => {
             const source = PlurnkParser.frame(header, body);
             const statements = TurnOps.parseInternal(source);
             assert.equal(statements.length, 1);
@@ -58,14 +58,14 @@ for (const [name, body] of [
 
 test("{§emission-row} a long body is frozen whole", () => {
     const body = Array.from({ length: 120 }, (_line, index) => `line ${index + 1}`).join("\n");
-    const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (worker:///notes.md)", body));
-    assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (worker:///notes.md)", body));
+    const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (workspace:///notes.md)", body));
+    assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (workspace:///notes.md)", body));
 });
 
 
 test("{§outside-text} comments outside operation fences are not part of a reply", () => {
     const emitted = [
-        `${PlurnkParser.frame("EDIT (worker:///notes.md)", "complete body")} <!-- imitated aside -->`,
+        `${PlurnkParser.frame("EDIT (workspace:///notes.md)", "complete body")} <!-- imitated aside -->`,
         PlurnkParser.frame("SEND [200]", "The answer."),
         "<!-- a trailing comment of its own -->",
     ].join("\n\n");
@@ -79,10 +79,10 @@ test("{§outside-text} comments outside operation fences are not part of a reply
 });
 
 test("{§op-execution-order} internal programs may omit a disposition without inventing one", () => {
-    const source = "```READ (worker:///notes.md)```";
+    const source = "```READ (workspace:///notes.md)```";
     const parsed = TurnOps.parseInternal(source);
     assert.deepEqual(parsed.map(({ op }) => op), ["READ"]);
-    assert.equal(TurnOps.renderInternal(parsed), "```READ (worker:///notes.md)\n```");
+    assert.equal(TurnOps.renderInternal(parsed), "```READ (workspace:///notes.md)\n```");
 });
 
 test("{§turn-ops-admission-path} TurnOps: internal source round-trips through the public parser", () => {

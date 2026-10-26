@@ -71,7 +71,7 @@
         // `new RegExp(pattern)` and `new Headers(…)` inside a try are the standard validation of an
         // authored pattern or header field; the constructor's throw is the result.
         "eslint/no-new": "off",
-        // `_plurnk` is the runtime worker's name in the contract, and `_`-prefixed fields name private
+        // `_plurnk` is the runtime session's name in the contract, and `_`-prefixed fields name private
         // test seams; the dangle is the identifier.
         "eslint/no-underscore-dangle": "off",
         // Opinions, not idiom here: a helper defined where it is read is the codebase's style, and a class of

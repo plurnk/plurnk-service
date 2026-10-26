@@ -14,7 +14,7 @@ export const isLogEntryNotification = (value: unknown): value is LogEntryNotific
 export type ProposalNotification = ProposalProjection;
 
 export type ReasoningEventNotification = {
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly loopSeq: number;
@@ -27,9 +27,9 @@ export type ReasoningEventNotification = {
 );
 
 // {§acp-outside-text}: one admitted emission's text outside every operation, with the exact
-// weight the model was told and the `<worker>-<loop>-<turn>` coordinate its evidence is filed under.
+// weight the model was told and the `<session>-<loop>-<turn>` coordinate its evidence is filed under.
 export interface OutsideEventNotification {
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly coordinate: string;
@@ -38,9 +38,9 @@ export interface OutsideEventNotification {
 }
 
 export interface TerminatedNotification {
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
-    // {§notifications-loop-terminated} — the loop's number among its worker's loops.
+    // {§notifications-loop-terminated} — the loop's number among its session's loops.
     readonly loopSeq: number;
     readonly result: OperationResult;
     readonly hitMaxTurns: boolean;
@@ -101,7 +101,7 @@ const streamCoordinate = {
 };
 const streamBase = {
     entryId: POSITIVE,
-    workerId: POSITIVE,
+    sessionId: POSITIVE,
     target: NONEMPTY,
     scheme: NONEMPTY,
     channel: NONEMPTY,
@@ -111,7 +111,7 @@ const streamBase = {
     ...streamCoordinate,
 };
 const reasoningIdentity = {
-    workerId: POSITIVE,
+    sessionId: POSITIVE,
     loopId: POSITIVE,
     turnId: POSITIVE,
     loopSeq: POSITIVE,
@@ -128,14 +128,14 @@ export const APPLICATION_NOTIFICATIONS = Object.freeze({
     "log/entry": notification<LogEntryNotification>(object({
         entry: object({
             id: POSITIVE,
-            worker_id: POSITIVE,
+            session_id: POSITIVE,
             loop_id: POSITIVE,
             op: nullable(string()),
             origin: NONEMPTY,
-        }, ["id", "worker_id", "loop_id", "op", "origin"], true),
+        }, ["id", "session_id", "loop_id", "op", "origin"], true),
     }, ["entry"])),
     "loop/terminated": notification<TerminatedNotification>(object({
-        workerId: POSITIVE,
+        sessionId: POSITIVE,
         loopId: POSITIVE,
         loopSeq: POSITIVE,
         result: OPERATION_RESULT,
@@ -152,9 +152,9 @@ export const APPLICATION_NOTIFICATIONS = Object.freeze({
         }, ["accounting", "curationWeight", "curationBudget", "contextTokens", "contextCapacity", "meta"]),
         // {§notifications-loop-terminated} — Unix milliseconds, the loop's own stamp.
         terminatedAt: POSITIVE,
-    }, ["workerId", "loopId", "loopSeq", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
+    }, ["sessionId", "loopId", "loopSeq", "result", "hitMaxTurns", "turnIds", "attributions", "usage", "terminatedAt"])),
     "loop/packet": notification<ApplicationLoopPacket>(object({
-        workerId: POSITIVE,
+        sessionId: POSITIVE,
         loopId: POSITIVE,
         loopSeq: POSITIVE,
         packetCount: POSITIVE,
@@ -164,39 +164,39 @@ export const APPLICATION_NOTIFICATIONS = Object.freeze({
             contextTokens: nullable(NONNEGATIVE),
             contextCapacity: nullable(POSITIVE),
         }, ["curationWeight", "curationBudget", "contextTokens", "contextCapacity"]),
-    }, ["workerId", "loopId", "loopSeq", "packetCount", "gauge"])),
+    }, ["sessionId", "loopId", "loopSeq", "packetCount", "gauge"])),
     "loop/proposal": notification<ProposalProjection>(ref("ProposalProjection")),
     "loop/interaction": notification<ClientInteractionProjection>(ref("ClientInteractionProjection")),
     "notice/event": notification<{ notice?: unknown; loopId?: unknown }>(object({
-        workerId: nullable(POSITIVE),
+        sessionId: nullable(POSITIVE),
         loopId: NONNEGATIVE,
         notice: ref("Notice"),
-    }, ["workerId", "loopId", "notice"])),
+    }, ["sessionId", "loopId", "notice"])),
     "reasoning/event": notification<ReasoningEventNotification>({
         oneOf: [
             object({
                 ...reasoningIdentity,
                 phase: { enum: ["start", "end"] },
-            }, ["workerId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase"]),
+            }, ["sessionId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase"]),
             object({
                 ...reasoningIdentity,
                 phase: { enum: ["content"] },
                 delta: NONEMPTY,
-            }, ["workerId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase", "delta"]),
+            }, ["sessionId", "loopId", "turnId", "loopSeq", "turnSeq", "modelCallId", "requestSequence", "phase", "delta"]),
         ],
     }),
     "outside/event": notification<OutsideEventNotification>(object({
-        workerId: POSITIVE,
+        sessionId: POSITIVE,
         loopId: POSITIVE,
         turnId: POSITIVE,
         coordinate: NONEMPTY,
         text: NONEMPTY,
         tokens: POSITIVE,
-    }, ["workerId", "loopId", "turnId", "coordinate", "text", "tokens"])),
-    "stream/event": notification(object(streamBase, ["entryId", "workerId", "target", "channel", "state", "contentLength"])),
+    }, ["sessionId", "loopId", "turnId", "coordinate", "text", "tokens"])),
+    "stream/event": notification(object(streamBase, ["entryId", "sessionId", "target", "channel", "state", "contentLength"])),
     "stream/concluded": notification(object({
         entryId: POSITIVE,
-        workerId: POSITIVE,
+        sessionId: POSITIVE,
         target: NONEMPTY,
         subscriptionId: POSITIVE,
         result: OPERATION_RESULT,
@@ -204,5 +204,5 @@ export const APPLICATION_NOTIFICATIONS = Object.freeze({
         summary: string(),
         wakeAction: { enum: ["skipped-aborted", "skipped-cancelled", "wake-pending", "no-op-active-loop", "no-loop"] },
         ...streamCoordinate,
-    }, ["entryId", "workerId", "target", "subscriptionId", "result", "scheme", "summary", "wakeAction"])),
+    }, ["entryId", "sessionId", "target", "subscriptionId", "result", "scheme", "summary", "wakeAction"])),
 } satisfies Readonly<Record<string, ApplicationNotificationContract>>);

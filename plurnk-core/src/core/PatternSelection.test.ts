@@ -9,7 +9,7 @@ import { parsePath } from "@plurnk/plurnk-parser";
 
 const ctx = { mimetypes: new Mimetypes() } as unknown as PlurnkSchemeContext;
 const match = (content: string, marks: readonly number[]) => PatternSelection.match({
-    matcher: { dialect: "glob", raw: "old*" }, content, mimetype: "text/plain", target: parsePath("worker:///entry")!, marks, ctx, scheme: "worker", operation: "EDIT",
+    matcher: { dialect: "glob", raw: "old*" }, content, mimetype: "text/plain", target: parsePath("workspace:///entry")!, marks, ctx, scheme: "workspace", operation: "EDIT",
 });
 
 test("{§logical-line-count} a pattern scope's -1 is the last logical line whether or not the text ends in a newline", async () => {
@@ -32,7 +32,7 @@ test("{§slice-semantics-compose-pattern} an exact-source operation never widens
         const source = { mimetypes: { query: async () => [evidence] } } as unknown as PlurnkSchemeContext;
         const result = await PatternSelection.match({
             matcher: { dialect: "xpath", raw: "//name" }, content: "abc", mimetype: "text/test",
-            target: parsePath("worker:///entry")!, marks: undefined, ctx: source, scheme: "worker", operation: "EDIT",
+            target: parsePath("workspace:///entry")!, marks: undefined, ctx: source, scheme: "workspace", operation: "EDIT",
         });
         assert.ok("result" in result, JSON.stringify(result));
         assert.equal(result.result.status, 422);

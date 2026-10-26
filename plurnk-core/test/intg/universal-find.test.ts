@@ -17,7 +17,7 @@ import type {
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 
@@ -100,13 +100,13 @@ test("{§scheme-surface} data schemes inherit standard FIND after their optional
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `universal-find-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: parseFind("````FIND (prepared:///*.md) *forty-two*````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -133,13 +133,13 @@ test("{§scheme-surface} exact matcher FIND invokes preparation, then returns fl
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `universal-read-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: parseFind("````FIND (prepared:///fact.md) *forty-two*````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -148,7 +148,7 @@ test("{§scheme-surface} exact matcher FIND invokes preparation, then returns fl
 
         assert.equal(result.status, 200);
         const row = await db.log_read_by_coordinate.get<{ rx: string }>({
-            worker_id: workerId,
+            session_id: sessionId,
             loop_seq: 1,
             turn_seq: 1,
             sequence: 1,
@@ -178,13 +178,13 @@ test("{§find-channel-selection}: exact FIND composes the selected channel's pro
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `universal-find-channel-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: parseFind("````FIND (prepared:///fact.md#details) *exact needle*````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -222,13 +222,13 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
     });
     try {
         const workspaceId = await insertWorkspace(db, `universal-find-http-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: parseFind(`\`\`\`\`FIND (${url}) /Zhannetta/\`\`\`\``),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -243,7 +243,7 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
         const reused = await engine.dispatch({
             statement: parseFind(`\`\`\`\`FIND (${url})\`\`\`\``),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 2,
@@ -257,7 +257,7 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
         const surveyed = await engine.dispatch({
             statement: parseFind("````FIND (https://93.184.216.34/*) /spouse/````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 3,
@@ -272,7 +272,7 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
         const dead = await engine.dispatch({
             statement: parseFind(`\`\`\`\`FIND (${deadUrl})\`\`\`\``),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 4,
@@ -285,7 +285,7 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
         const reusedDead = await engine.dispatch({
             statement: parseFind(`\`\`\`\`FIND (${deadUrl})\`\`\`\``),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 5,
@@ -325,15 +325,15 @@ test("{§http-outbound-proposes} HTTP mutation responses cannot satisfy later RE
     });
     try {
         const workspaceId = await insertWorkspace(db, `http-method-provenance-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         // {§http-outbound-proposes} — the SEND below is an outbound mutation, so it proposes. This
         // test is about method provenance, not consent: the test configures server acceptance.
-        const loopId = await insertLoop(db, workerId, 1, "");
+        const loopId = await insertLoop(db, sessionId, 1, "");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const dispatch = (statement: FindStatement | ReadStatement | SendStatement, sequence: number) => engine.dispatch({
             statement,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence,
@@ -389,13 +389,13 @@ test("{§op-methods-op-dispatch} non-data schemes without FIND remain honestly u
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `universal-find-control-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: parseFind("````FIND (control-only:///**)````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { completeStmt, } from "./_dsl.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
@@ -38,11 +38,11 @@ test("{§operator-config-loop-timeout} execution exhaustion rules a legible 504 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "walled");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "walled");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new AbortBlockingMock({ contextWindow: 100000, responses: [] });
-        const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 50 });
+        const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 50 });
         await provider.entered.promise;
         t.mock.timers.tick(loopTimeoutMs);
         const result = await running;
@@ -57,7 +57,7 @@ test("{§operator-config-loop-timeout} execution exhaustion rules a legible 504 
         assert.ok(Array.isArray(packet.sections), "the interrupted attempt retains its exact request packet");
         assert.equal(packet.assistant, undefined, "the timeout never fabricates an assistant response");
         assert.deepEqual(
-            await db.test_error_rows_for_worker.all({ worker_id: workerId }),
+            await db.test_error_rows_for_session.all({ session_id: sessionId }),
             [],
             "the lifecycle timeout never fabricates a provider failure",
         );
@@ -76,9 +76,9 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
     let resumed: ReturnType<Engine["runLoop"]> | undefined;
     try {
         const workspaceId = await insertWorkspace(db, "cumulative-execution");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Wait, then finish the same assignment.");
-        const childId = await insertWorker(db, workspaceId, workerId, "child");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Wait, then finish the same assignment.");
+        const childId = await insertSession(db, workspaceId, sessionId, "child");
         await insertLoop(db, childId, 1, "Live child work the wait joins.");
         const first = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [
@@ -89,7 +89,7 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
             t.mock.timers.tick(40_000);
             return generate(...args);
         });
-        const parked = await first.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const parked = await first.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(parked.result.status, 202);
         t.mock.timers.tick(86_400_000);
         const lifecycle = new LoopLifecycle(db);
@@ -100,7 +100,7 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
         process.env.PLURNK_SERVICE_LOOP_TIMEOUT = "120000";
         const second = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const blocked = new AbortBlockingMock({ contextWindow: 100000, responses: [] });
-        resumed = second.runLoop({ provider: blocked, workspaceId, workerId, loopId, messages: [] });
+        resumed = second.runLoop({ provider: blocked, workspaceId, sessionId, loopId, messages: [] });
         await blocked.entered.promise;
         t.mock.timers.tick(19_999);
         assert.equal(blocked.signal?.aborted, false, "the remaining allowance is available to useful work");
@@ -125,11 +125,11 @@ test("{§operator-config-loop-timeout} the panel's wall never intrudes — a sho
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-off-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "quick");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "quick");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } }] });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.result.status, 200, "the panel's execution allowance is invisible to a normal loop");
     } finally { await db.close(); }
 });
@@ -142,22 +142,22 @@ test("{§loop-execution-allowance}: exhaustion while acquiring the workspace set
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "execution-lock-timeout");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Wait for the workspace.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Wait for the workspace.");
         const gate = new WorkspaceGate(async () => false);
         const exclusive = gate.requestExclusive(workspaceId);
         await exclusive.acquired;
         const waiting = Promise.withResolvers<void>();
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            withWorkspaceTurn: (workspace, worker, run, signal) => {
-                const request = gate.withTurn(workspace, worker, run, signal);
+            withWorkspaceTurn: (workspace, session, run, signal) => {
+                const request = gate.withTurn(workspace, session, run, signal);
                 waiting.resolve();
                 return request;
             },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [] });
-        const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         try {
             await waiting.promise;
             t.mock.timers.tick(1000);
@@ -166,7 +166,7 @@ test("{§loop-execution-allowance}: exhaustion while acquiring the workspace set
             assert.equal(result.reason, "loop_timeout");
             assert.equal(provider.received.length, 0, "the cancelled admission never reaches the provider");
         } finally { exclusive.release(); }
-        (await gate.acquireTurn(workspaceId, workerId))();
+        (await gate.acquireTurn(workspaceId, sessionId))();
     } finally {
         if (previous === undefined) delete process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
         else process.env.PLURNK_SERVICE_LOOP_TIMEOUT = previous;
@@ -180,20 +180,20 @@ test("{§loop-execution-allowance}: an exceptional exit saves consumption and re
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "exceptional-execution");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const failure = new Error("workspace admission failed");
         let executionSignal: AbortSignal | undefined;
         const engine = new Engine({
             db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            withWorkspaceTurn: async (_workspace, _worker, _run, signal) => {
+            withWorkspaceTurn: async (_workspace, _session, _run, signal) => {
                 executionSignal = signal;
                 t.mock.timers.tick(40000);
                 throw failure;
             },
         });
         const provider = new Mock({ contextWindow: 100000, responses: [] });
-        await assert.rejects(engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] }),
+        await assert.rejects(engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] }),
             (error: unknown) => error === failure);
         assert.equal(executionSignal?.aborted, true, "failed execution cannot leave its effect scope alive");
         assert.equal((await db.test_get_loop_execution.get({ id: loopId }))?.execution_elapsed_ms, 40000);
@@ -202,7 +202,7 @@ test("{§loop-execution-allowance}: an exceptional exit saves consumption and re
     } finally { await db.close(); }
 });
 
-test("{§worker-lifecycle-state-machine}: a cancellation committed before timeout settlement keeps its exact result", async (t) => {
+test("{§session-lifecycle-state-machine}: a cancellation committed before timeout settlement keeps its exact result", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
     const previous = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
@@ -210,17 +210,17 @@ test("{§worker-lifecycle-state-machine}: a cancellation committed before timeou
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "cancel-timeout-race");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const lifecycle = new LoopLifecycle(db);
         const finish = lifecycle.finish.bind(lifecycle);
         t.mock.method(lifecycle, "finish", async (...args: Parameters<typeof finish>) => {
-            if (args[1].status === 504) await lifecycle.cancelTree(workerId, "cancel won", true);
+            if (args[1].status === 504) await lifecycle.cancelTree(sessionId, "cancel won", true);
             return finish(...args);
         });
         const engine = new Engine({ db, lifecycle, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new AbortBlockingMock({ contextWindow: 100000, responses: [] });
-        const running = engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const running = engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         await provider.entered.promise;
         t.mock.timers.tick(1000);
         const result = await running;

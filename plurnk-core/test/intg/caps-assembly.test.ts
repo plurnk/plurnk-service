@@ -11,13 +11,13 @@ test("{§capability-ctx}: public identity and working capabilities exclude priva
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-asm-${crypto.randomUUID()}`);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId: 7, loopId: 8, turnId: 9, writer: "model" });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId: 7, loopId: 8, turnId: 9, writer: "model" });
 
         const sctx = new SchemeCtxImpl(ctx, "notes", schemeManifest("notes"), new LiveSubscriptions(), {  });
 
         // identity lifted off the PlurnkSchemeContext
         assert.equal(sctx.workspaceId, workspaceId);
-        assert.equal(sctx.workerId, 7);
+        assert.equal(sctx.sessionId, 7);
         assert.equal(sctx.loopId, 8);
         assert.equal(sctx.turnId, 9);
         assert.equal(sctx.writer, "model");
@@ -36,7 +36,7 @@ test("{§capability-ctx}: public identity and working capabilities exclude priva
         assert.equal(entry?.channels.body.content, "x");
         assert.deepEqual(entry?.attributes, { kind: "specimen" });
 
-        for (const privateField of ["db", "mimetypes", "executors", "weigh", "tokenize", "injectWorker", "wakeWorkerNotify", "streamEventNotify", "pushNotice", "visibility"]) {
+        for (const privateField of ["db", "mimetypes", "executors", "weigh", "tokenize", "injectSession", "wakeSessionNotify", "streamEventNotify", "pushNotice", "visibility"]) {
             assert.equal(privateField in sctx, false, `${privateField} is not part of the public handler context`);
         }
     } finally { await db.close(); }

@@ -3,36 +3,36 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import EntryFind from "../../src/schemes/_entry-find.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { type FindStatement } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
     metadata: null,
     op: "FIND", aside: null,
-    target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
+    target: { kind: "url", raw: "workspace:///**", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: marks === null ? null : { marks }, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("{§worker-tool-admission} shallow FIND folder summaries include only admitted candidates", async () => {
+test("{§session-tool-admission} shallow FIND folder summaries include only admitted candidates", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-visibility-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         for (const pathname of ["/visible/note.md", "/hidden/secret.md"]) {
-            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname, channel: "body", content: "content", mimetype: "text/markdown" });
+            await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname, channel: "body", content: "content", mimetype: "text/markdown" });
         }
         const result = await EntryFind.findWorkspaceEntries(
-            { ...findAll([1, -1]), target: parsePath("worker:///*") },
-            makeSchemeCtx({ db, workspaceId, workerId }),
-            Worker.manifest,
+            { ...findAll([1, -1]), target: parsePath("workspace:///*") },
+            makeSchemeCtx({ db, workspaceId, sessionId }),
+            Workspace.manifest,
             { visible: (pathname) => pathname.startsWith("/visible/") },
         );
         assert.equal(result.status, 200);
-        assert.deepEqual(result.results.flatMap((item) => Array.isArray(item) ? item.map(({ path }) => path) : []), ["worker:///visible/**"]);
+        assert.deepEqual(result.results.flatMap((item) => Array.isArray(item) ? item.map(({ path }) => path) : []), ["workspace:///visible/**"]);
         assert.equal(result.range?.total, 1);
         assert.doesNotMatch(result.content!, /hidden/);
     } finally { await db.close(); }
@@ -42,10 +42,10 @@ test("{§find-result-projection} {§markerless-first-page}: a markerless FIND re
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-page-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        for (let i = 0; i < 20; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/e${i.toString().padStart(2, "0")}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Worker.manifest, {  });
+        const sessionId = await insertSession(db, workspaceId);
+        for (let i = 0; i < 20; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: `/e${i.toString().padStart(2, "0")}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        const r = await EntryFind.findWorkspaceEntries(findAll(), ctx, Workspace.manifest, {  });
         assert.equal(r.status, 200);
         assert.equal(r.results.length, 20);
         assert.equal(r.matchingPathCount, 20);
@@ -66,15 +66,15 @@ test("{§find-result-projection}: explicit later and all-results pages use the s
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-explicit-page-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        for (let i = 0; i < 20; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/e${i.toString().padStart(2, "0")}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const continued = await EntryFind.findWorkspaceEntries(findAll([17, -1]), ctx, Worker.manifest, {  });
+        const sessionId = await insertSession(db, workspaceId);
+        for (let i = 0; i < 20; i++) await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: `/e${i.toString().padStart(2, "0")}`, channel: "body", content: `entry ${i}`, mimetype: "text/markdown" });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        const continued = await EntryFind.findWorkspaceEntries(findAll([17, -1]), ctx, Workspace.manifest, {  });
         assert.equal(continued.results.length, 4);
         assert.equal(continued.range?.unit, "resource");
         assert.equal(continued.matchingPathCount, 20);
 
-        const all = await EntryFind.findWorkspaceEntries(findAll([1, -1]), ctx, Worker.manifest, {  });
+        const all = await EntryFind.findWorkspaceEntries(findAll([1, -1]), ctx, Workspace.manifest, {  });
         assert.equal(all.results.length, 20);
         assert.deepEqual(all.range?.returned, [1, 20]);
         assert.equal(all.matchingPathCount, 20);
@@ -87,11 +87,11 @@ test("{§find-result-projection} {§range-extent}: a FIND range of three or four
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-arity-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "one\ntwo\n", mimetype: "text/markdown" });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "one\ntwo\n", mimetype: "text/markdown" });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         for (const marks of [[2, 1, 4], [1620, 1, 1660, 1]] as Array<[number, ...number[]]>) {
-            const refused = await EntryFind.findWorkspaceEntries(findAll(marks), ctx, Worker.manifest, {});
+            const refused = await EntryFind.findWorkspaceEntries(findAll(marks), ctx, Workspace.manifest, {});
             assert.equal(refused.status, 416, JSON.stringify(marks));
             assert.deepEqual(refused.problem?.requestedPositions, marks);
             assert.equal(Object.hasOwn(refused, "range"), false, "the receipt carries no extent");

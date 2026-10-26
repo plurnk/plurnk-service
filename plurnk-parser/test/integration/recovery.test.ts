@@ -63,19 +63,19 @@ test("{§fence-boundary} an internal builder failure propagates without leaking 
 });
 
 test("{§scope-slot-tolerance} a scope inside a target is applied with one factual warning per selection", () => {
-    const r = PlurnkParser.parse(turn(frame("COPY (worker:///src.md<2,3>) (worker:///slice.md<1,-1>)", null), frame("READ (a.ts<4,5>)", null)));
+    const r = PlurnkParser.parse(turn(frame("COPY (workspace:///src.md<2,3>) (workspace:///slice.md<1,-1>)", null), frame("READ (a.ts<4,5>)", null)));
     assert.equal(r.unparsedTail, undefined);
     const errs = errors(r);
     assert.deepEqual(errs.map((e) => [e.line, e.severity]), [[1, "warning"], [1, "warning"], [3, "warning"]]);
     assert.equal(errs[0].message, "The scope was inside the target slot; it was applied as the operation scope.");
-    assert.equal(errs[0].column, 25);
+    assert.equal(errs[0].column, 28);
     const ops = statements(r);
     assert.deepEqual(ops.map(writtenOp), ["COPY", "READ", "WAIT"]);
     const copy = ops[0];
     assert.ok(copy.op === "COPY");
-    assert.equal(copy.source.target.raw, "worker:///src.md");
+    assert.equal(copy.source.target.raw, "workspace:///src.md");
     assert.deepEqual(copy.source.lineMarker, { marks: [2, 3] });
-    assert.equal(copy.destination.target.raw, "worker:///slice.md");
+    assert.equal(copy.destination.target.raw, "workspace:///slice.md");
     assert.deepEqual(copy.destination.lineMarker, { marks: [1, -1] });
     const read = ops[1];
     assert.ok(read.op === "READ");
@@ -151,11 +151,11 @@ for (const header of ["READ (a.md) <2,3> (extra.md)", "KILL (a.md) (extra.md)"])
 for (const header of [
     "FIND (/needle/) (src/) <1,-1>",
     "EDIT (a.md) (extra.md)",
-    "SEND (worker://child) (extra.md)",
+    "SEND (session://child) (extra.md)",
     "BARE (a.md) (extra.md)",
-    "WORK (worker://child) (extra.md)",
-    "FORK (worker://child) (extra.md)",
-    "COPY (worker:///src.md) <2,3> (to) (worker:///slice.md)",
+    "WORK (session://child) (extra.md)",
+    "FORK (session://child) (extra.md)",
+    "COPY (workspace:///src.md) <2,3> (to) (workspace:///slice.md)",
     "MOVE (😀.md) <2,3> (dest.md) <0> (extra.md)",
 ]) {
     test(`{§extra-path-slot}: ${header} reports its unexpected slot without assuming intent`, () => {

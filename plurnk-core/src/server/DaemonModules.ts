@@ -156,7 +156,7 @@ export default class DaemonModules {
     registerAction(registration: ModuleActionRegistration): void {
         const { name, scope, inputSchema, outputSchema, handler } = registration;
         if (name.length === 0) throw new Error("registerModuleAction: action name must not be empty");
-        if (scope !== "daemon" && scope !== "workspace" && scope !== "worker") {
+        if (scope !== "daemon" && scope !== "workspace" && scope !== "session") {
             throw new Error(`module action '${name}' has invalid scope '${String(scope)}'`);
         }
         if (inputSchema === null || typeof inputSchema !== "object" || Array.isArray(inputSchema)) {
@@ -206,17 +206,17 @@ export default class DaemonModules {
             );
         }
         let releaseCapabilities: WorkspaceCapabilityRelease | undefined;
-        if (context.scope === "worker") {
+        if (context.scope === "session") {
             const workspaceId = ClientInput.assertId(`module action '${name}'`, "workspaceId", context.workspaceId);
-            const workerId = ClientInput.assertId(`module action '${name}'`, "workerId", context.workerId);
-            const worker = await this.#db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-            if (worker === undefined || worker.workspace_id !== workspaceId) {
+            const sessionId = ClientInput.assertId(`module action '${name}'`, "sessionId", context.sessionId);
+            const session = await this.#db.envelope_get_session_by_id.get<{ workspace_id: number }>({ id: sessionId });
+            if (session === undefined || session.workspace_id !== workspaceId) {
                 throw daemonFailure(
                     "daemon:module-action",
-                    "worker-not-found",
+                    "session-not-found",
                     404,
-                    `Worker ${workerId} does not exist in workspace ${workspaceId}.`,
-                    { workspaceId, workerId, retryable: false },
+                    `Session ${sessionId} does not exist in workspace ${workspaceId}.`,
+                    { workspaceId, sessionId, retryable: false },
                 );
             }
         }
@@ -226,8 +226,8 @@ export default class DaemonModules {
             await this.#residency.identity(context.workspaceId);
         }
         try {
-            if (registration.residency === "required" && context.scope === "worker") {
-                const release = await this.#workspaceGate.acquireTurn(context.workspaceId, context.workerId);
+            if (registration.residency === "required" && context.scope === "session") {
+                const release = await this.#workspaceGate.acquireTurn(context.workspaceId, context.sessionId);
                 try {
                     await this.#residency.reconcile(context.workspaceId);
                 } finally {

@@ -7,18 +7,18 @@
 import { liveTest as test } from "../live-test.ts";
 import assert from "node:assert/strict";
 import { liveWorkspace, liveLoop } from "../_live-harness.ts";
-import { namedModelWorker } from "../intg/_workers.ts";
+import { namedModelSession } from "../intg/_sessions.ts";
 
-// Story one: a value already in the worker's environment, asked for plainly.
-test("demo: the model reads a variable already in its worker's environment", async (t) => {
+// Story one: a value already in the session's environment, asked for plainly.
+test("demo: the model reads a variable already in its session's environment", async (t) => {
     const s = await liveWorkspace({ name: `env-read-${crypto.randomUUID()}` });
     try {
-        const workerId = await namedModelWorker(s.daemon, s.workspaceId, "main");
-        await s.daemon.invokeModuleAction("worker.env.add", { alias: "FOO_VERSION", definition: { value: "42" } },
-            { scope: "worker", workspaceId: s.workspaceId, workerId });
-        const loop = await liveLoop(s, 2, { prompt: "What's the FOO_VERSION environment variable?", workerId, maxTurns: 6 }, { signal: t.signal });
+        const sessionId = await namedModelSession(s.daemon, s.workspaceId, "main");
+        await s.daemon.invokeModuleAction("session.env.add", { alias: "FOO_VERSION", definition: { value: "42" } },
+            { scope: "session", workspaceId: s.workspaceId, sessionId });
+        const loop = await liveLoop(s, 2, { prompt: "What's the FOO_VERSION environment variable?", sessionId, maxTurns: 6 }, { signal: t.signal });
         assert.equal(loop.finalStatus, 200, "loop terminated cleanly");
-        assert.match(loop.lastContent, /\b42\b/u, "the reply gives the value the worker's environment holds");
+        assert.match(loop.lastContent, /\b42\b/u, "the reply gives the value the session's environment holds");
     } finally { await s.cleanup(); }
 });
 
@@ -26,7 +26,7 @@ test("demo: the model reads a variable already in its worker's environment", asy
 //
 // The discriminating assertion is the SECOND command. A model that sets the variable inline
 // (`CARGO_TARGET_DIR=… cmd`) satisfies the first half and fails here, which is precisely the
-// difference between an ephemeral prefix and durable worker state.
+// difference between an ephemeral prefix and durable session state.
 test("demo: a value the model sets persists into a later command", async (t) => {
     const s = await liveWorkspace({ name: `env-persist-${crypto.randomUUID()}` });
     try {
@@ -42,7 +42,7 @@ test("demo: a value the model sets persists into a later command", async (t) => 
         );
         assert.equal(loop.finalStatus, 200, "loop terminated cleanly");
         assert.match(loop.lastContent, /\/tmp\/plurnk-demo-shared/u,
-            "the later command saw the value, so it came from the worker's registry and not an inline prefix");
+            "the later command saw the value, so it came from the session's registry and not an inline prefix");
         assert.ok(loop.turnIds.length >= 2, "setting and observing are separate turns; one turn cannot distinguish the two");
     } finally { await s.cleanup(); }
 });

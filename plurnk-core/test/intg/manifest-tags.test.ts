@@ -2,15 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
 test("{§entry-identity-no-null} manifest catalog: a file member stores scheme=file and renders slash-free (note 1)", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `mslash-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
         // {§entry-identity-no-null} — storage uses the reserved file identity, while
         // the catalog projects the relative bare path the model reads and writes.
         await EntryCrud.writeEntry({ authority: "", pathname: "notes.md" }, { channels: { body: { content: "hi", mimetype: "text/markdown" } } }, ctx, "file");

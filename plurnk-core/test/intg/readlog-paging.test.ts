@@ -7,9 +7,9 @@ import type { LogEntryWire } from "@plurnk/plurnk-contracts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { serverProposals } from "./_approval.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
-const work = "````NOTE\nPlan the notes.\n````\n````EDIT (worker:///a.md)\nfirst\n````\n````READ (worker:///a.md)\n````";
+const work = "````NOTE\nPlan the notes.\n````\n````EDIT (workspace:///a.md)\nfirst\n````\n````READ (workspace:///a.md)\n````";
 const done = "````SEND [200]\nDone.\n````";
 
 const streamed = (frames: readonly object[]): Response => new Response(new ReadableStream<Uint8Array>({
@@ -44,20 +44,20 @@ test("{§methods-log-read} {§methods-readable-reasoning} beforeId pages newest 
             if (method === "reasoning/event" && event.phase === "start") streams.push(event);
         });
         const { workspaceId } = await daemon.createWorkspace({ name: `paging-${crypto.randomUUID()}` });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Note a." });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Note a." });
         const status = await waitForDb(() => new LoopLifecycle(db).status(loopId), (value) => value === 200 || value >= 400);
         if (status !== 200) {
-            const rows = await daemon.readLog({ workspaceId, workerId, limit: 50 });
+            const rows = await daemon.readLog({ workspaceId, sessionId, limit: 50 });
             assert.fail(`loop ${status}: ${JSON.stringify(rows.map(({ loop_seq, turn_seq, sequence, origin, op, status_rx, rx }) => [loop_seq, turn_seq, sequence, origin, op, status_rx, JSON.stringify(rx).slice(0, 160)]))}`);
         }
 
-        const whole = await daemon.readLog({ workspaceId, workerId, limit: 1000 });
+        const whole = await daemon.readLog({ workspaceId, sessionId, limit: 1000 });
         assert.ok(whole.length >= 4, `the loop wrote its rows: ${whole.length}`);
         assert.deepEqual(whole.map(({ id }) => id), whole.map(({ id }) => id).toSorted((left, right) => right - left), "newest first");
         const paged: LogEntryWire[] = [];
         for (let beforeId: number | undefined; ;) {
-            const page = await daemon.readLog({ workspaceId, workerId, limit: 2, ...(beforeId === undefined ? {} : { beforeId }) });
+            const page = await daemon.readLog({ workspaceId, sessionId, limit: 2, ...(beforeId === undefined ? {} : { beforeId }) });
             if (page.length === 0) break;
             paged.push(...page);
             beforeId = page.at(-1)!.id;

@@ -72,7 +72,7 @@ const abortOutcome = (reason: unknown): string =>
 // alone ("no_review_channel") names a condition the reader cannot act on.
 const HARNESS_SETTLEMENTS: Readonly<Record<string, { readonly condition: string; readonly recovery: string }>> = {
     no_review_channel: {
-        condition: "this worker's owner does not implement proposal review",
+        condition: "this session's owner does not implement proposal review",
         recovery: "Attach a review-capable owner or configure server approval.",
     },
     timeout: {
@@ -112,8 +112,8 @@ export interface ProposalPendingEvent extends ProposalProjection {
 interface ProposalRow {
     logEntryId: number;
     workspaceId: number;
-    workerId: number;
-    worker: string;
+    sessionId: number;
+    session: string;
     loopId: number;
     turnId: number;
     loopSeq: number;
@@ -162,7 +162,7 @@ const readProposalTimeoutMs = (): number | null => {
 // it — an outbound SEND snapshots its attachments when the settlement accepts, not when the
 // proposal was raised — and the fallback in SchemeCtxImpl refuses any non-empty capture.
 type ApplyIds = {
-    workspaceId: number; workerId: number; loopId: number; turnId: number;
+    workspaceId: number; sessionId: number; loopId: number; turnId: number;
     // {§log-mutation-patch} — the operation row this application settles, so a scheme can keep
     // what it did on that row.
     logEntryId?: number;
@@ -400,7 +400,7 @@ export default class ProposalLifecycle {
         }
     }
 
-    // {§worker-lifecycle-total-reap}: shutdown cancels every process-local proposal waiter.
+    // {§session-lifecycle-total-reap}: shutdown cancels every process-local proposal waiter.
     cancelAll(outcome: string): void {
         for (const logEntryId of [...this.#pending.keys()]) {
             void this.resolve(logEntryId, { decision: "cancel", outcome });
@@ -423,7 +423,7 @@ export default class ProposalLifecycle {
 
     #project(row: ProposalRow, waiter: ProposalWaiter): ProposalPendingEvent {
         const tools: unknown = JSON.parse(row.owner_tools);
-        const owner = Validator.assertWorkerOwner({ address: row.owner, tools, interactive: row.owner_interactive === 1 });
+        const owner = Validator.assertSessionOwner({ address: row.owner, tools, interactive: row.owner_interactive === 1 });
         const op = ProposalLifecycle.#op(row);
         const attrs = ProposalLifecycle.#objectJson(row.logEntryId, "attrs", row.attrs);
         const result = ProposalLifecycle.#result(row.logEntryId, row.rx);
@@ -443,8 +443,8 @@ export default class ProposalLifecycle {
         const subject = ProposalLifecycle.#subject(row, op, target, attrs, body);
         const proposal = Validator.assertProposalProjection({
             logEntryId: row.logEntryId,
-            workerId: row.workerId,
-            worker: row.worker,
+            sessionId: row.sessionId,
+            session: row.session,
             loopId: row.loopId,
             turnId: row.turnId,
             coordinate: `${row.loopSeq}/${row.turnSeq}/${row.sequence}`,
@@ -504,7 +504,7 @@ export default class ProposalLifecycle {
                 ? "control"
                 : op === "BARE"
                     ? "execute"
-                    : (op === "KILL" || op === "SEND") && (scheme === "worker" || this.#executors()?.entry(scheme, row.workspaceId) !== undefined)
+                    : (op === "KILL" || op === "SEND") && (scheme === "session" || this.#executors()?.entry(scheme, row.workspaceId) !== undefined)
                         ? "control"
                         : "mutate";
         return {
@@ -742,7 +742,7 @@ export default class ProposalLifecycle {
     }
 
     // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. {§proposal-accept-applies}
-    async workerApply(
+    async sessionApply(
         statement: PlurnkStatement,
         originalResult: DispatchResult,
         resolution: AppliedProposalResolution,
@@ -837,24 +837,24 @@ export default class ProposalLifecycle {
         }
     }
 
-    // The context a scheme's applyResolution runs under: the (workspace, worker, loop, turn) the proposal was
+    // The context a scheme's applyResolution runs under: the (workspace, session, loop, turn) the proposal was
     // raised in — the scheme uses it to write the entry that makes the operation's artifact visible in the next
     // packet's index — the row it settles, and the dispatcher's capture capability when the operation needs one.
     #applyContext(ids: ApplyIds): PlurnkSchemeContext {
-        const { workspaceId, workerId, loopId, turnId } = ids;
+        const { workspaceId, sessionId, loopId, turnId } = ids;
         return {
-        db: this.#db, workspaceId, workerId, loopId, turnId,
+        db: this.#db, workspaceId, sessionId, loopId, turnId,
         ...(ids.logEntryId === undefined ? {} : { logEntryId: ids.logEntryId }),
         writer: "model", signal: this.#loopSignal(loopId),
         streamEventNotify: this.#notify.streamEventNotify,
-        wakeWorkerNotify: this.#notify.wakeWorkerNotify,
+        wakeSessionNotify: this.#notify.wakeSessionNotify,
         weigh: this.#weighContent,
         mimetypes: this.#mimetypes,
         ...(ids.resources === undefined ? {} : { resources: ids.resources }),
-        pushNotice: (notice) => this.#notices.push(workspaceId, workerId, loopId, notice),
+        pushNotice: (notice) => this.#notices.push(workspaceId, sessionId, loopId, notice),
         requestInteraction: (interaction, signal = this.#loopSignal(loopId)) => this.#interactions.request(
             interaction,
-            { workspaceId, workerId, loopId, turnId },
+            { workspaceId, sessionId, loopId, turnId },
             signal,
         ),
         executors: this.#executors(),

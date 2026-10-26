@@ -48,9 +48,9 @@ test("{§resource-tree-scheme} a public module supplies live trees while the hos
     const binary = await dispatch(readStmt(parsePath("catalog://alpha/bytes.txt"), { marks: [1, -1] }));
     assert.equal(binary.status, 200);
     assert.equal(binary.content, "00\nff\n80", "binary sniffing and byte projection belong to the host");
-    const copied = await dispatch(copyStmt(guide!, parsePath("worker:///copied.txt")!, { marks: [2, 2] }));
+    const copied = await dispatch(copyStmt(guide!, parsePath("workspace:///copied.txt")!, { marks: [2, 2] }));
     assert.equal(copied.status, 201, JSON.stringify(copied));
-    assert.equal((await dispatch(readStmt(parsePath("worker:///copied.txt")))).content, "needle\n", "COPY preserves the selected source line's terminator");
+    assert.equal((await dispatch(readStmt(parsePath("workspace:///copied.txt")))).content, "needle\n", "COPY preserves the selected source line's terminator");
     for (const statement of [editStmt(guide, "changed", { marks: [1, -1] }), killStmt(guide)]) {
         assert.equal((await dispatch(statement)).status, 403, "tree projections cannot mutate their sources");
     }

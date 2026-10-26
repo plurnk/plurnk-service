@@ -1,5 +1,5 @@
 // {§schemes-directory}: reference docs
-// are materialized under worker:///_plurnk/plurnk/ and discovered by the turn-zero FIND.
+// are materialized under workspace:///_plurnk/plurnk/ and discovered by the turn-zero FIND.
 
 import test from "node:test";
 import assert from "node:assert/strict";

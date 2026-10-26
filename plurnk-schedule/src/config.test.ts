@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { previewOccurrences, serviceDefinitions, validateConfiguration } from "./config.ts";
 
-const HEARTBEAT = '{"rule":"FREQ=HOURLY","target":"worker://bot","prompt":"Check in."}';
+const HEARTBEAT = '{"rule":"FREQ=HOURLY","target":"session://bot","prompt":"Check in."}';
 
 test("{§operator-config-offline-validation} schedule validation normalizes rules at the supplied instant without arming them", () => {
     const env = { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", PLURNK_SCHEDULE_heartbeat: HEARTBEAT };
@@ -12,7 +12,7 @@ test("{§operator-config-offline-validation} schedule validation normalizes rule
     assert.deepEqual(checked.get("heartbeat")?.provenance, { kind: "environment", source: "PLURNK_SCHEDULE_heartbeat" });
     for (const [key, value] of Object.entries({
         TZ: "Not/A_Zone", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "0", PLURNK_SCHEDULE_future_ENABLED: "bad",
-        PLURNK_SCHEDULE_heartbeat: '{"rule":"FREQ=NEVER","target":"worker://bot","prompt":"hello"}',
+        PLURNK_SCHEDULE_heartbeat: '{"rule":"FREQ=NEVER","target":"session://bot","prompt":"hello"}',
     })) {
         assert.throws(() => validateConfiguration({ ...env, [key]: value, PLURNK_SCHEDULE_heartbeat_ENABLED: "0" }, 0), (error: Error) => error.message.includes(key));
     }
@@ -21,13 +21,13 @@ test("{§operator-config-offline-validation} schedule validation normalizes rule
 test("{§schedule-environment} complete declarations sort by canonical alias and default enabled", () => {
     const definitions = serviceDefinitions({
         PLURNK_SCHEDULE_heart_beat: HEARTBEAT,
-        PLURNK_SCHEDULE_nightly: '{"rule":"FREQ=DAILY;BYHOUR=2;BYMINUTE=0;BYSECOND=0","target":"worker://janitor","prompt":"Tidy."}',
+        PLURNK_SCHEDULE_nightly: '{"rule":"FREQ=DAILY;BYHOUR=2;BYMINUTE=0;BYSECOND=0","target":"session://janitor","prompt":"Tidy."}',
         PLURNK_SCHEDULE_ENABLED: "1",
         PLURNK_SCHEDULE_nightly_ENABLED: "0",
         UNRELATED: "1",
     });
     assert.deepEqual([...definitions.keys()], ["heart-beat", "nightly"]);
-    assert.deepEqual(definitions.get("heart-beat"), { definition: { rule: "FREQ=HOURLY", target: "worker://bot", prompt: "Check in." }, enabled: true, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_heart_beat" } });
+    assert.deepEqual(definitions.get("heart-beat"), { definition: { rule: "FREQ=HOURLY", target: "session://bot", prompt: "Check in." }, enabled: true, provenance: { kind: "environment", source: "PLURNK_SCHEDULE_heart_beat" } });
     assert.equal(definitions.get("nightly")?.enabled, false, "disabling retains the complete definition");
     assert.deepEqual([...serviceDefinitions({ PLURNK_SCHEDULE_ENABLED: "1" })], []);
     assert.throws(() => serviceDefinitions({}), /PLURNK_SCHEDULE_ENABLED is missing from the assembled environment floor\./u);

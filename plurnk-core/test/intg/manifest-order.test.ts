@@ -8,12 +8,12 @@ import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import EntryManifest from "../../src/schemes/_entry-manifest.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
-const url = (p: string): UrlPath => ({ kind: "url", raw: `worker:///${p}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, query: null, fragment: null });
+const url = (p: string): UrlPath => ({ kind: "url", raw: `workspace:///${p}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${p}`, query: null, fragment: null });
 const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target, lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 } });
 
@@ -21,9 +21,9 @@ test("{§find-result-projection} catalog is mtime-ordered — a re-edited entry 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `mtime-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        const k = new Worker();
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        const k = new Workspace();
         // Distinct sub-second mtimes via short spacing; a re-edit of `a` makes it newest.
         await k.edit(editStmt(url("a.md"), "alpha"), ctx); await sleep(10);
         await k.edit(editStmt(url("b.md"), "bravo"), ctx); await sleep(10);
@@ -31,8 +31,8 @@ test("{§find-result-projection} catalog is mtime-ordered — a re-edited entry 
         await k.edit(editStmt(url("a.md"), "alpha-2", fullReplace), ctx); // re-edit a — now most-recently-modified
 
         const catalog = await EntryManifest.catalogRowsFor(ctx);
-        const workerEntries = catalog.map(([channel]) => channel.path).filter((p) => p.startsWith("worker:///"));
-        assert.deepEqual(workerEntries, ["worker:///b.md", "worker:///c.md", "worker:///a.md"],
+        const sessionEntries = catalog.map(([channel]) => channel.path).filter((p) => p.startsWith("workspace:///"));
+        assert.deepEqual(sessionEntries, ["workspace:///b.md", "workspace:///c.md", "workspace:///a.md"],
             "b, c, then the re-edited a at the tail — oldest-modified first");
     } finally { await db.close(); }
 });

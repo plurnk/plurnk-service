@@ -18,7 +18,7 @@ const statements = (source: string): PlurnkStatement[] => {
 };
 
 test("{§op-execution-order} operations retain authored order across mutations, observations and asynchronous dispatch", () => {
-    const authored = statements("\n````READ (notes.md)````\n````sh\nnode verify.mjs\n````\n\n````EDIT (notes.md) <2>\nnew\n````\n\n````FIND (src/**)````\n````BARE\nclassify this independently\n````\n\n````WORK (worker://reviewer)\nreview\n````\n\n````KILL (js:///3/1/2/js)````\n````SEND\ndone\n````\n````WAIT\n````");
+    const authored = statements("\n````READ (notes.md)````\n````sh\nnode verify.mjs\n````\n\n````EDIT (notes.md) <2>\nnew\n````\n\n````FIND (src/**)````\n````BARE\nclassify this independently\n````\n\n````WORK (session://reviewer)\nreview\n````\n\n````KILL (js:///3/1/2/js)````\n````SEND\ndone\n````\n````WAIT\n````");
 
     assert.deepEqual(
         scheduleTurnOps(authored).map(writtenOp),
@@ -39,7 +39,7 @@ test("{§op-execution-order} scheduling preserves operation identity and does no
         "one",
         "````",
         "",
-        "````SEND (worker://reviewer)",
+        "````SEND (session://reviewer)",
         "two",
         "````",
     ].join("\n"));
@@ -52,7 +52,7 @@ test("{§op-execution-order} every disposition follows trailing operations witho
         const authored = statements(`\`\`\`\`${op}
 Observe the results.
 \`\`\`\`
-\`\`\`\`SEND (worker://reviewer)
+\`\`\`\`SEND (session://reviewer)
 Message.
 \`\`\`\`
 \`\`\`\`READ (notes.md)\`\`\`\`

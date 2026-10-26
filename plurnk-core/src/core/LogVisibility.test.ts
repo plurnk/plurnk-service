@@ -33,7 +33,7 @@ test("{§log-kill-scope} LogVisibility resolves both published and log-bound anc
     const content = "alpha\nbeta\ngamma";
     const identity = "log:///1/2/3/READ";
     const logAnchor = LineAnchors.token(identity, 2, content);
-    const published = LineAnchors.tokens("worker:///source.md", content);
+    const published = LineAnchors.tokens("workspace:///source.md", content);
     assert.deepEqual(
         LogVisibility.resolveScope({ marks: [logAnchor] }, identity, content),
         { ok: true, range: [2, 2] },
@@ -116,7 +116,7 @@ test("{§log-scope-recovery} {§range-starts-at-one}: a zero or backward log-bod
 test("{§line-anchor-disambiguation}: log curation uses published contextual anchors even when their context is outside the retained READ slice", () => {
     const block = (label: string) => `${label}\nbefore-2\nbefore-1\ntarget\nafter-1\nafter-2\nend-${label}`;
     const source = `${block("a")}\n${block("b")}`;
-    const anchors = LineAnchors.tokens("worker:///source.md", source);
+    const anchors = LineAnchors.tokens("workspace:///source.md", source);
     assert.notEqual(anchors[3], anchors[10]);
     assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[3]] }, "log:///1/2/3/READ", "target", [anchors[3]]), {
         ok: true, range: [1, 1],

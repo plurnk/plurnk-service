@@ -144,7 +144,7 @@ test("{§render-rule-find-renders-result} LogBody resolves COPY/MOVE bodies only
             tx: "",
             rx: {
                 effects: [{
-                    target: "worker:///destination",
+                    target: "workspace:///destination",
                     action: "update",
                     receipt: receipt("1:before\n2:copied"),
                 }],
@@ -158,7 +158,7 @@ test("{§render-rule-find-renders-result} LogBody resolves COPY/MOVE bodies only
             tx: "",
             rx: {
                 effects: [{
-                    target: "worker:///created",
+                    target: "workspace:///created",
                     action: "create",
                     receipt: creationReceipt("1:copied"),
                 }],
@@ -173,12 +173,12 @@ test("{§render-rule-find-renders-result} LogBody resolves COPY/MOVE bodies only
             rx: {
                 effects: [
                     {
-                        target: "worker:///destination",
+                        target: "workspace:///destination",
                         action: "update",
                         receipt: receipt("1:destination", "<1>"),
                     },
                     {
-                        target: "worker:///source",
+                        target: "workspace:///source",
                         action: "update",
                         receipt: receipt("1:source", "<2>"),
                     },
@@ -198,8 +198,8 @@ test("{§render-rule-find-renders-result} LogBody resolves COPY/MOVE bodies only
             tx: "",
             rx: {
                 effects: [
-                    { target: "worker:///destination", action: "create" },
-                    { target: "worker:///source", action: "delete" },
+                    { target: "workspace:///destination", action: "create" },
+                    { target: "workspace:///source", action: "delete" },
                 ],
             },
         }).content,
@@ -272,9 +272,9 @@ test("{§render-rule-find-renders-result} LogBody treats a completion observatio
     for (const attrs of [undefined, { kind: "loop_termination", terminatedBy: "cancel" }]) {
         assert.deepEqual(LogBody.resolve({
             op: "READ", attrs, tx: "",
-            rx: { status: 499, content: "[ worker cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1 },
+            rx: { status: 499, content: "[ session cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1 },
             mimetypeRx: "application/json",
-        }), { content: "[ worker cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1, provenance: "returned" });
+        }), { content: "[ session cancelled ] Stopped.", mimetype: "text/markdown", startLine: 1, provenance: "returned" });
     }
 });
 

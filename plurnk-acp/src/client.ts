@@ -11,7 +11,7 @@ import type {
 export interface AcpDescendantState {
     readonly id: number;
     readonly name: string;
-    readonly parentWorkerId: number | null;
+    readonly parentSessionId: number | null;
     readonly kind: string;
     readonly lifecycle: string;
     readonly gates: ReadonlyArray<ProposalProjection | ClientInteractionProjection>;
@@ -19,7 +19,7 @@ export interface AcpDescendantState {
 
 export interface AcpStreamState {
     readonly entryId: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly target: string;
     readonly lifetime: string;
     readonly loop_seq?: number;
@@ -73,7 +73,7 @@ export interface AcpProviderRoute {
     readonly inputCapacity: number | null;
 }
 
-export interface AcpWorkerStatus {
+export interface AcpSessionStatus {
     readonly model: ModelRoute | null;
     readonly spawnModel?: ModelRoute | null;
     readonly loopId: number | null;
@@ -100,7 +100,7 @@ export interface AcpPlusState {
     readonly plurnk: {
         readonly workspace: AcpWorkspaceState;
         readonly providers: readonly AcpProviderRoute[];
-        readonly status: AcpWorkerStatus;
+        readonly status: AcpSessionStatus;
     };
     readonly budget: AcpBudgetState;
 }

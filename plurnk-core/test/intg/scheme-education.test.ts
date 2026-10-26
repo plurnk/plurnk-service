@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import { completeStmt, } from "./_dsl.ts";
 
@@ -13,8 +13,8 @@ test("{§manifest-client-display} {§schemes-directory}: stored packets carry la
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `scheme-edu-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const registry = new SchemeRegistry();
         registry.register("glyph-test", {
             manifest: {
@@ -33,7 +33,7 @@ test("{§manifest-client-display} {§schemes-directory}: stored packets carry la
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
 
         const { turnId } = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "PLURNK_MD" }, { role: "user", content: "go" }],
         });
 

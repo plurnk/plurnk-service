@@ -16,7 +16,7 @@ test("{§notice-drain-on-read} NoticeChannel validates, broadcasts, and drains o
 
     channel.push(1, 3, 2, notice);
 
-    assert.deepEqual(broadcasts, [{ workerId: 3, loopId: 2, notice }]);
+    assert.deepEqual(broadcasts, [{ sessionId: 3, loopId: 2, notice }]);
     assert.deepEqual(channel.drain(2), [notice]);
     assert.deepEqual(channel.drain(2), []);
 });

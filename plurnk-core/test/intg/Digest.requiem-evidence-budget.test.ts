@@ -10,7 +10,7 @@ import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import type { Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertPacketTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertPacketTurn } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 
@@ -90,8 +90,8 @@ test("{§digest-requiem-evidence-budget}: overflowing evidence elides oldest att
         const db = await openMigrated(dbPath);
         try {
             const workspaceId = await insertWorkspace(db, "requiem-budget");
-            const worker = await insertWorker(db, workspaceId, null, "budgeted");
-            const loopId = await insertLoop(db, worker, 1, "go");
+            const session = await insertSession(db, workspaceId, null, "budgeted");
+            const loopId = await insertLoop(db, session, 1, "go");
             for (let sequence = 1; sequence <= 6; sequence += 1) {
                 const turn: { id: number } = { id: await insertPacketTurn(db, loopId, sequence, MODEL_PACKET, 200) };
                 assert.ok(turn);
@@ -114,9 +114,9 @@ test("{§digest-requiem-evidence-budget}: overflowing evidence elides oldest att
             }],
         });
         const digestDir = join(TMP_DIR, `requiem-budget-out-${crypto.randomUUID()}`);
-        const { workers } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider });
+        const { sessions } = await Digest.requiem({ openEvidence: EvidenceReader.open, dbPath, digestDir, provider });
 
-        assert.equal(workers, 1, "the worker was interviewed despite overflowing evidence");
+        assert.equal(sessions, 1, "the session was interviewed despite overflowing evidence");
         assert.equal(provider.calls.length, 1, "one interview call");
         const user = provider.calls[0].messages[1];
         assert.equal(user.role, "user");

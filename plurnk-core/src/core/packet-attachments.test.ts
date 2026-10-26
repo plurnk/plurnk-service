@@ -172,7 +172,7 @@ test("{§packet-wire-envelope}: historical unbound native attachments retain the
             { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
             { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
             { name: "emission-history", slot: "assistant", header: null, content: emissionRow.rx.content, weight: 20 },
-            { name: "worker", slot: "user", header: "Worker", content: '{"loop":1,"turn":2}', weight: 8 },
+            { name: "session", slot: "user", header: "Session", content: '{"loop":1,"turn":2}', weight: 8 },
         ],
     };
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
@@ -185,7 +185,7 @@ test("{§packet-wire-envelope}: historical unbound native attachments retain the
     assert.deepEqual(closing[2], { type: "file", data: bytes, mediaType: "image/png" });
     assert.equal(closing.length, 3);
     assert.deepEqual(wire[2], { role: "assistant", content: emissionRow.rx.content });
-    assert.deepEqual(wire[3], { role: "user", content: '## Worker\n{"loop":1,"turn":2}' });
+    assert.deepEqual(wire[3], { role: "user", content: '## Session\n{"loop":1,"turn":2}' });
     const textOnly = await PacketWire.wireMessages(packet, async () => { throw new Error("no media should be read"); }, () => false);
     assert.deepEqual(textOnly, PacketWire.packetToWireMessages(packet), "unsupported media do not change the text envelope");
 });
@@ -209,7 +209,7 @@ test("{§packet-wire-envelope} historical native requests retain their recorded 
         sections: [
             { name: "definition", slot: "system", header: null, content: "sys", weight: 2 },
             { name: "log", slot: "user", header: "Log", content: rendered.content, weight: 990 },
-            { name: "worker", slot: "user", header: "Worker", content: '{"turn":2}', weight: 8 },
+            { name: "session", slot: "user", header: "Session", content: '{"turn":2}', weight: 8 },
             { name: "emission-history", slot: "user", header: "Previous Emission", content: program, weight: 20 },
         ],
     };
@@ -217,7 +217,7 @@ test("{§packet-wire-envelope} historical native requests retain their recorded 
     assert.deepEqual(await PacketWire.wireMessages(packet, async () => bytes), [
         { role: "system", content: "sys" },
         { role: "user", content: [
-            { type: "text", text: `## Log\n\n${rendered.content}\n\n## Worker\n{"turn":2}` },
+            { type: "text", text: `## Log\n\n${rendered.content}\n\n## Session\n{"turn":2}` },
             { type: "text", text: PacketWire.attachmentCaption(rendered.attachments[0]) },
             { type: "file", data: bytes, mediaType: "image/png" },
             { type: "text", text: `\n\n## Previous Emission\n\n${program}` },
@@ -234,7 +234,7 @@ test("{§packet-attachment-parts} interpolated native parts remain at their READ
             { name: "log", slot: "user", header: "Log", content: "### log:///1/1/1/emission · 25", weight: 25 },
             { name: "emission-history/1/1/1", slot: "assistant", header: null, content: "```READ (logo.png)\n```", weight: 12 },
             { name: attachment.section, slot: "user", header: null, content: record, weight: 410 },
-            { name: "worker", slot: "user", header: "Worker", content: '{"turn":2}', weight: 10 },
+            { name: "session", slot: "user", header: "Session", content: '{"turn":2}', weight: 10 },
         ],
     };
     const bytes = new Uint8Array([1, 2, 3]);
@@ -246,7 +246,7 @@ test("{§packet-attachment-parts} interpolated native parts remain at their READ
         { type: "text", text: record },
         { type: "text", text: `\n\n${PacketWire.attachmentCaption(attachment)}` },
         { type: "file", data: bytes, mediaType: "image/png" },
-        { type: "text", text: '\n\n## Worker\n{"turn":2}' },
+        { type: "text", text: '\n\n## Session\n{"turn":2}' },
     ]);
     const extended = {
         ...packet,

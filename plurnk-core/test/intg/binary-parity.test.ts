@@ -1,5 +1,5 @@
 // {§binary-parity} — a binary is not a second-class resource. COPY/MOVE transfers its bytes exactly —
-// whole, by byte range, or spliced into a destination range — between files and through a worker:// DB
+// whole, by byte range, or spliced into a destination range — between files and through a session:// DB
 // entry (stored base64 in content), byte-for-byte; a MOVE deletes the source. The refusals are narrow: a
 // textual anchor on a binary region, authoring bytes from a text EDIT body, a scheme that keeps no bytes.
 import test from "node:test";
@@ -10,7 +10,7 @@ import { join } from "node:path";
 import type { ReadStatement, FindStatement } from "@plurnk/plurnk-contracts";
 import { Mock } from "@plurnk/plurnk-providers";
 import { viableWindow } from "./_provider.ts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { rpcCall, connect, withDaemon, waitForDb } from "./_rpc.ts";
 import { resourcePaths } from "./_find.ts";
@@ -19,7 +19,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import EntryFind from "../../src/schemes/_entry-find.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 
 // The task tree is a plain directory: admit its files as members, as the harness does.
 process.env.PLURNK_MEMBERS_task = "**";
@@ -150,14 +150,14 @@ test("{§binary-parity} a byte-pattern COPY and MOVE select the same native frag
         const env = await seedEnvelope(db, `binpattern-transfer-${crypto.randomUUID()}`, { producer: "client" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const ctx = makeSchemeCtx({ db, ...env, mimetypes: DEFAULT_MIMETYPES });
-        await EntryCrud.writeEntry({ authority: "", pathname: "/source.png" }, { channels: { body: { content: "", bytes, mimetype: "image/png" } } }, ctx, "worker");
+        await EntryCrud.writeEntry({ authority: "", pathname: "/source.png" }, { channels: { body: { content: "", bytes, mimetype: "image/png" } } }, ctx, "workspace");
         const matcher = { dialect: "regex" as const, raw: "/AB/", pattern: "AB", flags: "" };
-        const copyBase = copyStmt(urlPath("worker", "/source.png"), urlPath("worker", "/copy.png"));
-        const moveBase = moveStmt(urlPath("worker", "/source.png"), urlPath("worker", "/move.png"));
+        const copyBase = copyStmt(urlPath("workspace", "/source.png"), urlPath("workspace", "/copy.png"));
+        const moveBase = moveStmt(urlPath("workspace", "/source.png"), urlPath("workspace", "/move.png"));
         const copyRes = await engine.dispatch({ ...env, statement: { ...copyBase, source: { ...copyBase.source, matcher } }, sequence: 1, origin: "client" });
         const moveRes = await engine.dispatch({ ...env, statement: { ...moveBase, source: { ...moveBase.source, matcher } }, sequence: 2, origin: "client" });
         assert.deepEqual([copyRes.status, moveRes.status], [201, 201]);
-        const readBytes = async (pathname: string) => Buffer.from((await EntryCrud.readEntry({ authority: "", pathname }, ctx, "worker")).entry!.channels.body.content, "base64");
+        const readBytes = async (pathname: string) => Buffer.from((await EntryCrud.readEntry({ authority: "", pathname }, ctx, "workspace")).entry!.channels.body.content, "base64");
         assert.deepEqual(await readBytes("/copy.png"), Buffer.from("ABAB"));
         assert.deepEqual(await readBytes("/move.png"), Buffer.from("ABAB"));
         assert.deepEqual(await readBytes("/source.png"), Buffer.from([0, 0xff, 0]));
@@ -182,8 +182,8 @@ test("{§binary-parity} a same-channel byte MOVE uses pre-mutation coordinates",
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-for (const target of ["source.png", "worker:///source.png"]) test(`{§binary-parity} pattern EDIT of ${target} is a typed refusal, not an anchor invariant failure`, async () => {
-    const { root, operations } = await runCopy({ "source.png": PNG }, `${target.startsWith("worker:") ? `\`\`\`\`COPY (source.png) (${target})\`\`\`\`\n` : ""}\`\`\`\`EDIT (${target}) /PNG/\nreplacement\n\`\`\`\``);
+for (const target of ["source.png", "workspace:///source.png"]) test(`{§binary-parity} pattern EDIT of ${target} is a typed refusal, not an anchor invariant failure`, async () => {
+    const { root, operations } = await runCopy({ "source.png": PNG }, `${target.startsWith("workspace:") ? `\`\`\`\`COPY (source.png) (${target})\`\`\`\`\n` : ""}\`\`\`\`EDIT (${target}) /PNG/\nreplacement\n\`\`\`\``);
     try {
         const edit = operations.find(({ op }) => op === "EDIT");
         assert.equal(edit?.status_rx, 415, JSON.stringify(edit));
@@ -213,7 +213,7 @@ test("{§binary-parity} a single destination byte position inserts the source by
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-// A binary is not confined to the filesystem: it may live in a worker:// DB entry and come back out
+// A binary is not confined to the filesystem: it may live in a session:// DB entry and come back out
 // byte-for-byte. Two turns — stash the file into an entry, then copy the entry back to a new file.
 const runRoundTrip = async (dsl0: string, dsl1: string) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-binentry-"));
@@ -251,14 +251,14 @@ copied
     return root;
 };
 
-test("{§binary-parity} a binary lives in a worker:// entry and round-trips to a file byte-for-byte", async () => {
-    const root = await runRoundTrip("````COPY (logo.png) (worker:///stash.png)````", "````COPY (worker:///stash.png) (out.png)````");
+test("{§binary-parity} a binary lives in a session:// entry and round-trips to a file byte-for-byte", async () => {
+    const root = await runRoundTrip("````COPY (logo.png) (workspace:///stash.png)````", "````COPY (workspace:///stash.png) (out.png)````");
     try {
-        assert.ok(Buffer.from(await readFile(join(root, "out.png"))).equals(PNG), "the binary survived a worker:// round-trip byte-for-byte");
+        assert.ok(Buffer.from(await readFile(join(root, "out.png"))).equals(PNG), "the binary survived a session:// round-trip byte-for-byte");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-for (const intermediate of ["copy.bin", "worker:///stash"]) {
+for (const intermediate of ["copy.bin", "workspace:///stash"]) {
     test(`{§copy-destination-mimetype} binary transfers through ${intermediate} retain bytes and type across real turns`, async () => {
         const root = await runRoundTrip(`\`\`\`\`COPY (logo.png) <1,8> (${intermediate})\`\`\`\``,
             `\`\`\`\`COPY (logo.png) <9,-1> (${intermediate}) <-1>\`\`\`\`\n\`\`\`\`MOVE (${intermediate}) (output.png)\`\`\`\``);
@@ -290,16 +290,16 @@ for (const op of ["COPY", "MOVE"]) {
     }
 }
 
-test("{§binary-parity} a byte range copies out of a worker:// entry exactly (coordinate = byte)", async () => {
-    const root = await runRoundTrip("````COPY (logo.png) (worker:///stash.png)````", "````COPY (worker:///stash.png) <1,8> (head.png)````");
+test("{§binary-parity} a byte range copies out of a session:// entry exactly (coordinate = byte)", async () => {
+    const root = await runRoundTrip("````COPY (logo.png) (workspace:///stash.png)````", "````COPY (workspace:///stash.png) <1,8> (head.png)````");
     try {
         assert.ok(Buffer.from(await readFile(join(root, "head.png"))).equals(PNG.subarray(0, 8)), "bytes 1..8 out of the entry are the PNG signature");
     } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("{§binary-parity} a stored binary supports the same destination splice and scoped MOVE as a file", async () => {
-    const root = await runRoundTrip("````COPY (logo.png) (worker:///stash.png)````",
-        "````COPY (logo.png) <2,4> (worker:///stash.png) <5,8>````\n````MOVE (worker:///stash.png) <2,4> (moved.png)````\n````COPY (worker:///stash.png) (remaining.png)````");
+    const root = await runRoundTrip("````COPY (logo.png) (workspace:///stash.png)````",
+        "````COPY (logo.png) <2,4> (workspace:///stash.png) <5,8>````\n````MOVE (workspace:///stash.png) <2,4> (moved.png)````\n````COPY (workspace:///stash.png) (remaining.png)````");
     try {
         assert.deepEqual(await readFile(join(root, "moved.png")), PNG.subarray(1, 4));
         assert.deepEqual(await readFile(join(root, "remaining.png")), Buffer.concat([PNG.subarray(0, 1), PNG.subarray(1, 4), PNG.subarray(8)]));
@@ -311,7 +311,7 @@ test("{§binary-parity} a stored binary supports the same destination splice and
 // handed in, synthesized from the stored content — exactly as a File member's #bytes reads.
 const readStmt = (pathname: string): ReadStatement => ({
     metadata: null, op: "READ", aside: null,
-    target: { kind: "url", raw: `worker:///${pathname}`, scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
+    target: { kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: `/${pathname}`, query: null, fragment: null },
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
@@ -319,18 +319,18 @@ test("{§scheme-source-bytes} bytes declared as text retain exact UTF-8 rather t
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "text-bytes");
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
         const coordinate = { authority: "", pathname: "/note.txt" };
         const text = "\ufeffcafé\r\nexact text\n";
         const entry = { channels: { body: { content: "", bytes: Buffer.from(text), mimetype: "text/plain" } } };
-        assert.equal((await EntryCrud.writeEntry(coordinate, entry, ctx, "worker")).status, 201);
-        const stored = await EntryCrud.readEntry(coordinate, ctx, "worker");
+        assert.equal((await EntryCrud.writeEntry(coordinate, entry, ctx, "session")).status, 201);
+        const stored = await EntryCrud.readEntry(coordinate, ctx, "session");
         assert.equal(stored.entry!.channels.body.content, text);
         await assert.rejects(EntryCrud.writeEntry(coordinate, {
             channels: { body: { ...entry.channels.body, bytes: new Uint8Array([0xff]) } },
-        }, ctx, "worker"), /encoded data was not valid/u);
-        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "worker")).entry!.channels.body.content, text, "invalid text bytes do not destroy the existing resource");
+        }, ctx, "session"), /encoded data was not valid/u);
+        assert.equal((await EntryCrud.readEntry(coordinate, ctx, "session")).entry!.channels.body.content, text, "invalid text bytes do not destroy the existing resource");
     } finally { await db.close(); }
 });
 
@@ -338,16 +338,16 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `binentry-read-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4) });
 
-        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker");
+        const written = await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "workspace");
         assert.equal(written.status, 201);
         const rows = await db.entry_read_channels.all<{ name: string; content: string; mimetype: string }>({ entry_id: written.entryId });
         assert.equal(rows[0].mimetype, "image/png", "the binary mimetype is preserved");
         assert.equal(rows[0].content, PNG.toString("base64"), "the bytes are stored base64 in TEXT content");
 
-        const read = await readThroughScheme("worker", null, readStmt("stash.png"), ctx);
+        const read = await readThroughScheme("workspace", null, readStmt("stash.png"), ctx);
         assert.equal(read.status, 200, "a default READ of the binary entry succeeds");
         assert.equal(read.mimetype, "image/png", "the byte view never relabels the source mimetype");
         assert.equal(read.projection, "hex", "it projects as the hex byte view");
@@ -359,11 +359,11 @@ test("{§binary-parity} a binary entry stores its bytes base64 and READs back as
 test("{§read-bytes} a READ pattern selects source bytes, retaining byte coordinates and exact evidence", async () => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `binpattern-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-    await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "worker");
+    const sessionId = await insertSession(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
+    await EntryCrud.writeEntry({ authority: "", pathname: "/stash.png" }, { channels: { body: { content: "", bytes: PNG, mimetype: "image/png" } } }, ctx, "workspace");
     const statement: ReadStatement = { ...readStmt("stash.png"), matcher: { dialect: "regex", raw: "/\\r/", pattern: "\\r", flags: "" }, lineMarker: { marks: [1, 8] } };
-    const read = await readThroughScheme("worker", null, statement, ctx);
+    const read = await readThroughScheme("workspace", null, statement, ctx);
     assert.equal(read.status, 200, JSON.stringify(read));
     assert.equal(read.content, "0d\n");
     assert.equal(read.projection, "hex");
@@ -371,7 +371,7 @@ test("{§read-bytes} a READ pattern selects source bytes, retaining byte coordin
     assert.deepEqual(read.lineOrdinals, [5]);
     assert.deepEqual(read.range, { unit: "byte", total: PNG.length, requested: [1, 8], returned: [5, 5] });
     assert.deepEqual(read.matches, [{ region: { startLine: 5, startColumn: 1, endLine: 5, endColumn: 3 }, matched: "0d" }]);
-    const empty = await readThroughScheme("worker", null, { ...statement, lineMarker: { marks: [6, 8] } }, ctx);
+    const empty = await readThroughScheme("workspace", null, { ...statement, lineMarker: { marks: [6, 8] } }, ctx);
     assert.equal(empty.status, 204);
     assert.equal(empty.content, "");
     assert.equal(empty.matched, 0);
@@ -382,7 +382,7 @@ test("{§read-bytes} a READ pattern selects source bytes, retaining byte coordin
 // found, and a text search over the workspace is never poisoned into matching a binary's base64.
 const findBody = (raw: string, pattern: string): FindStatement => ({
     metadata: null, op: "FIND", aside: null,
-    target: { kind: "url", raw: "worker:///**", scheme: "worker", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
+    target: { kind: "url", raw: "workspace:///**", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/**", query: null, fragment: null },
     lineMarker: null, matcher: { dialect: "regex", raw, pattern, flags: "" }, body: null, position: { line: 1, column: 1 },
 });
 
@@ -390,19 +390,19 @@ test("{§binary-parity} FIND searches a binary entry as its bytes, never its bas
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `binfind-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/stash.png", channel: "body", content: PNG.toString("base64"), mimetype: "image/png" });
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/notes.md", channel: "body", content: "the needle is here", mimetype: "text/markdown" });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/stash.png", channel: "body", content: PNG.toString("base64"), mimetype: "image/png" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/notes.md", channel: "body", content: "the needle is here", mimetype: "text/markdown" });
 
         // "IHDR" is a literal byte run in every PNG header — findable in the decoded bytes, not in the note.
-        const png = await EntryFind.findWorkspaceEntries(findBody("/IHDR/", "IHDR"), ctx, Worker.manifest, {  });
+        const png = await EntryFind.findWorkspaceEntries(findBody("/IHDR/", "IHDR"), ctx, Workspace.manifest, {  });
         assert.equal(png.status, 200);
         assert.equal(resourcePaths(png).filter((p) => p.includes("stash.png")).length, 1, "the byte run is found inside the binary entry");
         assert.equal(resourcePaths(png).some((p) => p.includes("notes.md")), false, "the text note has no such bytes");
 
         // A text needle matches the note only — a binary channel is never text-searched over its base64.
-        const needle = await EntryFind.findWorkspaceEntries(findBody("/needle/", "needle"), ctx, Worker.manifest, {  });
+        const needle = await EntryFind.findWorkspaceEntries(findBody("/needle/", "needle"), ctx, Workspace.manifest, {  });
         assert.equal(needle.status, 200);
         assert.equal(resourcePaths(needle).filter((p) => p.includes("notes.md")).length, 1, "the text note matches");
         assert.equal(resourcePaths(needle).some((p) => p.includes("stash.png")), false, "the binary entry is never poisoned into a text match");

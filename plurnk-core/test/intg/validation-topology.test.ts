@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { InvalidOperationResultError, Results, type ChannelProducerResult, type ProblemDetails } from "@plurnk/plurnk-schemes";
 import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 const problem = (status: number, overrides: Partial<Record<keyof ProblemDetails, string | undefined>> = {}): Record<string, unknown> => {
     const complete: Record<string, unknown> = {
@@ -38,15 +38,15 @@ const CORPUS: ReadonlyArray<readonly [label: string, result: Record<string, unkn
     ["404 with an empty detail", { status: 404, problem: problem(404, { detail: "" }) }, false],
 ];
 
-const seed = async (db: Db): Promise<{ entryId: number; workerId: number }> => {
+const seed = async (db: Db): Promise<{ entryId: number; sessionId: number }> => {
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-        workspace_id: workspaceId, scheme: "worker", authority: "", pathname: `/${crypto.randomUUID()}`,
+        workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: `/${crypto.randomUUID()}`,
     });
     if (entry === undefined) throw new Error("seed entry failed");
     await db.test_seed_channel.run({ entry_id: entry.id, name: "body", content: "", mimetype: "text/plain", state: "active" });
-    return { entryId: entry.id, workerId };
+    return { entryId: entry.id, sessionId };
 };
 
 const gate = (result: Record<string, unknown>): boolean => {
@@ -72,8 +72,8 @@ const chapterFive = async (db: Db, entryId: number, result: Record<string, unkno
     }
 };
 
-const chapterSeven = async (db: Db, { entryId, workerId }: { entryId: number; workerId: number }, result: Record<string, unknown>): Promise<boolean> => {
-    const subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sse", handle: "/settled" });
+const chapterSeven = async (db: Db, { entryId, sessionId }: { entryId: number; sessionId: number }, result: Record<string, unknown>): Promise<boolean> => {
+    const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sse", handle: "/settled" });
     try {
         await db.test_topology_settle_subscription.run({ subscription_id: subscriptionId, status: result.status as number, result: JSON.stringify(result) });
     } catch (error) {

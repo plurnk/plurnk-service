@@ -15,7 +15,7 @@ import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import File from "../../src/schemes/File.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { resourceGroups, resourcePaths } from "./_find.ts";
@@ -46,11 +46,11 @@ const withWorkspaceRoot = async (fn: (root: string, ctx: PlurnkSchemeContext, db
     try {
         const workspaceId = await insertWorkspace(db, `uri-${crypto.randomUUID()}`);
         await db.test_set_workspace_project_root.run({ id: workspaceId, project_root: root });
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, loopId, turnId,
+            db, workspaceId, sessionId, loopId, turnId,
             writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES, weigh: (t: string) => Math.ceil(t.length / 4),
         };
         await fn(root, ctx, db);

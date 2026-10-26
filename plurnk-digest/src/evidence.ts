@@ -3,8 +3,8 @@ import type {
     DerivationStateRow, DispositionCountRow, DispositionRow, EditRow, EmissionRow,
     ExecutionEnvironmentRow, InferenceCallRow, LogCurationEffectRow, LogRow, LoopRow,
     ModelCallRow, OpMixRow, PacketEvidence, ProviderRequestRow, ReasoningRow,
-    SearchStateRow, StorageRow, StorageTableRow, TurnAttemptRow, TurnRow, WorkerRollupRow,
-    WorkerRow, WorkspaceRow,
+    SearchStateRow, StorageRow, StorageTableRow, TurnAttemptRow, TurnRow, SessionRollupRow,
+    SessionRow, WorkspaceRow,
 } from "./digest-rows.ts";
 
 // {§digest-evidence-reader}: a validated read projection, not a second persisted packet format.
@@ -23,7 +23,7 @@ export interface EvidencePacket {
 
 export interface EvidenceRows {
     workspaces: WorkspaceRow[];
-    workers: WorkerRow[];
+    sessions: SessionRow[];
     loops: LoopRow[];
     turns: TurnRow[];
     inferenceCalls: InferenceCallRow[];
@@ -35,7 +35,7 @@ export interface EvidenceRows {
     emissionRows: EmissionRow[];
     reasoningRows: ReasoningRow[];
     curationEffects: LogCurationEffectRow[];
-    workerRollupRows: WorkerRollupRow[];
+    sessionRollupRows: SessionRollupRow[];
     opMixRows: OpMixRow[];
     environmentRows: ExecutionEnvironmentRow[];
     searchState: SearchStateRow;

@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 type Release = () => void;
-type TurnScope = { workspaceId: number; workerId: number; signal?: AbortSignal; release: Release | null; closed: boolean };
+type TurnScope = { workspaceId: number; sessionId: number; signal?: AbortSignal; release: Release | null; closed: boolean };
 
 type TurnRequest = {
-    workerId: number;
+    sessionId: number;
     resolve: (release: Release) => void;
     reject: (error: unknown) => void;
 };
@@ -26,27 +26,27 @@ type WorkspaceState = {
 
 export interface WorkspaceExclusive {
     readonly acquired: Promise<void>;
-    setRoot(workerId: number | null): void;
+    setRoot(sessionId: number | null): void;
     release(): void;
 }
 
 // Fair workspace reader/writer gate. Ordinary turns share the workspace. Once an
 // exclusive request is queued (a workspace capability mutation), later turns
 // wait behind it. While exclusive, only one turn at a time from the exclusive
-// root worker's lineage may run.
+// root session's lineage may run.
 export default class WorkspaceGate {
-    readonly #isDescendant: (workerId: number, rootWorkerId: number) => Promise<boolean>;
+    readonly #isDescendant: (sessionId: number, rootSessionId: number) => Promise<boolean>;
     readonly #states = new Map<number, WorkspaceState>();
     readonly #turnScope = new AsyncLocalStorage<TurnScope | undefined>();
 
-    constructor(isDescendant: (workerId: number, rootWorkerId: number) => Promise<boolean>) {
+    constructor(isDescendant: (sessionId: number, rootSessionId: number) => Promise<boolean>) {
         this.#isDescendant = isDescendant;
     }
 
     // {§functionality-model-mutation} The lease belongs to this awaited turn, not
     // callbacks or background producers that happen to originate inside it.
-    async withTurn<T>(workspaceId: number, workerId: number, run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-        const scope: TurnScope = { workspaceId, workerId, signal, release: await this.acquireTurn(workspaceId, workerId, signal), closed: false };
+    async withTurn<T>(workspaceId: number, sessionId: number, run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+        const scope: TurnScope = { workspaceId, sessionId, signal, release: await this.acquireTurn(workspaceId, sessionId, signal), closed: false };
         try { return await this.#turnScope.run(scope, run); }
         finally { scope.closed = true; scope.release?.(); scope.release = null; }
     }
@@ -61,17 +61,17 @@ export default class WorkspaceGate {
         try { return await this.#turnScope.run(undefined, run); }
         finally {
             // Cancellation ends the program; cleanup does not need a new read lease.
-            if (!scope.signal?.aborted) scope.release = await this.acquireTurn(workspaceId, scope.workerId, scope.signal);
+            if (!scope.signal?.aborted) scope.release = await this.acquireTurn(workspaceId, scope.sessionId, scope.signal);
         }
     }
 
-    acquireTurn(workspaceId: number, workerId: number, signal?: AbortSignal): Promise<Release> {
+    acquireTurn(workspaceId: number, sessionId: number, signal?: AbortSignal): Promise<Release> {
         if (signal?.aborted === true) return Promise.reject(signal.reason);
         const state = this.#state(workspaceId);
         return new Promise<Release>((resolve, reject) => {
             const clear = (): void => signal?.removeEventListener("abort", cancel);
             const request = {
-                workerId,
+                sessionId,
                 resolve: (release: Release) => { clear(); resolve(release); },
                 reject: (error: unknown) => { clear(); reject(error); },
             };
@@ -116,7 +116,7 @@ export default class WorkspaceGate {
         this.#requestPump(workspaceId, state);
         return {
             acquired,
-            setRoot: (workerId) => {
+            setRoot: (sessionId) => {
                 if (!state.exclusive || state.writers.includes(request)) {
                     throw new Error("Workspace exclusive root cannot change before the gate is acquired");
                 }
@@ -124,7 +124,7 @@ export default class WorkspaceGate {
                 if (state.exclusiveTurns !== 0) {
                     throw new Error("Workspace exclusive root cannot change during an active turn");
                 }
-                state.exclusiveRoot = workerId;
+                state.exclusiveRoot = sessionId;
                 this.#requestPump(workspaceId, state);
             },
             release: () => {
@@ -167,12 +167,12 @@ export default class WorkspaceGate {
         let held = true;
         return {
             acquired: Promise.resolve(),
-            setRoot: (workerId) => {
+            setRoot: (sessionId) => {
                 if (!held) throw new Error("Workspace exclusive gate has already been released");
                 if (state.exclusiveTurns !== 0) {
                     throw new Error("Workspace exclusive root cannot change during an active turn");
                 }
-                state.exclusiveRoot = workerId;
+                state.exclusiveRoot = sessionId;
                 this.#requestPump(workspaceId, state);
             },
             release: () => {
@@ -197,7 +197,7 @@ export default class WorkspaceGate {
                 if (state.exclusiveTurns !== 0 || state.exclusiveRoot === null) return;
                 for (const request of [...state.turns]) {
                     const root: number = state.exclusiveRoot;
-                    const allowed = await this.#isDescendant(request.workerId, root);
+                    const allowed = await this.#isDescendant(request.sessionId, root);
                     if (!state.exclusive || state.exclusiveRoot !== root) {
                         this.#requestPump(workspaceId, state);
                         return;

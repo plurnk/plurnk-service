@@ -5,7 +5,7 @@
 Scheduled messages are one workspace Functionality family named `schedule`,
 owned by `@plurnk/plurnk-schedule` ({§functionality-adapter}). A definition is
 `{ rule, target, prompt }`: RFC 5545 rule text ({§schedule-rule}), a
-`worker://<name>` target in the workspace ({§worker-name}, preserved exactly), the message delivered at each
+`session://<name>` target in the workspace ({§session-name}, preserved exactly), the message delivered at each
 occurrence ({§schedule-delivery}). Aliases take the shared grammar. The verbs are the
 coordinator's: `list`, `discover` ({§schedule-clock}), `add`, `replace`, `enable`,
 `disable`, `remove`. The adapter publishes no documents of its own; the
@@ -48,7 +48,7 @@ status, not a failure or a claim of delivery; no dates or wake conditions change
 
 | Fact | Rule |
 | --- | --- |
-| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§workspace-env}), and a Worker's own `env` override wins for the verbs that Worker invokes ({§functionality-scope}) |
+| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§workspace-env}), and a Session's own `env` override wins for the verbs that Session invokes ({§functionality-scope}) |
 | A rule's zone | the zone stamped at its `add`; a later `env` change moves no existing rule |
 | Without a `DTSTART` | a rule starts when it is read, at the next whole second in the effective zone, so its first occurrence is still ahead: a workspace rule is read at `add`, a service rule once, when the daemon starts, in the service's zone |
 | A `DTSTART` | a floating one is read in the effective zone; one with a `TZID` or a UTC `Z` keeps its own zone |
@@ -68,14 +68,14 @@ like `PLURNK_SCHEDULE_ENABLED`: a positive integer, never read as a rule alias.
 
 ## §schedule-delivery Delivery
 
-The module holds one armed occurrence per enabled (workspace, alias). At the occurrence it resolves the target worker by name and delivers the prompt through the application port's `runLoop` with the source `schedule://<alias>`. Delivery carries no approval authority; the receiving worker retains its owner ({§worker-ownership}). After every delivery attempt the family's outcomes are refreshed where the workspace is resident.
+The module holds one armed occurrence per enabled (workspace, alias). At the occurrence it resolves the target session by name and delivers the prompt through the application port's `runLoop` with the source `schedule://<alias>`. Delivery carries no approval authority; the receiving session retains its owner ({§session-ownership}). After every delivery attempt the family's outcomes are refreshed where the workspace is resident.
 
 | Fact | Rule |
 | --- | --- |
-| The message | joins the worker's live loop, waking it if parked, or starts a new loop ({§message-arrival}, {§message-causal-source}) |
+| The message | joins the session's live loop, waking it if parked, or starts a new loop ({§message-arrival}, {§message-causal-source}) |
 | A future occurrence | not live work for WAIT ({§wait-obligation-matrix}); it neither holds a loop open nor concludes it |
 | The next occurrence | arms from the present: a late fire delivers once and skips what it missed, never a backlog |
-| A missing worker or a refused delivery | disarms the rule and lists it `unavailable` with the Problem; `enable` retries; a failure belongs to the complete definition, including its target and prompt, not just the recurrence, and retry or replacement clears it only on successful publication |
+| A missing session or a refused delivery | disarms the rule and lists it `unavailable` with the Problem; `enable` retries; a failure belongs to the complete definition, including its target and prompt, not just the recurrence, and retry or replacement clears it only on successful publication |
 
 §schedule-first-arming **A new or changed rule's first arming is judged from admission.**
 `add`/`replace` reads the rule at the instant it admits it; preparation and arming come later, and a single
@@ -115,7 +115,7 @@ or persisting a rule ({§operator-config-offline-validation}).
 | `definition-invalid` | 400 | The schedule definition is invalid. |
 | `rule-invalid` | 400 | The rule of '*alias*' is unreadable: *cause*. |
 | `delivery-failed` | 502 | Delivering the scheduled message '*alias*' failed. |
-| `target-missing` | 404 | No worker named '*name*' exists in this workspace. |
+| `target-missing` | 404 | No session named '*name*' exists in this workspace. |
 | `rule-unbounded` | 400 | A workspace rule ends: give the RRULE a COUNT or an UNTIL. |
 | `authority-invalid` | 400 | Schedule resources use an empty authority. |
 | `not-found` | 404 | The schedule resource does not exist. |

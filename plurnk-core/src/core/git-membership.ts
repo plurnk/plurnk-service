@@ -37,7 +37,7 @@ import MembershipMaterialization from "./MembershipMaterialization.ts";
 
 // {§membership-emi-divergence-signal} — a disk divergence captured at pre-turn:
 // the entry's content before the Git-membership refresh versus its materialized
-// representation after. The runtime worker retains it as source=file evidence.
+// representation after. The runtime session retains it as source=file evidence.
 export interface FsDivergence {
     pathname: string;
     entryId: number;
@@ -690,7 +690,7 @@ export default class GitMembership {
         return matches;
     }
 
-    // Full membership + materialization pass for a worker. Registers git members,
+    // Full membership + materialization pass for a session. Registers git members,
     // then materializes each active on-disk member as an entry
     // through writeEntry. Called at packet-composition time (Engine.runTurn) per
     // D5. No-ops on headless / non-git workspaces.

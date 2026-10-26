@@ -18,7 +18,7 @@ import { Results } from "@plurnk/plurnk-schemes";
 import type Exec from "../../src/schemes/Exec.ts";
 import { executionAddress } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { clientRead } from "./_client-read.ts";
 
 // Registration supplies output declarations without starting the runtime.
@@ -103,12 +103,12 @@ test("{§extension-namespace-arbitration} module runtime registration preserves 
         // Re-registering a live tag is a caller error, not a silent overwrite.
         assert.throws(() => engine.registerRuntime("myserver", fakeEntry("myserver")), /already/i, "dup tag rejected");
 
-        // A reserved built-in scheme name (file/exec/worker/…) is rejected by the scheme-first arbitration
+        // A reserved built-in scheme name (file/exec/session/…) is rejected by the scheme-first arbitration
         // gate - and because the face is registered BEFORE the executor, the executor registry is never
         // touched on a rejected tag (no half-write).
-        assert.throws(() => engine.registerRuntime("worker", fakeEntry("worker")), /reserved/i, "reserved name rejected");
-        assert.equal(executors.entry("worker"), undefined, "reserved collision left the executor registry untouched");
-        assert.equal(schemes.get("worker")?.constructor.name, "Worker", "the reserved 'worker' scheme is unchanged, not shadowed");
+        assert.throws(() => engine.registerRuntime("session", fakeEntry("session")), /reserved/i, "reserved name rejected");
+        assert.equal(executors.entry("session"), undefined, "reserved collision left the executor registry untouched");
+        assert.equal(schemes.get("session")?.constructor.name, "Session", "the reserved 'session' scheme is unchanged, not shadowed");
 
         assert.throws(
             () => engine.registerRuntime("Alias_Tool", fakeEntry("Alias_Tool")),
@@ -170,11 +170,11 @@ test("{§runtime-resource-binding} a runtime resource facet claims only its subt
         });
         assert.ok(schemes.get("myserver"));
         const workspaceId = await insertWorkspace(db, `module-runtime-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const read = (statement: ReadStatement) => clientRead(engine, db, {
             statement,
             workspaceId,
-            workerId,
+            sessionId,
         }).then(Results.assertReadResult);
 
         const remote = await read(readStatement("/resources/item"));
@@ -209,8 +209,8 @@ test("{§runtime-resource-binding}: a facet that states its representation owns 
             },
         });
         const workspaceId = await insertWorkspace(db, `facet-representation-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         const parse = (body: string) => {
             const parsed = PlurnkParser.parseStatements(body, { executors: fixtureExecutors(body) });
@@ -219,11 +219,11 @@ test("{§runtime-resource-binding}: a facet that states its representation owns 
             return item.statement;
         };
 
-        const card = await clientRead(engine, db, { workspaceId, workerId, statement: parse("````READ (peers://ada/card) <1,-1>````") });
+        const card = await clientRead(engine, db, { workspaceId, sessionId, statement: parse("````READ (peers://ada/card) <1,-1>````") });
         assert.equal(card.content, "ada's card", "a fragmentless READ selects the facet's default channel, not the executor's");
 
         let sequence = 0;
-        const dispatch = (body: string) => engine.dispatch({ workspaceId, workerId, loopId, turnId, sequence: ++sequence, origin: "model", statement: parse(body) });
+        const dispatch = (body: string) => engine.dispatch({ workspaceId, sessionId, loopId, turnId, sequence: ++sequence, origin: "model", statement: parse(body) });
         assert.equal((await dispatch("````SEND (peers://ada)\nhello\n````")).status, 200);
         assert.deepEqual(sent, ["hello"], "a claimed SEND is the facet's");
         const stored = await dispatch("````SEND (peers:///1/1/1)\nstdin\n````");
@@ -244,11 +244,11 @@ test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, F
     try {
         const { engine, schemes } = wire(db);
         const workspaceId = await insertWorkspace(db, "resource-owners");
-        const alice = await insertWorker(db, workspaceId, null, "alice");
-        await insertWorker(db, workspaceId, null, "bob");
-        await insertWorker(db, workspaceId, null, "detached");
+        const alice = await insertSession(db, workspaceId, null, "alice");
+        await insertSession(db, workspaceId, null, "bob");
+        await insertSession(db, workspaceId, null, "detached");
         const otherWorkspace = await insertWorkspace(db, "unrelated-resources");
-        await insertWorker(db, otherWorkspace, null, "outsider");
+        await insertSession(db, otherWorkspace, null, "outsider");
         const loopId = await insertLoop(db, alice, 1);
         const turnId = await insertTurn(db, loopId, 1);
         const calls: string[] = [];
@@ -258,7 +258,7 @@ test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, F
                 claims: (pathname) => pathname.startsWith("/resources"),
                 prepareRepresentation: async (request, ctx) => {
                     calls.push(name);
-                    assert.equal(ctx.workerId, alice, "the caller still owns the operation");
+                    assert.equal(ctx.sessionId, alice, "the caller still owns the operation");
                     const result = await ctx.entries.write(request.pathname, {
                         channels: { [channel]: { content: `${name}'s resource`, mimetype: "text/plain" } },
                     });
@@ -279,7 +279,7 @@ test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, F
             return item.statement;
         };
         const read = (uri: string) => clientRead(engine, db, {
-            workspaceId, workerId: alice,
+            workspaceId, sessionId: alice,
             statement: parse(`\`\`\`\`READ (${uri}) <1,-1>\`\`\`\``),
         });
         assert.equal((await read("myserver:///resources/item")).content, "shared's resource");
@@ -291,22 +291,22 @@ test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, F
         assert.deepEqual(calls, ["shared", "shared", "shared", "shared"]);
         let sequence = 1;
         const dispatch = (body: string) => engine.dispatch({
-            workspaceId, workerId: alice, loopId, turnId, sequence: sequence++, origin: "model",
+            workspaceId, sessionId: alice, loopId, turnId, sequence: sequence++, origin: "model",
             statement: parse(body),
         });
         const found = await dispatch("````FIND (myserver:///resources/*) <1,-1>````");
         assert.equal(found.status, 200, JSON.stringify(found));
         assert.match(JSON.stringify(found.results), /myserver:\/\/\/resources\/item/);
-        const copied = await dispatch("````COPY (myserver:///resources/item) (worker:///copy.txt)````");
+        const copied = await dispatch("````COPY (myserver:///resources/item) (workspace:///copy.txt)````");
         assert.equal(copied.status, 201, JSON.stringify(copied));
-        const copy = await read("worker:///copy.txt");
+        const copy = await read("workspace:///copy.txt");
         assert.equal(copy.content, "shared's resource");
 
         const received: string[] = [];
         const consumer = fakeEntry("consumer");
         engine.registerRuntime("consumer", {
             ...consumer,
-            invocation: { body: { role: "arguments", required: false }, target: { role: "resource", required: true, kind: "resource" }, example: { target: "worker:///program", body: "input" } },
+            invocation: { body: { role: "arguments", required: false }, target: { role: "resource", required: true, kind: "resource" }, example: { target: "workspace:///program", body: "input" } },
             executor: {
                 ...consumer.executor,
                 async run(args) {
@@ -324,7 +324,7 @@ test("{§scheme-ctx-workspace-environment} {§runtime-resource-binding}: READ, F
 
         const child = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Isolated answer.", reasoning: null } }] });
         const result = await engine.runTurn({
-            workspaceId, workerId: alice, loopId, messages: [], childProvider: child,
+            workspaceId, sessionId: alice, loopId, messages: [], childProvider: child,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: [
                 PlurnkParser.frame("BARE (myserver:///resources/item)", "Analyze this."),
                 PlurnkParser.frame("NOTE", "Inspect the answer."),
@@ -340,9 +340,9 @@ test("{§runtime-resource-binding}: retained output keeps its actual channel aft
     try {
         const { engine, schemes } = wire(db);
         const workspaceId = await insertWorkspace(db, "retained-output");
-        const workerId = await insertWorker(db, workspaceId);
-        const peer = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const peer = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         const declared = fakeEntry("myserver", "fixture", "results");
         const install = async (entries: Parameters<Engine["prepareWorkspaceRuntimes"]>[2]) =>
@@ -361,13 +361,13 @@ test("{§runtime-resource-binding}: retained output keeps its actual channel aft
         assert.equal(parsed?.kind, "statement");
         if (parsed?.kind !== "statement") throw new Error("Expected an operation");
         const invoked = await engine.dispatch({
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model", statement: parsed.statement,
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model", statement: parsed.statement,
         });
         assert.equal(invoked.status, 200, JSON.stringify(invoked));
         await (schemes.get("exec") as Exec).idle();
         const address = await executionAddress(db, turnId);
         const target = readStatement(new URL(address).pathname);
-        const read = (reader = engine) => clientRead(reader, db, { workspaceId, workerId: peer, statement: target });
+        const read = (reader = engine) => clientRead(reader, db, { workspaceId, sessionId: peer, statement: target });
         await install([{ tag: "myserver", entry: fakeEntry("myserver", "fixture", "body") }]);
         const replaced = await read();
         assert.equal(replaced.status, 200, JSON.stringify(replaced));

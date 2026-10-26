@@ -19,7 +19,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
 
 const execFileP = promisify(execFile);
 
@@ -57,7 +57,7 @@ const EXCEPT_404 = "    except Http404:";
 
 type Unresolved = { anchor: string; kind: "missing" | "ambiguous"; lines?: number[] };
 type EditRow = { status: number; landed: string | null; unresolved: Unresolved[] | null; context: string[] | null };
-type Ctx = { root: string; db: Awaited<ReturnType<typeof openMigrated>>; engine: Engine; workspaceId: number; workerId: number };
+type Ctx = { root: string; db: Awaited<ReturnType<typeof openMigrated>>; engine: Engine; workspaceId: number; sessionId: number };
 type Anchors = (line: number) => string;
 
 const withProject = async <T>(fn: (ctx: Ctx) => Promise<T>): Promise<T> => {
@@ -77,8 +77,8 @@ const withProject = async <T>(fn: (ctx: Ctx) => Promise<T>): Promise<T> => {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `multi-edit-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        return await fn({ root, db, engine, workspaceId, workerId });
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        return await fn({ root, db, engine, workspaceId, sessionId });
     } finally {
         await db.close();
         await rm(root, { recursive: true, force: true });
@@ -89,8 +89,8 @@ const edit = (file: string, scope: string, body: string | null): string => Plurn
 
 // The anchors the model's latest READ of each file published, indexed by one-based line: the packet is the
 // only place a model learns an anchor, so the program takes them from there and nowhere else.
-const anchorsFromLog = async ({ db, workerId }: Ctx): Promise<[Anchors, Anchors]> => {
-    const rows = await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; pathname: string | null; rx: string }>({ worker_id: workerId });
+const anchorsFromLog = async ({ db, sessionId }: Ctx): Promise<[Anchors, Anchors]> => {
+    const rows = await db.engine_render_log.all<{ op: string | null; origin: string; status_rx: number; pathname: string | null; rx: string }>({ session_id: sessionId });
     const latest = (file: string): Anchors => {
         const row = rows.findLast(({ op, origin, status_rx, pathname }) => op === "READ" && origin === "model" && status_rx === 200 && (pathname === file || pathname === `/${file}`));
         assert.ok(row, `the model READ ${file}`);
@@ -105,11 +105,11 @@ const anchorsFromLog = async ({ db, workerId }: Ctx): Promise<[Anchors, Anchors]
     return [latest(DEBUG), latest(HELPERS)];
 };
 
-// One loop of the same worker under an accepting proposal policy: the model READs both files, then
+// One loop of the same session under an accepting proposal policy: the model READs both files, then
 // emits `frames` built from the anchors that READ published, then concludes.
 const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Anchors) => string[]): Promise<{ edits: EditRow[]; published: [Anchors, Anchors] }> => {
-    const { db, engine, workspaceId, workerId } = ctx;
-    const loopId = await insertLoop(db, workerId, sequence, "Apply the fix.");
+    const { db, engine, workspaceId, sessionId } = ctx;
+    const loopId = await insertLoop(db, sessionId, sequence, "Apply the fix.");
     const reads = [DEBUG, HELPERS].map((file) => PlurnkParser.frame(`READ (${file}) <1,-1>`, null)).join("\n\n");
     const respond = async (content: string, args: Parameters<Mock["generate"]>[0]) =>
         await new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }).generate(args);
@@ -125,7 +125,7 @@ const program = async (ctx: Ctx, sequence: number, frames: (a: Anchors, b: Ancho
         }
         return await respond(PlurnkParser.frame("SEND [200]", "Done."), args);
     };
-    const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Apply the fix." }] });
+    const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 6, maxStrikes: 3, messages: [{ role: "user", content: "Apply the fix." }] });
     assert.equal(result.result.status, 200, JSON.stringify(result.result).slice(0, 300));
     assert.ok(published, "the program ran");
     const rows = (await Promise.all(result.turnIds.map((id) => db.test_log_entries_by_turn.all<{ op: string | null; origin: string; status_rx: number; rx: string }>({ turn_id: id })))).flat();

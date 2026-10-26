@@ -1,4 +1,4 @@
-import { ownWorker, TEST_OWNER, serverProposals } from "./_approval.ts";
+import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -12,13 +12,13 @@ import { viableWindow } from "./_provider.ts";
 import { makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import type { ApplicationOperationEvent, ProposalProjection } from "@plurnk/plurnk-contracts";
 import type { HookEvent } from "../../../plurnk-hooks/src/EventProjection.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 interface TerminalEvent {
     readonly workspaceId: number;
     readonly method: string;
     readonly params: {
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly loopId: number;
         readonly result: { readonly status: number; readonly problem?: { readonly detail: string } };
     };
@@ -69,19 +69,19 @@ test("{§module-shutdown-order} command hooks receive real loop cancellation bef
     const hooks = await captureHooks(t, daemon);
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-lifecycle" });
-    const workerId = await namedModelWorker(daemon, workspaceId, "main");
-    const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for cancellation." });
+    const sessionId = await namedModelSession(daemon, workspaceId, "main");
+    const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Wait for cancellation." });
     await entered.promise;
     await daemon.stop();
     assert.deepEqual(hooks.failures, []);
     const events = await hooks.events();
     assert.equal(events.length, 1, "one cancellation, one command delivery");
     assert.equal(events[0].hook_event_name, "Stop");
-    assert.equal(events[0].session_id, String(workerId));
+    assert.equal(events[0].session_id, String(sessionId));
     const terminal = events[0].plurnk as TerminalEvent;
     assert.equal(terminal.workspaceId, workspaceId);
     assert.equal(terminal.method, "loop/terminated");
-    assert.equal(terminal.params.workerId, workerId);
+    assert.equal(terminal.params.sessionId, sessionId);
     assert.equal(terminal.params.loopId, loopId);
     assert.equal(terminal.params.result.status, 499);
 });
@@ -91,7 +91,7 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
     serverProposals(t, "accept");
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: (outcome === "delegation" ? [
-            "````WORK (worker://child)\nComplete the delegated work.\n````\n\n````WAIT\nAwait the child.\n````",
+            "````WORK (session://child)\nComplete the delegated work.\n````\n\n````WAIT\nAwait the child.\n````",
             "````SEND [200]\nChild work completed.\n````",
             "````SEND [200]\nParent work completed.\n````",
         ] : ["````SEND [200]\nWork completed.\n````"]).map((response) => makeMockResponse(response)) });
@@ -103,31 +103,31 @@ for (const outcome of ["success", "failure", "delegation"] as const) {
         const hooks = await captureHooks(t, daemon);
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: `hooks-${outcome}` });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
         const done = Promise.withResolvers<void>();
         const published: TerminalEvent[] = [];
         daemon.subscribeToEvents((scope, method, params) => {
             if (method !== "loop/terminated") return;
             published.push(JSON.parse(JSON.stringify({ workspaceId: scope, method, params })));
-            if ((params as { workerId: number }).workerId === workerId) done.resolve();
+            if ((params as { sessionId: number }).sessionId === sessionId) done.resolve();
         });
-        const { loopId } = await daemon.runLoop({ workspaceId, workerId, prompt: "Exercise lifecycle notifications." });
+        const { loopId } = await daemon.runLoop({ workspaceId, sessionId, prompt: "Exercise lifecycle notifications." });
         await done.promise;
         await daemon.stop();
         const projected = await hooks.events();
-        assert.ok(projected.every((event) => event.hook_event_name === "Stop" && event.session_id === String((event.plurnk as TerminalEvent).params.workerId)));
+        assert.ok(projected.every((event) => event.hook_event_name === "Stop" && event.session_id === String((event.plurnk as TerminalEvent).params.sessionId)));
         const events = projected.map((event) => event.plurnk as TerminalEvent);
         assert.deepEqual(hooks.failures, []);
         assert.deepEqual(events, published, "the executable receives the same event evidence as an in-process subscriber");
         assert.equal(events.length, outcome === "delegation" ? 2 : 1);
-        const parent = events.find((event) => event.params.workerId === workerId);
+        const parent = events.find((event) => event.params.sessionId === sessionId);
         assert.ok(parent);
         assert.equal(parent.workspaceId, workspaceId);
         assert.equal(parent.params.loopId, loopId);
         assert.equal(parent.params.result.status, outcome === "failure" ? 400 : 200);
         if (outcome === "failure") assert.equal(parent.params.result.problem?.detail, "Fixture request rejected.");
         if (outcome === "delegation") {
-            const child = events.find((event) => event.params.workerId !== workerId);
+            const child = events.find((event) => event.params.sessionId !== sessionId);
             assert.ok(child);
             assert.equal(child.workspaceId, workspaceId);
             assert.notEqual(child.params.loopId, loopId);
@@ -141,7 +141,7 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
     const db = await openMigrated();
     const root = await mkdtemp(join(tmpdir(), "plurnk-hook-project-"));
     const provider = new Mock({ contextWindow: viableWindow() * 4, responses: [
-        makeMockResponse(`\`\`\`\`EDIT (worker:///one.txt)\nalpha\n\`\`\`\`\n\n\`\`\`\`EDIT (worker:///two.txt)\nbeta\n\`\`\`\`\n\n\`\`\`\`${operation} (worker:///*.txt)${operation === "EDIT" ? " <1,-1>\nupdated" : ""}\n\`\`\`\`\n\n\`\`\`\`READ (worker:///missing.txt)\n\`\`\`\``),
+        makeMockResponse(`\`\`\`\`EDIT (workspace:///one.txt)\nalpha\n\`\`\`\`\n\n\`\`\`\`EDIT (workspace:///two.txt)\nbeta\n\`\`\`\`\n\n\`\`\`\`${operation} (workspace:///*.txt)${operation === "EDIT" ? " <1,-1>\nupdated" : ""}\n\`\`\`\`\n\n\`\`\`\`READ (workspace:///missing.txt)\n\`\`\`\``),
         makeMockResponse("````SEND [200]\nInspected both entries and the missing path.\n````"),
     ] });
     const daemon = new Daemon({ db, provider });
@@ -149,10 +149,10 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
     const hooks = await captureHooks(t, daemon, "PreToolUse,PostToolUse,PostToolUseFailure,Stop");
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-tools", projectRoot: root });
-    const workerId = await namedModelWorker(daemon, workspaceId, "main");
+    const sessionId = await namedModelSession(daemon, workspaceId, "main");
     const done = Promise.withResolvers<void>();
     daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
-    await daemon.runLoop({ workspaceId, workerId, prompt: "Write and inspect the entries." });
+    await daemon.runLoop({ workspaceId, sessionId, prompt: "Write and inspect the entries." });
     await done.promise;
     await daemon.stop();
     assert.deepEqual(hooks.failures, []);
@@ -170,7 +170,7 @@ for (const operation of ["READ", "EDIT", "KILL"]) test(`{§notifications-operati
         const settled = tools[index + 1];
         assert.equal(start.tool_use_id, settled.tool_use_id);
         assert.equal(start.cwd, root);
-        assert.equal(start.session_id, String(workerId));
+        assert.equal(start.session_id, String(sessionId));
         assert.equal(start.plurnk.workspaceId, workspaceId);
         assert.deepEqual(start.tool_input, settled.tool_input);
         assert.equal((start.plurnk.params as ApplicationOperationEvent).phase, "started");
@@ -210,10 +210,10 @@ test("{§notifications-operation-event} concurrent BARE starts precede inference
     });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-bare" });
-    const workerId = await namedModelWorker(daemon, workspaceId, "main");
+    const sessionId = await namedModelSession(daemon, workspaceId, "main");
     const done = Promise.withResolvers<void>();
     daemon.subscribeToEvents((_scope, method) => { if (method === "loop/terminated") done.resolve(); });
-    await daemon.runLoop({ workspaceId, workerId, prompt: "Run isolated questions." });
+    await daemon.runLoop({ workspaceId, sessionId, prompt: "Run isolated questions." });
     await done.promise;
     await daemon.stop();
     assert.deepEqual(hooks.failures, []);
@@ -255,9 +255,9 @@ for (const decision of ["accept", "reject"] as const) {
         });
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: `hooks-${decision}-exec`, projectRoot: root });
-        const workerId = await namedModelWorker(daemon, workspaceId, "main");
-        await ownWorker(db, workspaceId, workerId);
-        await daemon.runLoop({ workspaceId, workerId, prompt: "Execute after review." });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await ownSession(db, workspaceId, sessionId);
+        await daemon.runLoop({ workspaceId, sessionId, prompt: "Execute after review." });
         const proposal = await proposed.promise;
         assert.equal(proposal.owner, TEST_OWNER);
         assert.equal(proposal.disposition.decision, "review");
@@ -320,11 +320,11 @@ test("{§hooks-module} the discovered hooks module delivers once the operator co
     });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "hooks-discovered" });
-    const workerId = await namedModelWorker(daemon, workspaceId, "main");
-    await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for cancellation." });
+    const sessionId = await namedModelSession(daemon, workspaceId, "main");
+    await daemon.runLoop({ workspaceId, sessionId, prompt: "Wait for cancellation." });
     await entered.promise;
     await daemon.stop();
     const events = (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as HookEvent);
     assert.deepEqual(events.map(({ hook_event_name }) => hook_event_name), ["Stop"], "exactly one module delivered: the discovered one");
-    assert.equal(events[0].session_id, String(workerId));
+    assert.equal(events[0].session_id, String(sessionId));
 });

@@ -5,12 +5,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import type { Db } from "../../src/core/Db.ts";
-import { openMigrated, insertWorkspace, insertWorker, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel } from "./_db.ts";
 import { makeSchemeCtx, seedStaticChannel, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const seedHashedEntry = async (db: Db, workspaceId: number, pathname: string, content: string): Promise<number> => {
     const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-        workspace_id: workspaceId, scheme: "worker", authority: "", pathname, default_channel: "body", output: 0,
+        workspace_id: workspaceId, scheme: "workspace", authority: "", pathname, default_channel: "body", output: 0,
     });
     if (entry === undefined) throw new Error("seedHashedEntry: insert returned no row");
     await seedStaticChannel(db, entry.id, { name: "body", content, mimetype: "text/markdown" });
@@ -28,10 +28,10 @@ for (const concurrency of ["1", "4"]) {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, `acquire-${concurrency}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const bodies = Array.from({ length: 20 }, (_, i) => `# Doc ${i}\n\n${"alpha beta gamma ".repeat(50 + i)}\n`);
         for (const [i, body] of bodies.entries()) await seedHashedEntry(db, workspaceId, `/doc-${i}.md`, body);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, writer: "_plurnk" });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, writer: "_plurnk" });
 
         const cold = await SearchIndex.maintain(ctx);
         assert.equal(cold.derived, 20, "every seeded channel derives once");
@@ -45,7 +45,7 @@ for (const concurrency of ["1", "4"]) {
 
         // A channel without a stored identity is the one body the pass must read to judge it, every pass.
         const stream = "line one\nline two\n";
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/stream.log", channel: "body", content: stream, mimetype: "text/plain", state: "active" });
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/stream.log", channel: "body", content: stream, mimetype: "text/plain", state: "active" });
         assert.deepEqual(await SearchIndex.maintain(ctx), { derived: 1, acquiredBytes: stream.length }, "an identity-less channel is read once to judge and once to derive; the same body serves both");
         assert.deepEqual(await SearchIndex.maintain(ctx), { derived: 0, acquiredBytes: stream.length }, "and read again on the next pass, because nothing stored can judge it");
     });
@@ -55,9 +55,9 @@ test("{§derivation-dedup-parallel} a representation that moves on between judge
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "acquire-moved-on");
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const entryId = await seedHashedEntry(db, workspaceId, "/moving.md", "# First\n\nfirst body\n");
-    const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES, writer: "_plurnk" });
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, writer: "_plurnk" });
     // Replace the body under a new identity after the candidate was judged but before its derivation ran.
     const body = await db.search_index_entry_body.get<{ content: string }>({ entry_id: entryId, channel: "body", content_hash: "not-the-stored-identity" });
     assert.equal(body, undefined, "a body is served only under the identity it was judged by");

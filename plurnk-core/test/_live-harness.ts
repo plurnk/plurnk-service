@@ -44,10 +44,10 @@ export interface LiveWorkspace {
     cleanup: () => Promise<void>;
 }
 
-// Every live/demo worker is a self-contained benchmark artifact. The filesystem
+// Every live/demo session is a self-contained benchmark artifact. The filesystem
 // allocates a unique, human-readable directory; nothing counts, reuses, moves,
 // or conditionally sweeps it. DB, workspace label, and digest stay together.
-// {§tier-census} — under a stamped tier run, every worker lands inside the run's own directory.
+// {§tier-census} — under a stamped tier run, every session lands inside the run's own directory.
 const BENCHMARKS = benchmarksRoot();
 
 // A test-file process owns one extension generation, matching production's long-lived daemon
@@ -62,13 +62,13 @@ const claimRunDir = async (workspace: string): Promise<string> => {
     const label = workspace
         .replace(/-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i, "")
         .replace(/[^a-zA-Z0-9._-]+/g, "-")
-        .slice(0, 80) || "worker";
+        .slice(0, 80) || "session";
     const dir = await mkdtemp(join(home, `${label}-`));
     await writeFile(join(dir, "workspace"), `${workspace}\n`);
     return dir;
 };
 
-export interface WorkerCensus {
+export interface SessionCensus {
     readonly specimen: string | null;
     readonly label: string;
     readonly runDir: string;
@@ -79,9 +79,9 @@ export interface WorkerCensus {
     readonly cost: { readonly usd: number; readonly kinds: readonly string[] };
 }
 
-// {§tier-census} — what one worker's digest says it did, named by the specimen that drove it; a run
+// {§tier-census} — what one session's digest says it did, named by the specimen that drove it; a run
 // that kept no database (a tier driven elsewhere) counts nothing.
-const workerCensus = (runDir: string, label: string, specimen: LiveSpecimen | undefined): WorkerCensus => {
+const sessionCensus = (runDir: string, label: string, specimen: LiveSpecimen | undefined): SessionCensus => {
     type Request = { accounting?: { usage?: { inputTokens?: number; outputTokens?: number }; cost?: { kind?: string; amount?: { amount?: string; currency?: string } } } };
     const digestPath = join(runDir, "digest", "digest.json");
     const digest = (existsSync(digestPath) ? JSON.parse(readFileSync(digestPath, "utf8")) : {}) as {
@@ -112,11 +112,11 @@ export interface LiveRun {
     readonly runDir: string;
     readonly dbPath: string;
     readonly hostPaths: HostPaths;
-    // After the database is closed: the digest, then the worker's census row beside it.
+    // After the database is closed: the digest, then the session's census row beside it.
     finish(): void;
 }
 
-// One worker's run directory: its database path, its own host beside its evidence
+// One session's run directory: its database path, its own host beside its evidence
 // ({§host-path-layout}: the operator's installed plugins, skills and workspace state neither shape a
 // run nor receive its writes), and the finish that writes its digest and census. A specimen that
 // drives a daemon elsewhere keeps no database here and says so; its finish writes the census alone.
@@ -129,7 +129,7 @@ export const liveRun = async (name: string, opts: { database?: boolean } = {}): 
         runDir, dbPath, hostPaths,
         finish: () => {
             if (opts.database !== false) Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(runDir, "digest") });
-            writeFileSync(join(runDir, "census.json"), `${JSON.stringify(workerCensus(runDir, name, specimen), null, 2)}\n`);
+            writeFileSync(join(runDir, "census.json"), `${JSON.stringify(sessionCensus(runDir, name, specimen), null, 2)}\n`);
         },
     };
 };
@@ -189,22 +189,22 @@ export const liveWorkspace = async (opts: { name: string; projectRoot?: string }
 };
 
 // The live/demo profile declares server approval; this driver only submits input, awaits
-// loop/terminated, and return the outcome + the model's final reply. modelWorkerId
-// (the worker the model's ops landed in, for worker-filtered forensic queries) is
+// loop/terminated, and return the outcome + the model's final reply. modelSessionId
+// (the session the model's ops landed in, for session-filtered forensic queries) is
 // guaranteed by loop.run; absence is a hard failure, not a silent 0.
 export const liveLoop = async (
     s: { ws: SeamSocket; db: Db },
     id: number,
-    params: { prompt: string; workerId?: number; maxTurns?: number; openPaths?: string[] },
+    params: { prompt: string; sessionId?: number; maxTurns?: number; openPaths?: string[] },
     opts?: { timeoutMs?: number; signal?: AbortSignal },
-): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelWorkerId: number; loopId: number; lastContent: string }> => {
+): Promise<{ finalStatus: number; hitMaxTurns: boolean; turnIds: number[]; modelSessionId: number; loopId: number; lastContent: string }> => {
     const timeoutMs = opts?.timeoutMs ?? liveTimeoutMs();
     opts?.signal?.throwIfAborted();
     let term;
     try {
         term = await runLoopToTerminal(s.ws, id, {
             prompt: params.prompt,
-            ...(params.workerId !== undefined ? { workerId: params.workerId } : {}),
+            ...(params.sessionId !== undefined ? { sessionId: params.sessionId } : {}),
             ...(params.maxTurns !== undefined ? { maxTurns: params.maxTurns } : {}),
             ...(params.openPaths !== undefined ? { openPaths: params.openPaths } : {}),
         }, { timeoutMs, signal: opts?.signal });
@@ -221,11 +221,11 @@ export const liveLoop = async (
             }
         });
     }
-    if (term.modelWorkerId === undefined) throw new Error("liveLoop: loop.run returned no modelWorkerId");
+    if (term.modelSessionId === undefined) throw new Error("liveLoop: loop.run returned no modelSessionId");
     const lastContent = await lastReply(s.db, term.loopId);
     return {
         finalStatus: term.finalStatus, hitMaxTurns: term.hitMaxTurns ?? false,
-        turnIds: term.turnIds ?? [], modelWorkerId: term.modelWorkerId, loopId: term.loopId, lastContent,
+        turnIds: term.turnIds ?? [], modelSessionId: term.modelSessionId, loopId: term.loopId, lastContent,
     };
 };
 
@@ -239,9 +239,9 @@ export const seedEntry = async (
     const published = await EntryCrud.writeEntry({ authority: "", pathname }, {
         channels: { body: { content: opts.content, mimetype: opts.mimetype ?? "text/markdown" } },
     }, {
-        db, workspaceId, workerId: 0, loopId: 0, turnId: 0,
+        db, workspaceId, sessionId: 0, loopId: 0, turnId: 0,
         writer: "_plurnk", signal: undefined, mimetypes, weigh: contentWeight,
-    }, opts.scheme ?? "worker");
+    }, opts.scheme ?? "workspace");
     if (published.entryId === null) throw new Error("seedEntry: publication returned no entry");
     return published.entryId;
 };
@@ -254,11 +254,11 @@ export const readBody = async (db: Db, pathname: string): Promise<string | undef
     return row?.content;
 };
 
-// Forensic read-back: the latest rx the engine logged for an op in the model worker
-// (what a READ actually sliced / a FIND actually matched). modelWorkerId rides the
+// Forensic read-back: the latest rx the engine logged for an op in the model session
+// (what a READ actually sliced / a FIND actually matched). modelSessionId rides the
 // loop/terminated event (liveLoop returns it).
-export const lastRx = async (db: Db, modelWorkerId: number, op: string): Promise<string> => {
-    const row = await db.test_get_log_rx_by_worker_op.get<{ rx: string }>({ worker_id: modelWorkerId, op });
+export const lastRx = async (db: Db, modelSessionId: number, op: string): Promise<string> => {
+    const row = await db.test_get_log_rx_by_session_op.get<{ rx: string }>({ session_id: modelSessionId, op });
     return row?.rx ?? "";
 };
 

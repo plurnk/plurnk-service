@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
 import { makeRawMockResponse } from "./_mock.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
@@ -39,11 +39,11 @@ const turnRows = async (program: string | ((root: string) => string)) => {
         await git("-c", "user.email=fixture@plurnk.invalid", "-c", "user.name=t", "-c", "commit.gpgsign=false", "commit", "--no-verify", "-q", "-m", "seed");
         const workspaceId = await insertWorkspace(db, `dir-target-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Look around.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Look around.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [makeRawMockResponse(typeof program === "string" ? program : program(root))] });
-        const turn = await engine.runTurn({ messages: [], provider, workspaceId, workerId, loopId });
+        const turn = await engine.runTurn({ messages: [], provider, workspaceId, sessionId, loopId });
         const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string; attrs: string }>({ turn_id: turn.turnId });
         return rows.filter((row) => row.op !== "NOTE" && row.op !== "SEND" && !LogEntryProjection.isEmission(row)).map(({ op, rx }) => ({ op, ...JSON.parse(rx) as { status: number; content?: string; problem?: Record<string, unknown> } }));
     } finally {

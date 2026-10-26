@@ -46,7 +46,7 @@ interface StoryResult {
     workspace: string;
     cleanup: () => Promise<void>;
     turnIds: number[];
-    modelWorkerId: number;
+    modelSessionId: number;
     finalStatus: number;
     lastContent: string;
     dump: () => Promise<void>;
@@ -67,7 +67,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
             { prompt: opts.prompt, ...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}) },
             { signal: opts.signal },
         );
-        const { finalStatus, hitMaxTurns, turnIds, modelWorkerId, lastContent } = loop;
+        const { finalStatus, hitMaxTurns, turnIds, modelSessionId, lastContent } = loop;
         console.error(`[story:${opts.label}] turns=${turnIds.length} finalStatus=${finalStatus} hitMaxTurns=${hitMaxTurns}`);
         // {§fs-resource-state} — every demo story also audits the workspace the model leaves behind.
         const wsViolations = await ResourceState.check(s.db);
@@ -85,7 +85,7 @@ const runStory = async (opts: StoryOpts): Promise<StoryResult> => {
         return {
             db: s.db, workspace: fixture.workspace,
             cleanup,
-            turnIds, modelWorkerId, finalStatus, lastContent, dump,
+            turnIds, modelSessionId, finalStatus, lastContent, dump,
         };
     } catch (error) {
         return await failAfterCleanup(error, cleanup);
@@ -191,7 +191,7 @@ test("{§web-search-retrieval} story: answer a current question with search MCP 
         const rows = (await Promise.all(story.turnIds.map((turnId) =>
             story.db.test_log_entries_by_turn.all<{ op: string | null; scheme: string | null; status_rx: number; rx: string }>({ turn_id: turnId }),
         ))).flat();
-        const INTERNAL = new Set(["worker", "skill", "log", "reasoning", "ops", "note", "message"]);
+        const INTERNAL = new Set(["session", "skill", "log", "reasoning", "ops", "note", "message"]);
         const retrievedRows = rows.filter((row) => row.op === "READ" && row.status_rx === 200 && row.scheme !== null && !INTERNAL.has(row.scheme));
         const retrieved = versionsNamed(retrievedRows.map((row) => row.rx).join("\n"));
         const answered = versionsNamed(story.lastContent);

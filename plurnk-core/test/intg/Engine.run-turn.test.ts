@@ -13,7 +13,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { Mock, validateProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { packetSection, logEntries } from "./_packet.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
@@ -31,7 +31,7 @@ const fullReplace: LineMarker = { marks: [1, -1] };
 const editStmt = (pathname: string, body: string, marker: LineMarker | null = fullReplace): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: urlPath("worker", pathname),
+    target: urlPath("workspace", pathname),
     lineMarker: marker, body, matcher: null, position: { line: 1, column: 1 },
 });
 
@@ -64,16 +64,16 @@ class Sealed {
 const setup = async (reasoningEventNotify?: ReasoningEventNotify) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "subject");
-    const loopId = await insertLoop(db, workerId, 1, "test prompt");
+    const sessionId = await insertSession(db, workspaceId, null, "subject");
+    const loopId = await insertLoop(db, sessionId, 1, "test prompt");
     const schemes = new SchemeRegistry();
     schemes.register("sealed", new Sealed());
     const engine = new Engine({ db, schemes, reasoningEventNotify });
-    return { db, engine, workspaceId, workerId, loopId };
+    return { db, engine, workspaceId, sessionId, loopId };
 };
 
 test("{§send-premature-terminate} Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with status from SEND", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -81,7 +81,7 @@ test("{§send-premature-terminate} Engine.runTurn: EDIT + SEND turn writes entry
             responses: [response([editStmt("/x", "y"), noteStmt("continuing")], "content", 42)],
         });
         const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [
                 { role: "system", content: "You are an agent." },
                 { role: "user", content: "Do the thing." },
@@ -117,17 +117,17 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
     try {
-        const { db, engine, workspaceId, workerId, loopId } = await setup();
+        const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
             // A workspace entry, so the workspace survey selects something and the initialization program exists.
-            await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
+            await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "a note", mimetype: "text/markdown" });
             const source = "````SEND [200]\ndone\n````";
             const provider = new Mock({
                 contextWindow: 100000,
                 responses: [contentResp(source)],
             });
             const result = await engine.runTurn({
-                provider, workspaceId, workerId, loopId,
+                provider, workspaceId, sessionId, loopId,
                 messages: [{ role: "user", content: "Conclude." }],
             });
             assert.equal(result.status, 200);
@@ -154,7 +154,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
                 folded: string;
             }>({ turn_id: turnId });
             const initializationRows = await rowsFor(turns[0].id);
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ worker_id: workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; producer: string }>({ session_id: sessionId });
             const initializationSource = sources.find((row) => row.turn_id === turns[0].id && row.kind === "ops");
             assert.equal(initializationSource?.producer, "_plurnk");
             assert.match(initializationSource.content, /^```/m);
@@ -180,7 +180,7 @@ test("{§turn-ops-admission-path}: initialization and inference preserve turnOps
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: exact request accounting preserves reasoning-inclusive pricing", async () => {
     const events: ReasoningEventPayload[] = [];
-    const { db, engine, workspaceId, workerId, loopId } = await setup((_workspaceId, event) => events.push(event));
+    const { db, engine, workspaceId, sessionId, loopId } = await setup((_workspaceId, event) => events.push(event));
     try {
         const usage = {
             inputTokens: 100,
@@ -201,7 +201,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: exact request account
             }],
         });
         const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [
                 { role: "system", content: "You are an agent." },
                 { role: "user", content: "Think hard, then answer." },
@@ -220,7 +220,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: exact request account
         assert.equal(events.length, 3);
         assert.deepEqual(events.map(({ phase }) => phase), ["start", "content", "end"]);
         assert.equal(events[1]?.phase === "content" ? events[1].delta : null, "deliberated at length");
-        assert.ok(events.every((event) => event.workerId === workerId && event.loopId === loopId));
+        assert.ok(events.every((event) => event.sessionId === sessionId && event.loopId === loopId));
         assert.ok(events.every((event) => event.turnId === result.turnId));
         assert.ok(events.every((event) => event.modelCallId === events[0]?.modelCallId));
         assert.ok((events[0]?.modelCallId ?? 0) > 0);
@@ -229,7 +229,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: exact request account
 
 test("{§notifications-reasoning-event}: retries produce distinct physical-request reasoning segments", async () => {
     const events: ReasoningEventPayload[] = [];
-    const { db, engine, workspaceId, workerId, loopId } = await setup((_workspaceId, event) => events.push(event));
+    const { db, engine, workspaceId, sessionId, loopId } = await setup((_workspaceId, event) => events.push(event));
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [] });
         const abandonedReasoning = PlurnkParser.frame("NOTE", "Abandoned retry note.");
@@ -272,7 +272,7 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "user", content: "Recover cleanly." }],
         });
@@ -288,8 +288,8 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
         const turn = await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: loopId, sequence: events[0]?.turnSeq });
         const loop = await db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         assert.ok(events.every((event) => event.turnId === turn?.id && event.loopSeq === loop?.sequence && event.turnSeq === events[0]?.turnSeq),
-            "every event names its turn's ordinals in the worker's log, the same across a retry");
-        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+            "every event names its turn's ordinals in the session's log, the same across a retry");
+        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
         const notes = sources.filter(({ kind }) => kind === "note");
         assert.equal(notes.filter(({ content }) => content === "Accepted retry note.").length, 1);
         assert.ok(notes.every(({ content }) => content !== "Abandoned retry note."), "streamed reasoning from failed requests remains evidence, not committed memory");
@@ -300,12 +300,12 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: only accepted durable
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "");  // empty input = no message arrival
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "");  // empty input = no message arrival
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100000, responses: [response([noteStmt("ok")])] });
         const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [
                 { role: "system", content: "system prompt body" },
                 { role: "user", content: "first user msg" },
@@ -323,13 +323,13 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: only accepted durable
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: admitted response does not change packet request-weight semantics", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([completeStmt("ok")], "a deliberately non-empty admitted response")],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(row !== undefined);
         const packet = JSON.parse(row.packet) as { weight: number; sections: StoredPacketSection[] };
@@ -343,7 +343,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: admitted response doe
 test("{§send-premature-terminate} Engine.runTurn: multi-op turn - the arrival row precedes model ops", async () => {
     // The packetless initialization is durable turn 1. The first model turn is
     // turn 2 and starts its own operation sequence with the arrival row.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -352,7 +352,7 @@ test("{§send-premature-terminate} Engine.runTurn: multi-op turn - the arrival r
                 noteStmt("continuing"), // {§send-premature-terminate} — edit receipts land next packet
             ])],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.deepEqual(result.outcomes, [
             { op: "EDIT", status: 201, problemType: null },
             { op: "EDIT", status: 201, problemType: null },
@@ -374,13 +374,13 @@ test("{§send-premature-terminate} Engine.runTurn: multi-op turn - the arrival r
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: a trusted disposition-less program continues with only its authored operations", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([editStmt("/x", "y")])],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes, [{ op: "EDIT", status: 201, problemType: null }]);
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string }>({ turn_id: result.turnId });
@@ -391,10 +391,10 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: a trusted disposition
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: an empty trusted batch fails without leaving a producer turn open", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [response([])] });
-        await assert.rejects(engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] }), Error);
+        await assert.rejects(engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] }), Error);
         const turns = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
         }>({ loop_id: loopId });
@@ -419,7 +419,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: PLURNK_SERVICE_MAX_CO
     const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "3";
     try {
-        const { db, engine, workspaceId, workerId, loopId } = await setup();
+        const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
             const provider = new Mock({
                 contextWindow: 100000,
@@ -438,18 +438,18 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: PLURNK_SERVICE_MAX_CO
                     response([editStmt("/z", "z"), sendStmt(null, "ok")]),
                 ],
             });
-            const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
             assert.equal(t1.outcomes.length, 4, "3 actions plus the disposition dispatched");
 
             // Confirm only 3 model EDITs landed — overflow didn't sneak through.
             for (const [index, pathname] of ["/a", "/b", "/c", "/d", "/e"].entries()) {
-                const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "worker", pathname, name: "body" });
+                const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "workspace", pathname, name: "body" });
                 assert.equal(entry?.content, index < 3 ? String(index + 1) : undefined, "overflow operations never reach schemes");
             }
 
             // Turn 2 packet carries the cap failure as a terse 'Max Commands Exceeded' (429) log row,
             // surfaced via its derived LogCoordinate pointer. The emitted/dropped counts live on the row.
-            const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
             const capErrors = (JSON.parse(packetSection(packet, "errors") || "[]") as Array<{ status: number; path: string }>)
@@ -470,7 +470,7 @@ test("{§loop-terminals} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default
     const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "-1";
     try {
-        const { db, engine, workspaceId, workerId, loopId } = await setup();
+        const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
             const provider = new Mock({
                 contextWindow: 100000,
@@ -483,15 +483,15 @@ test("{§loop-terminals} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default
                     response([editStmt("/z", "z"), sendStmt(null, "ok")]),
                 ],
             });
-            const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
             assert.equal(t1.outcomes.length, 6, "all five edits and the note dispatched — no cap");
             for (const [index, pathname] of ["/a", "/b", "/c", "/d", "/e"].entries()) {
-                const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "worker", pathname, name: "body" });
+                const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "workspace", pathname, name: "body" });
                 assert.equal(entry?.content, String(index + 1), "every authored edit landed");
             }
 
             // Next packet carries NO max_commands_exceeded — the ceiling never engaged.
-            const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+            const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
             const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
             assert.doesNotMatch(packetSection(packet, "errors"), /"status":429/, "no Max Commands Exceeded when off");
@@ -505,14 +505,14 @@ test("{§loop-terminals} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS=-1 (default
 // {§loop-terminals}: maxTurns ends the loop at 429 independently of strikes.
 
 test("{§loop-terminals} Engine.runLoop: hitting maxTurns terminates the loop at 429 (max_turns)", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Every turn continues, so the turn ceiling is what stops it.
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 5 }, (_, i) => response([editStmt(`/x-${i}`, "v"), noteStmt("more")])),
         });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], maxTurns: 3 });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 3 });
         assert.equal(result.hitMaxTurns, true);
         assert.equal(result.reason, "max_turns");
         assert.equal(result.result.status, 429, "the turn ceiling terminates the loop at 429 Too Many Requests {§loop-terminals}");
@@ -523,7 +523,7 @@ test("{§loop-terminals} Engine.runLoop: hitting maxTurns terminates the loop at
 // soft outcomes (404, 501) and clean turns reset the streak.
 
 test("{§edit-marker-required-on-existing} Engine.runLoop: three consecutive hard failures abandon at 500 with strike_threshold reason", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // EDIT sealed:/// → 403 (writableBy denial = hard). In-progress inventory continues.
         // Vary the path per turn so the failures stay DISTINCT (no cycle) — this isolates
@@ -540,7 +540,7 @@ test("{§edit-marker-required-on-existing} Engine.runLoop: three consecutive har
             ].join("\n"))),
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 3,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10, maxStrikes: 3,
         });
         assert.equal(result.result.status, 500, "distinct hard failures abandon at 500 Internal Server Error");
         assert.equal(result.reason, "strike_threshold");
@@ -550,15 +550,15 @@ test("{§edit-marker-required-on-existing} Engine.runLoop: three consecutive har
 });
 
 test("{§send-premature-terminate} Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        // READ a missing worker:/// path → 404 (soft). With maxStrikes=2 and
+        // READ a missing workspace:/// path → 404 (soft). With maxStrikes=2 and
         // 4 consecutive soft turns, no abandon should fire.
         // Vary path each turn to keep cycle detection orthogonal.
         const readMissing = (delimiter: string): ReadStatement => ({
             metadata: null,
             op: "READ", aside: null,
-            target: urlPath("worker", `/not-there-${delimiter}`),
+            target: urlPath("workspace", `/not-there-${delimiter}`),
             lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
         });
         const provider = new Mock({
@@ -574,7 +574,7 @@ test("{§send-premature-terminate} Engine.runLoop: soft failures (404) do NOT ac
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
         });
         assert.equal(result.result.status, 200);
         assert.equal(result.reason, "external");
@@ -583,7 +583,7 @@ test("{§send-premature-terminate} Engine.runLoop: soft failures (404) do NOT ac
 });
 
 test("{§edit-marker-required-on-existing} Engine.runLoop: clean turn between hard failures resets the streak", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
             metadata: null,
@@ -594,7 +594,7 @@ test("{§edit-marker-required-on-existing} Engine.runLoop: clean turn between ha
         const goodEdit = (p: string): EditStatement => ({
             metadata: null,
             op: "EDIT", aside: null,
-            target: urlPath("worker", p),
+            target: urlPath("workspace", p),
             lineMarker: null, matcher: null, body: "v", position: { line: 1, column: 1 },
         });
         // maxStrikes=2. Pattern: hard, clean, hard, hard, done.
@@ -610,7 +610,7 @@ test("{§edit-marker-required-on-existing} Engine.runLoop: clean turn between ha
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10, maxStrikes: 2,
         });
         assert.equal(result.result.status, 500, "distinct hard failures → 500");
         assert.equal(result.reason, "strike_threshold");
@@ -623,7 +623,7 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
     // (action_failure surfaces the 403), never the engine's strike
     // counter. Telling the model "strike 1 of 5" would let it optimize
     // for the meter instead of the task.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
             metadata: null,
@@ -640,7 +640,7 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 5,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10, maxStrikes: 5,
         });
         assert.equal(result.result.status, 200);
         const t2 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[2] });
@@ -657,27 +657,27 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
 // times trip the detector and strike the turn.
 
 test("{§engine-cycle-evidence} creation differs from repeated period-1 no-op edits", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Creation returns 201; only the following 304 results repeat.
         const provider = new Mock({
             contextWindow: 100000,
-            responses: Array.from({ length: 8 }, () => contentResp("````EDIT (worker:///fixed) <1,-1>\nv\n````\n````NOTE\ngo\n````")),
+            responses: Array.from({ length: 8 }, () => contentResp("````EDIT (workspace:///fixed) <1,-1>\nv\n````\n````NOTE\ngo\n````")),
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 20, maxStrikes: 3, minCycles: 3, maxCyclePeriod: 4,
         });
         assert.equal(result.result.status, 508, "cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 7, "initialization plus creation, then five repeated no-op turns");
-        const edits = (await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: workerId }))
+        const edits = (await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: sessionId }))
             .filter(({ op }) => op === "EDIT");
         assert.deepEqual(edits.map(({ status_rx }) => status_rx), [201, 304, 304, 304, 304, 304]);
     } finally { await db.close(); }
 });
 
 test("{§send-premature-terminate} Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Vary EDIT path each turn → distinct fingerprints → no cycle.
         const provider = new Mock({
@@ -692,7 +692,7 @@ test("{§send-premature-terminate} Engine.runLoop: varied per-turn fingerprints 
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 10, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 10, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
         });
         assert.equal(result.result.status, 200);
         assert.equal(result.turnIds.length, 7, "initialization plus five edit turns and the observation turn");
@@ -700,7 +700,7 @@ test("{§send-premature-terminate} Engine.runLoop: varied per-turn fingerprints 
 });
 
 test("{§engine-cycle-evidence} period-2 no-op edits cycle after initial creations", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Two creations precede the six repeated no-op turns; the next
         // repeated turn crosses maxStrikes=2.
@@ -721,12 +721,12 @@ test("{§engine-cycle-evidence} period-2 no-op edits cycle after initial creatio
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 20, maxStrikes: 2, minCycles: 3, maxCyclePeriod: 4,
         });
         assert.equal(result.result.status, 508, "period-2 cycle-driven strike → 508 Loop Detected");
         assert.equal(result.reason, "strike_threshold");
         assert.equal(result.turnIds.length, 10, "initialization, two creations, then seven alternating no-op turns");
-        const edits = (await db.test_log_entries_by_worker.all<{ op: string; status_rx: number }>({ worker_id: workerId }))
+        const edits = (await db.test_log_entries_by_session.all<{ op: string; status_rx: number }>({ session_id: sessionId }))
             .filter(({ op }) => op === "EDIT");
         assert.deepEqual(edits.map(({ status_rx }) => status_rx), [201, 201, 304, 304, 304, 304, 304, 304, 304]);
     } finally { await db.close(); }
@@ -735,14 +735,14 @@ test("{§engine-cycle-evidence} period-2 no-op edits cycle after initial creatio
 test("{§rail-accounting-private} Engine.runLoop: cycle detection is internal — NO model-facing notice", async () => {
     // {§rail-accounting-private} — cycle and strike state are engine bookkeeping.
     // The model sees admitted operation failures, not the accounting.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: Array.from({ length: 20 }, () => response([editStmt("/x", "v"), noteStmt("go")])),
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, messages: [], maxTurns: 20, maxStrikes: 10, minCycles: 3, maxCyclePeriod: 4,
+            provider, workspaceId, sessionId, loopId, messages: [], maxTurns: 20, maxStrikes: 10, minCycles: 3, maxCyclePeriod: 4,
         });
         const t4 = await db.test_get_packet.get<{ packet: string }>({ id: result.turnIds[3] });
         const packet = JSON.parse(t4?.packet ?? "{}");
@@ -754,7 +754,7 @@ test("{§rail-accounting-private} Engine.runLoop: cycle detection is internal �
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: the durable failure projection shows once, then ages out", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
             metadata: null,
@@ -770,9 +770,9 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: the durable failure p
                 response([editStmt("/c", "3"), sendStmt(null, "ok")]),   // turn 3: clean
             ],
         });
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const get403s = async (turnId: number): Promise<number[]> => {
             const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
             const packet = JSON.parse(row?.packet ?? "{}");
@@ -792,7 +792,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: the durable failure p
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const raw = { vendor: "anthropic", id: "msg_xyz" };
         const provider = new Mock({
@@ -802,7 +802,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: assistantRaw passes t
                 assistantRaw: raw,
             }],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         if (row === undefined) throw new Error("turn not found");
         const packet = JSON.parse(row.packet) as { assistantRaw: { vendor: string; id: string } };
@@ -811,7 +811,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: assistantRaw passes t
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: sequence increments across multiple turn calls in the same loop", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -821,9 +821,9 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: sequence increments a
                 response([completeStmt("3")]),
             ],
         });
-        const t1 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const t1 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const seqs = await db.test_list_turns_in_loop.all<{ id: number; sequence: number; packet: string | null }>({ loop_id: loopId });
         assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3, 4]);
         assert.equal(seqs[0]?.packet, null, "turn 1 is packetless initialization");
@@ -834,13 +834,13 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: sequence increments a
 });
 
 test("{§turn-disposition} Engine.runTurn: a trusted batch with two dispositions dispatches both as one park", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([dispositionStmt("WAIT", "first"), dispositionStmt("WAIT", "last")])],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102, "nothing is in flight, so the park continues at once");
         const turn = await db.test_latest_model_turn_in_loop.get<{ id: number }>({ loop_id: loopId });
         assert.ok(turn);
@@ -853,13 +853,13 @@ test("{§turn-disposition} Engine.runTurn: a trusted batch with two dispositions
 
 test("{§message-arrival} Engine.runTurn: the first turn's log section contains the arrival row", async () => {
     // {§message-arrival}: the message is published before the model packet is built.
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([editStmt("/x", "y"), sendStmt(null, "done")])],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // The arrival is the model turn's first row: an inbound SEND with no target.
@@ -877,8 +877,8 @@ test("{§message-arrival} Engine.runTurn: the first turn's log section contains 
     } finally { await db.close(); }
 });
 
-test("{§worker-initialization-entry} Engine.runTurn: the second turn's log section captures prior actions", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+test("{§session-initialization-entry} Engine.runTurn: the second turn's log section captures prior actions", async () => {
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -887,19 +887,19 @@ test("{§worker-initialization-entry} Engine.runTurn: the second turn's log sect
                 response([editStmt("/b", "2"), sendStmt(null, "done")]),
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const log = logEntries(JSON.parse(row?.packet ?? "{}"));
         // Turn 2 packet sees the arrival row + the prior turn's two model ops (an
         // EDIT and a SEND). Found by identity (an untargeted SEND without a reply receipt),
-        // robust to the turn-0 initialization ({§worker-initialization-entry}) and a
+        // robust to the turn-0 initialization ({§session-initialization-entry}) and a
         // catalog-preview foist that shift coordinates between the arrival and the model's ops.
         assert.ok(log.find((e) => e.logPath.endsWith("/SEND") && !("path" in e) && !("answers" in e)), "arrival row logged");
         const edit = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/EDIT"));
         assert.ok(edit, "model EDIT logged");
         assert.equal(edit.status, 201);
-        assert.equal(edit.path, "worker:///a");
+        assert.equal(edit.path, "workspace:///a");
         const send = log.find((e) => (e.origin ?? "model") === "model" && e.logPath.endsWith("/NOTE"));
         assert.ok(send, "model NOTE logged");
         assert.match(String(send.body), /keep going/);
@@ -907,7 +907,7 @@ test("{§worker-initialization-entry} Engine.runTurn: the second turn's log sect
 });
 
 test("{§edit-receipt-anchored-context} Engine.runTurn: the log section parses an application/json rx body", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -916,8 +916,8 @@ test("{§edit-receipt-anchored-context} Engine.runTurn: the log section parses a
                 response([completeStmt("done")]),
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         const log = logEntries(packet);
@@ -936,13 +936,13 @@ test("{§edit-receipt-anchored-context} Engine.runTurn: the log section parses a
 // the next packet's Errors section.
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: Errors is empty on a clean first turn", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([editStmt("/x", "y"), sendStmt(null, "done")])],
         });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.equal(packetSection(packet, "errors"), "");
@@ -950,11 +950,11 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: Errors is empty on a 
 });
 
 test("{§edit-marker-required-on-existing} Errors pointers use the canonical projected operation of a materialization row", async () => {
-    const { db, workerId, loopId } = await setup();
+    const { db, sessionId, loopId } = await setup();
     try {
         const turnId = await insertTurn(db, loopId, 1, 102);
         await db.engine_insert_log_entry.get({
-            worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+            session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
             origin: "_plurnk", source: "test", model_call_id: null, op: "EDIT",
             scheme: "https", username: null, password: null, hostname: "example.org", port: null,
             pathname: "/rejected", query: null, fragment: null, lineMarker: null,
@@ -971,7 +971,7 @@ test("{§edit-marker-required-on-existing} Errors pointers use the canonical pro
 });
 
 test("{§log-row-self-explains} Engine.runTurn: previous-turn 403 surfaces in the next packet's Errors section", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Model attempts to EDIT sealed:/// — denied 403 (writableBy=['_plurnk']).
         const denied: EditStatement = {
@@ -987,8 +987,8 @@ test("{§log-row-self-explains} Engine.runTurn: previous-turn 403 surfaces in th
                 response([completeStmt("done")]),
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
-        const t2 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         // {§log-row-self-explains}: the pointer targets the OP ROW — the row carries its own
@@ -1000,7 +1000,7 @@ test("{§log-row-self-explains} Engine.runTurn: previous-turn 403 surfaces in th
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: Errors includes only the immediately previous turn", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied: EditStatement = {
             metadata: null,
@@ -1016,9 +1016,9 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: Errors includes only 
                 response([completeStmt("done")]),
             ],
         });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t1: 1 failure
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });   // t2: clean
-        const t3 = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });   // t1: 1 failure
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });   // t2: clean
+        const t3 = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t3.turnId });
         const packet = JSON.parse(row?.packet ?? "{}");
         assert.equal(packetSection(packet, "errors"), "", "t3 mirrors t2 only (clean); t1's failure stays in log:///, off-screen");
@@ -1026,14 +1026,14 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: Errors includes only 
 });
 
 test("{§outside-text}: free text is the turn's outside source, never delivered, and the following operation still runs", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [{ assistant: { content: "Just thinking out loud here.\n\n````SEND\ndone\n````", reasoning: null } }],
         });
         const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [
@@ -1041,7 +1041,7 @@ test("{§outside-text}: free text is the turn's outside source, never delivered,
             { op: "SEND", status: 200, problemType: null },
         ], "the text beside the message is the turn's NOTE at its position; the message is delivered without a corrective failure");
         assert.equal(result.status, 102);
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
         assert.equal(sources.find((row) => row.turn_id === result.turnId && row.kind === "outside"), undefined, "beside a fenced operation the text is a NOTE, not an outside source");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string }>({ turn_id: result.turnId });
         assert.deepEqual(rows.filter(({ origin, op }) => origin === "model" && op === "NOTE").map(({ tx }) => JSON.parse(tx).body), ["Just thinking out loud here."]);
@@ -1049,14 +1049,14 @@ test("{§outside-text}: free text is the turn's outside source, never delivered,
 });
 
 test("{§edit-marker-required-on-existing} Engine.runTurn: NOTE carries literal working memory separate from provider reasoning", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([editStmt("/note", "finding"), noteStmt("Review the edit result.")], "", 10)],
         });
         const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "sys" }, { role: "user", content: "go" }],
         });
         assert.deepEqual(result.outcomes, [

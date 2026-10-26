@@ -7,7 +7,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { PlurnkStatement, } from "@plurnk/plurnk-contracts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
 test("{§provider-generation-envelope} input capacity subtracts the total output budget once; reasoning is only its subset", async () => {
@@ -19,11 +19,11 @@ test("{§provider-generation-envelope} input capacity subtracts the total output
     try {
         const run = async (contextWindow: number): Promise<string> => {
             const workspaceId = await insertWorkspace(db, `part-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "p");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "p");
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const provider = new Mock({ contextWindow, responses: [response([completeStmt("done")])] });
-            const r = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+            const r = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
             return packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: r.turnId }))!.packet), "budget");
         };
         assert.match(await run(10000), /"budget":7000\b/u, "the total output budget is subtracted once");
@@ -43,12 +43,12 @@ test("{§context-gauge} Engine.runTurn: context budget readout carries partition
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 4000, responses: [response([completeStmt("done")])] });
         const result = await engine.runTurn({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],
         });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
@@ -73,10 +73,10 @@ test("{§context-budget} Core starts curation at provider input capacity without
             executors: () => undefined,
         });
         const workspaceId = await insertWorkspace(db, `capacity-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const build = (provider: Mock) => packets.buildRequestPacket({
-            workspaceId, workerId, loopId, provider, currentTurnSeq: 1, gitStatus: null,
+            workspaceId, sessionId, loopId, provider, currentTurnSeq: 1, gitStatus: null,
             initialMessages: [{ role: "user", content: "go" }],
         });
         const provider = new Mock({ contextWindow: 1_048_575, responses: [] });

@@ -49,7 +49,7 @@ export default class BareBatchRunner {
         provider: Provider;
         turnId: number;
         workspaceId: number;
-        workerId: number;
+        sessionId: number;
         loopId: number;
         loopSequence: number;
         turnSequence: number;
@@ -62,7 +62,7 @@ export default class BareBatchRunner {
             inputs.push({ statement, ...await preparePrompt(statement) });
         }
         signal?.throwIfAborted();
-        // {§turn-cap-counts-the-tree} — every isolated call spends the worker tree's budget; a
+        // {§turn-cap-counts-the-tree} — every isolated call spends the session tree's budget; a
         // batch stops opening calls at the ceiling instead of spending past it in one turn.
         const budget = await this.#db.lifecycle_tree_budget.get<{ root_loop_id: number | null; max_turns: number | null; count: number }>({ loop_id: loopId });
         if (budget === undefined || budget.max_turns === null) throw new Error(`loop ${loopId} has no root loop to own its turn ceiling`);
@@ -73,7 +73,7 @@ export default class BareBatchRunner {
                 "engine:rails",
                 "max-turns",
                 429,
-                `The configured turn ceiling (${ceiling}) is exhausted: ${spent} model calls across the worker tree; this BARE made no call.`,
+                `The configured turn ceiling (${ceiling}) is exhausted: ${spent} model calls across the session tree; this BARE made no call.`,
                 {},
                 { maximumTurns: ceiling, treeModelCalls: spent, stage: "loop", retryable: false },
             )
@@ -83,7 +83,7 @@ export default class BareBatchRunner {
         } & ({ result: SchemeResult } | {
             prompt: string;
             modelCall: ModelCall;
-            providerWorkerId: string;
+            providerSessionId: string;
         })> = [];
         for (const input of inputs) {
             if ("result" in input) {
@@ -96,10 +96,10 @@ export default class BareBatchRunner {
                 prepared.push({ statement, result: refused });
                 continue;
             }
-            const providerWorkerId = randomUUID();
+            const providerSessionId = randomUUID();
             const attributionContext: ExtensionAttributionContext = Object.freeze({
                 workspaceId: String(workspaceId),
-                workerId: providerWorkerId,
+                sessionId: providerSessionId,
                 loop: loopSequence,
                 turn: turnSequence,
                 attempt: 1,
@@ -112,12 +112,12 @@ export default class BareBatchRunner {
                 model: provider.model,
             });
             spent += 1;
-            prepared.push({ statement, prompt, modelCall, providerWorkerId });
+            prepared.push({ statement, prompt, modelCall, providerSessionId });
         }
 
         const settlements = await Promise.allSettled(prepared.map(async (item) => {
             if ("result" in item) return { ...item, modelCallId: null };
-            const { statement, prompt, providerWorkerId } = item;
+            const { statement, prompt, providerSessionId } = item;
             let { modelCall } = item;
             // {§provider-recovery} — an isolated call takes the loop's recovery: each re-issue is its
             // own model call on the ledger, under the same window and backoff as the loop's inference.
@@ -133,7 +133,7 @@ export default class BareBatchRunner {
                             try {
                                 const generated = await provider.generate({
                                     messages: [{ role: "user", content: prompt }],
-                                    workerId: providerWorkerId,
+                                    sessionId: providerSessionId,
                                     workspaceId: String(workspaceId),
                                     signal,
                                     observeRequest: call.observeRequest,
@@ -200,7 +200,7 @@ export default class BareBatchRunner {
                     await delay(wait, undefined, { signal }).catch(() => undefined);
                     const attributions = this.#providerAttributions(provider, Object.freeze({
                         workspaceId: String(workspaceId),
-                        workerId: providerWorkerId,
+                        sessionId: providerSessionId,
                         loop: loopSequence,
                         turn: turnSequence,
                         attempt: attempt + 1,

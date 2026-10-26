@@ -5,7 +5,7 @@
 CREATE TRIGGER installed_journey_close_failure
 BEFORE UPDATE OF closed_at ON subscriptions
 WHEN NEW.closed_at IS NOT NULL
-    AND NEW.worker_id IN (SELECT id FROM workers WHERE name = 'Recovery_Worker')
+    AND NEW.session_id IN (SELECT id FROM sessions WHERE name = 'Recovery_Session')
 BEGIN
     SELECT RAISE(ABORT, 'installed-journey durable close unavailable');
 END;
@@ -17,8 +17,8 @@ DROP TRIGGER IF EXISTS installed_journey_close_failure;
 SELECT s.id, s.closed_at, s.close_status, s.close_result, e.pathname, l.status AS loop_status
 FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
-JOIN workers w ON w.id = s.worker_id
-JOIN loops l ON l.worker_id = w.id
-WHERE w.name = 'Recovery_Worker'
+JOIN sessions w ON w.id = s.session_id
+JOIN loops l ON l.session_id = w.id
+WHERE w.name = 'Recovery_Session'
 ORDER BY l.id DESC
 LIMIT 1;

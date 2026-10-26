@@ -528,7 +528,7 @@ Every tree-sitter grammar handler shares one web-tree-sitter wasm runtime. Runti
 | The runtime's linear memory | lives as long as the process: it grows to the largest single parse (about forty bytes of tree per source byte), every later parse in any grammar reuses it because no handler yields between a parse and its `tree.delete()`, and it is never returned to the operating system; `dispose()` releases parser and query objects inside it, not the memory |
 | The JS-side cost of a derivation | returns to V8's floor within about thirty seconds of idle |
 
-Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await create()`, so concurrent first callers instantiate two runtimes whose pointers cross, surfacing as `function signature mismatch`, `Incompatible language version 0`, or `memory access out of bounds` at teardown under concurrent derivation workers (#536).
+Rationale: web-tree-sitter 0.27's `Parser.init()` is `Module ??= await create()`, so concurrent first callers instantiate two runtimes whose pointers cross, surfacing as `function signature mismatch`, `Incompatible language version 0`, or `memory access out of bounds` at teardown under concurrent derivation sessions (#536).
 
 ### §mimetype-backend-selection 9.1 Backend selection hierarchy
 
@@ -544,7 +544,7 @@ portability contract:
 
 **Forbidden backends (apply across all tiers):**
 
-- Native `tree-sitter` (node-gyp-based). Requires Python + C compiler at install time — fails on Alpine, on bare Lambda, on Cloudflare Workers, on minimal containers. Not portable.
+- Native `tree-sitter` (node-gyp-based). Requires Python + C compiler at install time — fails on Alpine, on bare Lambda, on Cloudflare Sessions, on minimal containers. Not portable.
 - Any package requiring native FFI bindings or platform-specific binaries at install.
 - Pushing emscripten/toolchain requirements onto the consumer at install time. Tier 2's emscripten dependency lives in the handler package's CI / publish pipeline; what ships to npm is pre-built `.wasm`.
 

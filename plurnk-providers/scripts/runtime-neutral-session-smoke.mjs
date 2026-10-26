@@ -1,0 +1,59 @@
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { exerciseRuntimeNeutralSession } from "./lib/runtime-neutral-session-control.mjs";
+import { packRecords } from "../../scripts/lib/npm-json.mjs";
+import { usage } from "../../scripts/lib/usage.mjs";
+
+usage(import.meta, `
+usage: npm run release:check   (from plurnk-providers)
+Bundles the runtime-neutral contracts into a browser Session to prove neither gained a dependency unavailable there.
+Reads: this checkout's packed contracts.
+Writes: nothing kept; exit 1 when the bundle fails.
+`);
+
+const run = promisify(execFile);
+const cleanEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.startsWith("npm_")),
+);
+const packageDir = fileURLToPath(new URL("..", import.meta.url));
+const workspaceDir = join(packageDir, "..");
+const consumerDir = await mkdtemp(join(workspaceDir, ".plurnk-provider-session-"));
+const installedPackage = join(consumerDir, "node_modules", "@plurnk", "plurnk-providers");
+let tarballPath;
+
+try {
+    const { stdout } = await run(
+        "npm",
+        ["pack", "--json", "--silent", "--ignore-scripts"],
+        { cwd: packageDir, env: cleanEnv },
+    );
+    const [{ filename }] = packRecords(stdout);
+    tarballPath = join(packageDir, filename);
+    await writeFile(join(consumerDir, "package.json"), `${JSON.stringify({
+        name: "plurnk-provider-session-control",
+        version: "0.0.0",
+        private: true,
+        type: "module",
+    }, null, 2)}\n`);
+    // The pre-publication gate cannot install this unpublished candidate from npm.
+    // Extract its exact artifact; bundling fails if either runtime-neutral
+    // contract gains a dependency unavailable to browser Sessions.
+    await mkdir(installedPackage, { recursive: true });
+    await run(
+        "tar",
+        ["-xzf", tarballPath, "--strip-components=1", "-C", installedPackage],
+        { maxBuffer: 64 * 1024 * 1024 },
+    );
+    const manifest = JSON.parse(await readFile(join(installedPackage, "package.json"), "utf8"));
+    if (manifest.dependencies?.["@plurnk/plurnk-contracts"] === undefined) {
+        throw new Error("Packed provider does not declare its runtime contracts dependency");
+    }
+    await exerciseRuntimeNeutralSession({ absWorkingDir: consumerDir });
+    process.stdout.write("[smoke] packed accounting and error subpaths initialized in a browser Session\n");
+} finally {
+    if (tarballPath !== undefined) await rm(tarballPath, { force: true });
+    await rm(consumerDir, { recursive: true, force: true });
+}

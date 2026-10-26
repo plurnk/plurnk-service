@@ -18,7 +18,7 @@ const distillation = "wcs.py: _array_converter returns early on empty input; the
 test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE row after the kill, named by what it distilled", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        "````EDIT (worker:///note)\nfirst line\nsecond line\n````\n\n````READ (worker:///note)````\n````NOTE\nwrote\n````",
+        "````EDIT (workspace:///note)\nfirst line\nsecond line\n````\n\n````READ (workspace:///note)````\n````NOTE\nwrote\n````",
         `\`\`\`\`KILL (log:///1/**/{READ,NOTE}) <!-- retire the read and the note; keep what they taught -->\n${distillation}\n\`\`\`\`\n\`\`\`\`KILL (log:///1/**/EDIT)\n   \n\`\`\`\`\n\`\`\`\`NOTE\ncurated\n\`\`\`\``,
         "````NOTE\nmoving on\n````",
         "````SEND [200]\ndone\n````",
@@ -53,7 +53,7 @@ test("{§log-kill-distillation} a log KILL's body lands as the model's own NOTE 
             assert.deepEqual(JSON.parse(note.attrs ?? "{}"), { distilled: "log:///1/**/{READ,NOTE}" }, "the NOTE row names the selection it distilled");
             assert.equal((JSON.parse(note.tx) as { op: string; body: string }).body, distillation);
             assert.equal((JSON.parse(plainKill.tx) as { body: string | null }).body, null, "whitespace is no distillation");
-            const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ worker_id: result.modelWorkerId! });
+            const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ session_id: result.modelSessionId! });
             assert.ok(programs.some(({ kind, turn_id, content }) => kind === "note" && turn_id === ids[2] && content === distillation),
                 "the distillation is retained as a note source exactly as a NOTE's body is");
         } finally { ws.close(); }

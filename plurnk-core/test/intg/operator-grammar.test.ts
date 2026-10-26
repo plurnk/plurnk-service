@@ -14,7 +14,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { InputModality, Provider, ProviderResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { testProviderCapacity } from "./_provider.ts";
 
 const MESSAGES = [{ role: "system" as const, content: "SD" }, { role: "user" as const, content: "go" }];
@@ -82,9 +82,9 @@ const recordingProvider = (): { provider: Provider; calls: Array<{ grammar?: str
 
 const envelope = async (db: Awaited<ReturnType<typeof openMigrated>>) => {
     const workspaceId = await insertWorkspace(db, `rail-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "go");
-    return { workspaceId, workerId, loopId };
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "go");
+    return { workspaceId, sessionId, loopId };
 };
 
 test("{§operator-grammar} the operator's grammar file text reaches generate through a real turn", async () => {
@@ -99,8 +99,8 @@ test("{§operator-grammar} the operator's grammar file text reaches generate thr
         const { provider, calls } = recordingProvider();
         ProviderInstantiate.registerConfigurationScope(provider, "railprobe");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const { workspaceId, sessionId, loopId } = await envelope(db);
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.equal(calls.length, 1, "one generate call");
         assert.equal(calls[0].grammar, 'root ::= "PROBE-RAIL"\n', "the grammar FILE TEXT arrived at the provider, verbatim");
     } finally {
@@ -126,8 +126,8 @@ test("{§grammar-configuration-admission} an alias-free provider ignores unrelat
             const { provider, calls } = recordingProvider();
             ProviderInstantiate.registerConfigurationScope(provider, null);
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
-            const { workspaceId, workerId, loopId } = await envelope(db);
-            await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+            const { workspaceId, sessionId, loopId } = await envelope(db);
+            await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
             assert.equal(calls.length, 1);
             assert.equal(calls[0].grammar, undefined, "another alias's grammar is not a global fallback");
         } finally { for (const [k, v] of savedModels) process.env[k] = v; }
@@ -146,9 +146,9 @@ for (const path of ["/nonexistent/rail/never-here.gbnf", `missing-${crypto.rando
         const { provider, calls } = recordingProvider();
         ProviderInstantiate.registerConfigurationScope(provider, "railbroken");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         await assert.rejects(
-            () => engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 }),
+            () => engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 }),
             { code: "ENOENT" },
         );
         assert.equal(calls.length, 0, "unreadable grammar never falls back to unconstrained inference");
@@ -172,8 +172,8 @@ test("{§operator-grammar} a filename in the daemon working directory reaches th
         const { provider, calls } = recordingProvider();
         ProviderInstantiate.registerConfigurationScope(provider, "railnamed");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const { workspaceId, workerId, loopId } = await envelope(db);
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const { workspaceId, sessionId, loopId } = await envelope(db);
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
         assert.deepEqual(calls, [{ grammar }]);
     } finally {
         process.chdir(previousCwd);
@@ -193,7 +193,7 @@ test("{§operator-grammar} the turn records whether the grammar reached the wire
     try {
         process.env[key] = gbnfPath;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const { workspaceId, workerId, loopId } = await envelope(db);
+        const { workspaceId, sessionId, loopId } = await envelope(db);
         // The emission does not match the grammar at all; nothing in the service cares.
         const content = "````SEND\ndone\n````";
         const transported = staticProvider({
@@ -202,7 +202,7 @@ test("{§operator-grammar} the turn records whether the grammar reached the wire
             grammarEvidence: { input: content, contentStart: 0, transported: true },
         });
         ProviderInstantiate.registerConfigurationScope(transported, "evidencebox");
-        const t1 = await engine.runTurn({ provider: transported, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 1 });
+        const t1 = await engine.runTurn({ provider: transported, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 1 });
         const meta1 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t1.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta1.railsAttached, "client", "transport evidence is recorded");
         assert.deepEqual(Object.keys(meta1), ["railsAttached"], "the turn records transport evidence and nothing else");
@@ -213,7 +213,7 @@ test("{§operator-grammar} the turn records whether the grammar reached the wire
             grammarEvidence: { input: content, contentStart: 0, transported: false },
         });
         ProviderInstantiate.registerConfigurationScope(withheld, "evidencebox");
-        const t2 = await engine.runTurn({ provider: withheld, workspaceId, workerId, loopId, messages: MESSAGES, turnNumber: 2 });
+        const t2 = await engine.runTurn({ provider: withheld, workspaceId, sessionId, loopId, messages: MESSAGES, turnNumber: 2 });
         const meta2 = JSON.parse((await db.test_get_turn_meta.get<{ meta: string }>({ id: t2.turnId }))!.meta) as Record<string, unknown>;
         assert.equal(meta2.railsAttached, "withheld", "a provider that did not send it says so, and the turn still completes");
     } finally {

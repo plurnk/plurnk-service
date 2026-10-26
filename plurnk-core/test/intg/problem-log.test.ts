@@ -8,7 +8,7 @@ import ProblemLog from "../../src/core/ProblemLog.ts";
 import Results from "../../src/core/results.ts";
 import { Digest } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§log-row-self-explains} ProblemLog persists one self-identifying RFC 9457 operation failure", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-problem-log-"));
@@ -17,11 +17,11 @@ test("{§log-row-self-explains} ProblemLog persists one self-identifying RFC 945
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, `problem-log-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 3, "test");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 3, "test");
         const turnId = await insertTurn(db, loopId, 4, 102);
         const minted = await new ProblemLog(db, (text) => Math.ceil(text.length / 2)).record({
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 5,
@@ -49,7 +49,7 @@ test("{§log-row-self-explains} ProblemLog persists one self-identifying RFC 945
                 instance: "log:///3/4/5/error",
             },
         });
-        const [row] = await db.test_error_rows_for_worker.all<{ rx: string; weight: number }>({ worker_id: workerId });
+        const [row] = await db.test_error_rows_for_session.all<{ rx: string; weight: number }>({ session_id: sessionId });
         assert.deepEqual(JSON.parse(row.rx), minted.result, "the returned and durable failure are identical");
         assert.equal(row.weight, 0, "the metadata-only Problem has no canonical body weight");
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });

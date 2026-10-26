@@ -77,7 +77,7 @@ candidate: its `provenance.kind` is the verdict and its `summary` the reason.
   resolve from the daemon user's home; `./~/` names a literal project
   directory. Members globs remain project-relative, not home shorthand.
   A command runs on the host from the project root, and its output is a stream
-  the worker reads.
+  the session reads.
 
 ## Files you create
 
@@ -104,6 +104,6 @@ inheritance, each named by the glob as `list` shows it:
 {"verb": "disable", "file": "build/*.json"}
 ```
 
-Inherited definitions cannot be removed here. Changes apply to every worker. Each enabled
-definition is projected as `worker:///_plurnk/members/<glob>.md`, the glob percent-encoded,
+Inherited definitions cannot be removed here. Changes apply to every session. Each enabled
+definition is projected as `workspace:///_plurnk/members/<glob>.md`, the glob percent-encoded,
 showing what it resolved to.

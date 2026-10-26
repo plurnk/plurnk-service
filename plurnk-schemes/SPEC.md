@@ -58,7 +58,7 @@ class Notes {
 | `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. It implies published anchors only on resources authorized for model writes by {§entry-address-resolution}; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
 | §manifest-metadata-modifier `metadataModifier?` | `true` declares `[metadata]` on resource operations. Absent/false rejects it at dispatch; admitted turns first apply {§metadata-ignored}. SEND recipients own their message metadata independently; accepting SEND options does not enable resource-read options. |
 | §manifest-capability-traits `traits?` | Unique lowercase capability facts (for example `web` or `interaction`). The scheme declares facts only; the consumer's general capability-policy cascade decides admission. |
-| `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `worker:///_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
+| `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `workspace:///_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
@@ -90,13 +90,13 @@ tool, and these declared facts into its general capability descriptor; the
 same decision governs dispatch and teaching visibility.
 
 Proposal behavior is orthogonal to capabilities. A handler proposes by
-returning 202; the consumer's proposal lifecycle routes it to the worker
+returning 202; the consumer's proposal lifecycle routes it to the session
 owner's review unless the server disposition `PLURNK_SERVICE_PROPOSALS` accepts
 or rejects it, with timeout as a lifecycle bound.
 
-§manifest-self-doc **Discoverable scheme references.** `documentation` contains the scheme's operation contracts and examples. The consumer materializes it as **`worker:///_plurnk/plurnk/<name>.md`**: FIND projects its exact H2 `Summary`, and READ retrieves its body on demand. Reference availability follows the registered capabilities, not illustrative operations. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
+§manifest-self-doc **Discoverable scheme references.** `documentation` contains the scheme's operation contracts and examples. The consumer materializes it as **`workspace:///_plurnk/plurnk/<name>.md`**: FIND projects its exact H2 `Summary`, and READ retrieves its body on demand. Reference availability follows the registered capabilities, not illustrative operations. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
 
-**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `worker:///_plurnk/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
+**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `workspace:///_plurnk/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
 
 ## §2 Interface
 
@@ -251,7 +251,7 @@ non-`200` content remains eligible for transfer.
 
 Entry, channel, notification, subscription, mutation, proposal, client-read, and cancellation capabilities use that same workspace coordinate. Caller identity supplies provenance, not resource ownership or an alternate namespace. READ checks model write eligibility only to publish EDIT anchors ({§line-anchor-write-authority}); COPY checks the destination and MOVE also checks source mutability before any destination effect.
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. Log-targeted KILL is core-owned curation, and WORK/FORK and the native dispositions are core-owned worker/program operations; none is dispatchable to an extension scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
+A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. Log-targeted KILL is core-owned curation, and WORK/FORK and the native dispositions are core-owned session/program operations; none is dispatchable to an extension scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
 §handler-lifecycle A registered handler object is a process-lived shared
 instance and may receive overlapping operation calls. Retained handler state is
@@ -380,7 +380,7 @@ does not reverse a landed mutation.
 | {§result-shape-guards} | `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional… |
 | {§result-error-status} | `Results.isErrorStatus(status)` — `status >= 400`, and only those. |
 | {§capability-ctx} | §3.bis Capability ctx — the stable trusted-extension surface |
-| {§scheme-ctx-workspace-environment} | `workspaceId` selects shared Functionality and admission policy; `workerId` attributes the operation and… |
+| {§scheme-ctx-workspace-environment} | `workspaceId` selects shared Functionality and admission policy; `sessionId` attributes the operation and… |
 | {§scheme-interactions} | `interactions` — `request(ClientInteractionRequest, signal?)` awaits the contracts-owned interaction and… |
 | {§scheme-subscriptions} | `subscriptions` — one streaming lifecycle: |
 | {§scheme-ctx-lifetime} | `SchemeCtx` belongs to one operation call. |
@@ -608,9 +608,9 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`workerId`/`loopId`/`turnId`/`writer`/`signal`, and during proposal application `logEntryId`, the operation row being settled, so a scheme can keep what it did on that row, {§log-mutation-patch}) plus capability namespaces:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`sessionId`/`loopId`/`turnId`/`writer`/`signal`, and during proposal application `logEntryId`, the operation row being settled, so a scheme can keep what it did on that row, {§log-mutation-patch}) plus capability namespaces:
 
-§scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `workerId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
+§scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `sessionId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
 
 - `entries` — direct storage over the scheme and authority already bound by core
   (`address`/`read`/`write`/`delete`) plus `operations`, the standard PLURNK
@@ -651,7 +651,7 @@ its implementation.
 `close(result, summary?, channelResults?)` validates and persists the exact
 universal `ChannelProducerResult`, settles every channel with an exact named
 result override or that universal default, unregisters the live handle, and
-wakes the worker. Channel state is derived from its settled result.
+wakes the session. Channel state is derived from its settled result.
 `summary` is presentation only; it never replaces or reconstructs the result.
 An override names an existing channel and is itself an exact
 `ChannelProducerResult`; invalid overrides fail before any settlement changes.

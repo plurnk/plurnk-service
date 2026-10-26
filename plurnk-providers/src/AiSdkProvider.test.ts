@@ -64,7 +64,7 @@ for (const phase of ["headers", "first content", "between chunks", "finish", "bu
                 }), { headers: { "content-type": "text/event-stream" } });
             },
         });
-        const response = await provider.generate({ workerId: "slow", messages: [] });
+        const response = await provider.generate({ sessionId: "slow", messages: [] });
         assert.equal(response.assistant.content, "answer");
         assert.equal(response.assistant.finishReason, "stop");
         assert.equal(requests, 1, "silence within the call deadline does not reissue inference");
@@ -111,14 +111,14 @@ test("{§provider-wire-declaration} native SDK requests reproject controls for s
         }), /cache affinity overlaps declared request controls/);
         const budgeted = testProvider({ ...base, reasoningBudget: 2048, effort: { mode: "adaptive", budget: 2048 } });
         for (const maxOutputTokens of [4096, 1500]) {
-            const result = await budgeted.generate({ workerId: "request-fields", messages: [{ role: "user", content: "hello" }], maxOutputTokens });
+            const result = await budgeted.generate({ sessionId: "request-fields", messages: [{ role: "user", content: "hello" }], maxOutputTokens });
             assert.equal(result.assistant.content, "ok");
             assert.equal(bodies.at(-1)?.max_tokens, maxOutputTokens);
             assert.deepEqual(bodies.at(-1)?.reasoning, { max_tokens: Math.min(2048, maxOutputTokens - 1) });
         }
         for (const mode of ["off", "low", "xhigh", "max"] as const) {
             const fixed = testProvider({ ...base, effort: { mode, budget: null } });
-            const result = await fixed.generate({ workerId: "request-fields", messages: [{ role: "user", content: "hello" }] });
+            const result = await fixed.generate({ sessionId: "request-fields", messages: [{ role: "user", content: "hello" }] });
             assert.equal(result.assistant.content, "ok");
             assert.deepEqual(bodies.at(-1)?.reasoning, { effort: mode === "off" ? "none" : mode });
         }
@@ -246,9 +246,9 @@ test("{§provider-connectivity} per-instance fetch owns streaming and buffered r
     };
 
     const streamed = await testProvider({ ...injectedBase, fetch: streamingFetch, rawBody: true })
-        .generate({ workerId: "stream", messages: [{ role: "user", content: "hello" }] });
+        .generate({ sessionId: "stream", messages: [{ role: "user", content: "hello" }] });
     const buffered = await testProvider({ ...injectedBase, fetch: bufferedFetch, streaming: false })
-        .generate({ workerId: "buffer", messages: [{ role: "user", content: "hello" }] });
+        .generate({ sessionId: "buffer", messages: [{ role: "user", content: "hello" }] });
 
     assert.equal(streamed.assistant.content, "streamed");
     assert.equal(streamed.assistant.reasoning, "thought");
@@ -272,7 +272,7 @@ test("{§provider-connectivity} caller cancellation and provider timeout reach a
     };
     const caller = new AbortController();
     const callerProvider = testProvider({ ...injectedBase, fetch: pendingFetch });
-    const callerRequest = callerProvider.generate({ workerId: "cancel", messages: [], signal: caller.signal });
+    const callerRequest = callerProvider.generate({ sessionId: "cancel", messages: [], signal: caller.signal });
     caller.abort(new Error("operator cancelled"));
     await assert.rejects(callerRequest, /operator cancelled/);
 
@@ -283,14 +283,14 @@ test("{§provider-connectivity} caller cancellation and provider timeout reach a
         operationTimeoutMs: 100,
     });
     await assert.rejects(
-        timeoutProvider.generate({ workerId: "timeout", messages: [] }),
+        timeoutProvider.generate({ sessionId: "timeout", messages: [] }),
         (error: ProviderError) => error.kind === "deadline_exceeded"
             && error.problem.timeoutPhase === "operation" && error.problem.timeoutMs === 100,
     );
 });
 
 test("{§provider-cancellation-evidence} cancellation settles received accounting once before returning the caller reason (#971)", async (t) => {
-    for (const reason of [new Error("cancelled"), "killed via worker:// KILL"]) {
+    for (const reason of [new Error("cancelled"), "killed via session:// KILL"]) {
         for (const reported of [false, true]) {
             await t.test(`${typeof reason}, reported=${reported}`, async () => {
                 const cancellation = new AbortController();
@@ -316,7 +316,7 @@ test("{§provider-cancellation-evidence} cancellation settles received accountin
                     },
                 });
                 await assert.rejects(provider.generate({
-                    workerId: "cancelled", messages: [], signal: cancellation.signal,
+                    sessionId: "cancelled", messages: [], signal: cancellation.signal,
                     observeReasoning: () => cancellation.abort(reason),
                     observeRequest: async () => async (accounting) => { settled.push(accounting); },
                 }), (error) => error === reason);
@@ -349,7 +349,7 @@ test("{§provider-cancellation-evidence} cancellation during completed-response 
         },
     });
     const response = await provider.generate({
-        workerId: "completed", messages: [], signal: cancellation.signal,
+        sessionId: "completed", messages: [], signal: cancellation.signal,
         observeRequest: async () => async (accounting) => {
             cancellation.abort("cancel during settlement");
             await Promise.resolve();
@@ -388,7 +388,7 @@ test("{§provider-connectivity} per-instance fetch owns tokenization and retry a
     });
 
     assert.deepEqual(await provider.tokenize?.("hello"), [10, 20]);
-    assert.equal((await provider.generate({ workerId: "retry", messages: [] })).assistant.content, "ok");
+    assert.equal((await provider.generate({ sessionId: "retry", messages: [] })).assistant.content, "ok");
     assert.deepEqual(calls, [
         "https://example.test/tokenize",
         injectedBase.url,
@@ -416,11 +416,11 @@ test("{§provider-flexed-allowance} an exact-counting transport flexes the wire 
         outputBudget: 8_000,
         outputFloor: 4_000,
     });
-    await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] });
+    await provider.generate({ sessionId: "flex", messages: [{ role: "user", content: "small" }] });
     assert.equal(seen[0]?.max_tokens, 48_000 - 100 - 256, "a small exact prompt harvests the window slack — silent wire tolerance");
 
     promptTokens = 42_000;
-    await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "full" }] });
+    await provider.generate({ sessionId: "flex", messages: [{ role: "user", content: "full" }] });
     assert.equal(seen[1]?.max_tokens, 48_000 - 42_000 - 256, "a packet into the reservation is granted the remainder, above the floor");
 });
 
@@ -443,12 +443,12 @@ test("{§provider-connectivity} (#482) conformance judges the grant: tolerated o
         outputBudget: 8_000,
     });
     // 9,648 > the 8,000 floor but inside the 47,644 grant: tolerated.
-    const ok = await provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] });
+    const ok = await provider.generate({ sessionId: "flex", messages: [{ role: "user", content: "small" }] });
     assert.equal(ok.assistant.content, "ok", "output between floor and grant is the tolerance working");
 
     reportOutput = 47_700;
     await assert.rejects(
-        provider.generate({ workerId: "flex", messages: [{ role: "user", content: "small" }] }),
+        provider.generate({ sessionId: "flex", messages: [{ role: "user", content: "small" }] }),
         /granted output allowance of 47644/,
         "output past the grant remains a provider fault, named by the grant",
     );
@@ -473,14 +473,14 @@ test("{§provider-request-observer} request-observer open failures preserve the 
 
     await assert.rejects(
         provider.generate({
-            workerId: "observer-open",
+            sessionId: "observer-open",
             messages: [],
             observeRequest: async () => { throw root; },
         }),
         (error: unknown) => error === root,
     );
     assert.equal(calls, 0);
-    assert.equal((await provider.generate({ workerId: "after-open-failure", messages: [] })).assistant.content, "x");
+    assert.equal((await provider.generate({ sessionId: "after-open-failure", messages: [] })).assistant.content, "x");
     assert.equal(calls, 1);
 });
 
@@ -503,14 +503,14 @@ test("{§provider-request-observer} request-observer settlement failures preserv
 
     await assert.rejects(
         provider.generate({
-            workerId: "observer-settle",
+            sessionId: "observer-settle",
             messages: [],
             observeRequest: async () => async () => { throw root; },
         }),
         (error: unknown) => error === root,
     );
     assert.equal(calls, 1);
-    assert.equal((await provider.generate({ workerId: "after-settlement-failure", messages: [] })).assistant.content, "x");
+    assert.equal((await provider.generate({ sessionId: "after-settlement-failure", messages: [] })).assistant.content, "x");
     assert.equal(calls, 2);
 });
 
@@ -555,7 +555,7 @@ test("{§provider-retryable-truth} a 524 Cloudflare edge timeout fails fast - no
     const calls = installFetchScript([{ status: 524, retryAfter: 120 }]);
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 3 });
     await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
+        p.generate({ sessionId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "network_failure"
             && error.status === 524
             && error.problem.retryable === true,
@@ -570,7 +570,7 @@ test("{§provider-connectivity} a 422 grammar_invalid is a failed exchange, not 
     const calls = installFetchScript([{ status: 422, body }]);
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 2 });
     await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
+        p.generate({ sessionId: "r", messages: [] }),
         (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
     );
     await flush();
@@ -585,7 +585,7 @@ test("{§provider-connectivity} an SSE error frame is a failed exchange, not an 
     }]);
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 1000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
+        p.generate({ sessionId: "r", messages: [] }),
         (e: unknown) => e instanceof ProviderError && e.kind === "grammar_invalid",
     );
     assert.equal(calls.length, 1);
@@ -599,7 +599,7 @@ test("{§provider-connectivity} a buffered classified error retains normalized u
         normalizeCost: directCost,
     });
     await assert.rejects(
-        p.generate({ workerId: "billed-json-error", messages: [] }),
+        p.generate({ sessionId: "billed-json-error", messages: [] }),
         (error: unknown) => {
             assert.ok(error instanceof ProviderError);
             assert.equal(error.kind, "grammar_invalid");
@@ -631,7 +631,7 @@ test("{§provider-connectivity} an SSE classified error retains the same normali
         normalizeCost: directCost,
     });
     await assert.rejects(
-        p.generate({ workerId: "billed-sse-error", messages: [] }),
+        p.generate({ sessionId: "billed-sse-error", messages: [] }),
         (error: unknown) => {
             assert.ok(error instanceof ProviderError);
             assert.equal(error.kind, "grammar_invalid");
@@ -663,7 +663,7 @@ test("{§provider-connectivity} a successful response normalizes direct charge w
         streaming: false,
         normalizeCost: directCost,
     });
-    const response = await p.generate({ workerId: "billed-json-success", messages: [] });
+    const response = await p.generate({ sessionId: "billed-json-success", messages: [] });
     assert.deepEqual(response.accounting[0]?.cost, settledCharge);
     assert.equal(response.meta?.charge, undefined);
 });
@@ -681,7 +681,7 @@ test("{§provider-connectivity} malformed monetary evidence closes the physical 
 
     await assert.rejects(
         provider.generate({
-            workerId: "malformed-charge",
+            sessionId: "malformed-charge",
             messages: [],
             observeRequest: async () => async (accounting) => { settled.push(accounting); },
         }),
@@ -703,21 +703,21 @@ test("{§provider-connectivity} malformed monetary evidence closes the physical 
 test("{§provider-connectivity} a trailing eos_token (--special EOG leak) is stripped from content", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "the answer<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
-    const res = await p.generate({ workerId: "r", messages: [] });
+    const res = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(res.assistant.content, "the answer"); // trailing <eos> gone; packet + verdict see clean bytes
 });
 
 test("{§provider-connectivity} without a probed eos_token the content passes through untouched", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "keeps <eos> literally" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 } });
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
-    const res = await p.generate({ workerId: "r", messages: [] });
+    const res = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(res.assistant.content, "keeps <eos> literally"); // no eosText (a cloud backend) -> no strip
 });
 
 test("{§provider-connectivity} only the trailing eos_token is stripped; a quoted one mid-body survives", async () => {
     installFetchJson({ model: "m", choices: [{ message: { content: "quotes <eos> in the body<eos>" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 5, total_tokens: 6 } });
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, eosText: "<eos>" });
-    const res = await p.generate({ workerId: "r", messages: [] });
+    const res = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(res.assistant.content, "quotes <eos> in the body"); // only the tail goes
 });
 
@@ -758,7 +758,7 @@ test("{§provider-connectivity} injected prompt measurement preserves provenance
         { kind: "upper_bound", tokens: 7, source: "test:proven-bound" },
     );
     assert.deepEqual(seen, ["system", "user"]);
-    const response = await p.generate({ workerId: "accounted", messages: [] });
+    const response = await p.generate({ sessionId: "accounted", messages: [] });
     assert.deepEqual(response.accounting[0]?.cost, {
         kind: "estimated",
         amount: { amount: "4", currency: "USD" },
@@ -784,7 +784,7 @@ test("{§provider-capacity-failure} an exact request overflow rejects before obs
     });
     await assert.rejects(
         () => p.generate({
-            workerId: "capacity",
+            sessionId: "capacity",
             messages: [{ role: "user", content: "payload" }],
             observeRequest: async () => {
                 observed = true;
@@ -825,7 +825,7 @@ test("{§provider-connectivity} an estimate above the known envelope defers to t
         effort: { mode: "off", budget: null },
         retryAttempts: 0,
     });
-    const response = await p.generate({ workerId: "capacity", messages: [] });
+    const response = await p.generate({ sessionId: "capacity", messages: [] });
     assert.equal(response.capacity.decision, "defer");
     assert.equal(calls.length, 1);
     assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 10, "the estimate's grant is bounded by its remainder, at the floor");
@@ -838,7 +838,7 @@ test("{§provider-connectivity} generate maps a streamed response into ProviderR
         { choices: [{ delta: { content: "lo" }, finish_reason: "stop" }] },
         { usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5, cached_tokens: 1 } },
     ]);
-    const { assistant, assistantRaw, accounting } = await p.generate({ workerId: "r", messages: [{ role: "user", content: "hi" }] });
+    const { assistant, assistantRaw, accounting } = await p.generate({ sessionId: "r", messages: [{ role: "user", content: "hi" }] });
     assert.equal(assistant.content, "hello");
     assert.equal(assistant.model, "wire-model"); // wire-reported wins
     assert.equal(assistant.finishReason, "stop");
@@ -893,7 +893,7 @@ test("{§provider-sdk-warning} native SDK warnings survive as source-attributed 
         languageModel,
         source: "provider:warning-test",
         streaming: false,
-    }).generate({ workerId: "warnings", messages: [] });
+    }).generate({ sessionId: "warnings", messages: [] });
 
     assert.deepEqual(response.notices, [{
         source: "provider:warning-test",
@@ -963,12 +963,12 @@ test("{§provider-connectivity} native SDK accounting evidence becomes a normali
 
     await t.test("buffered", async () => {
         const response = await testProvider({ ...config, streaming: false })
-            .generate({ workerId: "buffered", messages: [] });
+            .generate({ sessionId: "buffered", messages: [] });
         assert.deepEqual(response.accounting[0]?.cost, charge);
     });
     await t.test("streamed", async () => {
         const response = await testProvider(config)
-            .generate({ workerId: "streamed", messages: [] });
+            .generate({ sessionId: "streamed", messages: [] });
         assert.deepEqual(response.accounting[0]?.cost, charge);
     });
 });
@@ -984,7 +984,7 @@ test("{§provider-connectivity} a wedged transport that ignores the abort still 
         operationTimeoutMs: 100,
     });
     await assert.rejects(
-        provider.generate({ workerId: "wedged", messages: [] }),
+        provider.generate({ sessionId: "wedged", messages: [] }),
         (error: ProviderError) => error.kind === "deadline_exceeded"
             && error.problem.timeoutPhase === "operation",
     );
@@ -1002,7 +1002,7 @@ for (const status of [200, 400]) {
                 status, headers: { "content-type": "application/json" },
             }),
         });
-        const call = provider.generate({ workerId: "cleanup", messages: [], signal: cancellation.signal });
+        const call = provider.generate({ sessionId: "cleanup", messages: [], signal: cancellation.signal });
         if (status === 200) assert.equal((await call).assistant.content, "x");
         else await assert.rejects(call, (error) => error instanceof ProviderError && error.kind === "request_rejected");
         assert.equal(getEventListeners(cancellation.signal, "abort").length, 0);
@@ -1028,12 +1028,12 @@ test("{§provider-inference-admission} a transport ignoring cancellation retains
         },
     });
     const cancellation = new AbortController();
-    const first = provider.generate({ workerId: "uncooperative", messages: [], signal: cancellation.signal });
+    const first = provider.generate({ sessionId: "uncooperative", messages: [], signal: cancellation.signal });
     const rejected = assert.rejects(first, (error) => error === cancellation.signal.reason);
     await started.promise;
     cancellation.abort(new Error("cancelled but transport still running"));
     await rejected;
-    const second = provider.generate({ workerId: "queued", messages: [] });
+    const second = provider.generate({ sessionId: "queued", messages: [] });
     await flush();
     assert.equal(calls, 1, "returning cancellation to the caller must not mint capacity");
     firstResponse.resolve(new Response(JSON.stringify(jsonChoice), { headers: { "content-type": "application/json" } }));
@@ -1046,12 +1046,12 @@ test("{§provider-finish-reason} the finish reason is the SDK's classification o
     mock.method(process, "emitWarning", (message: string | Error) => { warnings.push(String(message)); });
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" }, finish_reason: "function_call" }] }]);
-    const { assistant, assistantRaw } = await p.generate({ workerId: "r", messages: [] });
+    const { assistant, assistantRaw } = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(assistant.finishReason, "tool_calls", "the SDK classifies function_call as tool-calls; no second reading of the string");
     assert.match(JSON.stringify(assistantRaw), /"function_call"/u, "the raw vendor value stays evidence");
     assert.deepEqual(warnings, [], "a classified finish warns about nothing");
     installFetch([{ choices: [{ delta: { content: "y" }, finish_reason: "some_vendor_novelty" }] }]);
-    const other = await p.generate({ workerId: "r", messages: [] });
+    const other = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(other.assistant.finishReason, null, "the SDK's `other` is no signal");
     assert.deepEqual(warnings, []);
 });
@@ -1071,7 +1071,7 @@ test("{§provider-connectivity} #161: a streamed resource interruption is a fail
     });
 
     await assert.rejects(
-        provider.generate({ workerId: "interrupted", messages: [{ role: "user", content: "hello" }] }),
+        provider.generate({ sessionId: "interrupted", messages: [{ role: "user", content: "hello" }] }),
         (error: unknown) => {
             assert.ok(error instanceof ProviderError);
             assert.equal(error.kind, "resource_interrupted");
@@ -1117,7 +1117,7 @@ test("{§provider-connectivity} #161: a buffered resource interruption preserves
     });
 
     await assert.rejects(
-        provider.generate({ workerId: "interrupted", messages: [{ role: "user", content: "hello" }] }),
+        provider.generate({ sessionId: "interrupted", messages: [{ role: "user", content: "hello" }] }),
         (error: unknown) => {
             assert.ok(error instanceof ProviderError);
             assert.equal(error.kind, "resource_interrupted");
@@ -1138,7 +1138,7 @@ test("{§provider-connectivity} #161: a buffered resource interruption preserves
 test("{§provider-reasoning-observer} generate aggregates reasoning deltas under multiple field names", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { reasoning_content: "be", thinking: "cause" } }] }]);
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
+    const { assistant } = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(assistant.reasoning, "because");
 });
 
@@ -1160,7 +1160,7 @@ for (const style of ["think-tags", "template-think", "template-channel"] as cons
     const provider = testProvider({ ...injectedBase, fetch, rawBody: true, ...(template
         ? { reasoningStyle: "template" as const, grammarStyle: "llamacpp" as const, effort: { mode: "adaptive" as const, budget: null } }
         : { reasoningResponseStyle: "think-tags" as const }) });
-    const result = provider.generate({ workerId: "paced", messages: [], ...(template ? { grammar: 'root ::= "x"' } : {}), observeReasoning(delta) {
+    const result = provider.generate({ sessionId: "paced", messages: [], ...(template ? { grammar: 'root ::= "x"' } : {}), observeReasoning(delta) {
         observed.push(delta);
         if (observed.join("") === "Thinking 🧠") ready.resolve();
     } });
@@ -1202,7 +1202,7 @@ for (const streaming of [false, true]) for (const tagged of [false, true]) {
         };
         const response = await testProvider({ ...injectedBase, fetch, streaming, normalizeCost: directCost,
             ...(tagged ? { reasoningResponseStyle: "think-tags" as const } : {}),
-        }).generate({ workerId: "complete", messages: [], observeReasoning: (delta) => { observed.push(delta); } });
+        }).generate({ sessionId: "complete", messages: [], observeReasoning: (delta) => { observed.push(delta); } });
         assert.equal(aborted, false);
         assert.equal(response.assistant.finishReason, "stop");
         assert.equal(response.assistant.reasoning, reasoning);
@@ -1225,7 +1225,7 @@ test("{§provider-tagged-reasoning} explicit think-tags project content without 
         { usage: { prompt_tokens: 3, completion_tokens: 10, total_tokens: 13 } },
     ]);
 
-    const response = await p.generate({ workerId: "tagged-stream", messages: [] });
+    const response = await p.generate({ sessionId: "tagged-stream", messages: [] });
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
@@ -1247,7 +1247,7 @@ test("{§provider-tagged-reasoning} structured streamed reasoning keeps tagged c
     installFetch([{ choices: [{ delta: { content: "<think>literal</think>", reasoning_content: "Native thought." }, finish_reason: "stop" }] }]);
     const observed: string[] = [];
     const response = await testProvider({ ...injectedBase, reasoningResponseStyle: "think-tags" }).generate({
-        workerId: "native-control", messages: [], observeReasoning: (delta) => observed.push(delta),
+        sessionId: "native-control", messages: [], observeReasoning: (delta) => observed.push(delta),
     });
     assert.equal(response.assistant.reasoning, "Native thought.");
     assert.equal(response.assistant.content, "<think>literal</think>");
@@ -1263,7 +1263,7 @@ test("{§provider-tagged-reasoning} explicit think-tags projects one buffered le
     const config = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
     const reasoning: string[] = [];
     const response = await testProvider(config).generate({
-        workerId: "tagged-buffer",
+        sessionId: "tagged-buffer",
         messages: [],
         observeReasoning: (delta) => reasoning.push(delta),
     });
@@ -1287,7 +1287,7 @@ test("{§provider-tagged-reasoning} tagged text does not overwrite itemized reas
         },
     });
     const config = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
-    const response = await testProvider(config).generate({ workerId: "tagged-itemized", messages: [] });
+    const response = await testProvider(config).generate({ sessionId: "tagged-itemized", messages: [] });
 
     assert.equal(response.assistant.reasoning, "12345");
     assert.equal(response.assistant.content, "abcde");
@@ -1303,7 +1303,7 @@ test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reason
         { choices: [{ delta: { content: "<think>unfinished" }, finish_reason: "length" }] },
         { usage: { prompt_tokens: 3, completion_tokens: 8, total_tokens: 11 } },
     ]);
-    const streamed = await testProvider(config).generate({ workerId: "tagged-capped-stream", messages: [] });
+    const streamed = await testProvider(config).generate({ sessionId: "tagged-capped-stream", messages: [] });
     assert.equal(streamed.assistant.reasoning, "unfinished");
     assert.equal(streamed.assistant.content, "");
     assert.deepEqual(streamed.accounting[0]?.usage, {
@@ -1319,7 +1319,7 @@ test("{§provider-tagged-reasoning} an unclosed capped envelope is wholly reason
         usage: { prompt_tokens: 3, completion_tokens: 8, total_tokens: 11 },
     });
     const bufferedConfig = { ...config, streaming: false };
-    const buffered = await testProvider(bufferedConfig).generate({ workerId: "tagged-capped-buffer", messages: [] });
+    const buffered = await testProvider(bufferedConfig).generate({ sessionId: "tagged-capped-buffer", messages: [] });
     assert.equal(buffered.assistant.reasoning, "unfinished");
     assert.equal(buffered.assistant.content, "");
     assert.equal(buffered.accounting[0]?.usage?.outputTokens, 8);
@@ -1333,7 +1333,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
         usage: { prompt_tokens: 1, completion_tokens: 4, total_tokens: 5 },
     });
     const verbatim = await testProvider({ ...injectedBase, streaming: false })
-        .generate({ workerId: "verbatim", messages: [] });
+        .generate({ sessionId: "verbatim", messages: [] });
     assert.equal(verbatim.assistant.content, "<think>literal</think>answer");
     assert.equal(verbatim.assistant.reasoning, null);
     assert.equal(verbatim.accounting[0]?.usage?.outputTokens, 4);
@@ -1346,7 +1346,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
     });
     const taggedConfig = { ...injectedBase, streaming: false, reasoningResponseStyle: "think-tags" as const };
     const nonLeading = await testProvider(taggedConfig)
-        .generate({ workerId: "non-leading", messages: [] });
+        .generate({ sessionId: "non-leading", messages: [] });
     assert.equal(nonLeading.assistant.content, "show <think>literal</think> exactly");
     assert.equal(nonLeading.assistant.reasoning, null);
 
@@ -1360,7 +1360,7 @@ test("{§provider-tagged-reasoning} verbatim, non-leading, and structured-reason
         usage: { prompt_tokens: 1, completion_tokens: 7, total_tokens: 8 },
     });
     const structured = await testProvider(taggedConfig)
-        .generate({ workerId: "structured", messages: [] });
+        .generate({ sessionId: "structured", messages: [] });
     assert.equal(structured.assistant.content, "<think>literal visible bytes</think>");
     assert.equal(structured.assistant.reasoning, "structured reasoning");
 });
@@ -1378,7 +1378,7 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
     installFetch([{ choices: [{ delta: { content }, finish_reason: "stop" }] }]);
 
     const response = await testProvider(config).generate({
-        workerId: "tagged-grammar",
+        sessionId: "tagged-grammar",
         messages: [],
         grammar: `root ::= ${JSON.stringify(content)}`,
     });
@@ -1395,13 +1395,13 @@ test("{§provider-tagged-reasoning} grammar evidence retains the exact pre-proje
 test("{§provider-connectivity} reasoningStyle 'think' follows activation (magnitude is irrelevant to the boolean wire control)", async () => {
     const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await on.generate({ workerId: "r", messages: [] });
+    await on.generate({ sessionId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).think, true);
 
     mock.restoreAll();
     const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "think" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await off.generate({ workerId: "r", messages: [] });
+    await off.generate({ sessionId: "r", messages: [] });
     assert.equal("think" in JSON.parse(calls[0].init.body as string), false);
 });
 
@@ -1409,7 +1409,7 @@ test("{§provider-wire-declaration} preserves each declared fixed effort", async
     for (const mode of ["low", "medium", "high"] as const) {
         const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode, budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "low,medium,high" }) });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-        await p.generate({ workerId: "r", messages: [] });
+        await p.generate({ sessionId: "r", messages: [] });
         assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, mode);
         mock.restoreAll();
     }
@@ -1424,7 +1424,7 @@ test("{§provider-wire-declaration} explicit off and adaptive omission remain di
             PLURNK_PROVIDERS_REASONING_ADAPTIVE_BODY: "{}",
         }) });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-        await p.generate({ workerId: "r", messages: [] });
+        await p.generate({ sessionId: "r", messages: [] });
         const body = JSON.parse(calls[0].init.body as string);
         if (expected === null) assert.equal("reasoning_effort" in body, false, `mode ${effort.mode}: field must be omitted`);
         else assert.equal(body.reasoning_effort, expected, `mode ${effort.mode}`);
@@ -1444,7 +1444,7 @@ test("{§provider-wire-declaration} graded fallback precedes a catalog toggle wi
         });
         const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort, retryAttempts: 0, requestFields, supportedEfforts: requestFields.efforts });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-        await p.generate({ workerId: "r", messages: [] });
+        await p.generate({ sessionId: "r", messages: [] });
         assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, expected, `mode ${effort.mode}`);
         mock.restoreAll();
     }
@@ -1473,7 +1473,7 @@ test("{§deepseek-reasoning-request} the panel maps DeepSeek activation and exac
         });
         const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
         await p.generate({
-            workerId: "r",
+            sessionId: "r",
             messages: [],
             sampling: { thinking: { type: "disabled" }, reasoning_effort: "max" },
         });
@@ -1489,17 +1489,17 @@ test("{§deepseek-reasoning-request} the panel maps DeepSeek activation and exac
 test("{§provider-connectivity} the family temperature default rides every request; caller sampling overrides it", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
     mock.restoreAll();
     // explicit caller sampling wins over the default
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], sampling: { temperature: 0.7 } });
+    await p.generate({ sessionId: "r", messages: [], sampling: { temperature: 0.7 } });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.7);
     mock.restoreAll();
     // temperature is the UNIVERSAL default: present without a grammar too
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).temperature, 0.2);
 });
 
@@ -1508,7 +1508,7 @@ test("{§provider-connectivity} DRY + repeat_last_n ride the llamacpp path when 
     // set + llamacpp -> the loop-breakers ride the wire
     const p = testProvider({ ...base, grammarStyle: "llamacpp", dryMultiplier: 0.8, dryBase: 1.75, dryAllowedLength: 2, repeatLastN: 512 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     let body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.dry_multiplier, 0.8);
     assert.equal(body.dry_base, 1.75);
@@ -1519,7 +1519,7 @@ test("{§provider-connectivity} DRY + repeat_last_n ride the llamacpp path when 
     // unset -> no dry_*/repeat_last_n on the wire (box keeps its own defaults)
     const p2 = testProvider({ ...base, grammarStyle: "llamacpp" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p2.generate({ workerId: "r", messages: [] });
+    await p2.generate({ sessionId: "r", messages: [] });
     body = JSON.parse(calls[0].init.body as string);
     assert.equal("dry_multiplier" in body, false);
     assert.equal("repeat_last_n" in body, false);
@@ -1527,7 +1527,7 @@ test("{§provider-connectivity} DRY + repeat_last_n ride the llamacpp path when 
     // DRY is a llama.cpp sampler: a cloud ("none") provider never emits it, even if configured
     const p3 = testProvider({ ...base, grammarStyle: "none", dryMultiplier: 0.8, repeatLastN: 512 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p3.generate({ workerId: "r", messages: [] });
+    await p3.generate({ sessionId: "r", messages: [] });
     body = JSON.parse(calls[0].init.body as string);
     assert.equal("dry_multiplier" in body, false);
     assert.equal("repeat_last_n" in body, false);
@@ -1538,7 +1538,7 @@ test("{§provider-connectivity} (#480) unset sampling passes through: no tempera
     // Cloud shape: nothing configured, nothing sent — the provider default governs.
     const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await cloud.generate({ workerId: "r", messages: [] });
+    await cloud.generate({ sessionId: "r", messages: [] });
     let body = JSON.parse(calls[0].init.body as string);
     assert.equal("temperature" in body, false);
     assert.equal("repeat_penalty" in body, false);
@@ -1547,7 +1547,7 @@ test("{§provider-connectivity} (#480) unset sampling passes through: no tempera
     // llamacpp grammar path: the grammar rides alone; the box's own defaults decode.
     const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await llama.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    await llama.generate({ sessionId: "r", messages: [], grammar: 'root ::= "x"' });
     body = JSON.parse(calls[0].init.body as string);
     assert.ok(body.grammar, "the grammar still rides");
     assert.equal("temperature" in body, false);
@@ -1558,7 +1558,7 @@ test("{§provider-connectivity} (#480) unset sampling passes through: no tempera
 test("{§provider-connectivity} llamacpp grammar path: temperature default + the managed repeat-penalty floor", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.temperature, 0.2);
     assert.equal(body.repeat_penalty, 1.15);
@@ -1568,13 +1568,13 @@ test("{§provider-connectivity} the repeat penalty rides every request rail-off,
     // llama.cpp with NO grammar carries its key too (unconstrained local is guarded)
     const llama = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await llama.generate({ workerId: "r", messages: [] });
+    await llama.generate({ sessionId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).repeat_penalty, 1.15);
     mock.restoreAll();
     // A `none`-style cloud backend with a frequency penalty gets frequency_penalty.
     const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, frequencyPenalty: 0.4, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await cloud.generate({ workerId: "r", messages: [] });
+    await cloud.generate({ sessionId: "r", messages: [] });
     const cloudBody = JSON.parse(calls[0].init.body as string);
     assert.equal(cloudBody.frequency_penalty, 0.4);            // the OpenAI-standard additive, not the multiplier
     assert.equal("repetition_penalty" in cloudBody, false);
@@ -1583,7 +1583,7 @@ test("{§provider-connectivity} the repeat penalty rides every request rail-off,
     // frequencyPenalty unset (default 0) opts out cleanly - sends nothing (an out-of-date extension runs unguarded, never breaks)
     const bare = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await bare.generate({ workerId: "r", messages: [] });
+    await bare.generate({ sessionId: "r", messages: [] });
     assert.equal("frequency_penalty" in JSON.parse(calls[0].init.body as string), false);
 });
 
@@ -1591,7 +1591,7 @@ test("{§provider-connectivity} sampling passthrough forwards caller params; man
     const p = testProvider({ model: "managed-model", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
-        workerId: "r",
+        sessionId: "r",
         messages: [{ role: "user", content: "hi" }],
         maxOutputTokens: 100,
         sampling: {
@@ -1614,7 +1614,7 @@ test("{§provider-connectivity} sampling passthrough guards contract invariants:
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     await p.generate({
-        workerId: "r",
+        sessionId: "r",
         messages: [{ role: "user", content: "hi" }],
         maxOutputTokens: 100,
         sampling: {
@@ -1641,7 +1641,7 @@ test("template reasoning returns the exact pre-projection grammar sentence ({§p
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const grammarInput = "<|channel>thought\ncon🙂sider<channel|>x";
     const calls = installFetch([{ choices: [{ delta: { content: grammarInput } }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(grammarInput)}` });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: `root ::= ${JSON.stringify(grammarInput)}` });
     const body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
     assert.equal(body.reasoning_format, "none");
@@ -1661,7 +1661,7 @@ test("{§provider-connectivity} template reasoning projects a leading think enve
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const input = "<think>\ncon🙂sider</think>x";
     const calls = installFetch([{ choices: [{ delta: { content: input } }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.reasoning_format, "none");
     assert.equal(res.assistant.reasoning, "con🙂sider");
@@ -1676,7 +1676,7 @@ test("{§provider-connectivity} template reasoning projects a leading think enve
 test("{§provider-connectivity} a verbatim template response remains exact evidence when it has no channel envelope", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.reasoning_format, "none");
     assert.deepEqual(res.grammarEvidence, { input: "x", contentStart: 0, transported: true });
@@ -1685,7 +1685,7 @@ test("{§provider-connectivity} a verbatim template response remains exact evide
 test("{§provider-connectivity} a template grammar preserves exact evidence when reasoning is disabled", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
     assert.equal(body.reasoning_format, "none");
@@ -1695,7 +1695,7 @@ test("{§provider-connectivity} a template grammar preserves exact evidence when
 test("{§provider-connectivity} an unexpectedly projected template response cannot claim pre-projection evidence", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     installFetch([{ choices: [{ delta: { reasoning_content: "reason", content: "x" } }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "x"' });
     assert.equal(res.grammarEvidence, undefined);
 });
 
@@ -1703,7 +1703,7 @@ test("{§provider-connectivity} template reasoning preserves an empty grammar-re
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
     const input = "<|channel>thought\n<channel|>x";
     const calls = installFetch([{ choices: [{ delta: { content: input } }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: `root ::= ${JSON.stringify(input)}` });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.reasoning_format, "none");
     assert.equal(res.assistant.reasoning, null);
@@ -1731,7 +1731,7 @@ test("{§diagnostic-observation} billed output tokens vastly beyond the visible 
         return new Response(sseStream(chunks), { status: 200 });
     };
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetch, tokenizeUrl: "http://x/tokenize", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, reasoningStyle: "template", grammarStyle: "llamacpp" });
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "x"' });
     const escape = res.notices?.find((e) => e.kind === "output_unaccounted");
     assert.ok(escape, "escape notice attached");
     assert.equal(escape.message, "5000 output tokens billed; 1 visible across content and reasoning.", "the notice states the counts, never a cause ({§diagnostic-observation})");
@@ -1743,7 +1743,7 @@ test("{§provider-connectivity} output_unaccounted is not reported without a tra
         { choices: [{ delta: { content: "x" }, finish_reason: "length" }] },
         { usage: { prompt_tokens: 10, completion_tokens: 5000, total_tokens: 5010 } },
     ]);
-    const res = await p.generate({ workerId: "r", messages: [] }); // no grammar arg
+    const res = await p.generate({ sessionId: "r", messages: [] }); // no grammar arg
     assert.equal(res.grammarEvidence, undefined);
     assert.equal(res.notices, undefined);
 });
@@ -1751,7 +1751,7 @@ test("{§provider-connectivity} output_unaccounted is not reported without a tra
 test("{§provider-connectivity} reasoningStyle 'template' sends llama-server activation, parser, and response-wide allowance", async () => {
     const on = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, reasoningBudget: 64, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 64 }, retryAttempts: 0, reasoningStyle: "template" });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await on.generate({ workerId: "r", messages: [] });
+    await on.generate({ sessionId: "r", messages: [] });
     let body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true });
     assert.equal(body.reasoning_format, "auto");
@@ -1760,7 +1760,7 @@ test("{§provider-connectivity} reasoningStyle 'template' sends llama-server act
     mock.restoreAll();
     const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, reasoningStyle: "template" });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await off.generate({ workerId: "r", messages: [] });
+    await off.generate({ sessionId: "r", messages: [] });
     body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
     assert.equal(body.reasoning_format, "auto");
@@ -1771,7 +1771,7 @@ test("{§provider-connectivity} reasoningStyle 'template' carries the explicit r
     const base = { model: "m", url: "http://x/v1/chat/completions", contextWindow: 640, outputBudget: 224, fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, retryAttempts: 0, reasoningStyle: "template" as const };
     const p = testProvider({ ...base, reasoningBudget: 32, effort: { mode: "high", budget: 32 } });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], sampling: { thinking_budget_tokens: 999, reasoning_format: "none" } });
+    await p.generate({ sessionId: "r", messages: [], sampling: { thinking_budget_tokens: 999, reasoning_format: "none" } });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.thinking_budget_tokens, 32);
     assert.equal(body.reasoning_format, "auto");
@@ -1796,7 +1796,7 @@ test("{§provider-connectivity} reasoningStyle 'template' forwards a fixed effor
         reasoningStyle: "template",
     });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
     assert.deepEqual(body.chat_template_kwargs, { enable_thinking: true, reasoning_effort: "high" }, "the stated intent reaches the template; adaptive alone leaves the template default");
     assert.equal(body.thinking_budget_tokens, 64, "the budget still rides beside the effort");
@@ -1805,20 +1805,20 @@ test("{§provider-connectivity} reasoningStyle 'template' forwards a fixed effor
 test("{§provider-wire-declaration} off sends the declared disabling fields", async () => {
     const effort = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_EFFORT_PATH: "/reasoning_effort", PLURNK_PROVIDERS_REASONING_EFFORTS: "none" }) });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await effort.generate({ workerId: "r", messages: [] });
+    await effort.generate({ sessionId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).reasoning_effort, "none");
 
     mock.restoreAll();
     const relay = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_OFF_BODY: '{"include_reasoning":false}' }) });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await relay.generate({ workerId: "r", messages: [] });
+    await relay.generate({ sessionId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, false);
 });
 
 test("{§provider-wire-declaration} sets the declared relay passthrough toggle", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, retryAttempts: 0, ...wireConfig({ PLURNK_PROVIDERS_REASONING_ON_BODY: '{"include_reasoning":true}' }) });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     assert.equal(JSON.parse(calls[0].init.body as string).include_reasoning, true);
 });
 
@@ -1827,7 +1827,7 @@ test("{§provider-wire-declaration} sets the declared relay passthrough toggle",
 test("{§provider-connectivity} grammar transport 'llamacpp': top-level grammar + the repeat-penalty floor", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "x"' });
+    await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "x"' });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal(body.grammar, 'root ::= "x"');
     assert.equal(body.repeat_penalty, 1.15);
@@ -1837,7 +1837,7 @@ test("{§provider-connectivity} grammar transport 'llamacpp': top-level grammar 
 test("{§provider-grammar-evidence} grammar transport 'none' (default): the grammar is never sent — no silent unconstrained", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], grammar: "root ::= statement" });
+    await p.generate({ sessionId: "r", messages: [], grammar: "root ::= statement" });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);
     assert.equal("response_format" in body, false);
@@ -1851,7 +1851,7 @@ const streamingContent = (content: string) => installFetch([{ choices: [{ delta:
 test("{§provider-connectivity} an unsplit grammar response carries the exact observed sentence", async () => {
     const p = grammarProvider();
     streamingContent("ok");
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "ok");
     assert.deepEqual(res.grammarEvidence, {
         input: "ok",
@@ -1863,7 +1863,7 @@ test("{§provider-connectivity} an unsplit grammar response carries the exact ob
 test("{§provider-connectivity} the provider returns rejected or incomplete bytes as evidence without grading them", async () => {
     const p = grammarProvider();
     streamingContent("no");
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "no");
     assert.deepEqual(res.grammarEvidence, { input: "no", contentStart: 0, transported: true });
     assert.equal(res.notices, undefined);
@@ -1873,7 +1873,7 @@ test("{§provider-connectivity} the provider returns rejected or incomplete byte
 test("{§provider-connectivity} empty unsplit content remains exact grammar evidence", async () => {
     const p = grammarProvider();
     installFetch([{ choices: [{ delta: {}, finish_reason: "stop" }] }]);
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "");
     assert.deepEqual(res.grammarEvidence, { input: "", contentStart: 0, transported: true });
 });
@@ -1881,7 +1881,7 @@ test("{§provider-connectivity} empty unsplit content remains exact grammar evid
 test("{§provider-connectivity} grammarStyle 'none' produces no grammar observation", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 }); // grammarStyle defaults to "none"
     streamingContent("anything goes");
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'root ::= "ok"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'root ::= "ok"' });
     assert.equal(res.assistant.content, "anything goes");
     assert.equal(res.grammarEvidence, undefined);
 });
@@ -1889,7 +1889,7 @@ test("{§provider-connectivity} grammarStyle 'none' produces no grammar observat
 test("{§provider-grammar-transport} provider evidence does not depend on the local validator understanding the grammar", async () => {
     const p = grammarProvider();
     streamingContent("whatever");
-    const res = await p.generate({ workerId: "r", messages: [], grammar: 'foo ::= "a"' });
+    const res = await p.generate({ sessionId: "r", messages: [], grammar: 'foo ::= "a"' });
     assert.equal(res.assistant.content, "whatever");
     assert.deepEqual(res.grammarEvidence, { input: "whatever", contentStart: 0, transported: true });
     assert.equal(res.notices, undefined);
@@ -1903,7 +1903,7 @@ test("{§provider-connectivity} an operator grammar reaches the request body ver
     for (const grammarStyle of styles) {
         const calls = installFetchJson({ ...jsonChoice, choices: [{ message: { role: "assistant", content: "ok" }, finish_reason: "stop" }] });
         const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, grammarStyle });
-        const res = await p.generate({ workerId: "r", messages: [], grammar });
+        const res = await p.generate({ sessionId: "r", messages: [], grammar });
         const body = JSON.parse(requestBody(calls[0].init)) as { grammar?: unknown };
         if (grammarStyle === "llamacpp") {
             assert.equal(body.grammar, grammar, "the file's text, byte for byte");
@@ -1921,7 +1921,7 @@ test("{§provider-connectivity} meta: passes backend fields through without rein
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
     const balance = { amount: "0.0000042", currency: "XMR" };
     installFetchJson({ ...jsonChoice, balance, system_fingerprint: "fp_abc" });
-    const res = await p.generate({ workerId: "r", messages: [] });
+    const res = await p.generate({ sessionId: "r", messages: [] });
     assert.deepEqual(res.meta?.balance, balance);
     assert.equal(res.meta?.system_fingerprint, "fp_abc");
 });
@@ -1929,7 +1929,7 @@ test("{§provider-connectivity} meta: passes backend fields through without rein
 test("{§provider-connectivity} grammar transport: no grammar passed sends no grammar field, but the penalty rides", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, grammarStyle: "llamacpp" });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     const body = JSON.parse(calls[0].init.body as string);
     assert.equal("grammar" in body, false);
     assert.equal(body.repeat_penalty, 1.15);           // penalty is not grammar-gated
@@ -1938,12 +1938,12 @@ test("{§provider-connectivity} grammar transport: no grammar passed sends no gr
 test("{§provider-connectivity} maxOutputTokens tightens the total output budget; absent leaves an unconfigured provider uncapped", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [], maxOutputTokens: 2048 });
+    await p.generate({ sessionId: "r", messages: [], maxOutputTokens: 2048 });
     assert.equal(JSON.parse(calls[0].init.body as string).max_tokens, 2048);
 
     mock.restoreAll();
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     assert.equal("max_tokens" in JSON.parse(calls[0].init.body as string), false);
 });
 
@@ -1972,7 +1972,7 @@ test("{§provider-output-budget-conformance} reported output beyond the total bu
     ]);
 
     await assert.rejects(
-        p.generate({ workerId: "r", messages: [], maxOutputTokens: 16 }),
+        p.generate({ sessionId: "r", messages: [], maxOutputTokens: 16 }),
         (error: unknown) => {
             assert.ok(error instanceof ProviderError);
             assert.equal(error.kind, "invalid_response");
@@ -1993,13 +1993,13 @@ test("{§provider-output-budget-conformance} reported output beyond the total bu
     assert.equal(calls.length, 1, "a paid provider contract violation is never replayed");
 });
 
-test("{§provider-connectivity} slot affinity is internal: sticky per workerId, distinct workers spread across slots", async () => {
+test("{§provider-connectivity} slot affinity is internal: sticky per sessionId, distinct sessions spread across slots", async () => {
     const pinning = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await pinning.generate({ workerId: "run-A", messages: [] });
-    await pinning.generate({ workerId: "run-B", messages: [] });
-    await pinning.generate({ workerId: "run-A", messages: [] }); // sticky
-    await pinning.generate({ workerId: "run-C", messages: [] }); // wraps round-robin
+    await pinning.generate({ sessionId: "run-A", messages: [] });
+    await pinning.generate({ sessionId: "run-B", messages: [] });
+    await pinning.generate({ sessionId: "run-A", messages: [] }); // sticky
+    await pinning.generate({ sessionId: "run-C", messages: [] }); // wraps round-robin
     const slots = calls.map((c) => JSON.parse(c.init.body as string).id_slot);
     assert.deepEqual(slots, [0, 1, 0, 0]);
 });
@@ -2007,24 +2007,24 @@ test("{§provider-connectivity} slot affinity is internal: sticky per workerId, 
 test("{§provider-connectivity} slot affinity: no pinning backend or unknown slotCount → no id_slot ever", async () => {
     const cloud = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 }); // default: no pinning
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await cloud.generate({ workerId: "run-A", messages: [] });
+    await cloud.generate({ sessionId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 
     mock.restoreAll();
     const noCount = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true }); // slotCount null
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await noCount.generate({ workerId: "run-A", messages: [] });
+    await noCount.generate({ sessionId: "run-A", messages: [] });
     assert.equal("id_slot" in JSON.parse(calls[0].init.body as string), false);
 });
 
-test("{§provider-connectivity} slot affinity: a worker past the LRU window (slotCount*8) loses its pin; recent workers stay sticky", async () => {
+test("{§provider-connectivity} slot affinity: a session past the LRU window (slotCount*8) loses its pin; recent sessions stay sticky", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, supportsSlotPinning: true, slotCount: 2 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const slotOf = (i: number) => JSON.parse(calls[i].init.body as string).id_slot;
-    for (let i = 0; i < 16; i++) await p.generate({ workerId: `r${i}`, messages: [] }); // fills the 16-entry window {r0..r15}
-    await p.generate({ workerId: "r16", messages: [] });   // call 16: size==cap → evicts the oldest (r0), itself → slot 0
-    await p.generate({ workerId: "r0", messages: [] });     // call 17: r0 was evicted → treated as NEW, re-slotted
-    await p.generate({ workerId: "r16", messages: [] });    // call 18: r16 still resident → sticky to its slot
+    for (let i = 0; i < 16; i++) await p.generate({ sessionId: `r${i}`, messages: [] }); // fills the 16-entry window {r0..r15}
+    await p.generate({ sessionId: "r16", messages: [] });   // call 16: size==cap → evicts the oldest (r0), itself → slot 0
+    await p.generate({ sessionId: "r0", messages: [] });     // call 17: r0 was evicted → treated as NEW, re-slotted
+    await p.generate({ sessionId: "r16", messages: [] });    // call 18: r16 still resident → sticky to its slot
     assert.equal(slotOf(0), 0);    // r0's original pin
     assert.notEqual(slotOf(17), slotOf(0)); // …lost after eviction (would equal 0 if it had stayed sticky)
     assert.equal(slotOf(18), slotOf(16)); // r16 kept its slot — recent run survives the window
@@ -2033,7 +2033,7 @@ test("{§provider-connectivity} slot affinity: a worker past the LRU window (slo
 test("{§provider-connectivity} streaming:false: a non-ok response rejects as a classified ProviderError (covers the non-streamed transport)", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("boom", { status: 500 }));
-    await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
+    await assert.rejects(() => p.generate({ sessionId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
         assert.equal(err.kind, "network_failure"); // ≥500 → network_failure
         assert.equal(err.status, 500);
@@ -2041,18 +2041,18 @@ test("{§provider-connectivity} streaming:false: a non-ok response rejects as a 
     });
 });
 
-test("{§provider-cache-identity} generate fail-hards on a missing or empty workerId", async () => {
+test("{§provider-cache-identity} generate fail-hards on a missing or empty sessionId", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await assert.rejects(() => p.generate({ workerId: "", messages: [] }), /workerId is required/);
-    await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /workerId is required/);
+    await assert.rejects(() => p.generate({ sessionId: "", messages: [] }), /sessionId is required/);
+    await assert.rejects(() => (p.generate as (a: object) => Promise<unknown>)({ messages: [] }), /sessionId is required/);
 });
 
 test("{§provider-connectivity} messages pass through verbatim — the provider injects no turn (turn structure belongs to the grammar, never provider prefill)", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "out" } }] }]);
     const input = [{ role: "user" as const, content: "hi" }];
-    const res = await p.generate({ workerId: "r", messages: input });
+    const res = await p.generate({ sessionId: "r", messages: input });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).messages, input); // no extra assistant turn
     assert.equal(res.assistant.content, "out"); // content returned verbatim
 });
@@ -2069,7 +2069,7 @@ test("{§provider-input-modalities} compatible transports serialize image files 
     });
     const calls = installFetch([{ choices: [{ delta: { content: "seen" } }] }]);
     await provider.generate({
-        workerId: "vision",
+        sessionId: "vision",
         messages: [{
             role: "user",
             content: [
@@ -2097,7 +2097,7 @@ for (const [mediaType, format] of [["audio/wav", "wav"], ["audio/mpeg", "mp3"]])
         });
         const calls = installFetch([{ choices: [{ delta: { content: "heard" } }] }]);
         const bytes = new Uint8Array([82, 73, 70, 70]);
-        await provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
+        await provider.generate({ sessionId: "audio", messages: [{ role: "user", content: [
             { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: mediaType },
         ] }] });
         assert.deepEqual(JSON.parse(requestBody(calls[0]?.init)).messages, [{ role: "user", content: [
@@ -2117,7 +2117,7 @@ test("{§provider-input-modalities} Google serializes native audio through its o
         streaming: false,
     });
     const bytes = new Uint8Array([82, 73, 70, 70]);
-    await provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
+    await provider.generate({ sessionId: "audio", messages: [{ role: "user", content: [
         { type: "text", text: "listen" }, { type: "file", data: bytes, mediaType: "audio/wav" },
     ] }] });
     assert.deepEqual(JSON.parse(requestBody(calls[0]?.init)).contents, [{ role: "user", parts: [
@@ -2131,7 +2131,7 @@ test("{§provider-input-modalities} an unsupported audio codec fails visibly ins
         temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0,
     });
     const calls = installFetch([]);
-    await assert.rejects(provider.generate({ workerId: "audio", messages: [{ role: "user", content: [
+    await assert.rejects(provider.generate({ sessionId: "audio", messages: [{ role: "user", content: [
         { type: "file", data: new Uint8Array([79, 103, 103, 83]), mediaType: "audio/ogg" },
     ] }] }), (error: unknown) => {
         assert.ok(error instanceof ProviderError);
@@ -2144,7 +2144,7 @@ test("{§provider-input-modalities} an unsupported audio codec fails visibly ins
 test("{§provider-connectivity} generate wraps an HTTP failure as a ProviderError carrying Problem Details", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, source: "provider:test" });
     mock.method(globalThis, "fetch", async () => new Response("rate limited", { status: 429 }));
-    await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), (err: unknown) => {
+    await assert.rejects(() => p.generate({ sessionId: "r", messages: [] }), (err: unknown) => {
         assert.ok(err instanceof ProviderError, `expected ProviderError, got ${String(err)}`);
         assert.equal(err.kind, "rate_limit");
         assert.equal(err.status, 429);
@@ -2159,7 +2159,7 @@ test("{§provider-connectivity} generate rejects on a pre-aborted external signa
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     installFetch([{ choices: [{ delta: { content: "x" } }] }]);
     const signal = AbortSignal.abort(new Error("nope"));
-    await assert.rejects(() => p.generate({ workerId: "r", messages: [], signal }));
+    await assert.rejects(() => p.generate({ sessionId: "r", messages: [], signal }));
 });
 
 test("{§provider-connectivity} configured headers and url are sent verbatim", async () => {
@@ -2168,7 +2168,7 @@ test("{§provider-connectivity} configured headers and url are sent verbatim", a
         headers: { Authorization: "Bearer secret", "X-Title": "plurnk" },
     });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "r", messages: [] });
+    await p.generate({ sessionId: "r", messages: [] });
     assert.equal(calls[0].url, "http://host/custom/chat/completions");
     const headers = new Headers(calls[0].init.headers);
     assert.equal(headers.get("authorization"), "Bearer secret");
@@ -2188,7 +2188,7 @@ test("{§provider-connectivity} retry: a transient failure retries and a later s
         { status: 200, chunks: [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }] },
     ]);
     const p = testProvider({ ...retryCfg, retryAttempts: 4 });
-    const res = await p.generate({ workerId: "r", messages: [] });
+    const res = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(res.assistant.content, "ok");
     assert.equal(calls.length, 5); // 408 → 409 → 429 → 503 → 200
     assert.equal(res.notices, undefined, "retries before semantic output do not manufacture a degraded-response warning");
@@ -2221,7 +2221,7 @@ test("{§provider-connectivity} an Undici stream termination surfaces on the fir
     });
     const reasoning: string[] = [];
     await assert.rejects(
-        p.generate({ workerId: "r", messages: [], observeReasoning: (delta) => reasoning.push(delta) }),
+        p.generate({ sessionId: "r", messages: [], observeReasoning: (delta) => reasoning.push(delta) }),
         (error: ProviderError) => error.kind === "network_failure",
     );
     assert.deepEqual(reasoning, ["abandoned reasoning"], "transient observation preserves the failed request's partial for request-scoped presentation");
@@ -2254,7 +2254,7 @@ test("{§provider-retryable-truth} operation-deadline exhaustion is a distinct f
         ...connectivity,
     });
     await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
+        p.generate({ sessionId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "deadline_exceeded"
             && error.status === 504
             && error.problem.retryable === true
@@ -2292,7 +2292,7 @@ test("{§provider-connectivity} the whole-call deadline spans provider-directed 
         source: "provider:test",
     });
     await assert.rejects(
-        p.generate({ workerId: "r", messages: [] }),
+        p.generate({ sessionId: "r", messages: [] }),
         (error: ProviderError) => error.kind === "deadline_exceeded"
             && error.problem.timeoutPhase === "operation"
             && error.accounting.length === 1
@@ -2329,7 +2329,7 @@ for (const active of [false, true]) {
             }), { headers: { "content-type": "text/event-stream" } }),
         });
         await assert.rejects(p.generate({
-            workerId: "deadline-evidence", messages: [],
+            sessionId: "deadline-evidence", messages: [],
             observeReasoning: (delta) => { observed += delta; },
             observeRequest: async () => async (evidence) => { settled.push(evidence); },
         }), (error) => {
@@ -2352,7 +2352,7 @@ test("{§provider-connectivity} retry: exhausting the budget surfaces the classi
     const calls = installFetchScript([{ status: 429, retryAfter: 0 }]); // always rate-limited
     const p = testProvider({ ...retryCfg, retryAttempts: 2 });
     await assert.rejects(
-        () => p.generate({ workerId: "r", messages: [] }),
+        () => p.generate({ sessionId: "r", messages: [] }),
         (err: unknown) => { assert.ok(err instanceof ProviderError); assert.equal(err.kind, "rate_limit"); return true; },
     );
     assert.equal(calls.length, 3); // 1 initial + 2 retries
@@ -2364,7 +2364,7 @@ test("{§provider-connectivity} retry: a Retry-After HTTP-date is honored — a 
         { status: 200, chunks: [{ choices: [{ delta: { content: "ok" }, finish_reason: "stop" }] }] },
     ]);
     const p = testProvider({ ...retryCfg, retryAttempts: 1 });
-    const { assistant } = await p.generate({ workerId: "r", messages: [] });
+    const { assistant } = await p.generate({ sessionId: "r", messages: [] });
     assert.equal(assistant.content, "ok");
     assert.equal(calls.length, 2); // initial 503 + one retry, no real wall-clock wait
 });
@@ -2372,14 +2372,14 @@ test("{§provider-connectivity} retry: a Retry-After HTTP-date is honored — a 
 test("{§provider-connectivity} retry: a terminal error (401 unauthorized) is never retried", async () => {
     const calls = installFetchScript([{ status: 401 }]);
     const p = testProvider({ ...retryCfg, retryAttempts: 5 });
-    await assert.rejects(() => p.generate({ workerId: "r", messages: [] }), /401/);
+    await assert.rejects(() => p.generate({ sessionId: "r", messages: [] }), /401/);
     assert.equal(calls.length, 1); // terminal — no retry despite budget
 });
 
 test("{§provider-connectivity} retry: retryAttempts 0 surfaces the first transient failure immediately", async () => {
     const calls = installFetchScript([{ status: 503, retryAfter: 0 }]);
     const p = testProvider({ ...retryCfg, retryAttempts: 0 });
-    await assert.rejects(() => p.generate({ workerId: "r", messages: [] }));
+    await assert.rejects(() => p.generate({ sessionId: "r", messages: [] }));
     assert.equal(calls.length, 1); // no retry budget
 });
 
@@ -2387,7 +2387,7 @@ test("{§provider-connectivity} retry: a caller abort during backoff rejects pro
     const ac = new AbortController();
     const calls = installFetchScript([{ status: 503, retryAfter: 5 }]); // 5s backoff we never wait out
     const p = testProvider({ ...retryCfg, retryAttempts: 3 });
-    const promise = p.generate({ workerId: "r", messages: [], signal: ac.signal });
+    const promise = p.generate({ sessionId: "r", messages: [], signal: ac.signal });
     await flush(); // attempt 0 fails, enters the backoff sleep
     assert.equal(calls.length, 1);
     ac.abort(new Error("cancelled"));
@@ -2405,27 +2405,27 @@ test("{§provider-wire-declaration} maps nested budgets and adaptive/disabled bo
     // N>0 → enabled with budget_tokens
     const capped = testProvider({ model: "m", url: "http://x/v1/chat/completions", outputBudget: 8192, reasoningBudget: 4096, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 4096 }, ...configuration });
     let calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await capped.generate({ workerId: "r", messages: [] });
+    await capped.generate({ sessionId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 4096 });
 
     mock.restoreAll();
     const unbudgeted = testProvider({ model: "m", url: "http://x/v1/chat/completions", contextWindow: 8192, outputBudget: 4096, reasoningBudget: 2048, fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: 2048 }, ...configuration });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await unbudgeted.generate({ workerId: "r", messages: [] });
+    await unbudgeted.generate({ sessionId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "enabled", budget_tokens: 2048 });
 
     mock.restoreAll();
     // 0 → explicit disabled
     const off = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, ...configuration });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await off.generate({ workerId: "r", messages: [] });
+    await off.generate({ sessionId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "disabled" });
 
     mock.restoreAll();
     // Adaptive is explicit, so the provider—not omission—owns the posture.
     const adaptive = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, retryAttempts: 0, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "adaptive", budget: null }, ...configuration });
     calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await adaptive.generate({ workerId: "r", messages: [] });
+    await adaptive.generate({ sessionId: "r", messages: [] });
     assert.deepEqual(JSON.parse(calls[0].init.body as string).thinking, { type: "adaptive" });
 });
 
@@ -2442,7 +2442,7 @@ test("{§provider-evidence} streaming:false posts without stream and parses the 
         }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming: false });
-    const res = await p.generate({ workerId: "r", messages: [] });
+    const res = await p.generate({ sessionId: "r", messages: [] });
     const sent = JSON.parse(calls[0].body);
     assert.equal("stream" in sent, false);                 // no streaming flag
     assert.equal(res.assistant.content, "hello");          // content from message.content
@@ -2458,7 +2458,7 @@ const captureBase = { model: "m", url: "http://x/v1/chat/completions", fetchTime
 test("{§provider-connectivity} logprobs OFF by default: no wire request, no assistant.logprobs, no rawBody", async () => {
     const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
     const p = testProvider({ ...captureBase });
-    const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
+    const res = await p.generate({ sessionId: "r", messages: [{ role: "user", content: "q" }] });
     const body = JSON.parse((calls[0].init.body as string));
     assert.equal("logprobs" in body, false);
     assert.equal("top_logprobs" in body, false);
@@ -2475,7 +2475,7 @@ test("{§provider-connectivity} logprobs ON (streamed): requests logprobs+top_lo
     ] } }] };
     const calls = installFetch([chunk]);
     const p = testProvider({ ...captureBase, topLogprobs: 2 });
-    const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
+    const res = await p.generate({ sessionId: "r", messages: [{ role: "user", content: "q" }] });
     const body = JSON.parse((calls[0].init.body as string));
     assert.equal(body.logprobs, true);
     assert.equal(body.top_logprobs, 2);
@@ -2489,7 +2489,7 @@ test("{§provider-connectivity} rawBody ON (non-streamed): verbatim wire body in
     const wire = { model: "m", extra_top_level: "kept", choices: [{ message: { content: "no" }, finish_reason: "stop", logprobs: { content: [{ token: "no", logprob: -0.1, sampling_logprob: -0.1, token_id: 42 }] } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } };
     installFetchJson(wire);
     const p = testProvider({ ...captureBase, streaming: false, topLogprobs: 0, rawBody: true });
-    const res = await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }] });
+    const res = await p.generate({ sessionId: "r", messages: [{ role: "user", content: "q" }] });
     assert.deepEqual(res.rawBody, wire); // verbatim
     assert.equal(res.rawBody.choices[0].logprobs.content[0].sampling_logprob, -0.1);
     assert.equal(res.rawBody.choices[0].logprobs.content[0].token_id, 42);
@@ -2500,7 +2500,7 @@ test("{§provider-connectivity} rawBody ON (non-streamed): verbatim wire body in
 test("{§provider-generation-envelope} caller sampling cannot forge logprobs (reserved keys): the env flag is the only control", async () => {
     const calls = installFetch([{ model: "m", choices: [{ delta: { content: "hi" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }]);
     const p = testProvider({ ...captureBase }); // logprobs OFF
-    await p.generate({ workerId: "r", messages: [{ role: "user", content: "q" }], sampling: { logprobs: true, top_logprobs: 5 } });
+    await p.generate({ sessionId: "r", messages: [{ role: "user", content: "q" }], sampling: { logprobs: true, top_logprobs: 5 } });
     const body = JSON.parse((calls[0].init.body as string));
     assert.equal("logprobs" in body, false);   // sampling passthrough stripped it
     assert.equal("top_logprobs" in body, false);
@@ -2528,7 +2528,7 @@ test("{§provider-cache-affinity} the adapter exposes independent model limits a
 
 // -- {§provider-cache-affinity} / {§provider-cache-write-policy} --
 
-test("{§provider-connectivity} a compatible route's declared body affinity is managed by workerId", async () => {
+test("{§provider-connectivity} a compatible route's declared body affinity is managed by sessionId", async () => {
     const p = testProvider({
         model: "m",
         url: "http://x/v1/chat/completions",
@@ -2540,14 +2540,14 @@ test("{§provider-connectivity} a compatible route's declared body affinity is m
         cacheAffinity: { target: "body", name: "prompt_cache_key" },
     });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "worker-abc", messages: [], sampling: { prompt_cache_key: "hijack" } });
-    assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "worker-abc");
+    await p.generate({ sessionId: "session-abc", messages: [], sampling: { prompt_cache_key: "hijack" } });
+    assert.equal(JSON.parse(calls[0].init.body as string).prompt_cache_key, "session-abc");
 });
 
 test("{§provider-connectivity} an undeclared compatible route receives no guessed cache field", async () => {
     const p = testProvider({ model: "m", url: "http://x/v1/chat/completions", fetchTimeoutMs: 5000, temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0 });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "worker-abc", messages: [] });
+    await p.generate({ sessionId: "session-abc", messages: [] });
     assert.equal("prompt_cache_key" in JSON.parse(calls[0].init.body as string), false);
 });
 
@@ -2564,10 +2564,10 @@ test("{§provider-connectivity} a compatible route's declared header affinity co
         cacheAffinity: { target: "header", name: "x-grok-conv-id" },
     });
     const calls = installFetch([{ choices: [{ delta: { content: "x" } }] }]);
-    await p.generate({ workerId: "worker-abc", messages: [] });
+    await p.generate({ sessionId: "session-abc", messages: [] });
     const headers = new Headers(calls[0].init.headers);
     assert.equal(headers.get("authorization"), "Bearer key");
-    assert.equal(headers.get("x-grok-conv-id"), "worker-abc");
+    assert.equal(headers.get("x-grok-conv-id"), "session-abc");
 });
 
 test("{§provider-connectivity} native request projections compose reasoning visibility, affinity, and system cache control", async () => {
@@ -2615,7 +2615,7 @@ test("{§provider-connectivity} native request projections compose reasoning vis
         },
     });
     await p.generate({
-        workerId: "worker-native",
+        sessionId: "session-native",
         messages: [
             { role: "system", content: "stable definition" },
             { role: "system", content: "stable policy" },
@@ -2625,7 +2625,7 @@ test("{§provider-connectivity} native request projections compose reasoning vis
 
     assert.deepEqual(request?.providerOptions, {
         google: { thinkingConfig: { includeThoughts: true, thinkingBudget: -1 } },
-        openai: { promptCacheKey: "worker-native" },
+        openai: { promptCacheKey: "session-native" },
     });
     assert.deepEqual(request?.prompt, [
         { role: "system", content: "stable definition", providerOptions: undefined },
@@ -2672,7 +2672,7 @@ test("{§provider-input-modalities} image media reaches the AI SDK as its curren
     });
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
     await provider.generate({
-        workerId: "worker-native",
+        sessionId: "session-native",
         messages: [{
             role: "user",
             content: [
@@ -2722,7 +2722,7 @@ test("{§provider-connectivity} native AI SDK reasoning turns on without an oper
         retryAttempts: 0,
         streaming: false,
     });
-    const response = await p.generate({ workerId: "worker-native", messages: [{ role: "user", content: "hello" }] });
+    const response = await p.generate({ sessionId: "session-native", messages: [{ role: "user", content: "hello" }] });
 
     assert.equal(request?.reasoning, "high");
     assert.equal(response.assistant.reasoning, "consider");
@@ -2767,7 +2767,7 @@ test("{§provider-connectivity} native additive-reasoning adapters preserve one 
             retryAttempts: 0,
             streaming: false,
         });
-        await p.generate({ workerId: `worker-${provider}`, messages: [], maxOutputTokens: 1500 });
+        await p.generate({ sessionId: `session-${provider}`, messages: [], maxOutputTokens: 1500 });
         assert.equal(request?.maxOutputTokens, 1);
         assert.equal(request?.reasoning, "high", "the fixed policy remains distinct from its independent token budget");
         assert.deepEqual(request?.providerOptions, expected);
@@ -2814,7 +2814,7 @@ test("{§provider-connectivity} native additive-reasoning adapters derive a boun
             retryAttempts: 0,
             streaming: false,
         });
-        await p.generate({ workerId: `worker-${provider}`, messages: [] });
+        await p.generate({ sessionId: `session-${provider}`, messages: [] });
         assert.equal(request?.maxOutputTokens, 476);
         assert.equal(request?.reasoning, "high", "adaptive retains its documented high fallback");
         assert.deepEqual(request?.providerOptions, expected);
@@ -2849,7 +2849,7 @@ test("{§provider-usage-refusal} a manual-reasoning model rejects an envelope be
     });
 
     await assert.rejects(
-        p.generate({ workerId: "worker", messages: [] }),
+        p.generate({ sessionId: "session", messages: [] }),
         /total output budget must exceed the provider's 1024-token minimum reasoning allowance/,
     );
     assert.equal(calls, 0);
@@ -2871,7 +2871,7 @@ test("{§provider-connectivity} a response with an invalid reasoning detail reta
             ? { kind: "unknown", reason: "the provider response reported no normalized usage" }
             : { kind: "estimated", amount: { amount: "1", currency: "USD" }, source: "test estimator" },
     });
-    const response = await p.generate({ workerId: "accounted", messages: [{ role: "user", content: "q" }] });
+    const response = await p.generate({ sessionId: "accounted", messages: [{ role: "user", content: "q" }] });
     assert.equal(response.assistant.content, "the answer");
     assert.equal(response.accounting.length, 1);
     assert.equal(response.accounting[0]?.outcome, "response");
@@ -2910,7 +2910,7 @@ test("{§provider-connectivity} generation does not inherit the discovery/tokeni
             source: "provider:test",
             operationTimeoutMs: 5_000,
         });
-        const response = await p.generate({ workerId: "long", messages: [] });
+        const response = await p.generate({ sessionId: "long", messages: [] });
         assert.equal(response.assistant.content, "part0 part1 part2 part3 part4 part5 part6 part7 ");
     } finally {
         mock.restoreAll();
@@ -2934,7 +2934,7 @@ const glmGenerate = (chunks: unknown[]) => testProvider({
     ...injectedBase,
     source: "provider:fireworks-ai",
     fetch: glmFetch(chunks),
-}).generate({ workerId: "glm", messages: [{ role: "user", content: "task" }] });
+}).generate({ sessionId: "glm", messages: [{ role: "user", content: "task" }] });
 
 test("{§provider-native-tool-calls}: a tool_calls finish retains its evidence and warns without provider recovery", async () => {
     const result = await glmGenerate([
@@ -2967,7 +2967,7 @@ for (const streaming of [true, false]) {
                 fetch: streaming ? glmFetch(chunks) : async () => new Response(JSON.stringify({
                     model: "fixture", choices: [{ index: 0, message, finish_reason: finish }], usage,
                 }), { headers: { "content-type": "application/json" } }),
-            }).generate({ workerId: "fixture", messages: [{ role: "user", content: "Read the fact." }] });
+            }).generate({ sessionId: "fixture", messages: [{ role: "user", content: "Read the fact." }] });
             assert.equal(result.assistant.content, content);
             assert.equal(result.assistant.finishReason, finish);
             assert.equal(result.assistant.nativeToolCalls, true, "the normalized boundary exposes unexecuted calls without rewriting the finish reason");
@@ -2997,7 +2997,7 @@ test("{§provider-completed-admission} billed output tokens never void a complet
     ]);
     assert.equal(run121.assistant.content, sentence, "a short text under a large bill is the text the provider sent");
 
-    const content = "```\n````EDIT (Engine.ts) <452,453>\n    // worker has none.\n````\n```";
+    const content = "```\n````EDIT (Engine.ts) <452,453>\n    // session has none.\n````\n```";
     const granite = await glmGenerate([
         { choices: [{ index: 0, delta: { role: "assistant", reasoning_content: "t".repeat(28921) }, finish_reason: null }] },
         { choices: [{ index: 0, delta: { content }, finish_reason: "stop" }], usage: glmUsage(8855, 7422, 23050) },
@@ -3046,7 +3046,7 @@ for (const streaming of [false, true]) {
             const result = await testProvider({
                 model: "gemini-fixture", languageModel: await googleModel("gemini-fixture"), fetchTimeoutMs: 5000,
                 temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming,
-            }).generate({ workerId: "g", messages: [{ role: "user", content: "add" }] });
+            }).generate({ sessionId: "g", messages: [{ role: "user", content: "add" }] });
             assert.equal(calls.length, 1, "one request, no retry");
             assert.equal(result.assistant.content, answer);
             assert.equal(result.assistant.finishReason, "stop");
@@ -3062,7 +3062,7 @@ for (const streaming of [false, true]) {
         await assert.rejects(testProvider({
             model: "gemini-fixture", languageModel: await googleModel("gemini-fixture"), fetchTimeoutMs: 5000,
             temperature: 0.2, repeatPenalty: 1.15, effort: { mode: "off", budget: null }, retryAttempts: 0, streaming,
-        }).generate({ workerId: "g", messages: [{ role: "user", content: "add" }] }), (error: unknown) => {
+        }).generate({ sessionId: "g", messages: [{ role: "user", content: "add" }] }), (error: unknown) => {
             assert.ok(error instanceof ProviderError);
             assert.equal(error.kind, "generation_failed");
             assert.equal(error.status, 502);

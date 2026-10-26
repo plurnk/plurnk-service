@@ -49,7 +49,7 @@ export function authorityParts(authority: string): { hostname: string | null; po
     };
 }
 
-// {§worker-generated-subtree}: workspace-generated reference paths.
+// {§session-generated-subtree}: workspace-generated reference paths.
 const GENERATED_ROOT = "/_plurnk";
 
 export function generatedPathname(relative: string): string {

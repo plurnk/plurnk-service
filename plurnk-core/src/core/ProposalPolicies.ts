@@ -2,7 +2,7 @@ import { PROPOSAL_POLICIES, type ProposalDisposition, type ProposalPolicy } from
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import Results, { OperationFailureError } from "./results.ts";
 
-// {§worker-owner-resolution} The server's approval disposition; review routes to the worker's owner.
+// {§session-owner-resolution} The server's approval disposition; review routes to the session's owner.
 export default class ProposalPolicies {
     static read(): ProposalPolicy {
         return Knob.choice("PLURNK_SERVICE_PROPOSALS", PROPOSAL_POLICIES);

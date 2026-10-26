@@ -40,7 +40,7 @@ export default class TerminalResult {
         const problemContent = exact.problem?.detail ?? null;
         let content = resultContent ?? problemContent ?? "";
         if (options.terminatedBy === "cancel") {
-            content = `[ worker cancelled ]${content.length === 0 ? "" : ` ${content}`}`;
+            content = `[ session cancelled ]${content.length === 0 ? "" : ` ${content}`}`;
         }
         if (content.length === 0) return null;
         return {

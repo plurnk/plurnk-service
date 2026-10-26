@@ -5,13 +5,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import { BaseExecutor, type Effect, type ExecArgs, type Executor } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { waitForDb } from "./_rpc.ts";
 import { access, mkdtemp, rm } from "node:fs/promises";
@@ -57,15 +57,15 @@ test("{§effect-policy-tunable}: proposing pure routes an otherwise-auto executi
         });
         schemes.registerRuntimeSchemes(executors);
         const workspaceId = await insertWorkspace(db, `effect-policy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "effect-policy");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "effect-policy");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         let logEntryId = -1;
         const dispatched = engine.dispatch({
             statement: execStmt("calc", "1 + 2 + 3"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => { logEntryId = id; },
         });
         // The execution's row exists once its dispatch reports it; a proposal holds it there.
@@ -97,12 +97,12 @@ test("{§configuration-repair-path}: invalid effect policy settles the operation
     const engine = new Engine({ db, schemes });
     engine.setExecutors(await testExecutors());
     const workspaceId = await insertWorkspace(db, `invalid-effect-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "invalid-effect");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "invalid-effect");
     const turnId = await insertTurn(db, loopId, 1, 102);
     let logEntryId = -1;
     const result = await engine.dispatch({
-        statement: execStmt("js", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        statement: execStmt("js", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         onDispatch: (id) => { logEntryId = id; },
     });
     assert.equal(result.status, 503);

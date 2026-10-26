@@ -25,7 +25,7 @@ test("{§emission-history}: equal bodies do not confuse reasoning, repeated cont
 });
 
 test("{§emission-history} {§bulk-resource-targeting}: a fan-out replays once with its first surviving receipt", () => {
-    const operation = frame("READ (worker:///case-*.txt)", null);
+    const operation = frame("READ (workspace:///case-*.txt)", null);
     const first = row(2, "READ", 0);
     const second = row(3, "READ", 0);
     const both = history(operation, [first, second]);

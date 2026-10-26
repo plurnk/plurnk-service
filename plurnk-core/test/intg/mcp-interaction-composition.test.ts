@@ -554,7 +554,7 @@ test("{§mcp-host-composition}: HTTP MRTR and Task input return through ACP befo
 });
 
 for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
-    test(`{§mcp-host-composition}: remote Task ${state} reaches its worker once without an interaction or replay`, { timeout: 20_000 }, async (t) => {
+    test(`{§mcp-host-composition}: remote Task ${state} reaches its session once without an interaction or replay`, { timeout: 20_000 }, async (t) => {
         let owner: Daemon | undefined;
         t.after(() => owner?.stop());
         const fixture = taskHandler(state === "unsupported-input" ? "unsupported" : "protocol-failure");
@@ -575,7 +575,7 @@ for (const state of ["failed", "cancelled", "unsupported-input"] as const) {
         const terminal = events.at(-1) as { result?: { _meta?: { plurnk?: { stopReason?: string; workspaceId?: number } } } } | undefined;
         assert.ok(terminal);
         assert.equal(terminal.result?._meta?.plurnk?.stopReason, "end_turn", JSON.stringify(terminal));
-        assert.equal(provider.received.length, 2, "the original worker receives one failure and continues normally");
+        assert.equal(provider.received.length, 2, "the original session receives one failure and continues normally");
         const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /executor\/mcp\/tool-call-failed/);
         assert.match(packet, state === "failed" ? /task execution exploded/
@@ -618,14 +618,14 @@ for (const stage of ["MRTR", "Task"] as const) {
             const waiting = waitingList[0];
             assert.ok(waiting);
             assert.ok(pending.some((item) => item.toolCallId === `int:${waiting.interactionId}`));
-            const workerId = waiting.workerId;
+            const sessionId = waiting.sessionId;
             if (boundary === "owner cancellation") {
-                await daemon.cancelWorker({ workspaceId, workerId, reason: "MCP operation cancelled" });
+                await daemon.cancelSession({ workspaceId, sessionId, reason: "MCP operation cancelled" });
             } else {
                 await daemon.stop();
             }
             assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
-            const loops = await daemon.listWorkerLoops({ workspaceId, workerId });
+            const loops = await daemon.listSessionLoops({ workspaceId, sessionId });
             assert.equal(loops.find(({ id }) => id === waiting.loopId)?.status, 499);
             assert.equal(provider.received.length, 1, "cancellation never resumes inference");
             assert.equal(fixture.updates.length, 0, "cancelled input is never submitted as a Task answer");
@@ -677,7 +677,7 @@ test("{§mcp-host-composition}: withdrawing an attachment cannot interrupt its p
 });
 
 for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
-    test(`{§mcp-host-composition}: ${source} input expires without a human answer and the worker recovers`, { timeout: 20_000 }, async (t) => {
+    test(`{§mcp-host-composition}: ${source} input expires without a human answer and the session recovers`, { timeout: 20_000 }, async (t) => {
         let owner: Daemon | undefined;
         t.after(() => owner?.stop());
         const tool = source === "MRTR" || source === "Task";
@@ -707,9 +707,9 @@ for (const source of ["MRTR", "Task", "resource", "prompt"] as const) {
         assert.ok(waiting);
         await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (rows) => rows.length === 0,
             { timeoutMs: 3000 });
-        await waitForDb(() => daemon.listWorkerLoops({ workspaceId, workerId: waiting.workerId }),
+        await waitForDb(() => daemon.listSessionLoops({ workspaceId, sessionId: waiting.sessionId }),
             (loops) => loops.find(({ id }) => id === waiting.loopId)?.status === 200);
-        assert.equal(provider.received.length, 2, "expiry resumes the same worker with the operation failure");
+        assert.equal(provider.received.length, 2, "expiry resumes the same session with the operation failure");
         const packet = provider.received[1].map(chatMessageText).join("\n");
         assert.match(packet, /operation timeout/u);
         assert.match(packet, tool ? /tool-call-failed/u : /resource-read-failed/u);

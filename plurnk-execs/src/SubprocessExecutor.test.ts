@@ -283,7 +283,7 @@ test("{§executor-cancellation} KILL[code]: a signal on the abort reason deliver
 
 test("{§executor-cancellation} loop-end housekeeping marker: SIGHUP then SIGKILL after grace reaps a HUP-ignoring process", async () => {
     const controller = new AbortController();
-    // node swallows SIGHUP and stays alive — so the worker can only settle because
+    // node swallows SIGHUP and stays alive — so the session can only settle because
     // the grace-timed SIGKILL fired. A plain KILL (polite, no reap) would leave it.
     const dir = await mkdtemp(join(tmpdir(), "executor-hup-"));
     const ignoring = join(dir, "ignoring");

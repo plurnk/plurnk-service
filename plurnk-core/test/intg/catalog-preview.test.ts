@@ -9,7 +9,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
-import WorkerName from "../../src/core/WorkerName.ts";
+import SessionName from "../../src/core/SessionName.ts";
 import { Validator } from "@plurnk/plurnk-contracts";
 import { Shell } from "@plurnk/plurnk-execs";
 import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
@@ -29,14 +29,14 @@ test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "manifest-on" });
-                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
-                await rpcCall(ws, 3, "op.edit", { target: "worker:///b.md", content: "bravo" });
-                await rpcCall(ws, 4, "op.edit", { target: "worker:///c.md", content: "charlie" });
+                await rpcCall(ws, 2, "op.edit", { target: "workspace:///a.md", content: "alpha" });
+                await rpcCall(ws, 3, "op.edit", { target: "workspace:///b.md", content: "bravo" });
+                await rpcCall(ws, 4, "op.edit", { target: "workspace:///c.md", content: "charlie" });
                 const resp = await runLoopToTerminal(ws, 5, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.hostname === null && r.pathname === "/*");
-                assert.ok(cf !== undefined, "turn 0 foists a FIND(worker:///*) catalog preview when set");
+                const cf = rows.find((r) => r.op === "FIND" && r.scheme === "workspace" && r.hostname === null && r.pathname === "/*");
+                assert.ok(cf !== undefined, "turn 0 foists a FIND(workspace:///*) catalog preview when set");
                 assert.equal(cf.status_rx, 200, "the catalog FIND returns the scheme's rows (200)");
                 const parsed = JSON.parse(cf.rx) as { content?: string; results?: unknown[] };
                 const items = parsed.results ?? (parsed.content !== undefined ? JSON.parse(parsed.content) as unknown[] : []);
@@ -62,7 +62,7 @@ test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the
 });
 
 // The catalog is FIND-served — there is no materialized manifest entry. With the preview
-// off, the worker opens with no foisted catalog; the model FINDs each scheme on demand.
+// off, the session opens with no foisted catalog; the model FINDs each scheme on demand.
 test("{§operator-config-workspace-files-items} no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // preview OFF
@@ -71,10 +71,10 @@ test("{§operator-config-workspace-files-items} no manifest.json entry — the c
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "catalog-find-served" });
-                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
+                await rpcCall(ws, 2, "op.edit", { target: "workspace:///a.md", content: "alpha" });
                 const resp = await runLoopToTerminal(ws, 3, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
-                const entry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "worker", pathname: "/manifest.json" });
+                const entry = await db.test_get_entry_id_by_scheme_pathname.get<{ id: number }>({ scheme: "workspace", pathname: "/manifest.json" });
                 assert.equal(entry?.id, undefined, "no manifest.json entry — the catalog is not materialized as an entry");
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 assert.equal(rows.find((r) => r.op === "FIND"), undefined, "preview off → no catalog FIND foisted; the model FINDs on demand");
@@ -138,10 +138,10 @@ test("{§actor-boundary-catalog-preview} workspace.create rejects malformed sett
     });
 });
 
-// {§actor-boundary-catalog-preview} — turn-0 once-per-worker foists fire on the worker's first
-// loop only; later loops in the same worker already carry them in the persistent log. Two loops in
-// one worker: the manifest READ is in loop 1's log, absent from loop 2's.
-test("{§actor-boundary} turn-0 once-per-worker foists fire on the worker's first loop only, not every loop", async () => {
+// {§actor-boundary-catalog-preview} — turn-0 once-per-session foists fire on the session's first
+// loop only; later loops in the same session already carry them in the persistent log. Two loops in
+// one session: the manifest READ is in loop 1's log, absent from loop 2's.
+test("{§actor-boundary} turn-0 once-per-session foists fire on the session's first loop only, not every loop", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // preview ON
     try {
@@ -150,15 +150,15 @@ test("{§actor-boundary} turn-0 once-per-worker foists fire on the worker's firs
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "foist-once" });
-                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
+                await rpcCall(ws, 2, "op.edit", { target: "workspace:///a.md", content: "alpha" });
                 const r1 = await runLoopToTerminal(ws, 3, { prompt: "first" });
                 const r2 = await runLoopToTerminal(ws, 4, { prompt: "second" });
                 const catalogFind = async (loopId: number) => {
                     const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                    return rows.find((r) => r.op === "FIND" && r.scheme === "worker" && r.hostname === null && r.pathname === "/*");
+                    return rows.find((r) => r.op === "FIND" && r.scheme === "workspace" && r.hostname === null && r.pathname === "/*");
                 };
-                assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "worker's first loop foists the catalog preview");
-                assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the worker's log");
+                assert.ok((await catalogFind((r1 as { loopId: number }).loopId)) !== undefined, "session's first loop foists the catalog preview");
+                assert.equal(await catalogFind((r2 as { loopId: number }).loopId), undefined, "the second loop does NOT re-foist it — it's already in the session's log");
             } finally { ws.close(); }
         });
     } finally {
@@ -175,16 +175,16 @@ test("{§emission-row} the turn-0 initialization consists of the real orienting 
             const ws = await connect(addr);
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "turn0-exemplar" });
-                await rpcCall(ws, 2, "op.edit", { target: "worker:///a.md", content: "alpha" });
-                await rpcCall(ws, 3, "op.edit", { target: "worker:///nested/b.md", content: "bravo" });
+                await rpcCall(ws, 2, "op.edit", { target: "workspace:///a.md", content: "alpha" });
+                await rpcCall(ws, 3, "op.edit", { target: "workspace:///nested/b.md", content: "bravo" });
                 const resp = await runLoopToTerminal(ws, 4, { prompt: "go" });
                 const { loopId } = resp as { loopId: number };
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
-                const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "worker" && candidate.hostname === null && candidate.pathname === "/*");
+                const commons = rows.find((candidate) => candidate.op === "FIND" && candidate.scheme === "workspace" && candidate.hostname === null && candidate.pathname === "/*");
                 assert.ok(commons !== undefined);
                 const map = JSON.parse((JSON.parse(commons.rx) as { content: string }).content) as Array<Array<{ path: string; items?: number; tokens?: number }>>;
-                assert.deepEqual(map.map(([item]) => item.path), ["worker:///_plurnk/**", "worker:///a.md", "worker:///nested/**"]);
-                assert.equal(map.find(([item]) => item.path === "worker:///nested/**")?.[0]?.items, 1,
+                assert.deepEqual(map.map(([item]) => item.path), ["workspace:///_plurnk/**", "workspace:///a.md", "workspace:///nested/**"]);
+                assert.equal(map.find(([item]) => item.path === "workspace:///nested/**")?.[0]?.items, 1,
                     "the automatic shallow map retains the nested subtree as a complete aggregate");
                 const initializationRows = rows.filter((row) => row.turn_id === commons.turn_id);
                 const ops = initializationRows.map(({ op }) => op);
@@ -204,7 +204,7 @@ test("{§emission-row} the turn-0 initialization consists of the real orienting 
                     { producer: "_plurnk", kind: "initialization", status: 200 },
                 );
                 assert.ok(turn?.completed_at !== null, "a completed continuation turn is distinct from an open turn");
-                assert.equal(initializationRows.some(({ scheme }) => scheme === "reasoning"), false, "initialization neither reads nor surveys reasoning ({§worker-initialization-entry})");
+                assert.equal(initializationRows.some(({ scheme }) => scheme === "reasoning"), false, "initialization neither reads nor surveys reasoning ({§session-initialization-entry})");
                 const program = (await db.test_turn_sources_by_turn.all<{ kind: string; content: string }>({ turn_id: commons.turn_id })).find(({ kind }) => kind === "ops");
                 assert.ok(program, "the survey is the initialization turn's ops source");
                 assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), [],
@@ -230,17 +230,17 @@ test("{§actor-boundary-catalog-preview} an empty workspace runs only the survey
             try {
                 await rpcCall(ws, 1, "workspace.create", { name: "empty-ws-find" }); // headless: zero tracked files
                 const resp = await runLoopToTerminal(ws, 2, { prompt: "go" });
-                const { loopId, modelWorkerId } = resp as { loopId: number; modelWorkerId: number };
-                const workerName = await WorkerName.forId(db, modelWorkerId);
+                const { loopId, modelSessionId } = resp as { loopId: number; modelSessionId: number };
+                const sessionName = await SessionName.forId(db, modelSessionId);
                 const rows = await db.test_log_entries_by_loop.all<LogRow>({ loop_id: loopId });
                 const finds = rows.filter((r) => r.op === "FIND");
-                // Nothing is in it: no project files, agents or members definitions, and the worker is new.
+                // Nothing is in it: no project files, agents or members definitions, and the session is new.
                 assert.deepEqual(finds.map(({ scheme, hostname, pathname }) => ({ scheme, hostname, pathname })), [
                     { scheme: "skill", hostname: "*", pathname: "/SKILL.md" },
-                    { scheme: "worker", hostname: null, pathname: "/_plurnk/plurnk/*.md" },
-                    { scheme: "worker", hostname: null, pathname: "/_plurnk/tools/*.md" },
-                    { scheme: "worker", hostname: null, pathname: "/_plurnk/tools/plurnk.md" },
-                    { scheme: "worker", hostname: null, pathname: "/*" },
+                    { scheme: "workspace", hostname: null, pathname: "/_plurnk/plurnk/*.md" },
+                    { scheme: "workspace", hostname: null, pathname: "/_plurnk/tools/*.md" },
+                    { scheme: "workspace", hostname: null, pathname: "/_plurnk/tools/plurnk.md" },
+                    { scheme: "workspace", hostname: null, pathname: "/*" },
                 ], "the surveys that select something run, in their taught order; the empty surfaces are left out ({§actor-boundary-catalog-preview})");
                 assert.deepEqual(
                     finds.map(({ tx }) => (JSON.parse(tx) as { aside: string | null }).aside),
@@ -253,7 +253,7 @@ test("{§actor-boundary-catalog-preview} an empty workspace runs only the survey
                     const items = result.results ?? (result.content !== undefined ? JSON.parse(result.content) as unknown[] : []);
                     assert.ok(items.length > 0, `${row.scheme}:${row.pathname} selected something`);
                 }
-                assert.equal(workerName.length > 0, true);
+                assert.equal(sessionName.length > 0, true);
                 assert.ok(
                     finds.every(({ tx }) => (JSON.parse(tx) as { body?: unknown }).body === null),
                     "Turn 0 catalogs documents without imposing a body-shape eligibility gate",
@@ -268,20 +268,20 @@ test("{§actor-boundary-catalog-preview} an empty workspace runs only the survey
                 const toolResult = JSON.parse(toolSurvey!.rx) as { content?: string; results?: unknown[] };
                 const toolItems = (toolResult.results
                     ?? (toolResult.content === undefined ? [] : JSON.parse(toolResult.content) as unknown[])) as Array<Array<{ path: string; aside?: string }>>;
-                const shell = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/sh.md");
+                const shell = toolItems.flat().find(({ path }) => path === "workspace:///_plurnk/plurnk/sh.md");
                 assert.equal(
                     shell?.aside,
                     `\`\`\`sh <!-- ${Shell.summary(Shell.current())} -->\ngit status --short\n\`\`\``,
                     "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-shell}), as plain text rather than a code span",
                 );
-                const python = toolItems.flat().find(({ path }) => path === "worker:///_plurnk/plurnk/python3.md");
+                const python = toolItems.flat().find(({ path }) => path === "workspace:///_plurnk/plurnk/python3.md");
                 assert.equal(
                     python?.aside,
                     "```python3 <!-- Run Python 3 code or scripts. -->\nprint(42)\n```",
                     "the interpreter aside teaches an executable inline program without requiring a document READ",
                 );
-                for (const [index, name] of ["https", "worker", "wss"].entries()) {
-                    const resource = toolItems.flat().find(({ path }) => path === `worker:///_plurnk/plurnk/${name}.md`);
+                for (const [index, name] of ["https", "session", "wss"].entries()) {
+                    const resource = toolItems.flat().find(({ path }) => path === `workspace:///_plurnk/plurnk/${name}.md`);
                     assert.ok(resource !== undefined && resource.aside !== undefined && resource.aside.trim() !== "",
                         `${name} reference depth is visible with an orienting aside`);
                     const response = await rpcCall(ws, 10 + index, "entry.read", { target: resource.path });
@@ -290,7 +290,7 @@ test("{§actor-boundary-catalog-preview} an empty workspace runs only the survey
                     assert.ok(reference.entry?.channels.body.content.replace(/\s+/g, " ").includes(resource.aside.replace(/\s+/g, " ")),
                         `${name} orientation comes from the readable reference, without pinning its prose`);
                 }
-                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "worker" && row.hostname === null && row.pathname === "/_plurnk/plurnk/sh.md");
+                const shellSample = rows.find((row) => row.op === "READ" && row.scheme === "workspace" && row.hostname === null && row.pathname === "/_plurnk/plurnk/sh.md");
                 assert.equal(shellSample, undefined, "Turn 0 does not privilege the shell skill with an automatic READ");
                 const initializationTurnId = finds[0].turn_id;
                 const initializationRows = rows.filter((row) => row.turn_id === initializationTurnId);

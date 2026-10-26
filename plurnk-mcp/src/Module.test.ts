@@ -135,7 +135,7 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
             return {
                 invoke: async (verb: string, params: unknown, id: { workspaceId: number }) => {
                     const current = snapshots.get(id.workspaceId);
-                    if (current?.prepared == null) throw new Error("worker not prepared");
+                    if (current?.prepared == null) throw new Error("session not prepared");
                     if (verb === "list") return { status: 200, body: { family: "mcp", definitions: [...current.prepared.outcomes].map(([alias, outcome]) => ({ alias, origin: "workspace", definition: current.enabled.get(alias), ...outcome })) } };
                     if (verb !== "enable") throw new Error(`harness does not emulate ${verb}`);
                     const alias = (params as { alias: string }).alias;
@@ -1597,7 +1597,7 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
         assert.equal(first.runtimes[0]?.decl.details, instructions);
         const connectStarts = (await readFile(started, "utf8")).trim().split("\n").filter((line) => line.length > 0).length;
         assert.ok(connectStarts >= 1 && connectStarts <= 2, `connect starts the real server and at most the SDK's probe sibling; got ${connectStarts}`);
-        // The notification arrives ~150ms after connect; the scheduled refresh re-prepares the worker.
+        // The notification arrives ~150ms after connect; the scheduled refresh re-prepares the session.
         for (let attempt = 0; attempt < 300; attempt += 1) {
             if (h.snapshots.get(1)?.prepared !== first) break;
             await delay(10);

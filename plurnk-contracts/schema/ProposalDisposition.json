@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/ProposalDisposition.json",
     "title": "ProposalDisposition",
-    "description": "The one core-owned settlement decision. Review waits for the worker's owner; accept and reject carry the automatic resolution core applies.",
+    "description": "The one core-owned settlement decision. Review waits for the session's owner; accept and reject carry the automatic resolution core applies.",
     "oneOf": [
         {
             "type": "object",

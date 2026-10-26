@@ -257,13 +257,13 @@ test("{§edit-result-copy-move-effects} receipt and resource-effect validators r
     assert.equal(assertEditBatchReceipt(batch), batch);
     const receipt = projectEditReceipt(batch, 0);
     assert.equal(assertEditReceipt(receipt), receipt);
-    const effects = [{ target: "worker:///notes", action: "update", receipt }] as const;
+    const effects = [{ target: "workspace:///notes", action: "update", receipt }] as const;
     assert.equal(assertResourceEffects(effects), effects);
     const creation = projectEditReceipt(editReceipt("", "b", [{
         marker: { marks: [1, -1] },
         body: "b",
     }]), 0);
-    const creationEffects = [{ target: "worker:///created", action: "create", receipt: creation }] as const;
+    const creationEffects = [{ target: "workspace:///created", action: "create", receipt: creation }] as const;
     assert.equal(assertResourceEffects(creationEffects), creationEffects);
 
     assert.throws(
@@ -287,12 +287,12 @@ test("{§edit-result-copy-move-effects} receipt and resource-effect validators r
         /non-empty array/,
     );
     assert.throws(
-        () => assertResourceEffects([{ target: "worker:///notes", action: "replace" }]),
+        () => assertResourceEffects([{ target: "workspace:///notes", action: "replace" }]),
         /create.*update.*delete/,
     );
     assert.throws(
         () => assertResourceEffects([{
-            target: "worker:///notes",
+            target: "workspace:///notes",
             action: "delete",
             receipt,
         }]),
@@ -300,7 +300,7 @@ test("{§edit-result-copy-move-effects} receipt and resource-effect validators r
     );
     assert.throws(
         () => assertResourceEffects([{
-            target: "worker:///notes",
+            target: "workspace:///notes",
             action: "create",
             receipt,
         }]),
@@ -340,8 +340,8 @@ import LineAnchors from "./line-anchors.ts";
 test("{§edit-receipt-anchored-context} with an identity the resulting context is anchored exactly as a READ renders it", () => {
     const original = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
     const updated = "one\nTWO\nthree\nfour\nfive\nsix\nseven\n";
-    const receipt = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }], undefined, "worker:///notes.md");
-    const anchors = LineAnchors.tokens("worker:///notes.md", updated);
+    const receipt = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }], undefined, "workspace:///notes.md");
+    const anchors = LineAnchors.tokens("workspace:///notes.md", updated);
     const context = receipt.effects[0]?.context ?? "";
     for (const line of context.split("\n")) {
         const match = /^ *([1-9]\d*)<(@[0-9A-Za-z]{5})>(.*)$/.exec(line);

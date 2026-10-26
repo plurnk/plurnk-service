@@ -81,7 +81,7 @@ export default class EnvCatalog {
         return (key) => names.has(key) || scoped(key) || families.some((family) => family.test(key));
     }
 
-    // The name, or the comment that documents it — a Worker looks for a variable by what it is
+    // The name, or the comment that documents it — a Session looks for a variable by what it is
     // for ("search") before it knows what it is called. Never the value: a value match would
     // surface a value the model did not ask to see — the catalog carries shipped defaults rather
     // than operator secrets, but the model's own context hygiene is reason enough not to hand it
@@ -99,7 +99,7 @@ export default class EnvCatalog {
         const out = [];
         for (const file of selected) {
             for (const declaration of EnvCatalog.declarations(file.text)) {
-                // A family is no name a Worker can set; only its members are.
+                // A family is no name a Session can set; only its members are.
                 if (EnvCatalog.isFamily(declaration.name)) continue;
                 if (term !== undefined && !EnvCatalog.#matches(declaration, term)) continue;
                 const lines = declaration.text.split("\n");

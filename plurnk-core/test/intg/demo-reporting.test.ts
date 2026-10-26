@@ -2,22 +2,22 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
-import { readWorkerTopology } from "../WorkerTopology.ts";
-import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
+import { readSessionTopology } from "../SessionTopology.ts";
+import RuntimeSession from "../../src/core/RuntimeSession.ts";
 
-test("{§methods-worker-list} topology reporting counts children and grandchildren, not independent roots", async () => {
+test("{§methods-session-list} topology reporting counts children and grandchildren, not independent roots", async () => {
     const db = await openMigrated();
     try {
         const workspace = await insertWorkspace(db, "topology-report");
-        const root = await insertWorker(db, workspace, null, "root", "model");
-        const independent = await insertWorker(db, workspace, null, "independent", "model");
-        const child = await insertWorker(db, workspace, root, "child", "model");
-        const grandchild = await insertWorker(db, workspace, child, "grandchild", "model");
-        const runtime = await RuntimeWorker.ensure(db, workspace);
-        const report = await readWorkerTopology(db, workspace);
-        assert.equal(report.delegatedWorkers, 2);
-        assert.deepEqual(new Set(report.workers.map(({ id }) => id)), new Set([root, independent, child, grandchild, runtime]));
+        const root = await insertSession(db, workspace, null, "root", "model");
+        const independent = await insertSession(db, workspace, null, "independent", "model");
+        const child = await insertSession(db, workspace, root, "child", "model");
+        const grandchild = await insertSession(db, workspace, child, "grandchild", "model");
+        const runtime = await RuntimeSession.ensure(db, workspace);
+        const report = await readSessionTopology(db, workspace);
+        assert.equal(report.delegatedSessions, 2);
+        assert.deepEqual(new Set(report.sessions.map(({ id }) => id)), new Set([root, independent, child, grandchild, runtime]));
     } finally { await db.close(); }
 });
 

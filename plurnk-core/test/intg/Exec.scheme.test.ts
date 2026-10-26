@@ -6,12 +6,12 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel, rootWorkspace } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
@@ -41,7 +41,7 @@ const withWorkspace = async <T>(fn: (ctx: {
     engine: Engine;
     exec: Exec;
     db: Awaited<ReturnType<typeof openMigrated>>;
-    workspaceId: number; workerId: number; loopId: number; turnId: number;
+    workspaceId: number; sessionId: number; loopId: number; turnId: number;
 }) => Promise<T>): Promise<T> => {
     const db = await openMigrated();
     try {
@@ -52,11 +52,11 @@ const withWorkspace = async <T>(fn: (ctx: {
         engine.setExecutors(executors);
         schemes.registerRuntimeSchemes(executors);
         const workspaceId = await insertWorkspace(db, `exec-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "exec test");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "exec test");
         const turnId = await insertTurn(db, loopId, 1, 102);
-        return await fn({ engine, exec, db, workspaceId, workerId, loopId, turnId });
+        return await fn({ engine, exec, db, workspaceId, sessionId, loopId, turnId });
     } finally {
         await db.close();
     }
@@ -66,7 +66,7 @@ test("{§exec-executor-slot} execution: empty body and absent target → 400", a
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, null, ""),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
@@ -81,7 +81,7 @@ test("{§exec-executor-slot} Exec.applyResolution: malformed accepted proposal s
                 makeSchemeCtx({
                     db: ctx.db,
                     workspaceId: ctx.workspaceId,
-                    workerId: ctx.workerId,
+                    sessionId: ctx.sessionId,
                     loopId: ctx.loopId,
                     turnId: ctx.turnId,
                     executors: await testExecutors(),
@@ -94,19 +94,19 @@ test("{§exec-executor-slot} Exec.applyResolution: malformed accepted proposal s
 
 test("{§exec-target-routing} an empty-body scheme target is materialized as the targeted script", async () => {
     await withWorkspace(async (ctx) => {
-        // A stored script lives at worker:///script; running it runs its content.
-        await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
+        // A stored script lives at workspace:///script; running it runs its content.
+        await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, scheme: "workspace", pathname: "/script", channel: "body", content: "echo resolved-from-scheme", state: "static" });
 
         const statement: ExecStatement = {
             metadata: null,
             runtime: "sh", aside: null,
-            target: urlPath("worker", "/script"),
+            target: urlPath("workspace", "/script"),
             lineMarker: null, body: "", position: { line: 1, column: 1 },
         };
 
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
-            statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            statement, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -125,7 +125,7 @@ test("{§exec-target-routing} an empty-body scheme target is materialized as the
     });
 });
 
-test("{§execution-output-identity} missing output resources report their exact address without inferring worker ownership", async () => {
+test("{§execution-output-identity} missing output resources report their exact address without inferring session ownership", async () => {
     // The runtime schemes must be registered for a READ on `sh:///…` to reach the stream face.
     const executors = await testExecutors();
     const db = await openMigrated();
@@ -135,11 +135,11 @@ test("{§execution-output-identity} missing output resources report their exact 
         const engine = new Engine({ db, schemes });
         engine.setExecutors(executors);
         const workspaceId = await insertWorkspace(db, `stream-404-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "stream 404");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "stream 404");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const dispatch = (statement: ReturnType<typeof readStmt>, sequence: number) => engine.dispatch({
-            statement, workspaceId, workerId, loopId, turnId, sequence, origin: "model",
+            statement, workspaceId, sessionId, loopId, turnId, sequence, origin: "model",
         });
         const own = await dispatch(readStmt(urlPath("sh", "/9/9/9/sh")), 1);
         assert.equal(own.status, 404);
@@ -151,7 +151,7 @@ test("{§execution-output-identity} missing output resources report their exact 
         const foreignText = JSON.stringify(foreign);
         assert.match(foreignText, /entry-not-found/);
         assert.match(foreignText, /sh:\/\/\/nobody\/1\/1\/1\/sh/, "the miss names the normalized resource");
-        assert.doesNotMatch(foreignText, /nobody does not exist|no such worker/, "no existence leak for a foreign authority");
+        assert.doesNotMatch(foreignText, /nobody does not exist|no such session/, "no existence leak for a foreign authority");
     } finally { await db.close(); }
 });
 
@@ -199,12 +199,12 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare target that is a
         const engine = new Engine({ db, schemes });
         engine.setExecutors(executors);
         const workspaceId = await insertWorkspace(db, `exec-owner-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "owner hint");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "owner hint");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: execStmt(null, "crm_query", "{\"soql\": \"SELECT Id FROM Case\"}"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "still refused before any spawn");
         const rendered = JSON.stringify(result);
@@ -218,7 +218,7 @@ test("{§exec-target-routing} a target that is neither a directory nor a script 
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, "curl", "curl -sS -X POST http://localhost:8000/submit"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "refused, never spawned as `sh curl`");
@@ -235,7 +235,7 @@ test("{§exec-target-routing} {§diagnostic-observation} a target that names ano
     await withWorkspace(async (ctx) => {
         const result = await ctx.engine.dispatch({
             statement: execStmt(null, "python3", "import json\nprint(json.dumps({\"ok\": True}))"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400, "refused, never spawned as `sh python3`");
@@ -250,7 +250,7 @@ test("{§exec-target-routing} `(.)` in a headless workspace is the shell's own c
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt(null, ".", "pwd"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -272,7 +272,7 @@ test("{§exec-executor-slot} bare execution defaults to sh and proposes with {ru
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt(null, null, "echo hello"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -321,7 +321,7 @@ test("{§exec-target-routing} the target slot remains distinct from cwd", async 
         // The resource target supplies input data; cwd independently supplies its resolution base.
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("filter", "data/users.json", "length"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -345,7 +345,7 @@ test("{§exec-target-routing} a file target with an empty body runs the file", a
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
                 statement: execStmt(null, "greet.sh", ""),  // shell script target, empty body
-                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;  // a log row minted ⇒ it dispatched (proposed), never the empty-body 400
@@ -369,7 +369,7 @@ test("{§exec-target-routing} directory `(target)` sets the working directory fo
             const idD = deferred<number>();
             const p = ctx.engine.dispatch({
                 statement: execStmt(null, "sub", "echo hi"),  // `sh (sub)` with a shell body
-                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;
@@ -384,7 +384,7 @@ test("{§exec-target-routing} directory `(target)` sets the working directory fo
     });
 });
 
-for (const source of ["local", "file", "worker"] as const) {
+for (const source of ["local", "file", "session"] as const) {
     test(`{§executor-subprocess-routing} ${source} script receives exact tokenized argv and workspace cwd`, async () => {
         await withWorkspace(async (ctx) => {
             const root = await mkdtemp(join(tmpdir(), "exec-arguments-"));
@@ -394,7 +394,7 @@ for (const source of ["local", "file", "worker"] as const) {
                 const filename = "script with spaces.mjs";
                 await writeFile(join(root, filename), program);
                 await seedEntryWithChannel(ctx.db, {
-                    workspaceId: ctx.workspaceId, scheme: "worker", pathname: "/script.mjs", content: program,
+                    workspaceId: ctx.workspaceId, scheme: "workspace", pathname: "/script.mjs", content: program,
                 });
                 const argv = ["ARGUMENT_SENTINEL", "two words", "", "$(touch unwanted)"];
                 const body = 'ARGUMENT_SENTINEL "two words" "" "$(touch unwanted)"';
@@ -402,11 +402,11 @@ for (const source of ["local", "file", "worker"] as const) {
                     ...execStmt("js", null, body),
                     target: source === "local" ? localPath(filename)
                         : source === "file" ? urlPath("file", join(root, filename))
-                        : urlPath("worker", "/script.mjs"),
+                        : urlPath("workspace", "/script.mjs"),
                 };
                 const proposed = deferred<number>();
                 const pending = ctx.engine.dispatch({
-                    statement, workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+                    statement, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
                     loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                     onDispatch: (id) => proposed.resolve(id),
                 });
@@ -418,7 +418,7 @@ for (const source of ["local", "file", "worker"] as const) {
                 const { pathname } = JSON.parse(row!.attrs) as { pathname: string };
                 const read = await ctx.engine.dispatch({
                     statement: readStmt(urlPath("js", pathname)),
-                    workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+                    workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
                     loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
                 });
                 assert.equal(read.status, 200);
@@ -440,7 +440,7 @@ test("{§exec-target-routing} a directory target with a body runs there; with no
             const idD = deferred<number>();
             const asCwd = ctx.engine.dispatch({
                 statement: execStmt(null, "sub", "pwd"),  // `sh (sub)` + body — the directory is where the body runs
-                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
+                workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idD.resolve(id),
             });
             const id = await idD.promise;
@@ -453,7 +453,7 @@ test("{§exec-target-routing} a directory target with a body runs there; with no
             await asCwd.catch(() => {});
             const asProgram = await ctx.engine.dispatch({
                 statement: execStmt(null, "sub", ""),  // `sh (sub)` with no body — a directory is not a program
-                workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
+                workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
             });
             assert.equal(asProgram.status, 400);
             assert.equal(asProgram.problem?.type, "https://problems.plurnk.xyz/scheme/exec/target-not-a-program");
@@ -470,7 +470,7 @@ test("{§exec-target-routing} an absent local target under a project root is ref
             const result = await ctx.engine.dispatch({
                 statement: execStmt(null, "missing.sh", ""),
                 workspaceId: ctx.workspaceId,
-                workerId: ctx.workerId,
+                sessionId: ctx.sessionId,
                 loopId: ctx.loopId,
                 turnId: ctx.turnId,
                 sequence: 1,
@@ -501,7 +501,7 @@ test("{§exec-target-routing} a non-absence stat failure stops before effect adm
                 const result = await ctx.engine.dispatch({
                     statement: execStmt(null, "not-a-directory/child.json", "true"),
                     workspaceId: ctx.workspaceId,
-                    workerId: ctx.workerId,
+                    sessionId: ctx.sessionId,
                     loopId: ctx.loopId,
                     turnId: ctx.turnId,
                     sequence: 1,
@@ -534,7 +534,7 @@ test("{§exec-executor-slot} sh: clean exit → channels at state=closed, stdout
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt(null, null, "echo marker"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -559,7 +559,7 @@ test("{§exec-executor-slot} sh: clean exit → channels at state=closed, stdout
         assert.equal(stdout?.state, "closed");
 
         const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null; close_result: string | null }>({
-            worker_id: ctx.workerId, entry_id: entryRow.id,
+            session_id: ctx.sessionId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 200, "spawn's actual exit-0 lands on subscription.close_status");
         assert.deepEqual(JSON.parse(sub?.close_result ?? "null"), { status: 200, exitCode: 0 });
@@ -571,7 +571,7 @@ test("{§executor-exit-code} sh: an exit code is the answer: channels closed, st
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt(null, null, "echo oops >&2; exit 7"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -594,13 +594,13 @@ test("{§executor-exit-code} sh: an exit code is the answer: channels closed, st
         assert.equal(stderr?.state, "closed");
 
         const sub = await ctx.db.test_get_subscription_by_entry.get<{ close_status: number | null; close_result: string | null }>({
-            worker_id: ctx.workerId, entry_id: entryRow.id,
+            session_id: ctx.sessionId, entry_id: entryRow.id,
         });
         assert.equal(sub?.close_status, 200);
         assert.deepEqual(JSON.parse(sub?.close_result ?? "null"), { status: 200, exitCode: 7 });
         const stderrRead = await ctx.engine.dispatch({
             statement: readStmt(urlPath("sh", pathname, "stderr")),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, turnId: ctx.turnId, sequence: 2, origin: "model",
         });
         assert.equal(stderrRead.status, 200, `content wins over the producer's exit: ${JSON.stringify(stderrRead).slice(0, 200)}`);
         assert.match(JSON.stringify(stderrRead), /oops/, "the captured stderr is the READ's content");
@@ -620,7 +620,7 @@ test("{§exec-executor-slot} execution: cwd defaults to workspace.project_root w
             const idDeferred = deferred<number>();
             const dispatchPromise = ctx.engine.dispatch({
                 statement: execStmt(null, null, `echo here > ${marker}`),
-                workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+                workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
                 loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });
@@ -643,7 +643,7 @@ test("{§exec-env-scoped} js: runs code via -e and captures stdout", async () =>
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
             statement: execStmt("js", null, "console.log(2 + 3)"),
-            workspaceId: ctx.workspaceId, workerId: ctx.workerId,
+            workspaceId: ctx.workspaceId, sessionId: ctx.sessionId,
             loopId: ctx.loopId, turnId: ctx.turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
@@ -682,14 +682,14 @@ test("{§exec-executor-slot} execution: subscription row opens then closes; stre
         });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `exec-notify-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "exec notify test");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "exec notify test");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(null, null, "echo one"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         engine.resolveProposal(await idDeferred.promise, { decision: "accept" });
@@ -709,7 +709,7 @@ test("{§exec-executor-slot} execution: subscription row opens then closes; stre
                 : "",
         });
         const sub = await db.test_get_subscription_by_entry.get<{ close_status: number | null }>({
-            worker_id: workerId, entry_id: entryRow!.id,
+            session_id: sessionId, entry_id: entryRow!.id,
         });
         assert.equal(sub?.close_status, 200);
     } finally { await db.close(); }

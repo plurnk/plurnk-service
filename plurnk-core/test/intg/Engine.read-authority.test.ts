@@ -12,10 +12,11 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import LineAnchors from "../../src/content/line-anchors.ts";
 import type { AnchoredReadResult } from "../../src/content/read-projector.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Session from "../../src/schemes/Session.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import { editStmt } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
-import { insertOperationTurn, insertWorker, openMigrated, rootWorkspace, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
+import { insertOperationTurn, insertSession, openMigrated, rootWorkspace, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 
 const source = "first\nsecond\nthird";
@@ -39,8 +40,10 @@ const runtime = async (t: TestContext) => {
     const read = async (target: string, origin: "model" | "_plurnk" = "model") =>
         Results.assertReadResult(await run(`\`\`\`\`READ (${target}) <1,-1>\`\`\`\``, origin)) as AnchoredReadResult;
     const seed = async (ownerId: number, target: string) => {
-        const result = await new Worker().edit(editStmt(parsePath(target), source), makeSchemeCtx({
-            db, workspaceId: ids.workspaceId, workerId: ownerId, writer: "_plurnk",
+        const parsed = parsePath(target);
+        const handler = target.startsWith("workspace:") ? new Workspace() : new Session();
+        const result = await handler.edit(editStmt(parsed, source), makeSchemeCtx({
+            db, workspaceId: ids.workspaceId, sessionId: ownerId, writer: "_plurnk",
         }));
         assert.equal(result.status, 201);
     };
@@ -100,15 +103,15 @@ for (const mode of ["writable", "read-only", "unresolved", "unavailable"] as con
 
 for (const { target, editable, problem } of [
 
-    { target: "worker:///note.md", editable: true, problem: null },
-    { target: "worker://peer/note.md", editable: true, problem: null },
-    { target: "worker:///_plurnk/tools/example.md", editable: true, problem: null },
-    { target: "worker:///_plurnk/tools/example.md", editable: true, problem: null },
+    { target: "workspace:///note.md", editable: true, problem: null },
+    { target: "session://peer/note.md", editable: true, problem: null },
+    { target: "workspace:///_plurnk/tools/example.md", editable: true, problem: null },
+    { target: "workspace:///_plurnk/tools/example.md", editable: true, problem: null },
 ]) {
     test(`{§line-anchors}: ${target} publishes only its resource's model edit authority`, async (t) => {
         const { db, ids, run, read, seed } = await runtime(t);
-        const peer = await insertWorker(db, ids.workspaceId, null, "peer");
-        await seed(target.includes("//peer/") ? peer : ids.workerId, target);
+        const peer = await insertSession(db, ids.workspaceId, null, "peer");
+        await seed(target.includes("//peer/") ? peer : ids.sessionId, target);
         for (const origin of ["model", "_plurnk"] as const) assertProjection(await read(target, origin), editable);
         if (editable) {
             const anchor = (await read(target)).lineAnchors![1];
@@ -118,7 +121,7 @@ for (const { target, editable, problem } of [
             for (const scope of ["<1>", "<@abcde>"]) {
                 const denied = await run(`\`\`\`\`EDIT (${target}) ${scope}\nchanged\n\`\`\`\``);
                 assert.equal(denied.status, 403);
-                assert.equal(denied.problem?.type, `https://problems.plurnk.xyz/scheme/worker/${problem}`);
+                assert.equal(denied.problem?.type, `https://problems.plurnk.xyz/scheme/session/${problem}`);
             }
             assert.equal((await read(target)).content, source);
         }
@@ -127,8 +130,8 @@ for (const { target, editable, problem } of [
 
 test("{§line-anchors}: harness edits retain internal coordinate validation and publish generated-document edit anchors", async (t) => {
     const { ids, seed, read, run } = await runtime(t);
-    const target = "worker:///_plurnk/tools/example.md";
-    await seed(ids.workerId, target);
+    const target = "workspace:///_plurnk/tools/example.md";
+    await seed(ids.sessionId, target);
     const original = await read(target);
     assertProjection(original, true);
     assert.equal(typeof original.lineAnchorIdentity, "string");

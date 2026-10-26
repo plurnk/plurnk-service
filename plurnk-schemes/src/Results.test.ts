@@ -132,7 +132,7 @@ test("{§read-preparation} channel producer results are terminal and cannot pree
         mimetype: "text/plain",
         channel: "body",
         startLine: 1,
-        lineAnchorIdentity: "worker:///notes.md",
+        lineAnchorIdentity: "workspace:///notes.md",
         lineAnchors: ["@aZ09b"],
         lineNumberWidth: 1,
         region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 2 },

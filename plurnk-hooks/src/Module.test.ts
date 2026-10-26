@@ -45,12 +45,12 @@ test("{§hooks-event-projection} common hook names retain native evidence withou
     const fixture = seamFixture();
     module.start(fixture.seam);
     fixture.emit(null, "workspace/created", { id: 42 });
-    fixture.emit(42, "loop/packet", { workerId: 7, loopId: 9, packetCount: 3 });
-    const terminal = { workerId: 7, loopId: 9, result: { status: 200 } };
+    fixture.emit(42, "loop/packet", { sessionId: 7, loopId: 9, packetCount: 3 });
+    const terminal = { sessionId: 7, loopId: 9, result: { status: 200 } };
     fixture.emit(42, "loop/terminated", terminal);
-    const notice = { workerId: null, loopId: 0, notice: { source: "fixture", level: "warn", message: "Preparation incomplete." } };
+    const notice = { sessionId: null, loopId: 0, notice: { source: "fixture", level: "warn", message: "Preparation incomplete." } };
     fixture.emit(42, "notice/event", notice);
-    const interaction = { workerId: 7, loopId: 10, turnId: 11, interactionId: 12, request: { toolName: "question", mode: "form", message: "Please choose.", requestedSchema: { type: "object" } } };
+    const interaction = { sessionId: 7, loopId: 10, turnId: 11, interactionId: 12, request: { toolName: "question", mode: "form", message: "Please choose.", requestedSchema: { type: "object" } } };
     fixture.emit(42, "loop/interaction", interaction);
     await module.close();
     const events = (await readFile(output, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
@@ -90,7 +90,7 @@ test("{§hooks-command-delivery} selected events reach one no-shell command as e
         module.start(fixture.seam);
         fixture.emit(42, "notice/event", { loopId: 9 });
         fixture.emit(42, "loop/terminated", {
-            workerId: 7,
+            sessionId: 7,
             loopId: 9,
             result: { status: 200 },
         });
@@ -107,7 +107,7 @@ test("{§hooks-command-delivery} selected events reach one no-shell command as e
                 workspaceId: 42,
                 method: "loop/terminated",
                 params: {
-                    workerId: 7,
+                    sessionId: 7,
                     loopId: 9,
                     result: { status: 200 },
                 },
@@ -186,7 +186,7 @@ test("{§hooks-failure-isolation} nonzero exits and delivery timeouts are report
             }, (message, cause) => { reports.push({ message, cause }); });
             const fixture = seamFixture();
             module.start(fixture.seam);
-            fixture.emit(2, "loop/terminated", { workerId: 3, loopId: 4 });
+            fixture.emit(2, "loop/terminated", { sessionId: 3, loopId: 4 });
             await module.close();
 
             assert.equal(reports.length, 1);

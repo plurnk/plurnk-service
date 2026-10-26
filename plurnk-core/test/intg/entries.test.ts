@@ -21,7 +21,7 @@ test("{§entry-owner} entries: owner derives its workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
-        await insertWorkspaceEntry(db, workspaceId, "worker", "foo");
+        await insertWorkspaceEntry(db, workspaceId, "session", "foo");
         const row = await db.test_entries_get_first_identity.get<{ workspace_id: number }>();
         assert.equal(row?.workspace_id, workspaceId);
         assert.ok((row?.workspace_id ?? 0) >= 1, "the commons owner is stamped ({§entry-owner})");
@@ -43,9 +43,9 @@ test("{§entry-identity-no-null} entries: identity UNIQUE — duplicate rejected
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-dupid");
-        await insertWorkspaceEntry(db, workspaceId, "worker", "france");
+        await insertWorkspaceEntry(db, workspaceId, "session", "france");
         await assert.rejects(
-            () => insertWorkspaceEntry(db, workspaceId, "worker", "france"),
+            () => insertWorkspaceEntry(db, workspaceId, "session", "france"),
             /UNIQUE constraint failed/,
         );
     } finally { await db.close(); }
@@ -73,8 +73,8 @@ test("{§entry-identity-no-null} entries: cross-workspace same (scheme, authorit
     try {
         const workspaceA = await insertWorkspace(db, "ws-entries-sessA");
         const workspaceB = await insertWorkspace(db, "ws-entries-sessB");
-        await insertWorkspaceEntry(db, workspaceA, "worker", "france");
-        await insertWorkspaceEntry(db, workspaceB, "worker", "france");
+        await insertWorkspaceEntry(db, workspaceA, "session", "france");
+        await insertWorkspaceEntry(db, workspaceB, "session", "france");
         const count = (await db.test_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(count, 2);
     } finally { await db.close(); }
@@ -94,9 +94,9 @@ test("{§entry-owner} entries: ON DELETE CASCADE via workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-cascade");
-        await insertWorkspaceEntry(db, workspaceId, "worker", "a");
-        await insertWorkspaceEntry(db, workspaceId, "worker", "b");
-        await insertEntry(db, "worker", "c");
+        await insertWorkspaceEntry(db, workspaceId, "session", "a");
+        await insertWorkspaceEntry(db, workspaceId, "session", "b");
+        await insertEntry(db, "session", "c");
         await db.test_workspaces_delete.run({ id: workspaceId });
         const remaining = (await db.test_entries_count_all.get<{ n: number }>())?.n;
         assert.equal(remaining, 1);
@@ -120,7 +120,7 @@ test("{§entry-identity-no-null} entries: authority defaults to empty and reject
         const workspaceId = await insertWorkspace(db, `ws-entry-authority-null-${crypto.randomUUID()}`);
         await db.test_entries_insert_workspace.get({
             workspace_id: workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             pathname: "/default",
         });
         assert.equal((await db.test_entries_get_authority.get<{ authority: string }>())?.authority, "");
@@ -145,7 +145,7 @@ test("{§validation-topology} entries: empty scheme string rejected", async () =
 test("{§validation-topology} entries: attributes defaults to '{}' and rejects invalid JSON", async () => {
     const db = await openMigrated();
     try {
-        await insertEntry(db, "worker", "a");
+        await insertEntry(db, "session", "a");
         const row = await db.test_entries_get_attributes.get<{ attributes: string }>();
         assert.equal(row?.attributes, "{}");
         await assert.rejects(
@@ -169,7 +169,7 @@ test("{§entry-identity-no-null} entries: pathname NOT NULL", async () => {
 test("{§entry-identity-no-null} entries: pathname empty string allowed", async () => {
     const db = await openMigrated();
     try {
-        await insertEntry(db, "worker", "");
+        await insertEntry(db, "session", "");
         const row = await db.test_entries_get_pathname.get<{ pathname: string }>();
         assert.equal(row?.pathname, "");
     } finally { await db.close(); }
@@ -190,7 +190,7 @@ test("{§channels-entry-name-key} entry_channels: (entry_id, name) UNIQUE", asyn
 test("{§stream-constraints} entry_channels: content length CHECK enforces 100 MiB char cap", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertEntry(db, "worker", "big");
+        const entryId = await insertEntry(db, "session", "big");
         // Just-under the cap (100 MiB = 104857600 chars) succeeds.
         const justUnder = "a".repeat(104857600);
         await db.test_entry_channels_insert_default.run({
@@ -258,7 +258,7 @@ test("{§validation-topology} entry_channels: producer result is an exact termin
 test("{§validation-topology} entry_channels: NOT NULL on name, content, mimetype", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertEntry(db, "worker", "x");
+        const entryId = await insertEntry(db, "session", "x");
         await assert.rejects(
             () => db.test_entry_channels_insert_missing_name.run({ entry_id: entryId }),
             /NOT NULL constraint failed: entry_channel_rows\.name/,
@@ -277,7 +277,7 @@ test("{§validation-topology} entry_channels: NOT NULL on name, content, mimetyp
 test("{§validation-topology} entry_channels: empty name or mimetype rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertEntry(db, "worker", "y");
+        const entryId = await insertEntry(db, "session", "y");
         await assert.rejects(
             () => db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "", content: "", mimetype: "text/plain" }),
             /CHECK constraint failed/,
@@ -292,7 +292,7 @@ test("{§validation-topology} entry_channels: empty name or mimetype rejected by
 test("{§validation-topology} entry_channels: weight negative rejected", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertEntry(db, "worker", "z");
+        const entryId = await insertEntry(db, "session", "z");
         await assert.rejects(
             () => db.test_entry_channels_insert_with_weight.run({ entry_id: entryId, name: "body", content: "", mimetype: "text/plain", weight: -1 }),
             /CHECK constraint failed/,
@@ -316,7 +316,7 @@ test("{§entry-owner} entry_channels: CASCADE chain workspace→entries→entry_
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-channels-chain");
-        const entryId = await insertWorkspaceEntry(db, workspaceId, "worker", "a");
+        const entryId = await insertWorkspaceEntry(db, workspaceId, "session", "a");
         await db.test_entry_channels_insert_default.run({ entry_id: entryId, name: "body", content: "x", mimetype: "text/plain" });
         await db.test_workspaces_delete.run({ id: workspaceId });
         const remaining = (await db.test_entry_channels_count_all.get<{ n: number }>())?.n;
@@ -358,7 +358,7 @@ test("{§logical-line-count} entry_channels: the stored line count mirrors TextC
     const db = await openMigrated();
     try {
         for (const [label, content] of LINE_CORPUS) {
-            const entryId = await insertEntry(db, "worker", `/lines/${crypto.randomUUID()}`);
+            const entryId = await insertEntry(db, "session", `/lines/${crypto.randomUUID()}`);
             const expected = TextCoordinates.lineCount(content);
             const { inserted, updated } = await storedLines(db, entryId, content);
             assert.equal(inserted, expected, `${label}: insert trigger`);
@@ -371,7 +371,7 @@ test("{§logical-line-count} entry_channels: the stored line count mirrors TextC
 test("{§logical-line-count} entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
     const db = await openMigrated();
     try {
-        const entryId = await insertEntry(db, "worker", "/lines/lone-cr");
+        const entryId = await insertEntry(db, "session", "/lines/lone-cr");
         const { inserted, updated } = await storedLines(db, entryId, "a\rb\r");
         assert.equal(inserted, TextCoordinates.lineCount("a\rb\r"), "lone CR: insert trigger");
         assert.equal(updated, TextCoordinates.lineCount("a\rb\r"), "lone CR: update trigger");

@@ -7,7 +7,7 @@ import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
@@ -30,20 +30,20 @@ const kindOf = (row: Row): string | null => { try { return (JSON.parse(row.attrs
 const story = async (contextWindow: number, reasoning: string) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `reasoning-row-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId, null, "alice");
-    const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
+    const sessionId = await insertSession(db, workspaceId, null, "alice");
+    const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
     await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "An observed fact." });
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    const program = `${frame("READ (worker:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`;
+    const program = `${frame("READ (workspace:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`;
     const provider = new Mock({ contextWindow, responses: [
         { assistant: { content: program, reasoning } },
         { assistant: { content: frame("SEND [200]", "Done."), reasoning: null } },
     ] });
-    const first = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
-    const second = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+    const first = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
+    const second = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
     const rows = await rowsOf(db, first.turnId);
     const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
-    return { db, first, second, rows, program, log: packetSection(packet, "log"), envelope: provider.received[1], engine, ids: { workspaceId, workerId, loopId } };
+    return { db, first, second, rows, program, log: packetSection(packet, "log"), envelope: provider.received[1], engine, ids: { workspaceId, sessionId, loopId } };
 };
 
 test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log and retained content operations are assistant-authored", async () => {
@@ -68,7 +68,7 @@ test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log
             const previous = chatMessageText(envelope[2]);
             assert.match(before, /reasoning:\/\/alice\/1\/2/u);
             assert.match(before, /converter raises before the view is named/u, "reasoning remains in its log row");
-            assert.equal(previous, `${frame("READ (worker:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`, "the turn's operations immediately precede their results");
+            assert.equal(previous, `${frame("READ (workspace:///fact.txt)", null)}\n\n${frame("NOTE", "Bearing one.")}`, "the turn's operations immediately precede their results");
             assert.match(before, /### log:\/\/\/1\/2\/\d+\/emission[^\n]*$/u, "the source announcement precedes the operations");
             assert.doesNotMatch(before, /Bearing one\./u, "the content NOTE's text does not precede its program");
             assert.doesNotMatch(log, /Bearing one\./u, "the NOTE body appears only in assistant replay");
@@ -172,8 +172,8 @@ test("{§reasoning-row}: the optional preview never displaces an authored READ r
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `reasoning-priority-${enabled}`);
-            const workerId = await insertWorker(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, workerId, 1);
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1);
             const schemes = new SchemeRegistry();
             const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
             await seedEntryWithChannel(db, { workspaceId, pathname: "/evidence.txt", content: evidence });
@@ -182,11 +182,11 @@ test("{§reasoning-row}: the optional preview never displaces an authored READ r
             const output = enabled === "reference" ? process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET : String(1_000_000 - budget);
             await withEnv("PLURNK_PROVIDERS_OUTPUT_BUDGET", output, async () => {
                 const provider = new Mock({ contextWindow: 1_000_000, responses: [
-                    { assistant: { content: frame("READ (worker:///evidence.txt) <1,-1>", null), reasoning } },
+                    { assistant: { content: frame("READ (workspace:///evidence.txt) <1,-1>", null), reasoning } },
                 ] });
-                const turn = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages, turnNumber: 1 });
+                const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages, turnNumber: 1 });
                 const rows = await rowsOf(db, turn.turnId);
-                const read = rows.find((row) => row.op === "READ" && row.scheme === "worker");
+                const read = rows.find((row) => row.op === "READ" && row.scheme === "workspace");
                 assert.ok(read, "the authored READ has a receipt");
                 const result = JSON.parse(read.rx!);
                 assert.equal(result.status, 200, `the requested result fits with reasoning previews ${enabled}`);
@@ -195,7 +195,7 @@ test("{§reasoning-row}: the optional preview never displaces an authored READ r
                 if (enabled === "reference") {
                     const completed = await db.engine_loop_turn_seqs.get<{ turn_seq: number }>({ loop_id: loopId, turn_id: turn.turnId });
                     assert.ok(completed);
-                    const complete = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, workerId, loopId,
+                    const complete = await builder.buildRequestPacket({ initialMessages: messages, workspaceId, sessionId, loopId,
                         provider, currentTurnSeq: completed.turn_seq + 1, gitStatus: null });
                     budget = complete.weight + Math.floor(contentWeight(reasoning) / 2);
                 } else outcomes.push(result);
@@ -251,12 +251,12 @@ for (const content of ["", frame("NOTE", "content note")]) {
             const db = await openMigrated();
             try {
                 const workspaceId = await insertWorkspace(db, `reasoning-source-${crypto.randomUUID()}`);
-                const workerId = await insertWorker(db, workspaceId, null, "alice");
-                const loopId = await insertLoop(db, workerId, 1);
+                const sessionId = await insertSession(db, workspaceId, null, "alice");
+                const loopId = await insertLoop(db, sessionId, 1);
                 const reasoning = frame("NOTE", "reasoned finding");
                 const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
                 const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning } }] });
-                const turn = await engine.runTurn({ workspaceId, workerId, loopId, provider, messages: [] });
+                const turn = await engine.runTurn({ workspaceId, sessionId, loopId, provider, messages: [] });
                 const rows = await rowsOf(db, turn.turnId);
                 const preview = rows.find((row) => kindOf(row) === "reasoning");
                 assert.ok(preview, "reasoning preview does not depend on content-channel operations");

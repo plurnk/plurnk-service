@@ -20,7 +20,7 @@ import MembershipMaterialization from "../../src/core/MembershipMaterialization.
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
-import { insertLoop, insertOperationTurn, insertTurn, insertWorker, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
+import { insertLoop, insertOperationTurn, insertTurn, insertSession, insertWorkspace, openMigrated, rootWorkspace } from "./_db.ts";
 
 const execFileP = promisify(execFile);
 const replaceAll: LineMarker = { marks: [1, -1] };
@@ -57,8 +57,8 @@ const withWorkspace = async (
     try {
         const workspaceId = await insertWorkspace(db, `create-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
         await fn({ root, outside, file: new File(), db, workspaceId, ctx });
     } finally {
         await db.close();
@@ -81,7 +81,7 @@ const acceptCreate = async (
 
 test("{§file-create-producer-neutral}: every runtime producer completes the same reviewed creation", async () => {
     await withWorkspace(async ({ root, db, workspaceId, ctx }) => {
-        const loopId = await insertLoop(db, ctx.workerId, 1, "producer-neutral-create");
+        const loopId = await insertLoop(db, ctx.sessionId, 1, "producer-neutral-create");
         const engine = new Engine({
             db,
             schemes: new SchemeRegistry(),
@@ -97,7 +97,7 @@ test("{§file-create-producer-neutral}: every runtime producer completes the sam
             const dispatch = engine.dispatch({
                 statement: edit(`${origin}.md`, `${origin}\n`),
                 workspaceId,
-                workerId: ctx.workerId,
+                sessionId: ctx.sessionId,
                 loopId,
                 turnId,
                 sequence: 1,

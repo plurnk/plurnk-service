@@ -11,7 +11,7 @@ export default class NoticeChannel {
         this.#notify = notify;
     }
 
-    push(workspaceId: number, workerId: number, loopId: number, notice: Notice): void {
+    push(workspaceId: number, sessionId: number, loopId: number, notice: Notice): void {
         NoticeChannel.#assert(notice);
         const existing = this.#buffer.get(loopId);
         const replacementKey = NoticeChannel.#replacementKey(notice);
@@ -24,14 +24,14 @@ export default class NoticeChannel {
         } else {
             existing.push(notice);
         }
-        this.#notify?.(workspaceId, { workerId, loopId, notice });
+        this.#notify?.(workspaceId, { sessionId, loopId, notice });
     }
 
     // Live fan-out ONLY, never buffered — for work with no loop to drain the
     // buffer (e.g. workspace-scope derivation warming, loopId 0).
-    notify(workspaceId: number, workerId: number | null, loopId: number, notice: Notice): void {
+    notify(workspaceId: number, sessionId: number | null, loopId: number, notice: Notice): void {
         NoticeChannel.#assert(notice);
-        this.#notify?.(workspaceId, { workerId, loopId, notice });
+        this.#notify?.(workspaceId, { sessionId, loopId, notice });
     }
 
     // Event observations surface in at most one model packet; stateful

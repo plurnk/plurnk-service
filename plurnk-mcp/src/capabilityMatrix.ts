@@ -115,7 +115,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-core-matrix}", "{§mcp-catalog-refresh-in-place}", "plurnk-core/test/intg/mcp-cache-composition.test.ts", "plurnk-core/test/intg/mcp-catalog-composition.test.ts", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
-        note: "SDK freshness and invalidation compose with version-aware host publication. Real daemon tests exercise overlapping catalog notifications, failed/aborted refresh, workspace authorization isolation, shared-worker caching, and credential rotation through attachment restart.",
+        note: "SDK freshness and invalidation compose with version-aware host publication. Real daemon tests exercise overlapping catalog notifications, failed/aborted refresh, workspace authorization isolation, shared-session caching, and credential rotation through attachment restart.",
     },
     {
         id: "subscriptions",
@@ -127,7 +127,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'a remotely ended unified subscription is re-established with a fresh request'", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
-        note: "One current filter for list changes, cached resource URIs, and active Task IDs; overlap replacement and re-listen after loss. Resource changes invalidate cache, not worker history or attention.",
+        note: "One current filter for list changes, cached resource URIs, and active Task IDs; overlap replacement and re-listen after loss. Resource changes invalidate cache, not session history or attention.",
     },
     {
         id: "progress",
@@ -175,7 +175,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         disposition: "supported",
         composed: true,
         evidence: ["{§mcp-core-matrix}", "{§mcp-input-deadline}", "plurnk-mcp Module 'one input_required round becomes one atomic client interaction'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
-        note: "Opaque requestState echoed byte-for-byte; only the originating request retried with a fresh ID. Input waits retain the remaining operation budget; expiry retires the Core form and delivers the failure to the original worker.",
+        note: "Opaque requestState echoed byte-for-byte; only the originating request retried with a fresh ID. Input waits retain the remaining operation budget; expiry retires the Core form and delivers the failure to the original session.",
     },
     {
         id: "elicitation",

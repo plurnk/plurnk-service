@@ -27,7 +27,7 @@ test("{§packet-stored-shape}: assistant-role sections retain their bodies and p
     const packet: RequestPacket = { ...request(), sections: [
         request().sections[0],
         { name: "emission-history", slot: "assistant", header: null, content: "```EDIT (a)\nwhole body\n```", weight: 15 },
-        { name: "worker", slot: "user", header: "Worker", content: '{"turn":3}', weight: 9 },
+        { name: "session", slot: "user", header: "Session", content: '{"turn":3}', weight: 9 },
     ] };
     assert.deepEqual(StoredPacket.parse(JSON.stringify(packet)), packet);
     const sections = JSON.parse(StoredPacket.sections(packet));

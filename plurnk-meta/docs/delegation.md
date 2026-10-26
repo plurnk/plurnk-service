@@ -2,32 +2,32 @@
 
 ## Summary
 
-WORK, FORK, SEND, WAIT, and KILL coordinate workers and their obligations.
+WORK, FORK, SEND, WAIT, and KILL coordinate sessions and their obligations.
 
 ## Delegation
 
 WORK starts a fresh log with the task body as its prompt; FORK copies your
 history and named scratch into the new name, then diverges. Embedded addresses
 are preserved verbatim. Both share the workspace. An omitted address allocates
-a short worker name, reported in the receipt; an explicit name cannot replace
-an existing worker, even after it finishes. Names match
+a short session name, reported in the receipt; an explicit name cannot replace
+an existing session, even after it finishes. Names match
 `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. SEND to an existing
-worker gives it a follow-up task.
+session gives it a follow-up task.
 
-```WORK (worker://child) <!-- fresh log -->
+```WORK (session://child) <!-- fresh log -->
 The child's complete task goes here.
 ```
 
-```FORK (worker://exampleWorkerName) <!-- a child that begins with your history -->
+```FORK (session://exampleSessionName) <!-- a child that begins with your history -->
 The child's task, continuing from what you already know.
 ```
 
-```SEND (worker://child) <!-- follow-up to the existing worker -->
+```SEND (session://child) <!-- follow-up to the existing session -->
 The follow-up task or additional information goes here.
 ```
 
 Parents observe a direct child's mutations, messages, executor invocations, and
-worker launches, including failed actions, as rows in their own log.
+session launches, including failed actions, as rows in their own log.
 Exploration and context curation (NOTE, READ, FIND, BARE, WAIT, and log KILL)
 stay with the child, including READs of executor output. These observations
 never wake the parent; replies and child conclusions retain their ordinary
@@ -56,19 +56,19 @@ not require another observation turn; other results may warrant more work or a
 corrected reply. No additional operation is needed just to conclude.
 
 Each child task's conclusion wakes its waiting parent and arrives once, as an
-`_plurnk` READ of `ops://exampleWorkerName/1` carrying what the child said: the
+`_plurnk` READ of `ops://exampleSessionName/1` carrying what the child said: the
 execution outcome, not another message, and not delivered again as a reply. A
 failure retains its status and Problem. READ that address with a scope to
 inspect more of the exact result, even after the child starts another task.
-Bare `READ (worker://exampleWorkerName)` collects the current result instead, naming its
+Bare `READ (session://exampleSessionName)` collects the current result instead, naming its
 exact source in `resource`; while the child is running it returns `425`. A
-result does not imply that every task in that worker has finished.
+result does not imply that every task in that session has finished.
 
-`KILL (worker://<name>)` cancels that worker and its descendants, including
+`KILL (session://<name>)` cancels that session and its descendants, including
 queued work and unread messages. History remains readable; a later SEND can
 start new work.
 
-```KILL (worker://child) <!-- cancel this worker's activity -->
+```KILL (session://child) <!-- cancel this session's activity -->
 ```
 
 ## Messages
@@ -78,19 +78,19 @@ to the same source. SEND to that address replies to that message. Without a path
 SEND selects the oldest Open Message; progress leaves it open, completion advances
 to the next. With none open, name a recipient explicitly, including for corrections.
 `[200]` marks a completed request; `[499]` marks a cancelled
-request, without cancelling its worker or running work. A SEND without either
+request, without cancelling its session or running work. A SEND without either
 code is progress, leaving the request open. An empty completion still resolves
-its message while retaining earlier speech. SEND to a worker
+its message while retaining earlier speech. SEND to a session
 control address gives it new work instead. Curation of a message's log
 occurrences never deletes the source or changes whether it was answered.
-Another worker may answer it; the assigned worker and original sender receive
+Another session may answer it; the assigned session and original sender receive
 that reply without a new request.
 
-```SEND (message://exampleWorkerName/ab3d5678) [200]
+```SEND (message://exampleSessionName/ab3d5678) [200]
 The completed answer to this request goes here.
 ```
 
-SEND accepts `[{"attachments":["report.pdf","worker:///example.md"]}]`:
+SEND accepts `[{"attachments":["report.pdf","workspace:///example.md"]}]`:
 send-time copies delivered through ordinary resource links, not native media
 injection; the recipient READs what it needs, and a missing source fails before
 delivery. The same option works on a targetless reply and composes with completion as

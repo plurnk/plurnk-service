@@ -1,12 +1,12 @@
 // {§methods-workspace-prompts}: clients read prompt history without log archaeology; history is
-// what a client addressed to a worker, scoped like log.read (#894).
+// what a client addressed to a session, scoped like log.read (#894).
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Mock } from "@plurnk/plurnk-providers";
 import { rpcCall, rpcProblem, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 const send = () => makeMockResponse("````SEND [200]\nok\n````", 50);
 const addressed = (thread: string, id: string) => {
@@ -42,68 +42,68 @@ test("{§methods-workspace-prompts}: workspace prompts are newest-first and limi
             assert.equal(problem.value, 0);
             assert.equal(problem.recovery, "Use a positive integer limit."); // {§pinned-wording-core}
 
-            // A malformed workerId fails the same way.
-            const badWorker = rpcProblem(await rpcCall(ws, 7, "workspace.prompts", { workerId: 0 }));
-            assert.equal(badWorker.type, "https://problems.plurnk.xyz/daemon/input/identifier-invalid");
-            assert.equal(badWorker.field, "workerId");
+            // A malformed sessionId fails the same way.
+            const badSession = rpcProblem(await rpcCall(ws, 7, "workspace.prompts", { sessionId: 0 }));
+            assert.equal(badSession.type, "https://problems.plurnk.xyz/daemon/input/identifier-invalid");
+            assert.equal(badSession.field, "sessionId");
         } finally { ws.close(); }
     });
 });
 
-test("{§methods-workspace-prompts}: a client prompt at a forked model worker is that worker's history, not the crack", async () => {
+test("{§methods-workspace-prompts}: a client prompt at a forked model session is that session's history, not the crack", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [send(), send(), send()] });
     await withDaemon(mock, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "prompts-fork" });
             const workspaceId = (created.result as { id: number }).id;
-            const mainWorker = await namedModelWorker(daemon, workspaceId, "main");
-            await runLoopToTerminal(ws, 2, { prompt: "typed at main", workerId: mainWorker, ...addressed("main", "1") });
+            const mainSession = await namedModelSession(daemon, workspaceId, "main");
+            await runLoopToTerminal(ws, 2, { prompt: "typed at main", sessionId: mainSession, ...addressed("main", "1") });
 
-            // The TUI's /worker + /attach flow: a fork of the thread's worker, bound by name, seeded by a human.
-            const research = await daemon.forkWorker({ workspaceId, workerId: mainWorker, name: "research" });
-            await runLoopToTerminal(ws, 3, { prompt: "typed at the research fork", workerId: research.workerId, ...addressed("research", "1") });
-            await runLoopToTerminal(ws, 4, { prompt: "typed at the research fork again", workerId: research.workerId, ...addressed("research", "2") });
+            // The TUI's /session + /attach flow: a fork of the thread's session, bound by name, seeded by a human.
+            const research = await daemon.forkSession({ workspaceId, sessionId: mainSession, name: "research" });
+            await runLoopToTerminal(ws, 3, { prompt: "typed at the research fork", sessionId: research.sessionId, ...addressed("research", "1") });
+            await runLoopToTerminal(ws, 4, { prompt: "typed at the research fork again", sessionId: research.sessionId, ...addressed("research", "2") });
 
-            const scopedToFork = await rpcCall(ws, 5, "workspace.prompts", { workerId: research.workerId });
+            const scopedToFork = await rpcCall(ws, 5, "workspace.prompts", { sessionId: research.sessionId });
             assert.deepEqual(
                 (scopedToFork.result as { prompts: string[] }).prompts,
                 ["typed at the research fork again", "typed at the research fork"],
-                "the forked worker's own human prompts are its history, newest-first",
+                "the forked session's own human prompts are its history, newest-first",
             );
-            const scopedToMain = await rpcCall(ws, 6, "workspace.prompts", { workerId: mainWorker });
+            const scopedToMain = await rpcCall(ws, 6, "workspace.prompts", { sessionId: mainSession });
             assert.deepEqual(
                 (scopedToMain.result as { prompts: string[] }).prompts,
                 ["typed at main"],
-                "the forked worker's parent keeps its own history, without the fork's prompts",
+                "the forked session's parent keeps its own history, without the fork's prompts",
             );
             const unscoped = await rpcCall(ws, 7, "workspace.prompts", {});
             assert.deepEqual(
                 (unscoped.result as { prompts: string[] }).prompts,
                 ["typed at the research fork again", "typed at the research fork", "typed at main"],
-                "an omitted workerId lists every model worker's client-addressed seeds",
+                "an omitted sessionId lists every model session's client-addressed seeds",
             );
         } finally { ws.close(); }
     });
 });
 
-test("{§methods-workspace-prompts}: a seed nobody addressed — a worker-issued task — is never history", async () => {
+test("{§methods-workspace-prompts}: a seed nobody addressed — a session-issued task — is never history", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [send(), send()] });
     await withDaemon(mock, async (db, daemon, addr) => {
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "prompts-authorship" });
             const workspaceId = (created.result as { id: number }).id;
-            const workerId = await namedModelWorker(daemon, workspaceId, "main");
-            await runLoopToTerminal(ws, 2, { prompt: "a human asked this", workerId, ...addressed("main", "1") });
-            // A worker-issued seed carries the issuing worker as its source and no message address
+            const sessionId = await namedModelSession(daemon, workspaceId, "main");
+            await runLoopToTerminal(ws, 2, { prompt: "a human asked this", sessionId, ...addressed("main", "1") });
+            // A session-issued seed carries the issuing session as its source and no message address
             // ({§message-arrival}); the seam admits the same shape.
-            const task = await runLoopToTerminal(ws, 3, { prompt: "a worker delegated this", workerId, source: "worker://exampleWorkerName" });
+            const task = await runLoopToTerminal(ws, 3, { prompt: "a session delegated this", sessionId, source: "session://exampleSessionName" });
             const seed = await db.test_loop_seed_message.get<{ address: string | null; source: string | null }>({ loop_id: task.loopId });
-            assert.deepEqual(seed, { address: null, source: "worker://exampleWorkerName" }, "the fixture wrote an unaddressed, worker-sourced seed");
+            assert.deepEqual(seed, { address: null, source: "session://exampleSessionName" }, "the fixture wrote an unaddressed, session-sourced seed");
 
-            const history = await rpcCall(ws, 4, "workspace.prompts", { workerId });
-            assert.deepEqual((history.result as { prompts: string[] }).prompts, ["a human asked this"], "the delegated task is not in the worker's history");
+            const history = await rpcCall(ws, 4, "workspace.prompts", { sessionId });
+            assert.deepEqual((history.result as { prompts: string[] }).prompts, ["a human asked this"], "the delegated task is not in the session's history");
         } finally { ws.close(); }
     });
 });

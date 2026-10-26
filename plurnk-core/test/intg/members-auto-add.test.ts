@@ -2,7 +2,7 @@
 // table, with the knob on and off, the model's scope open and closed, and the proposal settled by policy or
 // by a reviewer. A read of content proposes the admission; acceptance admits and reads; rejection admits
 // nothing; a listing admits nothing; nothing unadmitted shows its content; the client's reads never admit.
-import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
+import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -16,8 +16,8 @@ import Daemon from "../../src/server/Daemon.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { Db } from "../../src/core/Db.ts";
 import { fixtureExecutors } from "./_mock.ts";
-import { insertWorkspace, insertWorker, openMigrated, rootWorkspace } from "./_db.ts";
-import { modelOperation } from "./_workers.ts";
+import { insertWorkspace, insertSession, openMigrated, rootWorkspace } from "./_db.ts";
+import { modelOperation } from "./_sessions.ts";
 
 const execFileP = promisify(execFile);
 
@@ -79,7 +79,7 @@ const harness = async (t: TestContext, env: Record<string, string>) => {
     };
     const workspaceId = await insertWorkspace(db, `auto-add-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
-    const workerId = await insertWorker(db, workspaceId, null, "model", "model");
+    const sessionId = await insertSession(db, workspaceId, null, "model", "model");
     const restore = await (async () => {
         const overrides = {
             PLURNK_SERVICE_GIT_ALLOWED: "1", PLURNK_SERVICE_GIT_AUTO: "1", PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "namespace",
@@ -91,7 +91,7 @@ const harness = async (t: TestContext, env: Record<string, string>) => {
     })();
     await daemon.start();
     t.after(async () => { await daemon.stop(); await db.close(); restore(); await rm(root, { recursive: true, force: true }); });
-    const model = (program: string) => modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
+    const model = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
     const client = async (program: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(program)] }))[0];
     const definitions = async (): Promise<Definition[]> =>
         (await daemon.invokeModuleAction("workspace.members.list", {}, { scope: "workspace", workspaceId }) as { definitions: Definition[] }).definitions;
@@ -103,12 +103,12 @@ const harness = async (t: TestContext, env: Record<string, string>) => {
         await daemon.engine.resolveProposal(proposal.logEntryId, { decision }, TEST_OWNER);
         return { result: await pending, proposal };
     };
-    // A person reviews: the worker is owned by an interactive client, and the server disposition is review.
-    const attend = async (): Promise<void> => { await ownWorker(db, workspaceId, workerId); serverProposals(t, "review"); };
-    return { db, daemon, workspaceId, workerId, notices, model, client, definitions, member, paths, review, attend };
+    // A person reviews: the session is owned by an interactive client, and the server disposition is review.
+    const attend = async (): Promise<void> => { await ownSession(db, workspaceId, sessionId); serverProposals(t, "review"); };
+    return { db, daemon, workspaceId, sessionId, notices, model, client, definitions, member, paths, review, attend };
 };
 
-test("{§membership-auto-add} READ: an untracked file is admitted as the Worker's own definition and read; ignored, excluded, beyond-root and directory targets are not", { timeout: 60_000 }, async (t) => {
+test("{§membership-auto-add} READ: an untracked file is admitted as the Session's own definition and read; ignored, excluded, beyond-root and directory targets are not", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
     const read = await h.model("````READ (loose.md)````") as { status: number; content?: string | null };
     assert.equal(read.status, 200, JSON.stringify(read));
@@ -253,7 +253,7 @@ test("{§membership-auto-add} under review, a text FIND proposes the admission o
     assert.equal(h.notices.length, 1);
 });
 
-test("{§membership-auto-add} a client's READ never admits on the Worker's behalf", { timeout: 60_000 }, async (t) => {
+test("{§membership-auto-add} a client's READ never admits on the Session's behalf", { timeout: 60_000 }, async (t) => {
     const h = await harness(t, {});
     const read = await h.client("````READ (loose.md)````") as { status: number };
     assert.equal(read.status, 404);

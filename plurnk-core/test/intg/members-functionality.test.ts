@@ -1,4 +1,4 @@
-import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
+import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§members-functionality} {§functionality-addressing} {§members-model-scope} {§members-projection}
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -18,8 +18,8 @@ import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
-import { insertWorkspace, insertWorker, openMigrated, rootWorkspace } from "./_db.ts";
-import { modelOperation } from "./_workers.ts";
+import { insertWorkspace, insertSession, openMigrated, rootWorkspace } from "./_db.ts";
+import { modelOperation } from "./_sessions.ts";
 import type { Db } from "../../src/core/Db.ts";
 
 const execFileP = promisify(execFile);
@@ -94,15 +94,15 @@ for (const decision of ["auto", "accept", "reject"] as const) test(`{§op-execut
         try {
             const workspaceId = await insertWorkspace(db, "ordered-members");
             await rootWorkspace(db, workspaceId, root);
-            const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-            if (decision !== "auto") await ownWorker(db, workspaceId, workerId);
+            const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+            if (decision !== "auto") await ownSession(db, workspaceId, sessionId);
             daemon.subscribeToEvents((_id, method, params) => {
                 if (method !== "operation/event") return;
                 const event = params as { phase: string; origin: string; statement: PlurnkStatement; result?: { status: number; body?: string } };
                 if (event.phase === "settled" && event.origin === "model" && event.statement.op === "READ" && event.result !== undefined) results.push(event.result);
             });
             await daemon.start();
-            const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Admit loose.md and read it.", maxTurns: 2 });
+            const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Admit loose.md and read it.", maxTurns: 2 });
             if (decision !== "auto") {
                 const proposals = await waitForDb(() => daemon.pendingProposals(workspaceId), (items) => items.length === 1);
                 assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "nothing publishes before approval");
@@ -231,17 +231,17 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `members-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const model = await insertWorker(db, workspaceId, null, "model", "model");
-        await ownWorker(db, workspaceId, model);
+        const model = await insertSession(db, workspaceId, null, "model", "model");
+        await ownSession(db, workspaceId, model);
         const daemon = new Daemon({ db, provider: null });
         await daemon.start();
-        const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>, _workerId = model): Promise<T> =>
+        const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>, _sessionId = model): Promise<T> =>
             daemon.invokeModuleAction(`workspace.members.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
-        const definitions = async (workerId = model) => (await invoke<{ definitions: Definition[] }>("list", {}, workerId)).definitions;
-        const states = async (workerId = model) => (await definitions(workerId)).map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
+        const definitions = async (sessionId = model) => (await invoke<{ definitions: Definition[] }>("list", {}, sessionId)).definitions;
+        const states = async (sessionId = model) => (await definitions(sessionId)).map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
         const discover = async (query: string) => (await invoke<{ candidates: Candidate[] }>("discover", { query })).candidates[0];
         // The model's own surface: its operations, reviewed by its owner.
-        const operate = (program: string) => modelOperation(daemon, db, { workspaceId, workerId: model, statement: parseOne(program) });
+        const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
         const proposals: number[] = [];
         const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
@@ -298,10 +298,10 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
             // {§members-projection} — the document is named by the glob, percent-encoded as one segment.
-            await operate("````READ (worker:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````");
+            await operate("````READ (workspace:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````");
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
-                .find((row) => row.scheme === "worker" && row.pathname === "/_plurnk/members/docs%2F%2A%2A.md" && row.channel === "body");
-            assert.ok(doc !== undefined, "an enabled definition is one generated document under worker:///_plurnk/members/");
+                .find((row) => row.scheme === "workspace" && row.pathname === "/_plurnk/members/docs%2F%2A%2A.md" && row.channel === "body");
+            assert.ok(doc !== undefined, "an enabled definition is one generated document under workspace:///_plurnk/members/");
             assert.match(doc.content, /^# `docs\/\*\*`\n\n## Summary\n\ninclude `docs\/\*\*` → 1 file\n/u, "the document summary is what the glob resolved to");
             assert.match(doc.content, /\| origin \| service \|/u);
 
@@ -395,13 +395,13 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             assert.equal(unknown.type, "https://problems.plurnk.xyz/functionality/alias-unknown");
             assert.equal(unknown.detail, "'!big/**' is not available to this workspace.");
 
-            // Union across workers, an exclusion wins: a child excludes what the parent included;
+            // Union across sessions, an exclusion wins: a child excludes what the parent included;
             // removal restores it.
-            const child = await insertWorker(db, workspaceId, model, "child", "model");
+            const child = await insertSession(db, workspaceId, model, "child", "model");
             const hidden = await invoke<Receipt>("add", { files: ["!loose.md"] }, child);
             assert.equal(hidden.status, 201);
             await daemon.settleFunctionality(workspaceId);
-            assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an exclusion from any worker wins over an inclusion from another");
+            assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an exclusion from any session wins over an inclusion from another");
             await invoke("remove", { file: "!loose.md" }, child);
             await daemon.settleFunctionality(workspaceId);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), true, "removing the exclusion restores the union");
@@ -411,7 +411,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
             assert.equal(disabled.alias, "loose.md");
             assert.equal(disabled.definitions, undefined, "a select verb names the one definition it concerned");
             await daemon.settleFunctionality(workspaceId);
-            assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "the shared inclusion is disabled for every worker");
+            assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "the shared inclusion is disabled for every session");
             assert.deepEqual((await states()).filter((s) => s.startsWith("loose.md:")), ["loose.md:workspace:disabled"]);
             await invoke("disable", { file: "loose.md" }, child);
             await daemon.settleFunctionality(workspaceId);
@@ -434,8 +434,8 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `members-scope-${crypto.randomUUID()}`);
     await rootWorkspace(db, workspaceId, root);
-    const model = await insertWorker(db, workspaceId, null, "model", "model");
-    const who = { workspaceId, workerId: model };
+    const model = await insertSession(db, workspaceId, null, "model", "model");
+    const who = { workspaceId, sessionId: model };
     const engine = (): never => { throw new Error("prepare is not exercised here"); };
     const refusedAs = async (run: () => Promise<unknown>, code: string, status: number) => {
         const error = await run().then(() => null, (cause: unknown) => cause);
@@ -501,12 +501,12 @@ test("{§members-functionality} {§fs-canonical-name} a glob spelled absolute or
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `members-beyond-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const model = await insertWorker(db, workspaceId, null, "model", "model");
-        await ownWorker(db, workspaceId, model);
+        const model = await insertSession(db, workspaceId, null, "model", "model");
+        await ownSession(db, workspaceId, model);
         const daemon = new Daemon({ db, provider: null });
         await daemon.start();
         try {
-            const operate = (program: string) => modelOperation(daemon, db, { workspaceId, workerId: model, statement: parseOne(program) });
+            const operate = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
             const files = places.flatMap(({ dir, key }) => [`${key}/relative.md`, join(dir, "absolute.md"), `${key}/excluded.md`, `!${join(dir, "excluded.md")}`]);
             await operate(`\`\`\`\`plurnk (members)\n${JSON.stringify({ verb: "add", files })}\n\`\`\`\``);
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: 0, timeoutMs: 30_000 }) as Receipt;

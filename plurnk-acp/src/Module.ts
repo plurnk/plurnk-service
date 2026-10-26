@@ -38,7 +38,7 @@ import {
     isRecord,
     isSafeInteger,
     lifecycleOfLoopStatus,
-    selectWorkerLoop,
+    selectSessionLoop,
     type AcpDiscovery,
     type ApplicationLoopPacket,
     type ClientInteractionProjection,
@@ -103,27 +103,27 @@ const writeHttpProblem = (res: ServerResponse, problem: ProblemDetails): void =>
     res.end(JSON.stringify(problem));
 };
 
-const formatSessionId = (workspaceId: number, workerName: string): string => `${workspaceId}#${workerName}`;
+const formatSessionId = (workspaceId: number, sessionName: string): string => `${workspaceId}#${sessionName}`;
 
-const parseSessionId = (raw: string): { readonly workspaceId: number; readonly workerName: string } | null => {
+const parseSessionId = (raw: string): { readonly workspaceId: number; readonly sessionName: string } | null => {
     const idx = raw.indexOf("#");
     if (idx <= 0 || idx === raw.length - 1) return null;
     const prefix = raw.slice(0, idx);
     if (!/^[1-9]\d*$/.test(prefix)) return null;
     const wsId = Number(prefix);
-    const workerName = raw.slice(idx + 1);
-    if (!isSafeInteger(wsId) || wsId <= 0 || workerName.length === 0) return null;
-    return { workspaceId: wsId, workerName };
+    const sessionName = raw.slice(idx + 1);
+    if (!isSafeInteger(wsId) || wsId <= 0 || sessionName.length === 0) return null;
+    return { workspaceId: wsId, sessionName };
 };
 
 export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpAddress">;
 
 interface BoundSession {
-    readonly sessionId: string;
+    readonly acpSessionId: string;
     readonly workspaceId: number;
     readonly workspaceName: string;
-    readonly workerId: number;
-    readonly workerName: string;
+    readonly sessionId: number;
+    readonly sessionName: string;
     readonly translator: SessionTranslator;
 }
 
@@ -138,7 +138,7 @@ interface AcpPeer {
 interface ActiveGate {
     readonly key: string;
     readonly workspaceId: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly kind: "proposal" | "interaction";
     readonly proposal?: ProposalProjection;
     readonly interaction?: ClientInteractionProjection;
@@ -152,13 +152,13 @@ interface RequestConnectionContext {
 
 const isLogEntryPayload = (v: unknown): v is Parameters<SessionTranslator["logEntry"]>[0] => isRecord(v);
 const isOutsideEvent = (v: unknown): v is OutsideEventNotification =>
-    isRecord(v) && typeof v.workerId === "number";
+    isRecord(v) && typeof v.sessionId === "number";
 const isLoopPacket = (v: unknown): v is ApplicationLoopPacket =>
-    isRecord(v) && typeof v.workerId === "number";
+    isRecord(v) && typeof v.sessionId === "number";
 const isProposalProjection = (v: unknown): v is ProposalProjection =>
-    isRecord(v) && typeof v.workerId === "number";
+    isRecord(v) && typeof v.sessionId === "number";
 const isClientInteractionProjection = (v: unknown): v is ClientInteractionProjection =>
-    isRecord(v) && typeof v.workerId === "number";
+    isRecord(v) && typeof v.sessionId === "number";
 
 export default class Module implements DaemonModule<AcpSetupSeam> {
     readonly mounts: readonly string[] = Object.freeze(["/acp"]);
@@ -419,7 +419,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         const entryMatch = /^\/acp\/([1-9]\d*)\/([1-9]\d*)\/entry$/.exec(url.pathname);
         if (entryMatch !== null && req.method === "GET") {
             const workspaceId = Number(entryMatch[1]);
-            const workerId = Number(entryMatch[2]);
+            const sessionId = Number(entryMatch[2]);
             const target = url.searchParams.get("target");
             if (!target || target.trim().length === 0) {
                 writeHttpProblem(
@@ -436,7 +436,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             const offset = offsetParam !== null && /^\d+$/.test(offsetParam) ? Number(offsetParam) : undefined;
             const rawReadResult: unknown = await this.#seam.readEntry({
                 workspaceId,
-                workerId,
+                sessionId,
                 target,
                 channel,
                 ...(offset !== undefined ? { offset } : {}),
@@ -458,13 +458,13 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         const messagesMatch = /^\/acp\/([1-9]\d*)\/([1-9]\d*)\/messages$/.exec(url.pathname);
         if (messagesMatch !== null && req.method === "GET") {
             const workspaceId = Number(messagesMatch[1]);
-            const workerId = Number(messagesMatch[2]);
-            const sessionId = url.searchParams.get("session") ?? `${workspaceId}#user`;
+            const sessionId = Number(messagesMatch[2]);
+            const acpSessionId = url.searchParams.get("session") ?? `${workspaceId}#user`;
             const beforeParam = url.searchParams.get("before");
             const loopParam = url.searchParams.get("loop");
             const [allEntries, inbox] = await Promise.all([
-                this.#seam.readLog({ workspaceId, workerId }),
-                this.#seam.readInbox({ workspaceId, workerId }),
+                this.#seam.readLog({ workspaceId, sessionId }),
+                this.#seam.readInbox({ workspaceId, sessionId }),
             ]);
             let filtered = allEntries;
             if (loopParam !== null && /^\d+$/.test(loopParam)) {
@@ -475,9 +475,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 filtered = allEntries.filter((e) => (e.loop_seq ?? e.loop_id ?? 0) < beforeLoop);
             }
             const translator = new SessionTranslator({
-                sessionId,
+                acpSessionId,
                 workspaceId,
-                workerId,
+                sessionId,
                 origin: this.#httpOrigin(),
             });
             const replayed = SessionTranslator.replay(translator, filtered, inbox, {
@@ -486,7 +486,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             res.writeHead(200, { "content-type": "application/json" });
             res.end(
                 JSON.stringify({
-                    session: sessionId,
+                    session: acpSessionId,
                     updates: replayed.map((r) => r.update),
                     history: replayed.history,
                 }),
@@ -624,15 +624,15 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         }
     }
 
-    async #configOptions(workspaceId: number, workerId: number): Promise<SessionConfigOption[]> {
+    async #configOptions(workspaceId: number, sessionId: number): Promise<SessionConfigOption[]> {
         const providerCatalog = this.#tryListProviders();
         const aliases = providerCatalog.aliases ?? [];
         const [{ model, spawnModel }, capabilities] = await Promise.all([
-            this.#seam.readWorkerModel({ workspaceId, workerId }),
+            this.#seam.readSessionModel({ workspaceId, sessionId }),
             this.#seam.readWorkspaceCapabilities({ workspaceId }),
         ]);
         const effortInfo = model !== null
-            ? await this.#seam.readWorkerEffort({ workspaceId, workerId })
+            ? await this.#seam.readSessionEffort({ workspaceId, sessionId })
             : { effort: null, supportedEfforts: [] as const };
 
         const modelOptions = aliases.map((a) => ({
@@ -696,7 +696,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             },
             {
                 configId: "spawn_model",
-                name: "Child Worker Model",
+                name: "Child Session Model",
                 category: "model_config",
                 type: "select",
                 currentValue: currentSpawnValue,
@@ -820,7 +820,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     static #extractPlurnkMeta(meta: unknown): {
         readonly workspaceId?: number;
         readonly workspaceName?: string;
-        readonly workerName?: string;
+        readonly sessionName?: string;
         readonly create?: boolean;
         readonly activate?: boolean;
         readonly messageId?: string;
@@ -840,10 +840,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             : typeof p.workspace === "string" && p.workspace.trim().length > 0
                 ? p.workspace.trim()
                 : undefined;
-        const workerName = typeof p.workerName === "string" && p.workerName.trim().length > 0
-            ? p.workerName.trim()
-            : typeof p.worker === "string" && p.worker.trim().length > 0
-                ? p.worker.trim()
+        const sessionName = typeof p.sessionName === "string" && p.sessionName.trim().length > 0
+            ? p.sessionName.trim()
+            : typeof p.session === "string" && p.session.trim().length > 0
+                ? p.session.trim()
                 : typeof p.name === "string" && p.name.trim().length > 0
                     ? p.name.trim()
                     : undefined;
@@ -866,7 +866,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         return {
             ...(workspaceId !== undefined ? { workspaceId } : {}),
             ...(workspaceName !== undefined ? { workspaceName } : {}),
-            ...(workerName !== undefined ? { workerName } : {}),
+            ...(sessionName !== undefined ? { sessionName } : {}),
             ...(create !== undefined ? { create } : {}),
             ...(activate !== undefined ? { activate } : {}),
             ...(messageId !== undefined ? { messageId } : {}),
@@ -890,7 +890,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
         let workspaceId: number;
         let workspaceName: string;
-        let requestedWorkerName: string | undefined;
+        let requestedSessionName: string | undefined;
 
         if (rawSessionId !== undefined && rawSessionId.includes("#")) {
             const parsed = parseSessionId(rawSessionId);
@@ -916,16 +916,16 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 }
                 throw err;
             }
-            requestedWorkerName = parsed.workerName;
+            requestedSessionName = parsed.sessionName;
         } else if (rawSessionId !== undefined && rawSessionId.length > 0) {
-            const ref = await this.#seam.readWorkerReference({ namespace: "acp", reference: rawSessionId });
+            const ref = await this.#seam.readSessionReference({ namespace: "acp", reference: rawSessionId });
             if (ref !== null) {
                 const attached = await this.#seam.attachWorkspace({ workspaceId: ref.workspaceId });
-                const worker = await this.#seam.readWorker({
+                const session = await this.#seam.readSession({
                     workspaceId: ref.workspaceId,
-                    identity: { id: ref.workerId },
+                    identity: { id: ref.sessionId },
                 });
-                if (worker === null) {
+                if (session === null) {
                     throw new RequestError(
                         -32004,
                         `Session '${rawSessionId}' does not exist. (session-not-found)`,
@@ -934,7 +934,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 }
                 workspaceId = attached.workspaceId;
                 workspaceName = attached.workspaceName;
-                requestedWorkerName = worker.name;
+                requestedSessionName = session.name;
             } else {
                 try {
                     const resolved = await this.#resolveWorkspace(
@@ -958,7 +958,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     }
                     throw err;
                 }
-                requestedWorkerName = rawSessionId;
+                requestedSessionName = rawSessionId;
             }
         } else {
             const resolved = await this.#resolveWorkspace(
@@ -971,77 +971,77 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             );
             workspaceId = resolved.workspaceId;
             workspaceName = resolved.workspaceName;
-            requestedWorkerName = plurnkMeta.workerName;
+            requestedSessionName = plurnkMeta.sessionName;
         }
 
         if (plurnkMeta.activate === true) {
             await this.#seam.activateWorkspace?.({ workspaceId });
         }
-        await this.#seam.registerWorkerOwner(workspaceId, {
+        await this.#seam.registerSessionOwner(workspaceId, {
             address: OWNER_ADDRESS,
             tools: ["request_approval", "question", "mcp_input_required"],
             interactive: true,
         });
 
-        let worker = requestedWorkerName !== undefined
-            ? await this.#seam.readWorker({ workspaceId, identity: { name: requestedWorkerName } })
+        let session = requestedSessionName !== undefined
+            ? await this.#seam.readSession({ workspaceId, identity: { name: requestedSessionName } })
             : null;
 
-        if (worker === null) {
+        if (session === null) {
             if (!allowCreate) {
-                const label = rawSessionId ?? requestedWorkerName ?? "unknown";
+                const label = rawSessionId ?? requestedSessionName ?? "unknown";
                 throw new RequestError(
                     -32004,
                     `Session '${label}' does not exist. (session-not-found)`,
                     Problems.create("acp", "session-not-found", 404, `Session '${label}' does not exist.`),
                 );
             }
-            const created = await this.#seam.createWorker({
+            const created = await this.#seam.createSession({
                 workspaceId,
-                ...(requestedWorkerName !== undefined ? { name: requestedWorkerName } : {}),
+                ...(requestedSessionName !== undefined ? { name: requestedSessionName } : {}),
                 owner: OWNER_ADDRESS,
             });
-            worker = await this.#seam.readWorker({
+            session = await this.#seam.readSession({
                 workspaceId,
-                identity: { id: created.workerId },
+                identity: { id: created.sessionId },
             });
-            if (worker === null) throw new Error(`Failed to read newly created worker ${created.workerId}`);
+            if (session === null) throw new Error(`Failed to read newly created session ${created.sessionId}`);
         } else {
-            const workerRec: Record<string, unknown> = isRecord(worker) ? worker : {};
-            const hiddenAt = workerRec.hidden_at ?? workerRec.hiddenAt ?? null;
+            const sessionRec: Record<string, unknown> = isRecord(session) ? session : {};
+            const hiddenAt = sessionRec.hidden_at ?? sessionRec.hiddenAt ?? null;
             if (hiddenAt !== null) {
-                await this.#seam.setWorkerHidden({
+                await this.#seam.setSessionHidden({
                     workspaceId,
-                    workerId: worker.id,
+                    sessionId: session.id,
                     hidden: false,
                 });
             }
-            await this.#seam.claimWorkerOwner({
+            await this.#seam.claimSessionOwner({
                 workspaceId,
-                workerId: worker.id,
+                sessionId: session.id,
                 owner: OWNER_ADDRESS,
             });
         }
 
-        const canonicalSessionId = formatSessionId(workspaceId, worker.name);
-        const sessionId = rawSessionId !== undefined && rawSessionId.length > 0 ? rawSessionId : canonicalSessionId;
+        const canonicalSessionId = formatSessionId(workspaceId, session.name);
+        const acpSessionId = rawSessionId !== undefined && rawSessionId.length > 0 ? rawSessionId : canonicalSessionId;
         const translator = new SessionTranslator({
-            sessionId,
+            acpSessionId,
             workspaceId,
-            workerId: worker.id,
+            sessionId: session.id,
             origin: this.#httpOrigin(),
         });
 
         const bound: BoundSession = {
-            sessionId,
+            acpSessionId,
             workspaceId,
             workspaceName,
-            workerId: worker.id,
-            workerName: worker.name,
+            sessionId: session.id,
+            sessionName: session.name,
             translator,
         };
-        peer.sessions.set(sessionId, bound);
-        if (canonicalSessionId !== sessionId) {
+        peer.sessions.set(acpSessionId, bound);
+        if (canonicalSessionId !== acpSessionId) {
             peer.sessions.set(canonicalSessionId, bound);
         }
         return bound;
@@ -1055,9 +1055,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         }).catch(() => undefined);
     }
 
-    #broadcastWorkerUpdate(
+    #broadcastSessionUpdate(
         workspaceId: number,
-        workerId: number,
+        sessionId: number,
         buildUpdates: (session: BoundSession) => readonly { readonly sessionId: string; readonly update: SessionUpdate }[],
     ): void {
         for (const peer of this.#peers) {
@@ -1065,9 +1065,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             for (const session of peer.sessions.values()) {
                 if (visited.has(session)) continue;
                 visited.add(session);
-                if (session.workspaceId !== workspaceId || session.workerId !== workerId) continue;
-                for (const { sessionId, update } of buildUpdates(session)) {
-                    this.#notifyPeerSession(peer, sessionId, update);
+                if (session.workspaceId !== workspaceId || session.sessionId !== sessionId) continue;
+                for (const { sessionId: acpSessionId, update } of buildUpdates(session)) {
+                    this.#notifyPeerSession(peer, acpSessionId, update);
                 }
             }
         }
@@ -1082,8 +1082,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
         if (gate.kind === "proposal" && gate.proposal !== undefined) {
             const proposal = gate.proposal;
-            this.#notifyPeerSession(peer, session.sessionId, proposalToolCall(proposal));
-            const req = proposalPermissionRequest(session.sessionId, proposal);
+            this.#notifyPeerSession(peer, session.acpSessionId, proposalToolCall(proposal));
+            const req = proposalPermissionRequest(session.acpSessionId, proposal);
             void peer.client
                 .request(methods.client.session.requestPermission, req, { cancellationSignal: controller.signal })
                 .then(async (response) => {
@@ -1107,8 +1107,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 });
         } else if (gate.kind === "interaction" && gate.interaction !== undefined) {
             const interaction = gate.interaction;
-            this.#notifyPeerSession(peer, session.sessionId, interactionToolCall(interaction));
-            const req = interactionElicitationRequest(session.sessionId, interaction);
+            this.#notifyPeerSession(peer, session.acpSessionId, interactionToolCall(interaction));
+            const req = interactionElicitationRequest(session.acpSessionId, interaction);
             void peer.client
                 .request(methods.client.elicitation.create, req, { cancellationSignal: controller.signal })
                 .then(async (response) => {
@@ -1133,9 +1133,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                                     .catch(() => undefined);
                             }
                         }
-                        this.#broadcastWorkerUpdate(gate.workspaceId, gate.workerId, (s) => [
+                        this.#broadcastSessionUpdate(gate.workspaceId, gate.sessionId, (s) => [
                             {
-                                sessionId: s.sessionId,
+                                sessionId: s.acpSessionId,
                                 update: interactionToolCallResult(resolved.interactionId, resolved.resolution),
                             },
                         ]);
@@ -1165,7 +1165,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                       (err.problem as unknown as ProblemDetails)
                     : null);
             if (problem !== null) {
-                this.#notifyPeerSession(winner, session.sessionId, {
+                this.#notifyPeerSession(winner, session.acpSessionId, {
                     sessionUpdate: "notice",
                     severity: "error",
                     title: problem.title,
@@ -1189,13 +1189,13 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         }
         gate.peerControllers.clear();
 
-        const hasRemainingWorkerGate = [...this.#activeGates.values()].some(
-            (g) => !g.settled && g.workspaceId === gate.workspaceId && g.workerId === gate.workerId,
+        const hasRemainingSessionGate = [...this.#activeGates.values()].some(
+            (g) => !g.settled && g.workspaceId === gate.workspaceId && g.sessionId === gate.sessionId,
         );
-        if (!hasRemainingWorkerGate) {
-            this.#broadcastWorkerUpdate(gate.workspaceId, gate.workerId, (s) => [
+        if (!hasRemainingSessionGate) {
+            this.#broadcastSessionUpdate(gate.workspaceId, gate.sessionId, (s) => [
                 {
-                    sessionId: s.sessionId,
+                    sessionId: s.acpSessionId,
                     update: {
                         sessionUpdate: "state_update",
                         state: "running",
@@ -1207,7 +1207,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
     #openOrGetGate(
         workspaceId: number,
-        workerId: number,
+        sessionId: number,
         kind: "proposal" | "interaction",
         proposal?: ProposalProjection,
         interaction?: ClientInteractionProjection,
@@ -1219,7 +1219,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             gate = {
                 key,
                 workspaceId,
-                workerId,
+                sessionId,
                 kind,
                 proposal,
                 interaction,
@@ -1237,8 +1237,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 if (!isRecord(params) || !isRecord(params.entry)) break;
                 const entryRec = params.entry;
                 const entryId = typeof entryRec.id === "number" ? entryRec.id : null;
-                const workerId = typeof entryRec.worker_id === "number" ? entryRec.worker_id : null;
-                if (entryId === null || workerId === null) break;
+                const sessionId = typeof entryRec.session_id === "number" ? entryRec.session_id : null;
+                if (entryId === null || sessionId === null) break;
                 const gateKey = `${workspaceId}:proposal:${entryId}`;
                 const existingGate = this.#activeGates.get(gateKey);
                 if (existingGate !== undefined && entryRec.state !== "proposed") {
@@ -1248,21 +1248,21 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     existingGate.peerControllers.clear();
                 }
                 if (isLogEntryPayload(params)) {
-                    this.#broadcastWorkerUpdate(workspaceId, workerId, (s) => s.translator.logEntry(params));
+                    this.#broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.logEntry(params));
                 }
                 for (const peer of this.#peers) {
                     const visited = new Set<BoundSession>();
                     for (const session of peer.sessions.values()) {
                         if (visited.has(session)) continue;
                         visited.add(session);
-                        if (session.workspaceId !== workspaceId || session.workerId === workerId) continue;
+                        if (session.workspaceId !== workspaceId || session.sessionId === sessionId) continue;
                         const summary = isRecord(entryRec.attrs) && typeof entryRec.attrs.body === "string"
                             ? entryRec.attrs.body
                             : typeof entryRec.op === "string"
                               ? entryRec.op
                               : "op";
-                        const workerName = typeof entryRec.worker_name === "string" ? entryRec.worker_name : String(workerId);
-                        const childSessionId = formatSessionId(workspaceId, workerName);
+                        const sessionName = typeof entryRec.session_name === "string" ? entryRec.session_name : String(sessionId);
+                        const childSessionId = formatSessionId(workspaceId, sessionName);
                         const loopSeq = isSafeInteger(entryRec.loop_seq) ? entryRec.loop_seq : 1;
                         const coord =
                             isSafeInteger(entryRec.loop_seq) &&
@@ -1272,16 +1272,16 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                                 : `${loopSeq}/1/1`;
                         const childMeta = {
                             plurnk: {
-                                id: workerId,
-                                name: workerName,
-                                coordinate: `worker://${workerName}#${coord}`,
-                                subagentRunId: `ops://${workerName}/${loopSeq}`,
+                                id: sessionId,
+                                name: sessionName,
+                                coordinate: `session://${sessionName}#${coord}`,
+                                subagentRunId: `ops://${sessionName}/${loopSeq}`,
                             },
                         };
-                        this.#notifyPeerSession(peer, session.sessionId, {
+                        this.#notifyPeerSession(peer, session.acpSessionId, {
                             sessionUpdate: "subagent_update",
                             sessionId: childSessionId,
-                            title: workerName,
+                            title: sessionName,
                             description: summary,
                             capabilities: { cancel: {} },
                             state: { state: "running" },
@@ -1289,11 +1289,11 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         });
                         if (entryRec.op === "SEND" && summary.length > 0) {
                             const isChildToParent = entryRec.origin === "model";
-                            this.#notifyPeerSession(peer, session.sessionId, {
+                            this.#notifyPeerSession(peer, session.acpSessionId, {
                                 sessionUpdate: "session_message",
-                                messageId: `worker://${workerName}#${coord}`,
-                                senderSessionId: isChildToParent ? childSessionId : session.sessionId,
-                                recipientSessionId: isChildToParent ? session.sessionId : childSessionId,
+                                messageId: `session://${sessionName}#${coord}`,
+                                senderSessionId: isChildToParent ? childSessionId : session.acpSessionId,
+                                recipientSessionId: isChildToParent ? session.acpSessionId : childSessionId,
                                 content: [{ type: "text", text: summary }],
                                 _meta: childMeta,
                             });
@@ -1303,20 +1303,20 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 break;
             }
             case "reasoning/event": {
-                if (!isRecord(params) || typeof params.workerId !== "number") break;
-                const workerId = params.workerId;
-                this.#broadcastWorkerUpdate(workspaceId, workerId, (s) => s.translator.reasoning(params));
+                if (!isRecord(params) || typeof params.sessionId !== "number") break;
+                const sessionId = params.sessionId;
+                this.#broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.reasoning(params));
                 break;
             }
             case "stream/event": {
                 if (!isRecord(params)) break;
                 const entryId = typeof params.entryId === "number" ? params.entryId : null;
-                const workerId = typeof params.workerId === "number" ? params.workerId : null;
+                const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
                 const target = typeof params.target === "string" ? params.target : null;
                 const channel = typeof params.channel === "string" ? params.channel : null;
-                if (entryId === null || workerId === null) break;
+                if (entryId === null || sessionId === null) break;
                 const streamMeta: Record<string, unknown> = {
-                    workerId,
+                    sessionId,
                     ...(target !== null ? { target } : {}),
                     ...(channel !== null ? { channel } : {}),
                     ...(typeof params.state === "string" ? { state: params.state } : {}),
@@ -1324,14 +1324,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 };
                 const delta = typeof params.delta === "string" ? params.delta : "";
                 if (delta.length > 0) {
-                    this.#broadcastWorkerUpdate(workspaceId, workerId, (s) =>
+                    this.#broadcastSessionUpdate(workspaceId, sessionId, (s) =>
                         s.translator.terminalChunk(entryId, delta, streamMeta),
                     );
                     break;
                 }
-                this.#broadcastWorkerUpdate(workspaceId, workerId, (s) => [
+                this.#broadcastSessionUpdate(workspaceId, sessionId, (s) => [
                     {
-                        sessionId: s.sessionId,
+                        sessionId: s.acpSessionId,
                         update: {
                             sessionUpdate: "terminal_update",
                             terminalId: `term:${entryId}`,
@@ -1346,14 +1346,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 if (contentLength > prevOffset) {
                     this.#streamOffsets.set(offsetKey, contentLength);
                     void this.#seam
-                        .readEntry({ workspaceId, workerId, target, channel, offset: prevOffset })
+                        .readEntry({ workspaceId, sessionId, target, channel, offset: prevOffset })
                         .then((readResult) => {
                             const chunk = readResult.entry !== null
                                 ? (readResult.entry.channels[channel]?.content ?? "")
                                 : "";
                             if (chunk.length > 0) {
-                                this.#broadcastWorkerUpdate(workspaceId, workerId, (s) =>
-                                    s.translator.terminalChunk(entryId, chunk, { workerId, target, channel }),
+                                this.#broadcastSessionUpdate(workspaceId, sessionId, (s) =>
+                                    s.translator.terminalChunk(entryId, chunk, { sessionId, target, channel }),
                                 );
                             }
                         })
@@ -1364,41 +1364,41 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             case "stream/concluded": {
                 if (!isRecord(params)) break;
                 const entryId = typeof params.entryId === "number" ? params.entryId : null;
-                const workerId = typeof params.workerId === "number" ? params.workerId : null;
+                const sessionId = typeof params.sessionId === "number" ? params.sessionId : null;
                 const target = typeof params.target === "string" ? params.target : null;
                 const status = isRecord(params.result) && typeof params.result.status === "number"
                     ? params.result.status
                     : typeof params.status === "number"
                       ? params.status
                       : 200;
-                if (entryId === null || workerId === null) break;
+                if (entryId === null || sessionId === null) break;
                 const concludedMeta: Record<string, unknown> = {
-                    workerId,
+                    sessionId,
                     ...(target !== null ? { target } : {}),
                     ...(isRecord(params.result) ? { result: params.result } : {}),
                     ...(isRecord(params.summary) ? { summary: params.summary } : {}),
                 };
-                this.#broadcastWorkerUpdate(workspaceId, workerId, (s) =>
+                this.#broadcastSessionUpdate(workspaceId, sessionId, (s) =>
                     s.translator.terminalConcluded(entryId, status, concludedMeta),
                 );
                 break;
             }
             case "outside/event": {
                 if (!isOutsideEvent(params)) break;
-                const workerId = params.workerId;
-                this.#broadcastWorkerUpdate(workspaceId, workerId, (s) => s.translator.outside(params));
+                const sessionId = params.sessionId;
+                this.#broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.outside(params));
                 break;
             }
             case "loop/packet": {
                 if (!isLoopPacket(params)) break;
-                const workerId = params.workerId;
-                this.#broadcastWorkerUpdate(workspaceId, workerId, (s) => s.translator.packet(params));
+                const sessionId = params.sessionId;
+                this.#broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.packet(params));
                 break;
             }
             case "loop/terminated": {
-                if (!isRecord(params) || typeof params.workerId !== "number") break;
-                const workerId = params.workerId;
-                this.#broadcastWorkerUpdate(workspaceId, workerId, (s) => s.translator.terminated(params));
+                if (!isRecord(params) || typeof params.sessionId !== "number") break;
+                const sessionId = params.sessionId;
+                this.#broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.terminated(params));
                 const resultRec = isRecord(params.result) ? params.result : {};
                 const status = typeof resultRec.status === "number"
                     ? resultRec.status
@@ -1413,21 +1413,21 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         ? ({ state: "idle" as const, stopReason: "refusal" as const })
                         : ({ state: "idle" as const, stopReason: "end_turn" as const });
                 void this.#seam
-                    ?.listWorkers(workspaceId)
-                    .then((workers) => {
-                        const workerRow = workers.find((w) => w.id === workerId);
-                        const workerName = typeof params.workerName === "string"
-                            ? params.workerName
-                            : (workerRow?.name ?? String(workerId));
+                    ?.listSessions(workspaceId)
+                    .then((sessions) => {
+                        const sessionRow = sessions.find((w) => w.id === sessionId);
+                        const sessionName = typeof params.sessionName === "string"
+                            ? params.sessionName
+                            : (sessionRow?.name ?? String(sessionId));
                         for (const peer of this.#peers) {
                             const visited = new Set<BoundSession>();
                             for (const session of peer.sessions.values()) {
                                 if (visited.has(session)) continue;
                                 visited.add(session);
-                                if (session.workspaceId !== workspaceId || session.workerId === workerId) continue;
-                                this.#notifyPeerSession(peer, session.sessionId, {
+                                if (session.workspaceId !== workspaceId || session.sessionId === sessionId) continue;
+                                this.#notifyPeerSession(peer, session.acpSessionId, {
                                     sessionUpdate: "subagent_update",
-                                    sessionId: formatSessionId(workspaceId, workerName),
+                                    sessionId: formatSessionId(workspaceId, sessionName),
                                     state: childState,
                                 });
                             }
@@ -1445,10 +1445,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                       ? proposal.disposition
                       : "";
                 if (decision !== "review") break;
-                const gate = this.#openOrGetGate(workspaceId, proposal.workerId, "proposal", proposal);
-                this.#broadcastWorkerUpdate(workspaceId, proposal.workerId, (s) => [
+                const gate = this.#openOrGetGate(workspaceId, proposal.sessionId, "proposal", proposal);
+                this.#broadcastSessionUpdate(workspaceId, proposal.sessionId, (s) => [
                     {
-                        sessionId: s.sessionId,
+                        sessionId: s.acpSessionId,
                         update: {
                             sessionUpdate: "state_update",
                             state: "requires_action",
@@ -1462,7 +1462,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         if (visited.has(session)) continue;
                         visited.add(session);
                         if (session.workspaceId !== workspaceId) continue;
-                        if (session.workerId === proposal.workerId) {
+                        if (session.sessionId === proposal.sessionId) {
                             targetSession = session;
                             break;
                         }
@@ -1479,10 +1479,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             case "loop/interaction": {
                 if (!isClientInteractionProjection(params)) break;
                 const interaction = params;
-                const gate = this.#openOrGetGate(workspaceId, interaction.workerId, "interaction", undefined, interaction);
-                this.#broadcastWorkerUpdate(workspaceId, interaction.workerId, (s) => [
+                const gate = this.#openOrGetGate(workspaceId, interaction.sessionId, "interaction", undefined, interaction);
+                this.#broadcastSessionUpdate(workspaceId, interaction.sessionId, (s) => [
                     {
-                        sessionId: s.sessionId,
+                        sessionId: s.acpSessionId,
                         update: {
                             sessionUpdate: "state_update",
                             state: "requires_action",
@@ -1496,7 +1496,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         if (visited.has(session)) continue;
                         visited.add(session);
                         if (session.workspaceId !== workspaceId) continue;
-                        if (session.workerId === interaction.workerId) {
+                        if (session.sessionId === interaction.sessionId) {
                             targetSession = session;
                             break;
                         }
@@ -1537,7 +1537,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         if (visited.has(session)) continue;
                         visited.add(session);
                         if (session.workspaceId !== workspaceId) continue;
-                        this.#notifyPeerSession(peer, session.sessionId, {
+                        this.#notifyPeerSession(peer, session.acpSessionId, {
                             sessionUpdate: "notice",
                             severity: "info",
                             title: "workspace:preparation",
@@ -1564,7 +1564,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         const objSchema = { type: "object", additionalProperties: true } as const;
         const actions: Record<
             string,
-            { readonly scope: "daemon" | "workspace" | "worker"; readonly inputSchema: Record<string, unknown>; readonly outputSchema: Record<string, unknown> }
+            { readonly scope: "daemon" | "workspace" | "session"; readonly inputSchema: Record<string, unknown>; readonly outputSchema: Record<string, unknown> }
         > = {
             ping: { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             discover: { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
@@ -1572,16 +1572,16 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             "workspace.create": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.attach": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.list": { scope: "daemon", inputSchema: objSchema, outputSchema: objSchema },
-            "workspace.workers": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
+            "workspace.sessions": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.rename": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.share": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-            "workspace.rollback": { scope: "worker", inputSchema: objSchema, outputSchema: objSchema },
+            "workspace.rollback": { scope: "session", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.capabilities.get": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.capabilities.set": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
             "workspace.prompts": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-            "worker.loops": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
-            "log.read": { scope: "worker", inputSchema: objSchema, outputSchema: objSchema },
-            "entry.read": { scope: "worker", inputSchema: objSchema, outputSchema: objSchema },
+            "session.loops": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
+            "log.read": { scope: "session", inputSchema: objSchema, outputSchema: objSchema },
+            "entry.read": { scope: "session", inputSchema: objSchema, outputSchema: objSchema },
             "op.parse": { scope: "workspace", inputSchema: objSchema, outputSchema: objSchema },
         };
         for (const act of moduleActions) {
@@ -1605,7 +1605,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         rawParams: Record<string, unknown>,
         params: Record<string, unknown>,
         createWorkspace = true,
-    ): Promise<{ readonly workspaceId: number; readonly workerName: string; readonly workerId: number; readonly hasWorker: boolean }> {
+    ): Promise<{ readonly workspaceId: number; readonly sessionName: string; readonly sessionId: number; readonly hasSession: boolean }> {
         const sessionHint = typeof rawParams.sessionId === "string"
             ? rawParams.sessionId
             : typeof params.sessionId === "string"
@@ -1633,40 +1633,40 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
               ? params.projectRoot
               : undefined;
         const ws = await this.#resolveWorkspace(cwdHint, explicitWsId, workspaceHint, createWorkspace, explicitProjectRoot);
-        const explicitWorkerName = typeof rawParams.worker === "string"
-            ? rawParams.worker
-            : typeof params.worker === "string"
-              ? params.worker
-              : parsedSession?.workerName;
-        let worker = explicitWorkerName !== undefined
-            ? await this.#seam.readWorker({ workspaceId: ws.workspaceId, identity: { name: explicitWorkerName } })
+        const explicitSessionName = typeof rawParams.session === "string"
+            ? rawParams.session
+            : typeof params.session === "string"
+              ? params.session
+              : parsedSession?.sessionName;
+        let session = explicitSessionName !== undefined
+            ? await this.#seam.readSession({ workspaceId: ws.workspaceId, identity: { name: explicitSessionName } })
             : null;
-        if (worker === null && sessionHint !== undefined && parsedSession === null) {
-            const ref = await this.#seam.readWorkerReference({ namespace: "acp", reference: sessionHint });
+        if (session === null && sessionHint !== undefined && parsedSession === null) {
+            const ref = await this.#seam.readSessionReference({ namespace: "acp", reference: sessionHint });
             if (ref !== null && ref.workspaceId === ws.workspaceId) {
-                worker = await this.#seam.readWorker({ workspaceId: ws.workspaceId, identity: { id: ref.workerId } });
+                session = await this.#seam.readSession({ workspaceId: ws.workspaceId, identity: { id: ref.sessionId } });
             } else {
-                worker = await this.#seam.readWorker({ workspaceId: ws.workspaceId, identity: { name: sessionHint } });
+                session = await this.#seam.readSession({ workspaceId: ws.workspaceId, identity: { name: sessionHint } });
             }
         }
-        if (worker === null && explicitWorkerName === undefined) {
-            worker = await this.#seam.readWorker({ workspaceId: ws.workspaceId, identity: { name: "user" } });
+        if (session === null && explicitSessionName === undefined) {
+            session = await this.#seam.readSession({ workspaceId: ws.workspaceId, identity: { name: "user" } });
         }
-        const workerName = worker?.name ?? explicitWorkerName ?? sessionHint ?? "user";
+        const sessionName = session?.name ?? explicitSessionName ?? sessionHint ?? "user";
         return {
             workspaceId: ws.workspaceId,
-            workerName,
-            workerId: worker?.id ?? 1,
-            hasWorker: worker !== null,
+            sessionName,
+            sessionId: session?.id ?? 1,
+            hasSession: session !== null,
         };
     }
 
     async #executeSlashCommand(bound: BoundSession, cmd: string, rest: string, peer?: AcpPeer): Promise<string> {
         const envelope = {
-            sessionId: bound.sessionId,
+            sessionId: bound.acpSessionId,
             workspaceId: bound.workspaceId,
             workspace: bound.workspaceName,
-            worker: bound.workerName,
+            session: bound.sessionName,
         };
         if (cmd === "script") {
             const res = await this.#handlePlurnkAction(
@@ -1757,9 +1757,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         if (kind === "discover") {
             if (peer?.client !== null && peer !== undefined) {
                 const tempTranslator = new SessionTranslator({
-                    sessionId: sessionHint,
+                    acpSessionId: sessionHint,
                     workspaceId: 1,
-                    workerId: 1,
+                    sessionId: 1,
                     origin: this.#httpOrigin(),
                 });
                 for (const notice of this.#seam.configurationNotices()) {
@@ -1821,12 +1821,12 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             return { workspaces };
         }
 
-        if (kind === "workspace.workers") {
+        if (kind === "workspace.sessions") {
             const target = await this.#resolveActionTarget(rawParams, params, false);
-            const workers = await this.#seam.listWorkers(target.workspaceId, {
+            const sessions = await this.#seam.listSessions(target.workspaceId, {
                 ...(typeof params.hidden === "boolean" ? { hidden: params.hidden } : {}),
             });
-            return { workers };
+            return { sessions };
         }
 
         if (kind === "workspace.rename") {
@@ -1852,7 +1852,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             const target = await this.#resolveActionTarget(rawParams, params, false);
             return await this.#seam.rollback({
                 workspaceId: target.workspaceId,
-                workerId: target.workerId,
+                sessionId: target.sessionId,
                 actor: OWNER_ADDRESS,
                 to: typeof params.to === "string" ? params.to : "",
             });
@@ -1878,14 +1878,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             const prompts = await this.#seam.listPrompts(
                 target.workspaceId,
                 typeof params.limit === "number" ? params.limit : undefined,
-                typeof params.workerId === "number" ? params.workerId : undefined,
+                typeof params.sessionId === "number" ? params.sessionId : undefined,
             );
             return { prompts };
         }
 
-        if (kind === "worker.loops") {
+        if (kind === "session.loops") {
             const target = await this.#resolveActionTarget(rawParams, params, false);
-            const items = await this.#seam.listWorkerLoops({ workspaceId: target.workspaceId, workerId: target.workerId });
+            const items = await this.#seam.listSessionLoops({ workspaceId: target.workspaceId, sessionId: target.sessionId });
             return { items };
         }
 
@@ -1893,7 +1893,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             const target = await this.#resolveActionTarget(rawParams, params, false);
             const entries = await this.#seam.readLog({
                 workspaceId: target.workspaceId,
-                workerId: target.workerId,
+                sessionId: target.sessionId,
                 ...(typeof params.loopId === "number" ? { loopId: params.loopId } : {}),
                 ...(typeof params.turnId === "number" ? { turnId: params.turnId } : {}),
                 ...(typeof params.sinceId === "number" ? { sinceId: params.sinceId } : {}),
@@ -1910,7 +1910,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             const target = await this.#resolveActionTarget(rawParams, params, false);
             return await this.#seam.readEntry({
                 workspaceId: target.workspaceId,
-                workerId: target.workerId,
+                sessionId: target.sessionId,
                 target: typeof params.target === "string" ? params.target : "",
                 ...(typeof params.channel === "string" ? { channel: params.channel } : {}),
                 ...(typeof params.offset === "number" ? { offset: params.offset } : {}),
@@ -1942,11 +1942,11 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     ],
                 };
             }
-            await this.#seam.ensureRuntimeWorker(target.workspaceId);
+            await this.#seam.ensureRuntimeSession(target.workspaceId);
             const results = await this.#seam.dispatchClientAction({
                 workspaceId: target.workspaceId,
                 actor: OWNER_ADDRESS,
-                ...(target.hasWorker ? { contextWorkerId: target.workerId } : {}),
+                ...(target.hasSession ? { contextSessionId: target.sessionId } : {}),
                 statements,
             });
             return { results };
@@ -1990,11 +1990,11 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 },
             });
         }
-        if (registered.scope === "worker") {
+        if (registered.scope === "session") {
             return await this.#seam.invokeModuleAction(kind, params, {
-                scope: "worker",
+                scope: "session",
                 workspaceId: target.workspaceId,
-                workerId: target.workerId,
+                sessionId: target.sessionId,
             });
         }
         return await this.#seam.invokeModuleAction(kind, params, {
@@ -2012,7 +2012,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             closeWithProblem: async (problem: ProblemDetails) => {
                 if (peer.client !== null) {
                     for (const session of new Set(peer.sessions.values())) {
-                        this.#notifyPeerSession(peer, session.sessionId, {
+                        this.#notifyPeerSession(peer, session.acpSessionId, {
                             sessionUpdate: "notice",
                             severity: "error",
                             title: problem.title,
@@ -2108,16 +2108,16 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 );
                 const providerCatalog = this.#tryListProviders();
                 const [configOptions, modelInfo] = await Promise.all([
-                    this.#configOptions(bound.workspaceId, bound.workerId),
-                    this.#seam.readWorkerModel({ workspaceId: bound.workspaceId, workerId: bound.workerId }),
+                    this.#configOptions(bound.workspaceId, bound.sessionId),
+                    this.#seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 ]);
                 for (const notice of this.#seam.configurationNotices()) {
                     for (const { update } of bound.translator.notice(notice)) {
-                        this.#notifyPeerSession(peer, bound.sessionId, update);
+                        this.#notifyPeerSession(peer, bound.acpSessionId, update);
                     }
                 }
                 if (providerCatalog.problem !== null) {
-                    this.#notifyPeerSession(peer, bound.sessionId, {
+                    this.#notifyPeerSession(peer, bound.acpSessionId, {
                         sessionUpdate: "notice",
                         severity: "error",
                         title: providerCatalog.problem.title,
@@ -2130,7 +2130,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     });
                 }
                 return {
-                    sessionId: bound.sessionId,
+                    sessionId: bound.acpSessionId,
                     configOptions,
                     availableCommands: [...AVAILABLE_COMMANDS],
                     _meta: {
@@ -2142,7 +2142,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                                 preparation: this.#seam.workspacePreparationStatus?.(bound.workspaceId) ?? [],
                                 activity: this.#seam.workspaceDerivationStatus?.(bound.workspaceId) ?? null,
                             },
-                            worker: { id: bound.workerId, name: bound.workerName },
+                            session: { id: bound.sessionId, name: bound.sessionName },
                             status: {
                                 model: modelInfo.model,
                                 spawnModel: modelInfo.spawnModel,
@@ -2170,13 +2170,13 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
                 const providerCatalog = this.#tryListProviders();
                 const [entries, inbox, loops, proposals, interactions, configOptions, modelInfo] = await Promise.all([
-                    this.#seam.readLog({ workspaceId: bound.workspaceId, workerId: bound.workerId }),
-                    this.#seam.readInbox({ workspaceId: bound.workspaceId, workerId: bound.workerId }),
-                    this.#seam.listWorkerLoops({ workspaceId: bound.workspaceId, workerId: bound.workerId }),
+                    this.#seam.readLog({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                    this.#seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                    this.#seam.listSessionLoops({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                     this.#seam.pendingProposals(bound.workspaceId),
                     this.#seam.pendingClientInteractions(bound.workspaceId),
-                    this.#configOptions(bound.workspaceId, bound.workerId),
-                    this.#seam.readWorkerModel({ workspaceId: bound.workspaceId, workerId: bound.workerId }),
+                    this.#configOptions(bound.workspaceId, bound.sessionId),
+                    this.#seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 ]);
 
                 const replayed = SessionTranslator.replay(bound.translator, entries, inbox, {
@@ -2184,16 +2184,16 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 });
 
                 for (const { update } of replayed) {
-                    this.#notifyPeerSession(peer, bound.sessionId, update);
+                    this.#notifyPeerSession(peer, bound.acpSessionId, update);
                 }
 
                 for (const notice of this.#seam.configurationNotices()) {
                     for (const { update } of bound.translator.notice(notice)) {
-                        this.#notifyPeerSession(peer, bound.sessionId, update);
+                        this.#notifyPeerSession(peer, bound.acpSessionId, update);
                     }
                 }
                 if (providerCatalog.problem !== null) {
-                    this.#notifyPeerSession(peer, bound.sessionId, {
+                    this.#notifyPeerSession(peer, bound.acpSessionId, {
                         sessionUpdate: "notice",
                         severity: "error",
                         title: providerCatalog.problem.title,
@@ -2206,19 +2206,19 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     });
                 }
 
-                const workerProposals = proposals.filter((p) => {
+                const sessionProposals = proposals.filter((p) => {
                     const decision = isRecord(p.disposition)
                         ? p.disposition.decision
                         : typeof p.disposition === "string"
                           ? p.disposition
                           : "";
-                    return p.workerId === bound.workerId && decision === "review";
+                    return p.sessionId === bound.sessionId && decision === "review";
                 });
-                const workerInteractions = interactions.filter((i) => i.workerId === bound.workerId);
+                const sessionInteractions = interactions.filter((i) => i.sessionId === bound.sessionId);
 
-                const activeLoop = selectWorkerLoop(loops);
+                const activeLoop = selectSessionLoop(loops);
                 const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
-                const hasPendingAction = workerProposals.length > 0 || workerInteractions.length > 0;
+                const hasPendingAction = sessionProposals.length > 0 || sessionInteractions.length > 0;
 
                 const currentState: SessionUpdate = hasPendingAction
                     ? { sessionUpdate: "state_update", state: "requires_action" }
@@ -2226,14 +2226,14 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         ? { sessionUpdate: "state_update", state: "running" }
                         : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn" };
 
-                this.#notifyPeerSession(peer, bound.sessionId, currentState);
+                this.#notifyPeerSession(peer, bound.acpSessionId, currentState);
 
-                for (const proposal of workerProposals) {
-                    const gate = this.#openOrGetGate(bound.workspaceId, proposal.workerId, "proposal", proposal);
+                for (const proposal of sessionProposals) {
+                    const gate = this.#openOrGetGate(bound.workspaceId, proposal.sessionId, "proposal", proposal);
                     this.#dispatchGateToPeer(gate, peer, bound);
                 }
-                for (const interaction of workerInteractions) {
-                    const gate = this.#openOrGetGate(bound.workspaceId, interaction.workerId, "interaction", undefined, interaction);
+                for (const interaction of sessionInteractions) {
+                    const gate = this.#openOrGetGate(bound.workspaceId, interaction.sessionId, "interaction", undefined, interaction);
                     this.#dispatchGateToPeer(gate, peer, bound);
                 }
 
@@ -2249,7 +2249,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                                 preparation: this.#seam.workspacePreparationStatus?.(bound.workspaceId) ?? [],
                                 activity: this.#seam.workspaceDerivationStatus?.(bound.workspaceId) ?? null,
                             },
-                            worker: { id: bound.workerId, name: bound.workerName },
+                            session: { id: bound.sessionId, name: bound.sessionName },
                             status: {
                                 model: modelInfo.model,
                                 spawnModel: modelInfo.spawnModel,
@@ -2267,8 +2267,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         app.onRequest(methods.agent.session.list, async (ctx): Promise<ListSessionsResponse> => {
             peer.client = ctx.client;
             try {
-                const overview = await this.#seam.readWorkerOverview({
-                    limit: this.#opts.overviewWorkers,
+                const overview = await this.#seam.readSessionOverview({
+                    limit: this.#opts.overviewSessions,
                     excerptChars: this.#opts.excerptChars,
                 });
                 const rawWorkspaces: unknown[] = Array.isArray(overview.workspaces)
@@ -2276,10 +2276,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     : isRecord(overview.workspaces)
                       ? Object.values(overview.workspaces)
                       : [];
-                const rawWorkers: unknown[] = Array.isArray(overview.workers)
-                    ? overview.workers
-                    : isRecord(overview.workers)
-                      ? Object.values(overview.workers)
+                const rawSessions: unknown[] = Array.isArray(overview.sessions)
+                    ? overview.sessions
+                    : isRecord(overview.sessions)
+                      ? Object.values(overview.sessions)
                       : [];
 
                 const wsById = new Map<number, Record<string, unknown>>();
@@ -2289,7 +2289,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     }
                 }
                 const origin = this.#httpOrigin();
-                const sessions: SessionInfo[] = rawWorkers
+                const sessions: SessionInfo[] = rawSessions
                     .filter((w): w is Record<string, unknown> => {
                         if (!isRecord(w) || typeof w.workspaceId !== "number" || typeof w.name !== "string") return false;
                         const ws = wsById.get(w.workspaceId);
@@ -2303,8 +2303,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     })
                     .map((w) => {
                         const wsId = typeof w.workspaceId === "number" ? w.workspaceId : 1;
-                        const workerId = typeof w.id === "number" ? w.id : 1;
-                        const workerName = typeof w.name === "string" ? w.name : "user";
+                        const sessionId = typeof w.id === "number" ? w.id : 1;
+                        const sessionName = typeof w.name === "string" ? w.name : "user";
                         const ws = wsById.get(wsId);
                         const wsName = typeof ws?.name === "string" ? ws.name : String(wsId);
                         const projectRoot = typeof ws?.projectRoot === "string"
@@ -2321,23 +2321,23 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             ? {
                                   ...reply,
                                   body: {
-                                      url: `${origin}/acp/${wsId}/${workerId}/entry?target=${encodeURIComponent(
+                                      url: `${origin}/acp/${wsId}/${sessionId}/entry?target=${encodeURIComponent(
                                           `log:///${replyCoord}/SEND`,
                                       )}`,
                                   },
                               }
                             : null;
                         return {
-                            sessionId: formatSessionId(wsId, workerName),
+                            sessionId: formatSessionId(wsId, sessionName),
                             cwd: projectRoot,
-                            title: `${wsName}#${workerName}`,
+                            title: `${wsName}#${sessionName}`,
                             updatedAt: replyAt,
                             _meta: {
                                 plurnk: {
                                     workspaceId: wsId,
                                     workspaceName: wsName,
-                                    workerId,
-                                    workerName,
+                                    sessionId,
+                                    sessionName,
                                     lifecycle: w.lifecycle ?? "idle",
                                     reply: replyMeta,
                                 },
@@ -2355,9 +2355,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             try {
                 const bound = peer.sessions.get(ctx.params.sessionId)
                     ?? (await this.#resolveSessionBinding(peer, ctx.params.sessionId, undefined, false));
-                await this.#seam.setWorkerHidden({
+                await this.#seam.setSessionHidden({
                     workspaceId: bound.workspaceId,
-                    workerId: bound.workerId,
+                    sessionId: bound.sessionId,
                     hidden: true,
                 });
                 peer.sessions.delete(ctx.params.sessionId);
@@ -2373,18 +2373,18 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 Module.#assertSinglePortSecurity(ctx.params);
                 const parent = peer.sessions.get(ctx.params.sessionId)
                     ?? (await this.#resolveSessionBinding(peer, ctx.params.sessionId, ctx.params.cwd, false));
-                const forked = await this.#seam.forkWorker({
+                const forked = await this.#seam.forkSession({
                     workspaceId: parent.workspaceId,
-                    workerId: parent.workerId,
+                    sessionId: parent.sessionId,
                 });
-                const forkedWorker = await this.#seam.readWorker({
+                const forkedSession = await this.#seam.readSession({
                     workspaceId: parent.workspaceId,
-                    identity: { id: forked.workerId },
+                    identity: { id: forked.sessionId },
                 });
-                const workerName = forked.workerName ?? forkedWorker?.name ?? String(forked.workerId);
-                const newSessionId = formatSessionId(parent.workspaceId, workerName);
+                const sessionName = forked.sessionName ?? forkedSession?.name ?? String(forked.sessionId);
+                const newSessionId = formatSessionId(parent.workspaceId, sessionName);
                 await this.#resolveSessionBinding(peer, newSessionId, ctx.params.cwd, false);
-                const configOptions = await this.#configOptions(parent.workspaceId, forked.workerId);
+                const configOptions = await this.#configOptions(parent.workspaceId, forked.sessionId);
                 return {
                     sessionId: newSessionId,
                     configOptions,
@@ -2411,23 +2411,23 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
 
                     switch (ctx.params.configId) {
                         case "model":
-                            await this.#seam.setWorkerModel({
+                            await this.#seam.setSessionModel({
                                 workspaceId: bound.workspaceId,
-                                workerId: bound.workerId,
+                                sessionId: bound.sessionId,
                                 selector: value,
                             });
                             break;
                         case "thought_level":
-                            await this.#seam.setWorkerEffort({
+                            await this.#seam.setSessionEffort({
                                 workspaceId: bound.workspaceId,
-                                workerId: bound.workerId,
+                                sessionId: bound.sessionId,
                                 effort: value,
                             });
                             break;
                         case "spawn_model":
-                            await this.#seam.setWorkerSpawnModel({
+                            await this.#seam.setSessionSpawnModel({
                                 workspaceId: bound.workspaceId,
-                                workerId: bound.workerId,
+                                sessionId: bound.sessionId,
                                 selector: value === "inherit" ? null : value,
                             });
                             break;
@@ -2481,10 +2481,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         }
                     }
 
-                    const configOptions = await this.#configOptions(bound.workspaceId, bound.workerId);
-                    this.#broadcastWorkerUpdate(bound.workspaceId, bound.workerId, (s) => [
+                    const configOptions = await this.#configOptions(bound.workspaceId, bound.sessionId);
+                    this.#broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                         {
-                            sessionId: s.sessionId,
+                            sessionId: s.acpSessionId,
                             update: {
                                 sessionUpdate: "config_option_update",
                                 configOptions,
@@ -2522,7 +2522,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 }
                 const plurnkMeta = Module.#extractPlurnkMeta(ctx.params._meta);
                 const messageId = plurnkMeta.messageId ?? crypto.randomUUID();
-                const messageAddress = `acp:///sessions/${encodeURIComponent(bound.sessionId)}/messages/${encodeURIComponent(messageId)}`;
+                const messageAddress = `acp:///sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
 
                 if (typeof this.#seam.messageAdmission === "function") {
                     await this.#seam.messageAdmission({
@@ -2538,9 +2538,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     const cmd = (spaceIdx === -1 ? trimmed.slice(1) : trimmed.slice(1, spaceIdx)).toLowerCase();
                     const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
                     if (AVAILABLE_COMMANDS.some((c) => c.name === cmd)) {
-                        this.#broadcastWorkerUpdate(bound.workspaceId, bound.workerId, (s) => [
+                        this.#broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                             {
-                                sessionId: s.sessionId,
+                                sessionId: s.acpSessionId,
                                 update: {
                                     sessionUpdate: "state_update",
                                     state: "running",
@@ -2548,9 +2548,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             },
                         ]);
                         const replyText = await this.#executeSlashCommand(bound, cmd, rest, peer);
-                        this.#broadcastWorkerUpdate(bound.workspaceId, bound.workerId, (s) => [
+                        this.#broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                             {
-                                sessionId: s.sessionId,
+                                sessionId: s.acpSessionId,
                                 update: {
                                     sessionUpdate: "agent_message_chunk",
                                     messageId,
@@ -2558,7 +2558,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                                 },
                             },
                             {
-                                sessionId: s.sessionId,
+                                sessionId: s.acpSessionId,
                                 update: {
                                     sessionUpdate: "state_update",
                                     state: "idle",
@@ -2570,7 +2570,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     }
                 }
 
-                this.#notifyPeerSession(peer, bound.sessionId, {
+                this.#notifyPeerSession(peer, bound.acpSessionId, {
                     sessionUpdate: "notice",
                     severity: "info",
                     title: "workspace:state",
@@ -2585,9 +2585,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         },
                     },
                 });
-                this.#broadcastWorkerUpdate(bound.workspaceId, bound.workerId, (s) => [
+                this.#broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                     {
-                        sessionId: s.sessionId,
+                        sessionId: s.acpSessionId,
                         update: {
                             sessionUpdate: "state_update",
                             state: "running",
@@ -2598,7 +2598,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 const maxTurns = plurnkMeta.maxTurns ?? this.#opts.maxTurns;
                 const ack = await this.#seam.runLoop({
                     workspaceId: bound.workspaceId,
-                    workerId: bound.workerId,
+                    sessionId: bound.sessionId,
                     prompt: text,
                     source: messageAddress,
                     messageAddress,
@@ -2616,7 +2616,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     _meta: {
                         plurnk: {
                             workspaceId: bound.workspaceId,
-                            workerId: bound.workerId,
+                            sessionId: bound.sessionId,
                             workspace: {
                                 id: bound.workspaceId,
                                 name: bound.workspaceName,
@@ -2633,10 +2633,10 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             const bound = peer.sessions.get(ctx.params.sessionId)
                 ?? (await this.#resolveSessionBinding(peer, ctx.params.sessionId, undefined, false).catch(() => undefined));
             if (bound === undefined) return;
-            this.#seam.cancelDrain(bound.workerId, "Cancelled by ACP client");
-            await this.#seam.cancelWorker({
+            this.#seam.cancelDrain(bound.sessionId, "Cancelled by ACP client");
+            await this.#seam.cancelSession({
                 workspaceId: bound.workspaceId,
-                workerId: bound.workerId,
+                sessionId: bound.sessionId,
                 reason: "Cancelled by ACP client",
             });
         });

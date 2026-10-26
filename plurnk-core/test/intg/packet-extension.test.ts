@@ -8,7 +8,7 @@ import type { PacketSectionDraft } from "@plurnk/plurnk-schemes";
 import PacketWire from "../../src/core/packet-wire.ts";
 import type { StoredPacketSection } from "../../src/core/StoredPacket.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
 // Extension packet control: a trusted scheme rewrites the engine's default section
@@ -19,8 +19,8 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-extension-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "p");
         const schemes = new SchemeRegistry();
         const inspected: PacketSectionDraft[][] = [];
         // A third-party extension: prepend its own section, drop the kernel's budget.
@@ -45,12 +45,12 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
         const engine = new Engine({ db, schemes });
         // {§emission-history}: the transform receives each turn's operations before their results.
         const programs = [
-            `${PlurnkParser.frame("EDIT (worker:///memo.md)", "Kept whole.")}\n\n${PlurnkParser.frame("NOTE", "Wrote the memo.")}`,
-            `${PlurnkParser.frame("READ (worker:///memo.md)", null)}\n\n${PlurnkParser.frame("NOTE", "Read it back.")}`,
+            `${PlurnkParser.frame("EDIT (workspace:///memo.md)", "Kept whole.")}\n\n${PlurnkParser.frame("NOTE", "Wrote the memo.")}`,
+            `${PlurnkParser.frame("READ (workspace:///memo.md)", null)}\n\n${PlurnkParser.frame("NOTE", "Read it back.")}`,
             PlurnkParser.frame("SEND [200]", "Done."),
         ];
         const provider = new Mock({ contextWindow: 100000, responses: programs.map((content) => ({ assistant: { content, reasoning: null } })) });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
 
         // ADD: the extension's section is in the packet, carrying its content.
@@ -64,7 +64,7 @@ test("{§emission-history} extension packet control: a scheme adds, removes, and
         const userOrder = (packet.sections as Array<{ name: string; slot: string }>).filter((s) => s.slot === "user").map((s) => s.name);
         assert.equal(userOrder[0], "demo", "extension section leads the user slot");
         assert.ok(!userOrder.includes("budget"), "budget removed from the user slot");
-        for (let turn = 0; turn < 2; turn++) await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        for (let turn = 0; turn < 2; turn++) await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const chronological = inspected.find((sections) => sections.filter(({ slot }) => slot === "assistant").length === 2);
         assert.ok(chronological, "the transform receives the complete interpolated history");
         const expected = programs.slice(0, 2);

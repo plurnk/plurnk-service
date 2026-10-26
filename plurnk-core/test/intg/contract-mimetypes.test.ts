@@ -18,14 +18,14 @@ import {
 } from "@plurnk/plurnk-mimetypes";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import File from "../../src/schemes/File.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEnvelope, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
 import type { HandlerContent, QueryDialect } from "@plurnk/plurnk-mimetypes";
@@ -38,10 +38,10 @@ const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `cm-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
+    const sessionId = await insertSession(db, workspaceId);
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
-    return { db, workspaceId, workerId, mimetypes };
+    return { db, workspaceId, sessionId, mimetypes };
 };
 
 const binaryProjectionMimetypes = (revision: string): Mimetypes => {
@@ -83,19 +83,19 @@ const binaryProjectionMimetypes = (revision: string): Mimetypes => {
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
 
 test("{§slice-semantics-compose-pattern} jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
-    const { db, workspaceId, workerId, mimetypes } = await setup();
+    const { db, workspaceId, sessionId, mimetypes } = await setup();
     try {
-        const k = new Worker();
+        const k = new Workspace();
         const broken = '{"host": "db.internal", "pool":}';  // trailing-colon: not valid JSON
-        await k.edit(editStmt(urlPath("worker", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        await k.edit(editStmt(urlPath("workspace", "/config.json"), broken), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
 
-        const r = await readThroughScheme("worker", null,
-            readStmt(urlPath("worker", "/config.json")),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
+        const r = await readThroughScheme("workspace", null,
+            readStmt(urlPath("workspace", "/config.json")),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
         );
         const matched = await k.find(
-            { ...findStmt(urlPath("worker", "/config.json")), matcher: { dialect: "jsonpath", raw: "$.host" } },
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
+            { ...findStmt(urlPath("workspace", "/config.json")), matcher: { dialect: "jsonpath", raw: "$.host" } },
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
         );
         assert.equal(r.status, 200, "plain READ of the entry still works");
         assert.ok(matched.status === 203 || matched.status === 204, "parse failure is a soft 203 or 204");
@@ -105,28 +105,28 @@ test("{§slice-semantics-compose-pattern} jsonpath on malformed-JSON entry retur
 // --- {§slice-semantics-compose-pattern}: matcher evidence guides a later <L> -------------
 
 test("{§kill-scope-entry} an exact matcher FIND returns flat coordinates for a surgical follow-up READ", async () => {
-    const { db, workspaceId, workerId, mimetypes } = await setup();
+    const { db, workspaceId, sessionId, mimetypes } = await setup();
     try {
-        const loopId = await insertLoop(db, workerId, 1, "compose");
+        const loopId = await insertLoop(db, sessionId, 1, "compose");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
 
-        await new Worker().edit(
-            editStmt(urlPath("worker", "/log.txt"), "error: alpha\nok: beta\nerror: gamma"),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
+        await new Workspace().edit(
+            editStmt(urlPath("workspace", "/log.txt"), "error: alpha\nok: beta\nerror: gamma"),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
         );
 
         const r = await engine.dispatch({
             statement: {
-                ...findStmt(urlPath("worker", "/log.txt")),
+                ...findStmt(urlPath("workspace", "/log.txt")),
                 matcher: { dialect: "regex", raw: "/error: (\\w+)/g", pattern: "error: (\\w+)", flags: "g" } as MatcherBody,
             },
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(r.rowsWritten ?? 1, 1);
 
         const row = await db.log_read_by_coordinate.get<{ rx: string }>({
-            worker_id: workerId,
+            session_id: sessionId,
             loop_seq: 1,
             turn_seq: 1,
             sequence: 1,
@@ -144,9 +144,9 @@ test("{§kill-scope-entry} an exact matcher FIND returns flat coordinates for a 
 
         const second = rx.results[1];
         assert.ok(second.region);
-        const surgical = await readThroughScheme("worker", null,
+        const surgical = await readThroughScheme("workspace", null,
             {
-                ...readStmt(urlPath("worker", "/log.txt")),
+                ...readStmt(urlPath("workspace", "/log.txt")),
                 lineMarker: {
                     marks: [
                         second.region.startLine,
@@ -156,7 +156,7 @@ test("{§kill-scope-entry} an exact matcher FIND returns flat coordinates for a 
                     ],
                 },
             },
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
         );
         assert.equal(surgical.content, "error: gamma");
     } finally { await db.close(); }
@@ -170,21 +170,21 @@ test("{§mimetype-methods} KILL(path#fragment) deletes only the named channel; s
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-410-${crypto.randomUUID()}`, { producer: "client" });
-        const { workspaceId, workerId, loopId, turnId } = env;
+        const { workspaceId, sessionId, loopId, turnId } = env;
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
 
-        // Seed a two-channel entry directly (production Worker is single-channel;
+        // Seed a two-channel entry directly (production Session is single-channel;
         // the 410-fragment path is channel-generic, so seed both channels).
         const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
-            workspace_id: workspaceId, scheme: "worker", authority: "", pathname: "/multi",
+            workspace_id: workspaceId, scheme: "workspace", authority: "", pathname: "/multi",
         });
         const entryId = entry!.id;
         await db.test_seed_channel.run({ entry_id: entryId, name: "body", content: "keep me", mimetype: "text/plain", state: "static" });
         await db.test_seed_channel.run({ entry_id: entryId, name: "summary", content: "delete me", mimetype: "text/plain", state: "static" });
 
         const r = await engine.dispatch({
-            statement: killStmt(urlPath("worker", "/multi", "summary")),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "client",
+            statement: killStmt(urlPath("workspace", "/multi", "summary")),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "client",
         });
         assert.equal(r.status, 200, "KILL on an existing channel succeeds");
 
@@ -230,7 +230,7 @@ test("{§mimetype-schemes-do-not-invoke-handlers} write resolves mimetype and de
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, `cm-fire-${crypto.randomUUID()}`);
-        const { workspaceId, workerId } = env;
+        const { workspaceId, sessionId } = env;
 
         const projectionCalls: string[] = [];
         const queryCalls: string[] = [];
@@ -261,11 +261,11 @@ test("{§mimetype-schemes-do-not-invoke-handlers} write resolves mimetype and de
         });
         await mimetypes.ready();
 
-        // WRITE phase: Worker.edit on a `.spy` path. Resolves mimetype via detect and asks the
+        // WRITE phase: Workspace.edit on a `.spy` path. Resolves mimetype via detect and asks the
         // handler for its readable projection once ({§readable-channel}); never its query.
-        const edited = await new Worker().edit(
-            editStmt(urlPath("worker", "/notes.spy"), "alpha\nbeta\ngamma"),
-            makeSchemeCtx({ db, workspaceId, workerId, mimetypes }),
+        const edited = await new Workspace().edit(
+            editStmt(urlPath("workspace", "/notes.spy"), "alpha\nbeta\ngamma"),
+            makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }),
         );
         assert.equal(edited.status, 201, "write succeeded");
         // Confirm the write resolved the spy mimetype (detect ran, not the handler).
@@ -293,9 +293,9 @@ test("{§read-bytes} a binary file persists only derived Unicode and refreshes w
 
         const workspaceId = await insertWorkspace(db, `binary-projection-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const firstMimetypes = binaryProjectionMimetypes("projection-v1");
-        const firstCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: firstMimetypes });
+        const firstCtx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: firstMimetypes });
 
         assert.deepEqual(await GitMembership.indexGitMembership(firstCtx), []);
         const entry = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({
@@ -326,7 +326,7 @@ test("{§read-bytes} a binary file persists only derived Unicode and refreshes w
         assert.equal(read.mimetype, "text/markdown");
 
         const secondMimetypes = binaryProjectionMimetypes("projection-v2");
-        const secondCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: secondMimetypes });
+        const secondCtx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: secondMimetypes });
         assert.deepEqual(
             await GitMembership.indexGitMembership(secondCtx),
             [],
@@ -371,7 +371,7 @@ test("{§read-bytes} a binary file persists only derived Unicode and refreshes w
                 return typeof value === "function" ? value.bind(target) : value;
             },
         });
-        const limitedCtx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: limitedMimetypes });
+        const limitedCtx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: limitedMimetypes });
         assert.deepEqual(await GitMembership.indexGitMembership(limitedCtx), []);
         const limited = await db.test_get_entry_by_path.get<{ id: number; attributes: string }>({
             workspace_id: workspaceId,
@@ -416,8 +416,8 @@ test("{§copy-destination-mimetype} an admitted file type survives reprojection,
     try {
         const workspaceId = await insertWorkspace(db, "retained-type");
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: binaryProjectionMimetypes("first") });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: binaryProjectionMimetypes("first") });
         const pathname = "document.unknownext";
         const file = new File();
         const proposed = await file.writeEntry(pathname, {
@@ -468,7 +468,7 @@ test("{§mimetype-classification-consumption} registry-aware classification gove
 
         const workspaceId = await insertWorkspace(db, `classification-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const textPackage = "stub://mimetype-text";
         const binaryPackage = "stub://mimetype-binary";
         const mimetypes = new Mimetypes({
@@ -512,7 +512,7 @@ test("{§mimetype-classification-consumption} registry-aware classification gove
                 );
             },
         });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
         await GitMembership.indexGitMembership(ctx);
 
         const file = new File();
@@ -581,9 +581,9 @@ test("{§mimetype-classification-consumption} registry-aware classification gove
 // {§mimetype-query} Recursive descent over a deep structural projection remains
 // a valid matcher rather than becoming a depth-capped 400.
 test("{§matcher-dispatch} recursive-descent jsonpath over a deep code-entry parse tree matches", async () => {
-    const { db, workspaceId, workerId, mimetypes } = await setup();
+    const { db, workspaceId, sessionId, mimetypes } = await setup();
     try {
-        const k = new Worker();
+        const k = new Workspace();
         const source = [
             "export function greet(name: string): string {",
             "    const prefix = \"hello\";",
@@ -593,10 +593,10 @@ test("{§matcher-dispatch} recursive-descent jsonpath over a deep code-entry par
             "    return items.filter((x) => x.length > 0).map((x) => x.trim());",
             "}",
         ].join("\n");
-        await k.edit(editStmt(urlPath("worker", "/util.ts"), source), makeSchemeCtx({ db, workspaceId, workerId, mimetypes }));
+        await k.edit(editStmt(urlPath("workspace", "/util.ts"), source), makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
 
         const matched = await k.find(
-            { ...findStmt(urlPath("worker", "/util.ts")), matcher: { dialect: "jsonpath", raw: "$..*" } },
+            { ...findStmt(urlPath("workspace", "/util.ts")), matcher: { dialect: "jsonpath", raw: "$..*" } },
             makeSchemeCtx({ db, workspaceId, mimetypes }),
         );
         assert.notEqual(matched.status, 400, `depth cap resurfaced as a model-blamed 400: ${matched.problem?.detail ?? ""}`);

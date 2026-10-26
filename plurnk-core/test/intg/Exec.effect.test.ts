@@ -5,14 +5,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import { parsePath } from "@plurnk/plurnk-parser";
 import { type ExecStatement, type RuntimeTag } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import ExecScratch from "../../src/schemes/ExecScratch.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, rootWorkspace, seedEntryWithChannel } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -70,21 +70,21 @@ const wire = async () => {
     });
     schemes.registerRuntimeSchemes(executors); // {§executor-scheme-output} Register per-tag READ faces as daemon boot does.
     const workspaceId = await insertWorkspace(db, `effect-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    await ownWorker(db, workspaceId, workerId);
-    const loopId = await insertLoop(db, workerId, 1, "effect test");
+    const sessionId = await insertSession(db, workspaceId);
+    await ownSession(db, workspaceId, sessionId);
+    const loopId = await insertLoop(db, sessionId, 1, "effect test");
     const turnId = await insertTurn(db, loopId, 1, 102);
-    return { db, engine, exec, workspaceId, workerId, loopId, turnId, tag };
+    return { db, engine, exec, workspaceId, sessionId, loopId, turnId, tag };
 };
 
 test("{§exec-stream} effect-gating: pure runtime auto-runs ungated — no proposal, no in-band body", async () => {
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId, tag } = await wire();
+    const { db, engine, exec, workspaceId, sessionId, loopId, turnId, tag } = await wire();
     try {
         // No target → pure → auto. dispatch resolves WITHOUT any
         // external resolveProposal call (the host path would hang here).
         const result = await engine.dispatch({
             statement: execStmt(tag, null, "SELECT 1 AS n;"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 202, "a pure runtime must not leave a pending proposal — it skips the gate");
         assert.ok(result.status < 400, `auto-run resolved cleanly; got ${result.status}`);
@@ -96,7 +96,7 @@ test("{§exec-stream} effect-gating: pure runtime auto-runs ungated — no propo
 });
 
 test("{§exec-target-routing} effect-gating: a pure execution being applied is never discoverable as a client proposal", async () => {
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId, tag } = await wire();
+    const { db, engine, exec, workspaceId, sessionId, loopId, turnId, tag } = await wire();
     const applyEntered = deferred<void>();
     const releaseApply = deferred<void>();
     const originalApply = exec.applyResolution.bind(exec);
@@ -108,7 +108,7 @@ test("{§exec-target-routing} effect-gating: a pure execution being applied is n
     const idDeferred = deferred<number>();
     const dispatched = engine.dispatch({
         statement: execStmt(tag, null, "SELECT 1 AS n;"),
-        workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+        workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         onDispatch: (id) => idDeferred.resolve(id),
     });
     try {
@@ -140,12 +140,12 @@ test("{§exec-target-routing} effect-gating: a pure execution being applied is n
 // {§exec-target-routing} {§executor-sinks}: cwd and target remain distinct inputs.
 test("{§exec-target-routing}: targetless pure runtime ignores workspace cwd and keeps a null target", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pure-ws-"));
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId, tag } = await wire();
+    const { db, engine, exec, workspaceId, sessionId, loopId, turnId, tag } = await wire();
     try {
         await rootWorkspace(db, workspaceId, root);  // cwd now defaults to this dir
         const result = await engine.dispatch({
             statement: execStmt(tag, null, "SELECT 'Paris' AS capital;"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 202, "pure runtime auto-runs ungated, no proposal");
         assert.ok(result.status < 400, `resolved cleanly with a project_root cwd; got ${result.status}`);
@@ -155,12 +155,12 @@ test("{§exec-target-routing}: targetless pure runtime ignores workspace cwd and
 });
 
 test("{§exec-host-proposes} effect-gating: sh (host) proposes — entry sits at 'proposed' awaiting a gate", async () => {
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
+    const { db, engine, exec, workspaceId, sessionId, loopId, turnId } = await wire();
     try {
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(null, null, "echo hi"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -215,8 +215,8 @@ test("{§exec-host-proposes} one canonical target derives one preserved effect f
     const engine = new Engine({ db, schemes });
     engine.setExecutors(registry);
     const workspaceId = await insertWorkspace(db, `canonical-effect-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "canonical effect");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "canonical effect");
     const turnId = await insertTurn(db, loopId, 1, 102);
     try {
         await writeFile(join(root, "data.txt"), "local data");
@@ -224,14 +224,14 @@ test("{§exec-host-proposes} one canonical target derives one preserved effect f
         await rootWorkspace(db, workspaceId, root);
         await seedEntryWithChannel(db, {
             workspaceId,
-            scheme: "worker",
+            scheme: "workspace",
             pathname: "/source",
             channel: "body",
             content: "scheme data",
             state: "static",
         });
 
-        const schemeTarget = parsePath("worker:///source#body");
+        const schemeTarget = parsePath("workspace:///source#body");
         assert.ok(schemeTarget !== null);
         const statements: ExecStatement[] = [
             execStmt("tool", null, "inline"),
@@ -245,7 +245,7 @@ test("{§exec-host-proposes} one canonical target derives one preserved effect f
             let logEntryId: number | undefined;
             const result = await engine.dispatch({
                 statement,
-                workspaceId, workerId, loopId, turnId,
+                workspaceId, sessionId, loopId, turnId,
                 sequence: index + 1,
                 origin: "model",
                 onDispatch: (id) => { logEntryId = id; },
@@ -261,8 +261,8 @@ test("{§exec-host-proposes} one canonical target derives one preserved effect f
             { target: null, argumentCount: 1 },
             { target: "data.txt", argumentCount: 1 },
             { target: null, argumentCount: 1 },
-            { target: "worker:///source#body", argumentCount: 1 },
-            { target: "worker:///source#body", argumentCount: 1 },
+            { target: "workspace:///source#body", argumentCount: 1 },
+            { target: "workspace:///source#body", argumentCount: 1 },
         ], "effect() is called once against the canonical logical target and never receives body metadata");
         assert.deepEqual(effects, ["pure", "read", "pure", "read", "read"], "the admitted effect fact is persisted with each invocation");
         assert.deepEqual(runs.map(({ body, cwd, target, materialized }) => ({
@@ -285,7 +285,7 @@ test("{§exec-host-proposes} one canonical target derives one preserved effect f
 });
 
 test("{§exec-host-proposes} bare execution resolves to sh through the shared workspace capability policy", async () => {
-    const { db, engine, exec, workspaceId, workerId, loopId, turnId } = await wire();
+    const { db, engine, exec, workspaceId, sessionId, loopId, turnId } = await wire();
     try {
         await db.test_set_workspace_settings.run({
             id: workspaceId,
@@ -293,7 +293,7 @@ test("{§exec-host-proposes} bare execution resolves to sh through the shared wo
         });
         const result = await engine.dispatch({
             statement: execStmt(null, null, "echo hi"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403, "workspace policy refuses the default sh runtime before proposal or spawn");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/capability-denied");

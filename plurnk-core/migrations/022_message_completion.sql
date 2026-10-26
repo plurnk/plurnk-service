@@ -13,8 +13,8 @@ CREATE INDEX message_completions_response_id ON message_completions(response_id)
 INSERT INTO message_completions (message_id, response_id, status)
 SELECT m.id, MAX(r.id), 200
 FROM message_sources m
-JOIN workers w ON w.workspace_id = m.workspace_id
-JOIN log_responses r ON r.worker_id = w.id
+JOIN sessions w ON w.workspace_id = m.workspace_id
+JOIN log_responses r ON r.session_id = w.id
 JOIN json_each(r.rx, '$.answers') a ON a.value = m.path
 GROUP BY m.id;
 

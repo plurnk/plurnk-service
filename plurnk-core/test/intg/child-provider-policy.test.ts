@@ -29,7 +29,7 @@ const declaredProvider = (name: string, model: string): ProviderAlias => {
 
 type LoopRow = {
     id: number;
-    worker_id: number;
+    session_id: number;
     model_route_id: number | null;
     spawn_model_route_id: number | null;
     status: number;
@@ -69,14 +69,14 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("````WORK (worker://child)\ndelegate once\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````WORK (session://child)\ndelegate once\n````\n\n````WAIT\nwaiting\n````"),
             makeMockResponse("````SEND [200]\ntree complete\n````"),
         ],
     });
     const child = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("````WORK (worker://grandchild)\ndelegate again\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````WORK (session://grandchild)\ndelegate again\n````\n\n````WAIT\nwaiting\n````"),
             makeMockResponse("````SEND [200]\nleaf complete\n````"),
             makeMockResponse("````SEND [200]\nchild complete\n````"),
         ],
@@ -89,22 +89,22 @@ test("{§methods-loop-run-child-provider}: a smaller WORK provider carries throu
         try {
             await rpcCall(ws, 1, "workspace.create", { name: `child-policy-${crypto.randomUUID()}` });
             const result = await runLoopToTerminal(ws, 2, {
-                prompt: "build a two-level worker tree",
+                prompt: "build a two-level session tree",
                 selector: parentSpec.alias,
                 childSelector: childSpec.alias,
             });
             assert.equal(result.finalStatus, 200);
-            const workerId = result.modelWorkerId;
-            assert.ok(workerId !== undefined);
-            const workers = await db.test_workers_with_parent.all<{ id: number; parent_worker_id: number | null; origin: string }>({});
-            const root = workers.find(({ id }) => id === workerId);
-            const first = workers.find(({ parent_worker_id: parentId }) => parentId === root?.id);
-            const second = workers.find(({ parent_worker_id: parentId }) => parentId === first?.id);
+            const sessionId = result.modelSessionId;
+            assert.ok(sessionId !== undefined);
+            const sessions = await db.test_sessions_with_parent.all<{ id: number; parent_session_id: number | null; origin: string }>({});
+            const root = sessions.find(({ id }) => id === sessionId);
+            const first = sessions.find(({ parent_session_id: parentId }) => parentId === root?.id);
+            const second = sessions.find(({ parent_session_id: parentId }) => parentId === first?.id);
             assert.ok(root && first && second, "WORK created the complete root → child → grandchild topology");
 
             const loops = (await db.test_all_loops.all<LoopRow>({})).filter(({ model_route_id }) => model_route_id !== null);
-            const rootLoop = loops.find(({ worker_id: owner }) => owner === root.id);
-            const childLoops = loops.filter(({ worker_id: owner }) => owner === first.id || owner === second.id);
+            const rootLoop = loops.find(({ session_id: owner }) => owner === root.id);
+            const childLoops = loops.filter(({ session_id: owner }) => owner === first.id || owner === second.id);
             assert.deepEqual(await routeSpec(db, rootLoop?.model_route_id ?? null), parentSpec, "only the client-started root uses the parent provider");
             assert.deepEqual(await routeSpec(db, rootLoop?.spawn_model_route_id ?? null), childSpec, "the root persists its resolved spawn policy");
             assert.equal(childLoops.length, 2);
@@ -128,7 +128,7 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     const parent = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("````WORK (worker://child)\nuse configured child\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````WORK (session://child)\nuse configured child\n````\n\n````WAIT\nwaiting\n````"),
             makeMockResponse("````SEND [200]\nparent complete\n````"),
         ],
     });
@@ -161,7 +161,7 @@ test("{§methods-loop-run-child-provider}: the configured child alias supplies a
     });
 });
 
-test("{§bare-inference}: BARE consumes the loop's durable child provider without spawning a worker", async () => {
+test("{§bare-inference}: BARE consumes the loop's durable child provider without spawning a session", async () => {
     const parentSpec = declaredProvider("bare-parent", "bare-parent-model");
     const childSpec = declaredProvider("bare-child", "bare-child-model");
     const parent = new Mock({
@@ -193,8 +193,8 @@ test("{§bare-inference}: BARE consumes the loop's durable child provider withou
             const rows = await db.test_log_entries_by_loop.all<{ op: string | null; rx: string }>({ loop_id: result.loopId });
             const bare = rows.find(({ op }) => op === "BARE");
             assert.equal((JSON.parse(bare?.rx ?? "null") as { content?: string } | null)?.content, "Berlin");
-            const workers = await db.test_workers_with_parent.all<{ parent_worker_id: number | null }>({});
-            assert.equal(workers.filter(({ parent_worker_id }) => parent_worker_id !== null).length, 0, "BARE creates no child worker");
+            const sessions = await db.test_sessions_with_parent.all<{ parent_session_id: number | null }>({});
+            assert.equal(sessions.filter(({ parent_session_id }) => parent_session_id !== null).length, 0, "BARE creates no child session");
         } finally {
             ws.close();
         }
@@ -207,7 +207,7 @@ test("{§methods-loop-run-child-provider}: explicit inherit overrides configurat
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
-            makeMockResponse("````WORK (worker://child)\ndo it\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````WORK (session://child)\ndo it\n````\n\n````WAIT\nwaiting\n````"),
             makeMockResponse("````SEND [200]\nchild complete\n````"),
             makeMockResponse("````SEND [200]\nparent complete\n````"),
         ],
@@ -244,7 +244,7 @@ test("{§methods-loop-run-child-provider}: an oversized FORK fails as an ordinar
     const parent = new Mock({
         contextWindow: 32768,
         responses: [
-            makeMockResponse("````FORK (worker://branch)\ncontinue with inherited history\n````\n\n````WAIT\nwaiting\n````"),
+            makeMockResponse("````FORK (session://branch)\ncontinue with inherited history\n````\n\n````WAIT\nwaiting\n````"),
             makeMockResponse("````SEND [200]\nobserved child failure\n````"),
         ],
     });

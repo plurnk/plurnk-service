@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import StrikeRail from "../../src/core/StrikeRail.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
 const response = (content: string) => ({
     assistant: { content, reasoning: null },
@@ -12,17 +12,17 @@ const response = (content: string) => ({
 });
 // A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
 // would not ({§matcher-refusal}).
-const extraSlotCopy = "````COPY (worker:///a) (worker:///b) (worker:///c)````";
-const read = "````READ (worker:///answer) <1,-1>````";
+const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
+const read = "````READ (workspace:///answer) <1,-1>````";
 
 const loop = async (responses: string[], maxStrikes: number) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `strike-progress-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Read the answer and conclude.");
-    await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/answer", channel: "body", content: "42", mimetype: "text/plain", state: "static" });
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Read the answer and conclude.");
+    await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/answer", channel: "body", content: "42", mimetype: "text/plain", state: "static" });
     const provider = new Mock({ contextWindow: 100000, responses: responses.map(response) });
-    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns: responses.length + 1, maxStrikes });
+    const result = await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns: responses.length + 1, maxStrikes });
     return { db, loopId, result };
 };
 

@@ -16,7 +16,7 @@ import EntryFts from "../../src/schemes/_entry-fts.ts";
 import type { DurablePacket } from "../../src/core/StoredPacket.ts";
 import Turn from "../../src/core/Turn.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx } from "./_scheme.ts";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 
 const counts = ({ reclaimedPages: _reclaimed, collectedContents: _contents, ...rest }: Awaited<ReturnType<Retention["run"]>>) => rest;
 const KEEP_ALL = { PLURNK_SERVICE_RETAIN_PACKET_TURNS: "-1", PLURNK_SERVICE_RETAIN_PACKET_MS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_TURNS: "-1", PLURNK_SERVICE_RETAIN_RESPONSE_MS: "-1", PLURNK_SERVICE_COLLECT_PACKET_ITEMS: "1", PLURNK_SERVICE_COLLECT_DERIVATIONS: "1", PLURNK_SERVICE_COLLECT_CONTENTS: "1", PLURNK_SERVICE_RETENTION_INTERVAL_MS: "3600000", PLURNK_SERVICE_AUTO_VACUUM: "incremental", PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES: "0" };
@@ -34,7 +34,7 @@ test("{§configuration-repair-path}: invalid retention withholds collection and 
     t.after(() => { if (previous === undefined) delete process.env[key]; else process.env[key] = previous; });
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "retention-repair");
-    const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/released.md", channel: "body", content: "must remain", mimetype: "text/plain" });
+    const entryId = await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/released.md", channel: "body", content: "must remain", mimetype: "text/plain" });
     await db.crud_delete_entry.run({ entry_id: entryId });
     const before = await db.test_content_store_count.get({});
     assert.equal(before?.n, 1);
@@ -78,7 +78,7 @@ test("{§retention-policy}: the keep-everything fixture retires nothing and refu
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `retention-defaults-${crypto.randomUUID()}`);
-        const loopId = await insertLoop(db, await insertWorker(db, workspaceId), 1, "go");
+        const loopId = await insertLoop(db, await insertSession(db, workspaceId), 1, "go");
         const turns = [];
         for (let sequence = 1; sequence <= 3; sequence += 1) turns.push(await insertPacketTurn(db, loopId, sequence, packet(sequence), 200));
         const pass = await new Retention(db, policy).run();
@@ -91,7 +91,7 @@ test("{§retention-policy}: a count policy keeps the newest packets of each loop
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `retention-count-${crypto.randomUUID()}`);
-        const loopId = await insertLoop(db, await insertWorker(db, workspaceId), 1, "go");
+        const loopId = await insertLoop(db, await insertSession(db, workspaceId), 1, "go");
         const turns = [];
         for (let sequence = 1; sequence <= 4; sequence += 1) turns.push(await insertPacketTurn(db, loopId, sequence, packet(sequence), 200));
         const live = await db.test_open_inference_turn.get<{ id: number }>({ loop_id: loopId, sequence: 5 });
@@ -116,7 +116,7 @@ test("{§retention-policy}: a response policy retires bodies while the call's ev
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `retention-responses-${crypto.randomUUID()}`);
-        const loopId = await insertLoop(db, await insertWorker(db, workspaceId), 1, "go");
+        const loopId = await insertLoop(db, await insertSession(db, workspaceId), 1, "go");
         const calls: number[] = [];
         const turns: number[] = [];
         for (let sequence = 1; sequence <= 3; sequence += 1) {
@@ -171,7 +171,7 @@ test("{§retention-policy}: an age policy retires by completion time, and a disa
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `retention-age-${crypto.randomUUID()}`);
-        const loopId = await insertLoop(db, await insertWorker(db, workspaceId), 1, "go");
+        const loopId = await insertLoop(db, await insertSession(db, workspaceId), 1, "go");
         const old = await insertPacketTurn(db, loopId, 1, packet(1), 200);
         const fresh = await insertPacketTurn(db, loopId, 2, packet(2), 200);
         await db.test_complete_turn_at.run({ id: old, completed_at: "2026-01-01T00:00:00.000Z" });
@@ -190,8 +190,8 @@ test("{§retention-policy}: failed retries expire with one logical call while op
     const dbPath = join(directory, "plurnk.db");
     await using db = await openMigrated(dbPath);
     const workspaceId = await insertWorkspace(db, "failed-payload-retention");
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1);
     const calls: number[] = [];
     const turns: number[] = [];
     const requests: number[] = [];
@@ -258,9 +258,9 @@ test("{§retention-policy}: a superseded derivation and its full-text shadow are
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `retention-derivations-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const entryId = await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "first edition\n", mimetype: "text/markdown" });
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
         await SearchIndex.maintain(ctx);
         assert.equal((await db.test_derivation_state_counts.get<{ complete: number }>({}))!.complete, 1);
         assert.equal((await db.test_fts_count.get<{ n: number }>({}))!.n, 1);
@@ -281,8 +281,8 @@ test("{§retention-policy}: a superseded derivation and its full-text shadow are
 test("{§derivation-in-flight}: collection preserves unattached search snapshots through derivation and query", async (t) => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `snapshot-retention-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+    const sessionId = await insertSession(db, workspaceId);
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
     const retention = new Retention(db, retentionPolicy(KEEP_ALL));
     const process = DEFAULT_MIMETYPES.process.bind(DEFAULT_MIMETYPES);
     t.mock.method(DEFAULT_MIMETYPES, "process", async (...args: Parameters<typeof process>) => {
@@ -290,7 +290,7 @@ test("{§derivation-in-flight}: collection preserves unattached search snapshots
         assert.equal(collected.collectedDerivations, 0, "a building artifact is still owned by its producer");
         return process(...args);
     });
-    const source = { content: "a needle in an unattached snapshot", mimetype: "text/plain", pathname: "/snapshot", scheme: "worker" };
+    const source = { content: "a needle in an unattached snapshot", mimetype: "text/plain", pathname: "/snapshot", scheme: "workspace" };
     await SearchIndex.snapshot(ctx, source, async ({ deepHash }) => {
         assert.equal((await retention.run()).collectedDerivations, 0, "a completed snapshot remains held until its query ends");
         const result = await EntryFts.rankCandidates(db, [{ key: "snapshot", deepHash }], "needle");
@@ -325,7 +325,7 @@ const dropBodies = async (db: Awaited<ReturnType<typeof openMigrated>>): Promise
     const workspaceId = await insertWorkspace(db, `reclaim-${crypto.randomUUID()}`);
     const entries: number[] = [];
     for (let index = 0; index < 40; index += 1) {
-        entries.push(await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: `/bulk-${index}.md`, channel: "body", content: `${index}`.padEnd(50_000, "x"), mimetype: "text/markdown" }));
+        entries.push(await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: `/bulk-${index}.md`, channel: "body", content: `${index}`.padEnd(50_000, "x"), mimetype: "text/markdown" }));
     }
     for (const entryId of entries) await db.crud_delete_entry.run({ entry_id: entryId });
 };
@@ -379,7 +379,7 @@ test("{§content-store}: a body is stored once however many workspaces hold it, 
         const entries: number[] = [];
         for (let index = 0; index < 3; index += 1) {
             const workspaceId = await insertWorkspace(db, `book-${index}-${crypto.randomUUID()}`);
-            entries.push(await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/book.md", channel: "body", content: book, mimetype: "text/markdown" }));
+            entries.push(await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/book.md", channel: "body", content: book, mimetype: "text/markdown" }));
         }
         assert.deepEqual(await db.test_content_store_count.get({}), { n: 1, bytes: book.length }, "three workspaces, one stored body");
         const retention = new Retention(db, retentionPolicy(KEEP_ALL));
@@ -391,7 +391,7 @@ test("{§content-store}: a body is stored once however many workspaces hold it, 
         assert.deepEqual(await db.test_content_store_count.get({}), { n: 0, bytes: null });
         const kept = new Retention(db, retentionPolicy({ ...KEEP_ALL, PLURNK_SERVICE_COLLECT_CONTENTS: "0" }));
         const workspaceId = await insertWorkspace(db, `book-kept-${crypto.randomUUID()}`);
-        await db.crud_delete_entry.run({ entry_id: await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/book.md", channel: "body", content: book, mimetype: "text/markdown" }) });
+        await db.crud_delete_entry.run({ entry_id: await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/book.md", channel: "body", content: book, mimetype: "text/markdown" }) });
         assert.equal((await kept.run()).collectedContents, 0, "a disabled collector keeps released bodies");
     } finally { await db.close(); }
 });

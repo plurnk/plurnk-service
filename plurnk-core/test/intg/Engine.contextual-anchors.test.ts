@@ -48,8 +48,8 @@ const repeated = (body: string) => {
 for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
     test(`{§line-anchor-disambiguation}: ${op} uses contextual READ handles after a separate operation shifts the resource`, async (t) => {
         const { run, read, write } = await runtime(t);
-        const source = "worker:///source.md";
-        const destination = "worker:///destination.md";
+        const source = "workspace:///source.md";
+        const destination = "workspace:///destination.md";
         const sourceLines = repeated("source-target");
         const destinationLines = repeated("destination-target");
         const selected = sourceLines.indexOf("source-target");
@@ -87,7 +87,7 @@ for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
 
 test("{§line-anchor-disambiguation}: changed extended context refuses EDIT without changing either twin", async (t) => {
     const { read, write, run } = await runtime(t);
-    const path = "worker:///stale.md";
+    const path = "workspace:///stale.md";
     const lines = repeated("target");
     const target = lines.indexOf("target");
     assert.equal((await write(path, lines.join("\n"))).status, 201);
@@ -107,7 +107,7 @@ test("{§line-anchor-disambiguation}: changed extended context refuses EDIT with
 
 test("{§edit-anchor-continuity}: introducing a twin in one program retains the original binding through real EDIT dispatch", async (t) => {
     const { read, write, batch } = await runtime(t);
-    const path = "worker:///continuity.md";
+    const path = "workspace:///continuity.md";
     assert.equal((await write(path, "one\ntwo\nthree\nfour\nfive\nsix")).status, 201);
     const anchor = (await read(path, "3")).lineAnchors![0];
     const result = await batch(`\`\`\`EDIT (${path}) <6>

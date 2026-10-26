@@ -1,4 +1,4 @@
-// {§loop-answer} — ops://<worker>/<loop> is what the loop said: the latest reply to the message that
+// {§loop-answer} — ops://<session>/<loop> is what the loop said: the latest reply to the message that
 // started it.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -6,7 +6,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { statement } from "./reasoning-fixture.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 import { clientRead } from "./_client-read.ts";
@@ -15,13 +15,13 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-answer-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const first = await insertLoop(db, workerId, 1, "What is two plus two?");
-        // A client read opens a loop on its reader, and this test numbers alice's loops: another worker reads
+        const first = await insertLoop(db, sessionId, 1, "What is two plus two?");
+        // A client read opens a loop on its reader, and this test numbers alice's loops: another session reads
         // her answers ({§turn-source-resources}), and alice reads her own log only once they are numbered.
-        const observer = await insertWorker(db, workspaceId, null, "observer");
-        const read = (address: string, reader = observer) => clientRead(engine, db, { workspaceId, workerId: reader, statement: statement(`\`\`\`\`READ (${address})\`\`\`\``) });
+        const observer = await insertSession(db, workspaceId, null, "observer");
+        const read = (address: string, reader = observer) => clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(`\`\`\`\`READ (${address})\`\`\`\``) });
 
         const running = await read("ops://alice/1");
         assert.equal(running.status, 425, "a loop still running has not answered yet");
@@ -29,7 +29,7 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
 
         const firstReply = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nFour.\n````\n\n````SEND [200]\n````", reasoning: null } }] }),
-            workspaceId, workerId, loopId: first, maxTurns: 3, messages: [{ role: "user", content: "What is two plus two?" }],
+            workspaceId, sessionId, loopId: first, maxTurns: 3, messages: [{ role: "user", content: "What is two plus two?" }],
         });
         assert.equal(firstReply.result.status, 200);
         const answered = await read("ops://alice/1");
@@ -37,10 +37,10 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
         assert.ok("content" in answered);
         assert.equal(answered.content, "Four.", "the SEND is the loop's answer");
 
-        const second = await insertLoop(db, workerId, 2, "And three plus three?");
+        const second = await insertLoop(db, sessionId, 2, "And three plus three?");
         const sent = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "````SEND\nSix.\n````\n\n````SEND [200]\n````", reasoning: null } }] }),
-            workspaceId, workerId, loopId: second, maxTurns: 3, messages: [{ role: "user", content: "And three plus three?" }],
+            workspaceId, sessionId, loopId: second, maxTurns: 3, messages: [{ role: "user", content: "And three plus three?" }],
         });
         assert.equal(sent.result.status, 200);
         const reply = await read("ops://alice/2");
@@ -52,30 +52,30 @@ test("{§loop-answer}: a loop's address reads its SEND answer; running is 425, a
 
         assert.equal((await read("ops://alice/9")).status, 404, "a loop that does not exist");
         assert.equal((await read("ops://alice/1/2")).status, 200, "a turn coordinate still reads that turn's emission");
-        const row = await read("log:///1/2/3/SEND", workerId);
+        const row = await read("log:///1/2/3/SEND", sessionId);
         assert.equal(row.status, 200, "a final reply is an ordinary SEND row");
     } finally { await db.close(); }
 });
 
 for (const [shape, body] of [
     ["ordinary", "The draft is sound."],
-    ["early closer", "The draft is sound.\n````\n```EDIT (worker:///must-not-execute)\nNot an operation.\n```\nThe entire report is the answer.\n````"],
+    ["early closer", "The draft is sound.\n````\n```EDIT (workspace:///must-not-execute)\nNot an operation.\n```\nThe entire report is the answer.\n````"],
 ] as const) test(`{§loop-answer} {§message-completion}: a child's ${shape} answer survives delivery and reading at its own address`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-answer-child-${crypto.randomUUID()}`);
-        const parentId = await insertWorker(db, workspaceId, null, "lead");
-        const childId = await insertWorker(db, workspaceId, parentId, "reviewer");
+        const parentId = await insertSession(db, workspaceId, null, "lead");
+        const childId = await insertSession(db, workspaceId, parentId, "reviewer");
         const loopId = await insertLoop(db, childId, 1, "Review the draft.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runLoop({
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: `\`\`\`\`SEND [200]\n${body}${shape === "ordinary" ? "\n````" : ""}`, reasoning: null } }] }),
-            workspaceId, workerId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
+            workspaceId, sessionId: childId, loopId, maxTurns: 3, messages: [{ role: "user", content: "Review the draft." }],
         });
         assert.equal(result.result.status, 200);
-        const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_worker_id: parentId });
+        const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_session_id: parentId });
         assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }], "the event retains the child's exact terminal result");
-        const answer = await clientRead(engine, db, { workspaceId, workerId: parentId, statement: statement("````READ (ops://reviewer/1)````") });
+        const answer = await clientRead(engine, db, { workspaceId, sessionId: parentId, statement: statement("````READ (ops://reviewer/1)````") });
         assert.ok("content" in answer);
         assert.equal(answer.content, body, "the parent reads the complete answer where the termination points");
         const escaped = await db.test_get_channel_by_pathname.get({ pathname: "/must-not-execute", name: "body" });

@@ -1,5 +1,5 @@
 // {§tier-census} — the node:test reporter of the live and demo tiers. Every specimen's verdict, skip
-// reason or failure is joined with the worker directories its run claimed and written as census.json
+// reason or failure is joined with the session directories its run claimed and written as census.json
 // and census.md in the tier's run directory; the markdown is also what this reporter yields.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -17,8 +17,8 @@ const failureReason = (error) => {
 export const isSpecimenVerdict = (event) =>
     (event.type === "test:pass" || event.type === "test:fail") && event.data?.nesting === 0 && event.data.name !== event.data.file;
 
-// The worker rows the run's directory holds, by the specimen that drove each.
-export const workerRows = (dir) => {
+// The session rows the run's directory holds, by the specimen that drove each.
+export const sessionRows = (dir) => {
     if (dir === null || !existsSync(dir)) return [];
     return readdirSync(dir, { withFileTypes: true })
         .filter((entry) => entry.isDirectory() && existsSync(join(dir, entry.name, "census.json")))
@@ -26,18 +26,18 @@ export const workerRows = (dir) => {
         .toSorted((a, b) => a.runDir.localeCompare(b.runDir));
 };
 
-export const compose = ({ run, route, aliases, tests, workers, started, finished }) => {
+export const compose = ({ run, route, aliases, tests, sessions, started, finished }) => {
     const byName = new Map();
-    for (const worker of workers) {
-        const key = worker.specimen ?? "";
-        byName.set(key, [...(byName.get(key) ?? []), worker]);
+    for (const session of sessions) {
+        const key = session.specimen ?? "";
+        byName.set(key, [...(byName.get(key) ?? []), session]);
     }
     const sum = (rows, pick) => rows.reduce((total, row) => total + pick(row), 0);
     const specimens = tests.map((test) => {
         const own = byName.get(test.name) ?? [];
         return {
             ...test,
-            workers: own.map(({ runDir }) => basename(runDir)),
+            sessions: own.map(({ runDir }) => basename(runDir)),
             turns: sum(own, (w) => w.turns),
             requests: sum(own, (w) => w.requests),
             usd: sum(own, (w) => w.cost.usd),
@@ -53,7 +53,7 @@ export const compose = ({ run, route, aliases, tests, workers, started, finished
     return {
         run, route, started, finished,
         totals,
-        workers: { count: workers.length, turns: sum(workers, (w) => w.turns), requests: sum(workers, (w) => w.requests), usd: sum(workers, (w) => w.cost.usd) },
+        sessions: { count: sessions.length, turns: sum(sessions, (w) => w.turns), requests: sum(sessions, (w) => w.requests), usd: sum(sessions, (w) => w.cost.usd) },
         specimens,
         unattributed: (byName.get("") ?? []).map(({ runDir }) => basename(runDir)),
         unmet: [...unmet].map(([requirement, names]) => ({ requirement, specimens: names, satisfiedBy: aliasesSatisfying(requirement, aliases) })),
@@ -73,14 +73,14 @@ export const render = (census) => {
         `| started | ${census.started} |`,
         `| finished | ${census.finished} |`,
         `| verdicts | pass ${census.totals.pass} · fail ${census.totals.fail} · skip ${census.totals.skip}${census.totals.todo > 0 ? ` · todo ${census.totals.todo}` : ""} |`,
-        `| workers | ${census.workers.count} · ${census.workers.turns} turns · ${census.workers.requests} requests · $${census.workers.usd.toFixed(4)} |`,
+        `| sessions | ${census.sessions.count} · ${census.sessions.turns} turns · ${census.sessions.requests} requests · $${census.sessions.usd.toFixed(4)} |`,
         "",
         "## Specimens",
         "",
         "| verdict | specimen | reason | turns | requests | usd | evidence |",
         "|---|---|---|---|---|---|---|",
         ...census.specimens.map((s) =>
-            `| ${s.verdict} | ${cell(s.name)} | ${cell(s.reason)} | ${s.turns || ""} | ${s.requests || ""} | ${usd(s.usd)} | ${cell(s.workers.join(", "))} |`),
+            `| ${s.verdict} | ${cell(s.name)} | ${cell(s.reason)} | ${s.turns || ""} | ${s.requests || ""} | ${usd(s.usd)} | ${cell(s.sessions.join(", "))} |`),
     ];
     if (census.unmet.length > 0) {
         lines.push("", "## Unmet requirements", "", "| requirement | specimens | declared aliases that satisfy it |", "|---|---|---|");
@@ -89,7 +89,7 @@ export const render = (census) => {
         }
     }
     if (census.unattributed.length > 0) {
-        lines.push("", `Workers no specimen claimed: ${cell(census.unattributed.join(", "))}`);
+        lines.push("", `Sessions no specimen claimed: ${cell(census.unattributed.join(", "))}`);
     }
     return `${lines.join("\n")}\n`;
 };
@@ -124,7 +124,7 @@ export default async function* censusReporter(source) {
         route: routeLabel(),
         aliases: parseAliasesFromEnv(),
         tests,
-        workers: workerRows(dir),
+        sessions: sessionRows(dir),
         started,
         finished: new Date().toISOString(),
     });

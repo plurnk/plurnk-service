@@ -12,7 +12,7 @@ test("demo: the model schedules and receives a one-time reminder", async (t) => 
             maxTurns: 12,
         }, { signal: t.signal });
         assert.equal(loop.finalStatus, 200, "the reminder task concluded successfully");
-        const messages = await workspace.db.test_messages_by_worker.all<{ source: string | null; body: string }>({ worker_id: loop.modelWorkerId });
+        const messages = await workspace.db.test_messages_by_session.all<{ source: string | null; body: string }>({ session_id: loop.modelSessionId });
         const reminders = messages.filter(({ source }) => source?.startsWith("schedule://") === true);
         assert.equal(reminders.length, 1, "the scheduling module delivered exactly one reminder");
         assert.match(reminders[0].body, /schedule-probe-ack/u);

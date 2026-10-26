@@ -1,6 +1,6 @@
 // SPEC {§machine-processes} — behavioral ownership at the real operation seam:
-// shared workspace entries, worker-owned logs, and fork topology. Dedicated
-// membership and worker-entry specimens own the overlay and private-scratch rows.
+// shared workspace entries, session-owned logs, and fork topology. Dedicated
+// membership and session-entry specimens own the overlay and private-scratch rows.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +10,7 @@ import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Fork from "../../src/core/fork.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
 import Turn from "../../src/core/Turn.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import { findStmt, killStmt, readStmt } from "./_dsl.ts";
 import { clientRead } from "./_client-read.ts";
@@ -27,27 +27,27 @@ const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = nul
     matcher: null, position: { line: 1, column: 1 },
 });
 
-test("{§machine-processes} a workspace-commons entry is shared — a second worker updates it rather than minting another", async () => {
+test("{§machine-processes} a workspace-commons entry is shared — a second session updates it rather than minting another", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const spawn = async () => {
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1);
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1);
             const turnId = await insertTurn(db, loopId, 1);
-            return { workerId, loopId, turnId };
+            return { sessionId, loopId, turnId };
         };
         const a = await spawn();
         const b = await spawn();
-        const target = urlPath("worker", "/shared.md");
-        const resultA = await engine.dispatch({ statement: editStmt(target, "from worker A"), workspaceId, workerId: a.workerId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
-        const resultB = await engine.dispatch({ statement: editStmt(target, "from worker B", fullReplace), workspaceId, workerId: b.workerId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
+        const target = urlPath("workspace", "/shared.md");
+        const resultA = await engine.dispatch({ statement: editStmt(target, "from session A"), workspaceId, sessionId: a.sessionId, loopId: a.loopId, turnId: a.turnId, sequence: 1, origin: "model" });
+        const resultB = await engine.dispatch({ statement: editStmt(target, "from session B", fullReplace), workspaceId, sessionId: b.sessionId, loopId: b.loopId, turnId: b.turnId, sequence: 1, origin: "model" });
         // A creates one commons entry (201); B addresses the same commons identity
-        // and updates it (200). Private worker entries use an owner authority and
+        // and updates it (200). Private session entries use an owner authority and
         // are deliberately a different contract.
-        assert.equal(resultA.status, 201, "worker A creates the workspace-commons entry");
-        assert.equal(resultB.status, 200, "worker B updates the same shared entry instead of minting another");
+        assert.equal(resultA.status, 201, "session A creates the workspace-commons entry");
+        assert.equal(resultB.status, 200, "session B updates the same shared entry instead of minting another");
     } finally { db.close(); }
 });
 
@@ -57,14 +57,14 @@ test("{§no-visibility} curating the log leaves the entry catalogued and READ-ab
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const spawn = async () => {
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1);
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1);
             const turnId = await insertTurn(db, loopId, 1);
-            return { workerId, loopId, turnId };
+            return { sessionId, loopId, turnId };
         };
         const author = await spawn();
         const sibling = await spawn();
-        const target = urlPath("worker", "/curated.md");
+        const target = urlPath("workspace", "/curated.md");
         const written = await engine.dispatch({ statement: editStmt(target, "the entry itself"), workspaceId, ...author, sequence: 1, origin: "model" });
         assert.equal(written.status, 201);
 
@@ -75,17 +75,17 @@ test("{§no-visibility} curating the log leaves the entry catalogued and READ-ab
         });
         assert.equal(curated.status, 200, JSON.stringify(curated));
 
-        // The entry is untouched by that: no per-worker visible or suppressed state exists to set.
+        // The entry is untouched by that: no per-session visible or suppressed state exists to set.
         for (const [who, actor] of [["its author", author], ["a sibling", sibling]] as const) {
             const listed = await engine.dispatch({
-                statement: findStmt(urlPath("worker", "/**")),
+                statement: findStmt(urlPath("workspace", "/**")),
                 workspaceId, ...actor, sequence: 3, origin: "model",
             });
             assert.equal(listed.status, 200, JSON.stringify(listed));
             assert.match(JSON.stringify(listed.results), /curated\.md/u, `the catalog still lists the entry for ${who}`);
             const read = await clientRead(engine, db, {
                 statement: readStmt(target, { marks: [1, -1] }),
-                workspaceId, workerId: actor.workerId,
+                workspaceId, sessionId: actor.sessionId,
             });
             assert.equal(read.status, 200, `the entry still READs for ${who}`);
             assert.equal(read.content, "the entry itself");
@@ -98,32 +98,32 @@ test("{§machine-processes} a fork copies the parent's log (rows + their suppres
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        await engine.dispatch({ statement: editStmt(urlPath("worker", "/a.md"), "first"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
-        await engine.dispatch({ statement: editStmt(urlPath("worker", "/b.md"), "second"), workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("workspace", "/a.md"), "first"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("workspace", "/b.md"), "second"), workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model" });
         // Suppress the first row through the real scoped-KILL event path.
         await engine.dispatch({
             statement: killStmt(urlPath("log", "/1/1/1"), { marks: [1, -1] }),
-            workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 3, origin: "model",
         });
 
-        const branchWorkerId = await Fork.fork(db, workerId, undefined);
+        const branchSessionId = await Fork.fork(db, sessionId, undefined);
 
         const shape = (rows: Array<{ op: string; pathname: string; folded: string }>) => rows.map((r) => `${r.op}:${r.pathname}:${r.folded}`);
-        const parentLog = await db.engine_render_log.all<{ op: string; pathname: string; folded: string }>({ worker_id: workerId });
-        const branchLog = await db.engine_render_log.all<{ op: string; pathname: string; folded: string }>({ worker_id: branchWorkerId });
+        const parentLog = await db.engine_render_log.all<{ op: string; pathname: string; folded: string }>({ session_id: sessionId });
+        const branchLog = await db.engine_render_log.all<{ op: string; pathname: string; folded: string }>({ session_id: branchSessionId });
         assert.deepEqual(shape(branchLog), shape(parentLog), "the branch's log mirrors the parent's — rows and visibility");
         assert.ok(branchLog.some((r) => r.folded === "[[1,-1]]"), "the row suppressed on the parent stayed suppressed in the branch");
         const effectShape = (rows: Array<{ op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string }>) =>
             rows.map((row) => `${row.op}:${row.operation_sequence}->${row.target_sequence}:${row.folded_before}->${row.folded_after}`);
-        const parentEffects = await db.test_log_curation_effects_by_worker.all<{
+        const parentEffects = await db.test_log_curation_effects_by_session.all<{
             op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string;
-        }>({ worker_id: workerId });
-        const branchEffects = await db.test_log_curation_effects_by_worker.all<{
+        }>({ session_id: sessionId });
+        const branchEffects = await db.test_log_curation_effects_by_session.all<{
             op: string; operation_sequence: number; target_sequence: number; folded_before: string; folded_after: string;
-        }>({ worker_id: branchWorkerId });
+        }>({ session_id: branchSessionId });
         assert.deepEqual(effectShape(branchEffects), effectShape(parentEffects), "the branch retains the exact log-curation effect with remapped row identities");
         assert.deepEqual(effectShape(branchEffects), ["KILL:3->1:[]->[[1,-1]]"]);
     } finally { db.close(); }
@@ -134,29 +134,29 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1);
         await engine.dispatch({
-            statement: editStmt(urlPath("worker", "/retired.md"), "durable evidence"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            statement: editStmt(urlPath("workspace", "/retired.md"), "durable evidence"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
-        const [target] = await db.test_log_entries_by_worker.all<{ id: number }>({ worker_id: workerId });
+        const [target] = await db.test_log_entries_by_session.all<{ id: number }>({ session_id: sessionId });
         assert.ok(target !== undefined);
         await engine.dispatch({
             statement: killStmt(urlPath("log", "/1/1/1/EDIT")),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
 
-        const branchWorkerId = await Fork.fork(db, workerId, undefined);
-        const parentRows = await db.test_log_entries_by_worker.all<{ op: string }>({ worker_id: workerId });
-        const branchRows = await db.test_log_entries_by_worker.all<{ op: string }>({ worker_id: branchWorkerId });
+        const branchSessionId = await Fork.fork(db, sessionId, undefined);
+        const parentRows = await db.test_log_entries_by_session.all<{ op: string }>({ session_id: sessionId });
+        const branchRows = await db.test_log_entries_by_session.all<{ op: string }>({ session_id: branchSessionId });
         assert.deepEqual(parentRows.map(({ op }) => op), ["EDIT", "KILL"]);
         assert.deepEqual(branchRows.map(({ op }) => op), ["EDIT", "KILL"], "the branch keeps both historical events");
 
-        for (const owner of [workerId, branchWorkerId]) {
+        for (const owner of [sessionId, branchSessionId]) {
             const projection = await db.test_get_log_projection.get<{ active: 0 | 1; folded: string }>({
-                worker_id: owner,
+                session_id: owner,
                 loop_seq: 1,
                 turn_seq: 1,
                 sequence: 1,
@@ -164,18 +164,18 @@ test("{§log-history-projection}: a fork retains killed evidence and its inactiv
             assert.equal(projection?.active, 0);
             assert.equal(projection?.folded, "[]");
             assert.equal(
-                (await db.engine_render_log.all<{ pathname: string | null }>({ worker_id: owner }))
+                (await db.engine_render_log.all<{ pathname: string | null }>({ session_id: owner }))
                     .some(({ pathname }) => pathname === "/retired.md"),
                 false,
                 "inactive evidence is absent from the model-facing render",
             );
         }
 
-        const effectShape = async (owner: number) => (await db.test_log_curation_effects_by_worker.all<{
+        const effectShape = async (owner: number) => (await db.test_log_curation_effects_by_session.all<{
             op: string; active_before: 0 | 1; active_after: 0 | 1;
-        }>({ worker_id: owner })).map(({ op, active_before, active_after }) => ({ op, active_before, active_after }));
-        assert.deepEqual(await effectShape(workerId), [{ op: "KILL", active_before: 1, active_after: 0 }]);
-        assert.deepEqual(await effectShape(branchWorkerId), await effectShape(workerId));
+        }>({ session_id: owner })).map(({ op, active_before, active_after }) => ({ op, active_before, active_after }));
+        assert.deepEqual(await effectShape(sessionId), [{ op: "KILL", active_before: 1, active_after: 0 }]);
+        assert.deepEqual(await effectShape(branchSessionId), await effectShape(sessionId));
     } finally { await db.close(); }
 });
 
@@ -183,13 +183,13 @@ test("{§machine-processes} a fork closes an in-flight turn snapshot without fab
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const source = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
 
-        const branchWorkerId = await Fork.fork(db, workerId, undefined);
+        const branchSessionId = await Fork.fork(db, sessionId, undefined);
 
-        const branchLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: branchWorkerId });
+        const branchLoop = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: branchSessionId });
         assert.ok(branchLoop !== undefined);
         const [snapshot] = await db.test_list_turns_in_loop.all<{
             producer: string; kind: string; status: number; completed_at: string | null;
@@ -211,16 +211,16 @@ test("{§machine-processes} a fork shares workspace-commons entries live and unc
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1);
-        await engine.dispatch({ statement: editStmt(urlPath("worker", "/shared.md"), "x"), workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model" });
+        await engine.dispatch({ statement: editStmt(urlPath("workspace", "/shared.md"), "x"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
         const before = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
 
-        const branchWorkerId = await Fork.fork(db, workerId, undefined);
+        const branchSessionId = await Fork.fork(db, sessionId, undefined);
 
         const after = (await db.engine_list_workspace_entries.all<{ entry_id: number }>({ workspace_id: workspaceId })).length;
-        const branch = await db.test_worker_lineage.get<{ workspace_id: number }>({ id: branchWorkerId });
+        const branch = await db.test_session_lineage.get<{ workspace_id: number }>({ id: branchSessionId });
         assert.equal(branch!.workspace_id, workspaceId, "the branch lives in the parent's workspace");
         assert.equal(after, before, "the fork did not duplicate the workspace-commons entry");
     } finally { db.close(); }
@@ -230,10 +230,10 @@ test("{§machine-processes-entry-inheritance} a fork copies only quiescent snaps
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-entry-policy-${crypto.randomUUID()}`);
-        const parent = await insertWorker(db, workspaceId, null, "parent");
+        const parent = await insertSession(db, workspaceId, null, "parent");
         await seedEntryWithChannel(db, {
             workspaceId,
-            scheme: "worker",
+            scheme: "session",
             authority: "parent",
             pathname: "/static",
             content: "retained",
@@ -241,7 +241,7 @@ test("{§machine-processes-entry-inheritance} a fork copies only quiescent snaps
         });
         await seedEntryWithChannel(db, {
             workspaceId,
-            scheme: "worker",
+            scheme: "session",
             authority: "parent",
             pathname: "/active",
             content: "in flight",
@@ -265,25 +265,25 @@ test("{§machine-processes-entry-inheritance} a fork copies only quiescent snaps
             scheme: string;
             pathname: string;
             active: number;
-        }>({ worker_id: branch });
+        }>({ session_id: branch });
         assert.deepEqual(
             entries.map(({ scheme, pathname }) => ({ scheme, pathname })),
-            [{ scheme: "worker", pathname: "/static" }],
+            [{ scheme: "session", pathname: "/static" }],
             "only quiescent named scratch is copied; other resources remain shared",
         );
     } finally { await db.close(); }
 });
 
-test("{§machine-processes} a fork creates a worker while retaining the shared workspace", async () => {
+test("{§machine-processes} a fork creates a session while retaining the shared workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const branchWorkerId = await Fork.fork(db, workerId, undefined);
-        assert.notEqual(branchWorkerId, workerId, "a fork is a new worker");
-        const lineage = await db.test_worker_lineage.get<{ workspace_id: number; parent_worker_id: number | null }>({ id: branchWorkerId });
+        const sessionId = await insertSession(db, workspaceId);
+        const branchSessionId = await Fork.fork(db, sessionId, undefined);
+        assert.notEqual(branchSessionId, sessionId, "a fork is a new session");
+        const lineage = await db.test_session_lineage.get<{ workspace_id: number; parent_session_id: number | null }>({ id: branchSessionId });
         assert.equal(lineage!.workspace_id, workspaceId, "the branch is in the parent's workspace — the workspace is shared, never forked");
-        assert.equal(lineage!.parent_worker_id, workerId, "the branch's lineage points at the parent worker");
+        assert.equal(lineage!.parent_session_id, sessionId, "the branch's lineage points at the parent session");
     } finally { db.close(); }
 });
 
@@ -291,8 +291,8 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
         const turnId = turn.id;
         await Turn.recordInference(db, turnId, {
@@ -377,7 +377,7 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
             model: "mock",
         });
         await db.engine_insert_log_entry.run({
-            worker_id: workerId,
+            session_id: sessionId,
             loop_id: loopId,
             turn_id: turnId,
             sequence: 1,
@@ -408,11 +408,11 @@ test("{§machine-processes-fork-cost} — a fork inherits history without copyin
         assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000");
         assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 2);
 
-        const branchWorkerId = await Fork.fork(db, workerId, undefined);
+        const branchSessionId = await Fork.fork(db, sessionId, undefined);
 
         assert.equal((await db.test_count_provider_requests.get<{ n: number }>())?.n, 2, "forking creates no provider request");
         assert.equal((await engine.loopUsage(loopId)).accounting.costUsd, "1000", "parent evidence is untouched");
-        const branchLoop = await db.test_get_loop_by_worker.get<{ id: number }>({ worker_id: branchWorkerId });
+        const branchLoop = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: branchSessionId });
         assert.ok(branchLoop !== undefined);
         const branchUsage = await engine.loopUsage(branchLoop.id);
         assert.equal(branchUsage.accounting.costUsd, "0");

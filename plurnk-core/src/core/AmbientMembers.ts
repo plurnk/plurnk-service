@@ -13,7 +13,7 @@ export const AUTO_ADD_KEY = "PLURNK_MEMBERS_AUTO_ADD";
 const TEXT_BYTES_MAX = 1 << 20;
 
 // {§membership-auto-add} — what the model can reach beyond membership while the knob is on, and the
-// admission a read of it proposes: the Worker's own `plurnk (members)` add of that exact path, under the model's
+// admission a read of it proposes: the Session's own `plurnk (members)` add of that exact path, under the model's
 // scope, a host effect the proposal lifecycle settles — by policy where nobody reviews, by the reviewer
 // otherwise — announced by one `member_added` notice per file admitted.
 export default class AmbientMembers {

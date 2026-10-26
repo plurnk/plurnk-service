@@ -18,13 +18,13 @@ import type { HostFunctionalityAdapter, HostSetupSeam } from "../../src/server/M
 import Results, { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { connect, rpcCall, runLoopToTerminal, waitForDb } from "./_rpc.ts";
-import { modelOperation, namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelSession } from "./_sessions.ts";
 
 const OWNER = "fx fixture adapter";
 
@@ -35,10 +35,10 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-// One statement as a person's client operation ({§connection-lifecycle}), acting for `contextWorkerId` when named.
-const clientOperation = async (daemon: Daemon, workspaceId: number, statement: PlurnkStatement, contextWorkerId?: number) =>
+// One statement as a person's client operation ({§connection-lifecycle}), acting for `contextSessionId` when named.
+const clientOperation = async (daemon: Daemon, workspaceId: number, statement: PlurnkStatement, contextSessionId?: number) =>
     (await daemon.dispatchClientAction({
-        workspaceId, actor: TEST_OWNER, ...(contextWorkerId === undefined ? {} : { contextWorkerId }), statements: [statement],
+        workspaceId, actor: TEST_OWNER, ...(contextSessionId === undefined ? {} : { contextSessionId }), statements: [statement],
     }))[0];
 
 const runtime = (tag: string, log: string[]): RuntimeRegistration => ({
@@ -138,7 +138,7 @@ test("{§functionality-document-body} an adapter's docs/<family>.md rides inside
         await daemon.start();
         try {
             const workspaceId = await insertWorkspace(db, `fx-docs-${crypto.randomUUID()}`);
-            await insertWorker(db, workspaceId, null, "model", "model");
+            await insertSession(db, workspaceId, null, "model", "model");
             await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
             const entries = await daemon.engine.referenceEntries(workspaceId);
             const doc = entries.find(({ pathname }) => pathname === "/_plurnk/tools/plurnk.md");
@@ -183,7 +183,7 @@ test("{§functionality-model-mutation} one raw model program observes each manag
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
         makeRawMockResponse([
             frame("add", { alias: "candidate", definition: { kind: "doc" } }), frame("list"),
-            PlurnkParser.frame("READ (worker:///_plurnk/fx/candidate.md)", ""),
+            PlurnkParser.frame("READ (workspace:///_plurnk/fx/candidate.md)", ""),
             frame("disable", { alias: "candidate" }), frame("list"),
             frame("enable", { alias: "candidate" }), frame("list"),
             frame("replace", { alias: "candidate", definition: { kind: "fail" } }), frame("list"),
@@ -199,11 +199,11 @@ test("{§functionality-model-mutation} one raw model program observes each manag
     t.after(async () => { await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "ordered-program" });
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Exercise the fixture lifecycle.", maxTurns: 2 });
+    const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+    const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Exercise the fixture lifecycle.", maxTurns: 2 });
     const lifecycle = new LoopLifecycle(db);
     await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
-    const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+    const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
     const operations = rows.filter((row) => row.origin === "model" && row.op === "plurnk").toReversed();
     assert.deepEqual(operations.map(({ status_rx }) => status_rx), [201, 200, 200, 200, 200, 200, 502, 200, 200, 200, 200]);
     const listed = await db.test_entries_by_scheme_prefix.all<{ id: number; pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" });
@@ -451,10 +451,10 @@ test("{§module-workspace-quiescence} a model turn and concurrent catalog refres
     t.after(async () => { resume.resolve(); await daemon.stop(); await db.close(); });
     await daemon.start();
     const { workspaceId } = await daemon.createWorkspace({ name: "refresh-during-admission" });
-    const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
+    const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
     await daemon.invokeModuleAction("workspace.fx.enable", { alias: "svc" }, workspaceContext(workspaceId));
     const before = log.filter((event) => event.startsWith("commit:")).length;
-    const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Confirm readiness." });
+    const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Confirm readiness." });
     await entered.promise;
     const request = WorkspaceGate.prototype.requestExclusive;
     t.mock.method(WorkspaceGate.prototype, "requestExclusive", function (this: WorkspaceGate, id: number) {
@@ -960,16 +960,16 @@ test("{§module-workspace-sharing} {§functionality-coordinator} registration, c
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-${crypto.randomUUID()}`);
     let daemon = await boot(db, log);
-    const model = await namedModelWorker(daemon, workspaceId, "main");
+    const model = await namedModelSession(daemon, workspaceId, "main");
     const invoke = <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> =>
         daemon.invokeModuleAction(`workspace.fx.${verb}`, params, workspaceContext(workspaceId)) as Promise<T>;
     const invocation = (tag: string) => parseOne(`\`\`\`\`${tag}
 fixture
 \`\`\`\``);
-    // A person's operation ({§connection-lifecycle}), or one of the named worker's own.
-    const exec = (tag: string, workerId?: number) => workerId === undefined
+    // A person's operation ({§connection-lifecycle}), or one of the named session's own.
+    const exec = (tag: string, sessionId?: number) => sessionId === undefined
         ? clientOperation(daemon, workspaceId, invocation(tag))
-        : modelOperation(daemon, db, { workspaceId, workerId, statement: invocation(tag) });
+        : modelOperation(daemon, db, { workspaceId, sessionId, statement: invocation(tag) });
     const states = async () =>
         (await invoke<{ definitions: Array<{ alias: string; origin: string; state: string }> }>("list", {})).definitions
             .map(({ alias, origin, state }) => `${alias}:${origin}:${state}`);
@@ -1036,12 +1036,12 @@ fixture
 
         // A family's published documents reconcile with the snapshot under the generated subtree.
         await invoke("add", { alias: "docy", definition: { kind: "doc" } });
-        await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/fx/docy.md)````"), model);
-        const document = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" });
+        await clientOperation(daemon, workspaceId, parseOne("````READ (workspace:///_plurnk/fx/docy.md)````"), model);
+        const document = await db.test_entries_by_coordinate_workspaces.all<{ workspace_id: number; content: string }>({ scheme: "workspace", authority: "", pathname: "/_plurnk/fx/docy.md" });
         assert.deepEqual(document.map(({ workspace_id }) => workspace_id), [workspaceId], "both active readers use one shared published document");
         for (const { content } of document) assert.match(content, /fixture document/);
         await invoke("remove", { alias: "docy" });
-        assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({ scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md" }), [], "removal withdraws the document");
+        assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({ scheme: "workspace", authority: "", pathname: "/_plurnk/fx/docy.md" }), [], "removal withdraws the document");
 
         // Persistence: a workspace-origin definition and a service enabledness survive restart.
         await invoke("add", { alias: "keep", definition: { kind: "ok" } });
@@ -1054,7 +1054,7 @@ fixture
         assert.ok(log.includes("prepare:keep"), "activation prepared exactly the enabled set");
 
         // Delegates use the same workspace environment, including subsequent changes.
-        const child = await insertWorker(db, workspaceId, model, "child", "model");
+        const child = await insertSession(db, workspaceId, model, "child", "model");
         assert.equal((await exec("keep", child)).status, 200);
         await invoke("add", { alias: "later", definition: { kind: "ok" } });
         assert.deepEqual(await states(), ["keep:workspace:active", "later:workspace:active", "svc:service:disabled"]);
@@ -1074,7 +1074,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     const log: string[] = [];
     const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/tools/plurnk/fx.json) <1,-1>````"));
+    await clientOperation(daemon, workspaceId, parseOne("````READ (workspace:///_plurnk/tools/plurnk/fx.json) <1,-1>````"));
     const materialize = LoopDocs.materialize;
     const cause = new Error("fixture document publication failed");
     let failed = false;
@@ -1095,7 +1095,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     assert.deepEqual(list.definitions.map(({ alias }) => alias), ["svc"]);
     assert.equal(daemon.schemes.has("docy", workspaceId), false);
     assert.deepEqual(await db.test_entries_by_coordinate_workspaces.all({
-        scheme: "worker", authority: "", pathname: "/_plurnk/fx/docy.md",
+        scheme: "workspace", authority: "", pathname: "/_plurnk/fx/docy.md",
     }), [], "rollback cannot leave a document from the rejected workspace snapshot");
 });
 
@@ -1105,7 +1105,7 @@ test("{§functionality-publication} a candidate goes live at publish, inside the
     const log: string[] = [];
     const daemon = await boot(db, log);
     t.after(async () => { await daemon.stop(); await db.close(); });
-    await clientOperation(daemon, workspaceId, parseOne("````READ (worker:///_plurnk/tools/plurnk/fx.json) <1,-1>````"));
+    await clientOperation(daemon, workspaceId, parseOne("````READ (workspace:///_plurnk/tools/plurnk/fx.json) <1,-1>````"));
     const mark = log.length;
     await daemon.invokeModuleAction("workspace.fx.add", { alias: "late", definition: { kind: "ok" } }, workspaceContext(workspaceId));
     const events = log.slice(mark).filter((event) => /^(publish|undo|commit|abort):/u.test(event));
@@ -1203,8 +1203,8 @@ test("{§functionality-model-mutation} authorization-required holds the model mu
         assert.equal(result.finalStatus, 200, JSON.stringify(result.result));
         assert.equal(notices.length, 1, "the sign-in requirement is announced while the mutation holds");
         assert.equal(log.filter((line) => line === "run:candidate").length, 1, "the next model turn runs the newly authorized tool");
-        assert.ok(result.modelWorkerId !== undefined, "the loop identifies its model worker");
-        const rows = await daemon.readLog({ workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
+        assert.ok(result.modelSessionId !== undefined, "the loop identifies its model session");
+        const rows = await daemon.readLog({ workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
         const observed = rows.find((row) => row.op === "READ" && row.scheme === "plurnk" && JSON.stringify(row.rx).includes("active"));
         assert.ok(observed, "the terminal observation carries the settled active resource outcome");
         assert.equal(observed.status_rx, 201, "the observation carries the settled creation status");
@@ -1221,7 +1221,7 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
     const states = async () =>
         (await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as { definitions: Array<{ alias: string; state: string; problem?: ProblemDetails }> }).definitions;
     const operate = (program: string) => clientOperation(daemon, workspaceId, parseOne(program));
-    // A family verb streams its JSON outcome into the Worker's plurnk:// output
+    // A family verb streams its JSON outcome into the Session's plurnk:// output
     // entry; dispatch awaits the management result ({§functionality-model-mutation}).
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
     const proposals: Array<{ logEntryId: number; disposition: unknown }> = [];
@@ -1295,7 +1295,7 @@ test("{§schemes-directory} {§capability-admission}: a denied family has no sch
         const hidden = await daemon.engine.referenceEntries(workspaceId);
         assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/tools/plurnk/fx.json"), false, "a denied family has no tool schema");
         assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/fx/paper.md"), false, "a denied family projects no generated document");
-        assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/plurnk/worker.md"), true, "other references are untouched");
+        assert.equal(hidden.some(({ pathname }) => pathname === "/_plurnk/plurnk/session.md"), true, "other references are untouched");
         assert.equal((await operate("```plurnk (fx)```")).status, 403, "the family's tool refuses at admission");
     } finally {
         await daemon.stop();

@@ -1,8 +1,8 @@
 // {§exec-lifetime} — how long a spawn may live, stated once in the fence's metadata
 // (a service key the framework withholds from every owner, {§service-metadata-keys}). A duration
 // bounds it (504 at the deadline); `loop` — the default, and what absence means — ends it with the
-// loop; `turn` ends it at the worker's next pre-turn; `detached` outlives the loop and is nobody's
-// obligation. WAIT bounds observation rather than execution ({§worker-wait-timing}).
+// loop; `turn` ends it at the session's next pre-turn; `detached` outlives the loop and is nobody's
+// obligation. WAIT bounds observation rather than execution ({§session-wait-timing}).
 const DURATION = /^([1-9]\d*)(s|m|h)$/u;
 const PER_UNIT: ReadonlyMap<string, number> = new Map([["s", 1], ["m", 60], ["h", 3600]]);
 

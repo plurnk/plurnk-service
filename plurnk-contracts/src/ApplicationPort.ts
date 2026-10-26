@@ -18,7 +18,7 @@ import type {
     ProposalProjection,
     Notice,
     Effort,
-    WorkerOwner,
+    SessionOwner,
 } from "./types.ts";
 import type {
     ApplicationOwnerIdentity,
@@ -26,13 +26,13 @@ import type {
     ApplicationActionContext,
     ApplicationActionDescriptor,
     ClientEnvelope,
-    ApplicationWorkerOverview,
-    ApplicationWorkerProjection,
-    ApplicationWorkerQuery,
-    ApplicationWorkerHiding,
+    ApplicationSessionOverview,
+    ApplicationSessionProjection,
+    ApplicationSessionQuery,
+    ApplicationSessionHiding,
     ApplicationWorkspaceHiding,
-    ApplicationWorkerIdentity,
-    ApplicationWorkerCreation,
+    ApplicationSessionIdentity,
+    ApplicationSessionCreation,
     ApplicationLoopAdmission,
     ApplicationLoopProjection,
     ApplicationGauge,
@@ -65,8 +65,8 @@ export interface HttpHost {
 /** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort extends HttpHost {
     readonly credentials: CredentialAuthority;
-    registerWorkerOwner(workspaceId: number, owner: WorkerOwner): Promise<void>;
-    claimWorkerOwner(args: { readonly workspaceId: number; readonly workerId: number; readonly owner: string }): Promise<WorkerOwner>;
+    registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void>;
+    claimSessionOwner(args: { readonly workspaceId: number; readonly sessionId: number; readonly owner: string }): Promise<SessionOwner>;
     configurationNotices(): readonly Notice[];
     listClientDisplayCapabilities(): Promise<ClientDisplayCapabilities>;
     listModuleActions(): ApplicationActionDescriptor[];
@@ -85,18 +85,18 @@ export interface ApplicationPort extends HttpHost {
         respondent: ApplicationOwnerIdentity,
         message?: { readonly body: string; readonly source: string; readonly envelope: Readonly<Record<string, unknown>> },
     ): Promise<void>;
-    readMessages(args: { readonly workspaceId: number; readonly workerId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
-    /** {§methods-worker-inbox} The accepted messages the worker has not yet observed at a turn boundary, in acceptance order, each with the lifecycle of the loop holding it. */
-    readInbox(args: { readonly workspaceId: number; readonly workerId: number }): Promise<ApplicationInboxMessage[]>;
-    /** {§methods-worker-streams} The streams the worker holds open, in opening order, each with its channels' states. */
-    readStreams(args: { readonly workspaceId: number; readonly workerId: number }): Promise<ApplicationStream[]>;
+    readMessages(args: { readonly workspaceId: number; readonly sessionId: number; readonly loopId?: number }): Promise<ApplicationMessage[]>;
+    /** {§methods-session-inbox} The accepted messages the session has not yet observed at a turn boundary, in acceptance order, each with the lifecycle of the loop holding it. */
+    readInbox(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationInboxMessage[]>;
+    /** {§methods-session-streams} The streams the session holds open, in opening order, each with its channels' states. */
+    readStreams(args: { readonly workspaceId: number; readonly sessionId: number }): Promise<ApplicationStream[]>;
     /** {§message-idempotency} A client message's address is its idempotency key: `new` when nothing is accepted there,
      *  `accepted` when the same body is; another body under an accepted address is refused, 422 `message-address-reused`. */
     messageAdmission(args: { readonly workspaceId: number; readonly address: string; readonly body: string }): Promise<"new" | "accepted">;
-    ensureRuntimeWorker(workspaceId: number): Promise<number>;
+    ensureRuntimeSession(workspaceId: number): Promise<number>;
     runLoop(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly loopId?: number;
         readonly prompt: string;
         readonly source?: string;
@@ -108,21 +108,21 @@ export interface ApplicationPort extends HttpHost {
         readonly selector?: string;
         readonly childSelector?: string | null;
     }): Promise<ApplicationLoopAdmission>;
-    cancelDrain(workerId: number, reason?: string): boolean;
-    cancelWorker(args: {
+    cancelDrain(sessionId: number, reason?: string): boolean;
+    cancelSession(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly reason?: string;
     }): Promise<void>;
-    // {§connection-lifecycle} — a person's client operation: one loop in the workspace's runtime worker,
-    // attributed to `actor`, its `log:///` addresses read in `contextWorkerId`'s log
+    // {§connection-lifecycle} — a person's client operation: one loop in the workspace's runtime session,
+    // attributed to `actor`, its `log:///` addresses read in `contextSessionId`'s log
     // ({§actor-boundary-client-operations}); `onLoop` hears that loop before any statement runs.
     dispatchClientAction(args: {
         readonly workspaceId: number;
         readonly actor: string;
-        readonly contextWorkerId?: number;
+        readonly contextSessionId?: number;
         readonly statements: PlurnkStatement[];
-        readonly onLoop?: (loop: { readonly workerId: number; readonly loopId: number }) => void;
+        readonly onLoop?: (loop: { readonly sessionId: number; readonly loopId: number }) => void;
     }): Promise<OperationResult[]>;
     // {§connection-lifecycle} — cancel exactly one client operation: its dispatch while it runs and every execution its
     // rows started that still runs; false when nothing of it was running.
@@ -131,7 +131,7 @@ export interface ApplicationPort extends HttpHost {
     executorTags(workspaceId: number): readonly string[];
     readLog(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly loopId?: number;
         readonly turnId?: number;
         readonly sinceId?: number;
@@ -141,7 +141,7 @@ export interface ApplicationPort extends HttpHost {
         readonly turnSeq?: number;
         readonly sequence?: number;
     }): Promise<LogEntryWire[]>;
-    /** {§acp-provider-routes} Each alias is the route a worker seeded from it gets, its configured effort included. */
+    /** {§acp-provider-routes} Each alias is the route a session seeded from it gets, its configured effort included. */
     listProviders(): { readonly aliases: Array<ApplicationProviderAlias> };
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
     createWorkspace(args: {
@@ -155,12 +155,12 @@ export interface ApplicationPort extends HttpHost {
         | { readonly name: string; readonly workspaceId?: never; readonly projectRoot?: never }
         | { readonly projectRoot: string; readonly workspaceId?: never; readonly name?: never }
     ): Promise<ClientEnvelope>;
-    /** {§worker-external-reference} Opaque, adapter-namespaced identity; reading never allocates. */
-    readWorkerReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly workerId: number } | null>;
-    /** {§worker-external-reference} Atomically allocate a folderless workspace and model worker when absent. */
-    ensureWorkerReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly workerId: number }>;
-    /** {§worker-external-reference} Inspect the adapter's retained references to this worker. */
-    listWorkerReferences(args: { readonly workspaceId: number; readonly workerId: number; readonly namespace: string }): Promise<string[]>;
+    /** {§session-external-reference} Opaque, adapter-namespaced identity; reading never allocates. */
+    readSessionReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly sessionId: number } | null>;
+    /** {§session-external-reference} Atomically allocate a folderless workspace and model session when absent. */
+    ensureSessionReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly sessionId: number }>;
+    /** {§session-external-reference} Inspect the adapter's retained references to this session. */
+    listSessionReferences(args: { readonly workspaceId: number; readonly sessionId: number; readonly namespace: string }): Promise<string[]>;
     /** {§place-hiding} Omitted `hidden` lists every workspace; true only hidden ones, false only shown ones. */
     listWorkspaces(query?: { readonly hidden?: boolean }): Promise<Array<{
         readonly id: number;
@@ -172,49 +172,49 @@ export interface ApplicationPort extends HttpHost {
         /** {§place-hiding} When the workspace was hidden, or null while it is shown. */
         readonly hidden_at: string | null;
     }>>;
-    listWorkers(
+    listSessions(
         workspaceId: number,
-        query?: ApplicationWorkerQuery,
-    ): Promise<ApplicationWorkerProjection[]>;
-    readWorker(args: {
+        query?: ApplicationSessionQuery,
+    ): Promise<ApplicationSessionProjection[]>;
+    readSession(args: {
         readonly workspaceId: number;
-        readonly identity: ApplicationWorkerIdentity;
-    }): Promise<ApplicationWorkerProjection | null>;
-    listWorkerLoops(args: {
+        readonly identity: ApplicationSessionIdentity;
+    }): Promise<ApplicationSessionProjection | null>;
+    listSessionLoops(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
     }): Promise<ApplicationLoopProjection[]>;
-    // {§methods-worker-overview} — the places of the daemon, or of one workspace, with what waits there.
-    readWorkerOverview(args: {
+    // {§methods-session-overview} — the places of the daemon, or of one workspace, with what waits there.
+    readSessionOverview(args: {
         readonly workspaceId?: number;
         readonly limit: number;
         readonly excerptChars: number;
-    }): Promise<ApplicationWorkerOverview>;
-    // {§methods-worker-accounting} — the spend of the worker and its descendants since it began.
-    workerAccounting(args: {
+    }): Promise<ApplicationSessionOverview>;
+    // {§methods-session-accounting} — the spend of the session and its descendants since it began.
+    sessionAccounting(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
     }): Promise<ProviderAccounting>;
-    // {§methods-worker-gauge} — the client gauge the worker's latest packet reported.
-    workerGauge(args: {
+    // {§methods-session-gauge} — the client gauge the session's latest packet reported.
+    sessionGauge(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
     }): Promise<ApplicationGauge>;
-    // {§methods-workspace-prompts} — an omitted workerId lists every model worker's client-addressed seeds.
-    listPrompts(workspaceId: number, limit?: number, workerId?: number): Promise<string[]>;
+    // {§methods-workspace-prompts} — an omitted sessionId lists every model session's client-addressed seeds.
+    listPrompts(workspaceId: number, limit?: number, sessionId?: number): Promise<string[]>;
     // {§share} — the workspace's share, from a consistent copy of the daemon's database, into an absolute folder.
     shareWorkspace(args: { readonly workspaceId: number; readonly folder: string }): Promise<{ readonly folder: string }>;
     renameWorkspace(workspaceId: number, name: string): Promise<{ readonly id: number; readonly name: string }>;
     /** {§methods-workspace-hide} Hide or show a workspace; a hide is refused while it holds live work. */
     setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding>;
-    /** {§methods-worker-hide} Hide or show a worker with every worker beneath it; a hide is refused while they hold live work. */
-    setWorkerHidden(args: { readonly workspaceId: number; readonly workerId: number; readonly hidden: boolean }): Promise<ApplicationWorkerHiding>;
-    // {§rollback} — reverse `workerId`'s settled file mutations after its log coordinate `to`, latest
+    /** {§methods-session-hide} Hide or show a session with every session beneath it; a hide is refused while they hold live work. */
+    setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding>;
+    // {§rollback} — reverse `sessionId`'s settled file mutations after its log coordinate `to`, latest
     // first, as one client operation of `actor` ({§connection-lifecycle}); stops at the first file that no
     // longer holds what its mutation wrote.
     rollback(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly actor: string;
         readonly to: string;
     }): Promise<RollbackReport>;
@@ -232,7 +232,7 @@ export interface ApplicationPort extends HttpHost {
     } | null;
     readEntry(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly target: string;
         readonly channel?: string;
         readonly offset?: number;
@@ -240,47 +240,47 @@ export interface ApplicationPort extends HttpHost {
     // {§methods-entry-channel-read} — the channel `target` selects, its fragment's or else its scheme's default, complete.
     readEntryChannel(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly target: string;
     }): Promise<EntryReadResult>;
-    forkWorker(args: {
+    forkSession(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly name?: string;
     }): Promise<{
-        readonly workerId: number;
-        readonly workerName: string | null;
-        readonly parentWorkerId: number;
+        readonly sessionId: number;
+        readonly sessionName: string | null;
+        readonly parentSessionId: number;
     }>;
-    createWorker(args: ApplicationWorkerCreation): Promise<{ readonly workerId: number; readonly workerName: string }>;
-    readWorkerModel(args: {
+    createSession(args: ApplicationSessionCreation): Promise<{ readonly sessionId: number; readonly sessionName: string }>;
+    readSessionModel(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
     }): Promise<{ readonly model: ModelRoute | null; readonly spawnModel: ModelRoute | null }>;
-    setWorkerModel(args: {
+    setSessionModel(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly selector: string;
         /** An effort chosen with the model; the daemon validates and persists the pair as one. */
         readonly effort?: unknown;
     }): Promise<ModelRoute>;
-    setWorkerSpawnModel(args: {
+    setSessionSpawnModel(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly selector: string | null;
     }): Promise<ModelRoute | null>;
-    readWorkerEffort(args: {
+    readSessionEffort(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
     }): Promise<{
         readonly effort: Effort | null;
-        // {§worker-effort-source} — `explicit` only after setWorkerEffort.
+        // {§session-effort-source} — `explicit` only after setSessionEffort.
         readonly source: "default" | "explicit";
         readonly supportedEfforts: readonly Effort[];
     }>;
-    setWorkerEffort(args: {
+    setSessionEffort(args: {
         readonly workspaceId: number;
-        readonly workerId: number;
+        readonly sessionId: number;
         readonly effort: unknown;
     }): Promise<{
         readonly effort: Effort;

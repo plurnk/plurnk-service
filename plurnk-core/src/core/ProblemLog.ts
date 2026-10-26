@@ -4,7 +4,7 @@ import type { WriterTier } from "./scheme-types.ts";
 import LogBody from "./LogBody.ts";
 
 export interface RecordProblem {
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly sequence: number;
@@ -55,7 +55,7 @@ export default class ProblemLog {
         const rx = JSON.stringify(failure);
         const attrs = JSON.stringify(input.attrs ?? {});
         const row = await this.#db.engine_insert_log_entry.get<{ id: number }>({
-            worker_id: input.workerId,
+            session_id: input.sessionId,
             loop_id: input.loopId,
             turn_id: input.turnId,
             sequence: input.sequence,

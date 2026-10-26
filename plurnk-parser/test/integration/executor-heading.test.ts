@@ -38,7 +38,7 @@ for (const tier of ["parse", "parseStatements"] as const) {
         ]) assert.deepEqual(statements(PlurnkParser[tier](source)), [], source);
         const known = statements(PlurnkParser[tier](PlurnkParser.frame("fresh", body), { executors: ["fresh"] }));
         assert.deepEqual(known.map(writtenOp), ["fresh"], "the supplied vocabulary permits slotless invocation");
-        for (const op of ["SEND", "NOTE", "EDIT (worker:///example.md) <1>"]) {
+        for (const op of ["SEND", "NOTE", "EDIT (workspace:///example.md) <1>"]) {
             const outer = statements(PlurnkParser[tier](PlurnkParser.frame(op, call)));
             assert.equal(outer.length, 1);
             assert.ok("body" in outer[0]);

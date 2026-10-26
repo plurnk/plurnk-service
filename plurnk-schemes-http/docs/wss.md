@@ -25,7 +25,7 @@ while EDIT, SEND, and KILL address that connection.
 
 The native `open` event plus durable `messages` activation is the acquisition
 boundary. It emits the ordinary metadata-only stream event and returns the READ
-at `102`; any worker or client in the workspace may then EDIT, SEND,
+at `102`; any session or client in the workspace may then EDIT, SEND,
 or KILL the connection. A close before acquisition is a direct `502` connection
 failure. After acquisition, close, cancellation, and failure settle the retained
 subscription without rewriting the initial READ.

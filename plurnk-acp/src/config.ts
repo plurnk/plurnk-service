@@ -7,7 +7,7 @@ export interface ModuleOptions {
     readonly historyLoops?: number;
     readonly historyPageChars?: number;
     readonly excerptChars?: number;
-    readonly overviewWorkers?: number;
+    readonly overviewSessions?: number;
     readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
@@ -18,7 +18,7 @@ export interface ResolvedModuleOptions {
     readonly historyLoops: number;
     readonly historyPageChars: number;
     readonly excerptChars: number;
-    readonly overviewWorkers: number;
+    readonly overviewSessions: number;
 }
 
 const parsePositiveSafeInt = (key: string, raw: string | undefined, floor: number): number => {
@@ -70,7 +70,7 @@ export const resolveModuleOptions = (opts: ModuleOptions = {}): ResolvedModuleOp
     const historyLoops = opts.historyLoops ?? parsePositiveSafeInt("PLURNK_ACP_HISTORY_LOOPS", env.PLURNK_ACP_HISTORY_LOOPS, 2);
     const historyPageChars = opts.historyPageChars ?? parsePositiveSafeInt("PLURNK_ACP_HISTORY_PAGE_CHARS", env.PLURNK_ACP_HISTORY_PAGE_CHARS, 2000000);
     const excerptChars = opts.excerptChars ?? parsePositiveSafeInt("PLURNK_ACP_EXCERPT_CHARS", env.PLURNK_ACP_EXCERPT_CHARS, 240);
-    const overviewWorkers = opts.overviewWorkers ?? parsePositiveSafeInt("PLURNK_ACP_OVERVIEW_WORKERS", env.PLURNK_ACP_OVERVIEW_WORKERS, 200);
+    const overviewSessions = opts.overviewSessions ?? parsePositiveSafeInt("PLURNK_ACP_OVERVIEW_SESSIONS", env.PLURNK_ACP_OVERVIEW_SESSIONS, 200);
     return {
         allowOrigin,
         maxTurns,
@@ -78,6 +78,6 @@ export const resolveModuleOptions = (opts: ModuleOptions = {}): ResolvedModuleOp
         historyLoops,
         historyPageChars,
         excerptChars,
-        overviewWorkers,
+        overviewSessions,
     };
 };

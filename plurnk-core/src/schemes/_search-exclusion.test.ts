@@ -28,7 +28,7 @@ test("{§search-exclusion} #91: repository exclusions apply only to file identit
         const pathname = "/repo/dist/index.json";
         assert.equal(matchSearchExclusion({ scheme: "file", pathname }), "*/dist/*");
         assert.equal(matchSearchExclusion({ scheme: "https", pathname }), undefined);
-        assert.equal(matchSearchExclusion({ scheme: "worker", pathname }), undefined);
+        assert.equal(matchSearchExclusion({ scheme: "session", pathname }), undefined);
     });
 });
 

@@ -1,6 +1,6 @@
 // {§operator-config-env-defaults} — PLURNK_SERVICE_SQLITE_READERS reaches the database pool.
-// The launcher is spawned for real and the pool is observed from outside: every sqlrite Worker
-// holds its own connection, so the open descriptors on the database file count the Workers
+// The launcher is spawned for real and the pool is observed from outside: every sqlrite Session
+// holds its own connection, so the open descriptors on the database file count the Sessions
 // (one writer plus the readers). Parsing alone is not proof; the descriptors are.
 
 import test from "node:test";
@@ -10,7 +10,7 @@ import { launch } from "./_launcher.ts";
 
 const PROC = existsSync("/proc/self/fd");
 
-test("{§operator-config-env-defaults}: the shipped default is one database Worker; a positive count adds readers", { skip: PROC ? false : "no /proc on this host" }, async () => {
+test("{§operator-config-env-defaults}: the shipped default is one database Session; a positive count adds readers", { skip: PROC ? false : "no /proc on this host" }, async () => {
     const floor = await launch({});
     assert.equal(floor.dbConnections, 1, `.env.defaults ships PLURNK_SERVICE_SQLITE_READERS=0: the writer alone holds the database (stderr: ${floor.stderr})`);
     const two = await launch({ PLURNK_SERVICE_SQLITE_READERS: "2" });

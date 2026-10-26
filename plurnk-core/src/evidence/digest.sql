@@ -6,12 +6,12 @@
 -- PREP: digest_workspaces
 SELECT * FROM workspaces ORDER BY id;
 
--- PREP: digest_workers
-SELECT * FROM workers ORDER BY id;
+-- PREP: digest_sessions
+SELECT * FROM sessions ORDER BY id;
 
 -- PREP: digest_loops
 -- `*` so a database made before {§loop-claim-latency} still digests; its loops simply carry no claim.
-SELECT * FROM loops ORDER BY worker_id, sequence;
+SELECT * FROM loops ORDER BY session_id, sequence;
 
 -- PREP: digest_turns
 SELECT t.id, t.loop_id, t.sequence, t.producer, t.kind, t.status, t.completed_at,
@@ -64,9 +64,9 @@ ORDER BY ic.workspace_id, ic.timestamp, ic.id;
 
 -- PREP: digest_provider_requests
 -- Cardinal physical-request ledger with ownership coordinates for derived
--- workspace/worker/loop/turn projections.
+-- workspace/session/loop/turn projections.
 SELECT pr.id, pr.inference_call_id, a.id AS turn_attempt_id, ic.kind,
-       ic.turn_id, t.loop_id, l.worker_id, ic.workspace_id,
+       ic.turn_id, t.loop_id, l.session_id, ic.workspace_id,
        pr.sequence, pr.provider, pr.model, pr.state, pr.outcome, pr.status,
        pr.usage_input, pr.usage_output, pr.usage_total,
        pr.usage_input_no_cache, pr.usage_input_cache_read, pr.usage_input_cache_write,
@@ -86,7 +86,7 @@ ORDER BY ic.workspace_id, ic.timestamp, ic.id, pr.sequence;
 SELECT * FROM provider_requests WHERE id = $request_id;
 
 -- PREP: digest_log_entries
-SELECT id, worker_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
+SELECT id, session_id, loop_id, turn_id, sequence, at, origin, source, model_call_id,
        inherited_history, ambient_event_id,
        op, signal,
        scheme, hostname, port, pathname, query, fragment,
@@ -103,35 +103,35 @@ ORDER BY loop_id, turn_id, sequence;
 -- PREP: digest_proposal_decisions
 SELECT log_entry_id, decision, resolver, body, outcome, decided_at FROM proposal_decisions;
 
--- PREP: digest_worker_rollups
--- Structural per-worker aggregates. Accounting is derived through the shared
+-- PREP: digest_session_rollups
+-- Structural per-session aggregates. Accounting is derived through the shared
 -- exact-decimal provider contract rather than SQLite numeric arithmetic.
 SELECT
-    r.id AS worker_id,
+    r.id AS session_id,
     COUNT(DISTINCT l.id) AS loops,
     COUNT(t.id) AS turns,
     (SELECT t2.status FROM turns t2 JOIN loops l2 ON t2.loop_id = l2.id
-     WHERE l2.worker_id = r.id ORDER BY t2.id DESC LIMIT 1) AS last_status
-FROM workers r
-LEFT JOIN loops l ON l.worker_id = r.id
+     WHERE l2.session_id = r.id ORDER BY t2.id DESC LIMIT 1) AS last_status
+FROM sessions r
+LEFT JOIN loops l ON l.session_id = r.id
 LEFT JOIN turns t ON t.loop_id = l.id
 GROUP BY r.id
 ORDER BY r.id;
 
--- PREP: digest_worker_op_mix
--- Per-worker op histogram (GROUP BY worker, op), pre-sorted by frequency.
-SELECT worker_id, op, COUNT(*) AS n
+-- PREP: digest_session_op_mix
+-- Per-session op histogram (GROUP BY session, op), pre-sorted by frequency.
+SELECT session_id, op, COUNT(*) AS n
 FROM log_entries
 WHERE op IS NOT NULL
   -- {§emission-row}, {§reasoning-row}: harness rows are not model-authored operations.
   AND COALESCE(json_extract(attrs, '$.kind'), '') NOT IN ('emission', 'reasoning')
-GROUP BY worker_id, op
-ORDER BY worker_id, n DESC, op;
+GROUP BY session_id, op
+ORDER BY session_id, n DESC, op;
 
 -- PREP: digest_emissions
--- {§emission-row}: every emission a worker's rows announced, retired ones included: a stored request
+-- {§emission-row}: every emission a session's rows announced, retired ones included: a stored request
 -- places exactly the emission rows its own log section carried ({§packet-wire-envelope}).
-SELECT le.worker_id,
+SELECT le.session_id,
        l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
        json_extract(le.rx, '$.content') AS content,
        projection.active AS active
@@ -144,7 +144,7 @@ ORDER BY le.id;
 
 -- PREP: digest_reasonings
 -- {§reasoning-row}: every reasoning row landed, retired ones included.
-SELECT le.worker_id,
+SELECT le.session_id,
        l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
        json_extract(le.rx, '$.content') AS content,
        projection.active AS active
@@ -158,12 +158,12 @@ ORDER BY le.id;
 -- PREP: digest_edit_statements
 -- {§digest-edit-census}: every model-authored EDIT with the scope it authored, the pattern the
 -- durable statement carried, and how it landed. tx is the statement (application/json).
-SELECT id, worker_id, loop_id, turn_id, sequence, pathname, status_rx,
+SELECT id, session_id, loop_id, turn_id, sequence, pathname, status_rx,
        lineMarker AS line_marker,
        CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
 FROM log_entries
 WHERE op = 'EDIT' AND origin = 'model'
-ORDER BY worker_id, turn_id, sequence;
+ORDER BY session_id, turn_id, sequence;
 
 -- PREP: digest_curation_effects
 SELECT operation_log_entry_id, target_log_entry_id,

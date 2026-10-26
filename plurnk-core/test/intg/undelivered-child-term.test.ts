@@ -1,4 +1,4 @@
-// {§send-undelivered-child-term}: workers concluding DURING the parent's generation are no
+// {§send-undelivered-child-term}: sessions concluding DURING the parent's generation are no
 // longer live, but their ambient event is newer than the parent's observation cursor and queued
 // for the next packet. Both dispositions must preserve that completed-but-unobserved result.
 import test from "node:test";
@@ -9,22 +9,22 @@ import Turn from "../../src/core/Turn.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { completeStmt, dispositionStmt } from "./_dsl.ts";
 
 async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     const workspaceId = await insertWorkspace(db, `race-${crypto.randomUUID()}`);
-    const parent = await insertWorker(db, workspaceId);
+    const parent = await insertSession(db, workspaceId);
     const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
     await engine.runTurn({
         provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "```NOTE\nCollect the child result.\n```", reasoning: null } }] }),
-        workspaceId, workerId: parent, loopId: parentLoop, messages: [],
+        workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
     });
     const { id: parentTurn } = await Turn.open(db, { loopId: parentLoop, producer: "model", kind: "inference" });
     // A child spawned by the parent concludes after the parent's turn opened.
-    const child = await insertWorker(db, workspaceId, parent, "worker-x");
+    const child = await insertSession(db, workspaceId, parent, "session-x");
     const childLoop = await insertLoop(db, child, 1, "fetch the value");
     await insertTurn(db, childLoop, 1, 102);
     await new LoopLifecycle(db).finish(childLoop, {
@@ -35,11 +35,11 @@ async function raceScenario(db: Awaited<ReturnType<typeof openMigrated>>) {
     return { workspaceId, parent, parentLoop, parentTurn, engine };
 }
 
-test("{§worker-lifecycle-child-matrix} waiting on a just-concluded child continues until the result is delivered", async () => {
+test("{§session-lifecycle-child-matrix} waiting on a just-concluded child continues until the result is delivered", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for worker-x."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for session-x."), workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "the wait is NOT on nothing — the child's deliverable is on the doorstep; continue");
         const loop = await db.test_get_loop_status.get<{ status: number }>({ id: parentLoop });
         assert.notEqual(loop?.status, 200, "the loop did not conclude over the undelivered result");
@@ -53,10 +53,10 @@ test("{§send-undelivered-child-term} a child refused before its first turn stil
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ghost-${crypto.randomUUID()}`);
-        const parent = await insertWorker(db, workspaceId);
+        const parent = await insertSession(db, workspaceId);
         const parentLoop = await insertLoop(db, parent, 1, "orchestrate");
         const parentTurn = await insertTurn(db, parentLoop, 1, 102);
-        const child = await insertWorker(db, workspaceId, parent, "worker-ghost");
+        const child = await insertSession(db, workspaceId, parent, "session-ghost");
         const childLoop = await insertLoop(db, child, 1, "implement");
         await new LoopLifecycle(db).finish(childLoop, Results.failure(
             "lifecycle:branch",
@@ -66,10 +66,10 @@ test("{§send-undelivered-child-term} a child refused before its first turn stil
             {},
             { stage: "git-preflight", retryable: false },
         ));
-        const pending = await db.engine_worker_has_undelivered_child_term.get<{ pending: number }>({ worker_id: parent });
+        const pending = await db.engine_session_has_undelivered_child_term.get<{ pending: number }>({ session_id: parent });
         assert.ok(pending !== undefined, "the refused spawn is an undelivered child termination");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for worker-ghost."), workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
+        const r = await engine.dispatch({ statement: dispositionStmt("WAIT", "Waiting for session-ghost."), workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, sequence: 1, origin: "model" });
         assert.equal(r.status, 102, "the wait continues so the failure lands in the next packet instead of parking on a ghost");
     } finally { await db.close(); }
 });
@@ -78,11 +78,11 @@ test("{§send-undelivered-child-term} a delivered answer cannot complete before 
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);
-        const r = await engine.executeAdmittedTurn({ statements: [completeStmt("done")], source: null, emission: null, workspaceId, workerId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
-        assert.equal(r.status, 102, "concluding over an undelivered worker result is deferred, never refused");
+        const r = await engine.executeAdmittedTurn({ statements: [completeStmt("done")], source: null, emission: null, workspaceId, sessionId: parent, loopId: parentLoop, turnId: parentTurn, fromSequence: 1, origin: "model" });
+        assert.equal(r.status, 102, "concluding over an undelivered session result is deferred, never refused");
         assert.deepEqual(r.outcomes, [{ op: "SEND", status: 200, problemType: null }]);
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "", reasoning: null } }] });
-        const observed = await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages: [] });
+        const observed = await engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages: [] });
         assert.equal(observed.status, 200);
         assert.match(JSON.stringify(provider.received[0]), /the value is 42/);
     } finally { await db.close(); }

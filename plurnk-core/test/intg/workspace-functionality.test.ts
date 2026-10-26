@@ -8,12 +8,12 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type FunctionalityListResult } from "@plurnk/plurnk-contracts";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorker, openMigrated } from "./_db.ts";
+import { insertSession, openMigrated } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
-import { modelOperation } from "./_workers.ts";
+import { modelOperation } from "./_sessions.ts";
 
-test("{§workspace-environment-sharing}: MCP definitions belong to the workspace, not to any worker", async (t) => {
+test("{§workspace-environment-sharing}: MCP definitions belong to the workspace, not to any session", async (t) => {
     const server = await serveMcpHttp(t, createMcpHandler(() => {
         const mcp = new McpServer({ name: "shared-fixture", version: "1.0.0" });
         mcp.registerTool("echo", {
@@ -38,23 +38,23 @@ test("{§workspace-environment-sharing}: MCP definitions belong to the workspace
         `workspace.mcp.${verb}`, params, { scope: "workspace", workspaceId: id },
     );
     const enabled = await action(workspaceId, "enable", { alias: "shared" }) as { definition: { state: string } };
-    assert.equal(enabled.definition.state, "active", "the workspace connects its installed server with no worker");
+    assert.equal(enabled.definition.state, "active", "the workspace connects its installed server with no session");
     const listed = await action(workspaceId, "list") as FunctionalityListResult;
     assert.equal(listed.definitions.find(({ alias }) => alias === "shared")?.state, "active");
     assert.deepEqual((await action(other.workspaceId, "list") as FunctionalityListResult).definitions.map(({ alias, state }) => ({ alias, state })),
         [{ alias: "shared", state: "dormant" }], "the workspace boundary remains real: another workspace holds no connection of this one's");
-    const alice = await insertWorker(db, workspaceId, null, "alice", "model");
-    const bob = await insertWorker(db, workspaceId, null, "bob", "model");
+    const alice = await insertSession(db, workspaceId, null, "alice", "model");
+    const bob = await insertSession(db, workspaceId, null, "bob", "model");
     assert.deepEqual((await action(workspaceId, "list") as FunctionalityListResult).definitions, listed.definitions,
-        "creating workers neither copies nor redefines the shared environment");
+        "creating sessions neither copies nor redefines the shared environment");
     const read = PlurnkParser.parseStatements(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null), { executors: fixtureExecutors(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null)) }).items[0];
     assert.equal(read?.kind, "statement");
     if (read?.kind !== "statement") throw new Error("Expected one READ");
-    for (const workerId of [alice, bob]) {
+    for (const sessionId of [alice, bob]) {
         const docs = await daemon.engine.referenceEntries(workspaceId);
-        assert.ok(docs.some(({ content }) => content.includes("shared (echo)")), "every worker discovers the same enabled tool");
-        // The worker's own READ.
-        const catalog = await modelOperation(daemon, db, { workspaceId, workerId, statement: read.statement });
+        assert.ok(docs.some(({ content }) => content.includes("shared (echo)")), "every session discovers the same enabled tool");
+        // The session's own READ.
+        const catalog = await modelOperation(daemon, db, { workspaceId, sessionId, statement: read.statement });
         assert.equal(catalog.status, 200, JSON.stringify(catalog));
         assert.match(String(catalog.content), /fixture:\/\/shared\/item/u);
     }

@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import TurnOps from "../../src/core/TurnOps.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
@@ -14,12 +14,12 @@ test("{§disposition-anywhere} a KILL after SEND executes: curation and the repl
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Deliver the answer and curate the note.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Deliver the answer and curate the note.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const seed = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100_000, responses: [response("```EDIT (worker:///note.md)\nEvidence.\n```\n```NOTE\nReview.\n```")] }),
-            workspaceId, workerId, loopId, messages: [],
+            provider: new Mock({ contextWindow: 100_000, responses: [response("```EDIT (workspace:///note.md)\nEvidence.\n```\n```NOTE\nReview.\n```")] }),
+            workspaceId, sessionId, loopId, messages: [],
         });
         const originalRows = await db.test_log_entries_by_turn.all<{ id: number; sequence: number; op: string; active: number }>({ turn_id: seed.turnId });
         const plan = originalRows.find(({ op }) => op === "NOTE");
@@ -32,7 +32,7 @@ Answer.
 \`\`\`\`KILL (log:///1/${turn.sequence}/${plan.sequence}/NOTE)\`\`\`\``;
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }),
-            workspaceId, workerId, loopId, messages: [],
+            workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "a progress reply leaves the message unresolved");
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["KILL", 200]]);
@@ -48,7 +48,7 @@ Answer.
         assert.equal(curated.find(({ id }) => id === plan.id)?.active, 0, "the KILL authored after SEND curated the earlier note");
         assert.equal((await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [response("```SEND [200]\n```")] }),
-            workspaceId, workerId, loopId, messages: [],
+            workspaceId, sessionId, loopId, messages: [],
         })).status, 200);
     } finally { await db.close(); }
 });
@@ -57,11 +57,11 @@ test("{§matcher-refusal} SEND authored first: later operations run in authored 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "next-order");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Create and inspect the note.");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Create and inspect the note.");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
-        const source = "```SEND\nInspect results.\n```\n```EDIT (worker:///note.md)\nCreated before READ.\n```\n```READ (worker:///note.md)```\n```FIND (worker:///*) /[/```";
-        const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, workerId, loopId, messages: [] });
+        const source = "```SEND\nInspect results.\n```\n```EDIT (workspace:///note.md)\nCreated before READ.\n```\n```READ (workspace:///note.md)```\n```FIND (workspace:///*) /[/```";
+        const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], ["FIND", 400]],
             "the reply, mutations, retrieval, and the refused matcher ({§matcher-refusal}) retain authored order");
@@ -76,13 +76,13 @@ test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: t
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "admit-before-loss");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100_000, responses: [
-                response("```EDIT (worker:///before-loss.md)\nKept.\n```\n```WAIT\nContinue.\n```\n```READ (unfinished"),
-            ] }), workspaceId, workerId, loopId, messages: [],
+                response("```EDIT (workspace:///before-loss.md)\nKept.\n```\n```WAIT\nContinue.\n```\n```READ (unfinished"),
+            ] }), workspaceId, sessionId, loopId, messages: [],
         });
         assert.equal(result.status, 102, "the failed row keeps the loop going; nothing was resampled");
         const attempts = await db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });

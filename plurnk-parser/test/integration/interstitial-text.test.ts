@@ -7,15 +7,15 @@ const task = PlurnkParser.frame("WAIT", '[{"content":"Observe the result.","stat
 const statements = (result: ReturnType<typeof PlurnkParser.parse>) => result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 
 test("{§response-text}: provider preamble is text; an opener after text on its line is prose ({§quotation})", () => {
-    const own = PlurnkParser.parse("plain preamble\n" + PlurnkParser.frame("READ (worker:///x)", null) + "\n" + task);
+    const own = PlurnkParser.parse("plain preamble\n" + PlurnkParser.frame("READ (workspace:///x)", null) + "\n" + task);
     assert.deepEqual(statements(own).map(({ op }) => op), ["READ", "WAIT"]);
     assert.deepEqual(statements(own)[0].position, { line: 2, column: 0 });
-    const inline = PlurnkParser.parse("harmless status." + PlurnkParser.frame("READ (worker:///x)", null) + "\n" + task);
+    const inline = PlurnkParser.parse("harmless status." + PlurnkParser.frame("READ (workspace:///x)", null) + "\n" + task);
     assert.deepEqual(statements(inline).map(({ op }) => op), ["WAIT"], "the READ is prose; its orphaned closer quotes nothing, so the WAIT still runs");
 });
 
 test("{§fence-boundary}: preamble text does not promote headings or inline body examples", () => {
-    const body = "keep inline ### READ_ (worker:///not-an-operation) as body";
+    const body = "keep inline ### READ_ (workspace:///not-an-operation) as body";
     const result = PlurnkParser.parse("ordinary.## Heading! remains preamble\n" + PlurnkParser.frame("WAIT", body));
     assert.deepEqual(result.items.map((item) => item.kind), ["text", "statement"]);
     const first = statements(result)[0];

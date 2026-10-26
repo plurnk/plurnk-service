@@ -6,7 +6,7 @@ import { UNKNOWN_POSITION } from "./types.ts";
 
 test("{§notifications-operation-event} dispatch observations preserve the phase/result boundary", () => {
     const start = {
-        workerId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: null, phase: "started",
+        sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: null, phase: "started",
         statement: { op: "READ", target: { kind: "local", raw: "README.md" },
             aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
     };

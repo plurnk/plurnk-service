@@ -11,13 +11,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import type { ExecStatement, RuntimeTag } from "@plurnk/plurnk-contracts";
 import type { Effect } from "@plurnk/plurnk-execs";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { localPath } from "./_dsl.ts";
 
@@ -54,15 +54,15 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
         const channel = entry.executor.defaultChannel;
         const declaredMimetype = entry.executor.channels[channel]?.mimetype;
         const workspaceId = await insertWorkspace(db, `batt-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        await ownWorker(db, workspaceId, workerId);
-        const loopId = await insertLoop(db, workerId, 1, "batteries");
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "batteries");
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const idDeferred = deferred<number>();
         const dispatchPromise = engine.dispatch({
             statement: execStmt(tag, cwd, body),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id) => idDeferred.resolve(id),
         });
         const logEntryId = await idDeferred.promise;
@@ -159,12 +159,12 @@ test("{§exec-executor-slot} an unregistered executable tag fails without shell 
         engine.setExecutors(registry);
         assert.ok(!registry.availableRuntimes().includes("echo"), "precondition: echo is NOT a registered runtime");
         const workspaceId = await insertWorkspace(db, `batt-ft-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "ft");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "ft");
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: execStmt("echo", null, "hello fallthrough"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         });
         // {§exec-executor-slot} — an unregistered executor name is refused as such, never reinterpreted
         // as a shell command word; the refusal lists what is registered.
@@ -175,7 +175,7 @@ test("{§exec-executor-slot} an unregistered executable tag fails without shell 
         assert.equal(result.problem?.toolRuntimes, undefined, "an arbitrary unknown word names no tool runtime");
         const shell = await engine.dispatch({
             statement: execStmt("shell", null, "printf hello"),
-            workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
         });
         assert.equal(shell.status, 400);
         assert.equal(shell.problem?.requestedRuntime, "shell", "an unknown alias does not trigger an intent-presuming correction");

@@ -7,7 +7,7 @@ Start at `digest.md`: its turn tables link input, output, reasoning and every ph
 Request pages link to adjacent turns and expose failures, admission and native attachment
 descriptors; `requests/<id>.md` shows the available provider evidence and accounting.
 
-Read `<worker>-<loop>-<turn>.request.md` for the model's ordered text input, with each message's
+Read `<session>-<loop>-<turn>.request.md` for the model's ordered text input, with each message's
 role and complete body. The digest names its role sequence beside each turn. `.assistant.md`
 is that turn's **output**, not its input history; `.system.md` and `.user.md` are role-filtered
 extracts. `.wire.json` contains the same ordered text input, not an HTTP capture.

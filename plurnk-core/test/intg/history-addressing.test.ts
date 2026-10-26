@@ -12,7 +12,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, rootWorkspace, sendingOperation } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, rootWorkspace, sendingOperation } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
@@ -22,7 +22,7 @@ import { clientRead } from "./_client-read.ts";
 const frame = PlurnkParser.frame;
 const program = (name: string) => `${frame("NOTE", `${name} source`)}\n\n${frame(`READ (note://${name}/1/1/1)`, null)}`;
 
-test("{§env-delta-child-activity}: file deletion, worker cancellation and stream cancellation remain observable", async () => {
+test("{§env-delta-child-activity}: file deletion, session cancellation and stream cancellation remain observable", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ambient-kill-"));
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -30,15 +30,15 @@ test("{§env-delta-child-activity}: file deletion, worker cancellation and strea
     try {
         const workspaceId = await insertWorkspace(db, "kill-observation");
         await rootWorkspace(db, workspaceId, root);
-        const parent = await insertWorker(db, workspaceId, null, "parent");
-        const child = await insertWorker(db, workspaceId, parent, "child");
-        const descendant = await insertWorker(db, workspaceId, child, "descendant");
+        const parent = await insertSession(db, workspaceId, null, "parent");
+        const child = await insertSession(db, workspaceId, parent, "child");
+        const descendant = await insertSession(db, workspaceId, child, "descendant");
         const parentLoop = await insertLoop(db, parent, 1);
         const childLoop = await insertLoop(db, child, 1);
         const descendantLoop = await insertLoop(db, descendant, 1);
         const lifecycle = new LoopLifecycle(db);
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES,
-            cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); },
+            cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); },
         });
         const executors = await testExecutors();
         engine.setExecutors(executors);
@@ -47,7 +47,7 @@ test("{§env-delta-child-activity}: file deletion, worker cancellation and strea
         let sequence = 0;
         const dispatch = async (source: string, review = false) => {
             const announced = Promise.withResolvers<number>();
-            const pending = engine.dispatch({ workspaceId, workerId: child, loopId: childLoop, turnId: turn.id,
+            const pending = engine.dispatch({ workspaceId, sessionId: child, loopId: childLoop, turnId: turn.id,
                 sequence: ++sequence, origin: "model", statement: statement(source), onDispatch: announced.resolve,
             });
             if (review) engine.resolveProposal(await announced.promise, { decision: "accept" });
@@ -57,7 +57,7 @@ test("{§env-delta-child-activity}: file deletion, worker cancellation and strea
         assert.equal(await readFile(join(root, "obsolete.txt"), "utf8"), "Temporary content.");
         assert.equal((await dispatch(frame("KILL (obsolete.txt)", null), true)).status, 200);
         await assert.rejects(readFile(join(root, "obsolete.txt")), { code: "ENOENT" });
-        assert.equal((await dispatch(frame("KILL (worker://descendant)", null))).status, 200);
+        assert.equal((await dispatch(frame("KILL (session://descendant)", null))).status, 200);
         assert.equal(await lifecycle.status(descendantLoop), 499, "the descendant really stopped");
         assert.equal((await dispatch(frame("sh", "sleep 10"), true)).status, 200);
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; attrs: string }>({ loop_id: childLoop });
@@ -69,16 +69,16 @@ test("{§env-delta-child-activity}: file deletion, worker cancellation and strea
         await exec.idle();
         const stream = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
         assert.ok(stream);
-        const subscription = await db.test_get_subscription_by_entry.get<{ close_status: number }>({ worker_id: child, entry_id: stream.id });
+        const subscription = await db.test_get_subscription_by_entry.get<{ close_status: number }>({ session_id: child, entry_id: stream.id });
         assert.equal(subscription?.close_status, 200, "{§stream-asked-stop}: the stream stopped as its holder asked");
         await Turn.complete(db, turn.id, 102);
-        await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, messages: [],
+        await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] }),
         });
         const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; tx: string; status_rx: number }>({ loop_id: parentLoop }))
-            .filter(({ op, source }) => op === "KILL" && source === "worker://child");
+            .filter(({ op, source }) => op === "KILL" && source === "session://child");
         assert.deepEqual(observations.map(({ tx, status_rx }) => [JSON.parse(tx).target.raw, status_rx]),
-            [["obsolete.txt", 200], ["worker://descendant", 200], [target, 200]]);
+            [["obsolete.txt", 200], ["session://descendant", 200], [target, 200]]);
     } finally {
         await exec.idle();
         await db.close();
@@ -86,31 +86,31 @@ test("{§env-delta-child-activity}: file deletion, worker cancellation and strea
     }
 });
 
-test("{§turn-source-resources}: shared addresses retain identity across workers, curation, copying and forks", async () => {
+test("{§turn-source-resources}: shared addresses retain identity across sessions, curation, copying and forks", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "shared-history");
-        const parent = await insertWorker(db, workspaceId, null, "parent");
-        const child = await insertWorker(db, workspaceId, parent, "child_A");
+        const parent = await insertSession(db, workspaceId, null, "parent");
+        const child = await insertSession(db, workspaceId, parent, "child_A");
         const parentLoop = await insertLoop(db, parent, 1);
         const childLoop = await insertLoop(db, child, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        for (const [workerId, loopId, name] of [[parent, parentLoop, "parent"], [child, childLoop, "child_A"]] as const) {
+        for (const [sessionId, loopId, name] of [[parent, parentLoop, "parent"], [child, childLoop, "child_A"]] as const) {
             const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
             await Turn.recordSource(db, turn.id, "ops", program(name));
             await Turn.recordSource(db, turn.id, "reasoning", `${name} reasoning`);
-            const result = await engine.dispatch({ workspaceId, workerId, loopId, turnId: turn.id, sequence: 1,
+            const result = await engine.dispatch({ workspaceId, sessionId, loopId, turnId: turn.id, sequence: 1,
                 origin: "model", statement: statement(frame("NOTE", `${name} note`)) });
             assert.equal(result.status, 200);
             assert.equal("resource" in result && result.resource, `note://${name}/1/1/1`);
             await Turn.complete(db, turn.id, 200);
         }
         // A READ is its reader's client action, whose loop follows loop 1; any other operation is the model's.
-        const perform = async (source: string, workerId = parent, loopId = parentLoop) => {
+        const perform = async (source: string, sessionId = parent, loopId = parentLoop) => {
             const operation = statement(source);
-            if (operation.op === "READ") return clientRead(engine, db, { workspaceId, workerId, statement: operation });
+            if (operation.op === "READ") return clientRead(engine, db, { workspaceId, sessionId, statement: operation });
             const turn = await Turn.open(db, { loopId, producer: "model", kind: "inference" });
-            const result = await engine.dispatch({ workspaceId, workerId, loopId, turnId: turn.id, sequence: 1,
+            const result = await engine.dispatch({ workspaceId, sessionId, loopId, turnId: turn.id, sequence: 1,
                 origin: "model", statement: operation });
             await Turn.complete(db, turn.id, result.status);
             return result;
@@ -132,7 +132,7 @@ test("{§turn-source-resources}: shared addresses retain identity across workers
         assert.deepEqual(resourcePaths(searched), ["note://child_A/1/1/1"], "authority glob with an exact path retains a resource catalog");
         const indexed = await perform(frame("FIND (ops://*/1/1) <1,-1> ~source", null)) as FindResult;
         assert.equal(indexed.status, 200, JSON.stringify(indexed));
-        assert.deepEqual(resourcePaths(indexed).toSorted(), ["ops://child_A/1/1", "ops://parent/1/1"], "indexed matches retain both workers at identical coordinates");
+        assert.deepEqual(resourcePaths(indexed).toSorted(), ["ops://child_A/1/1", "ops://parent/1/1"], "indexed matches retain both sessions at identical coordinates");
         for (const address of ["note:///1/1/1", "note://child_A:80/1/1/1", "note://child_A/1/1/1?q=x"]) {
             const invalid = await perform(frame(`READ (${address})`, null));
             assert.equal(invalid.status, 400, address);
@@ -140,11 +140,11 @@ test("{§turn-source-resources}: shared addresses retain identity across workers
         }
         for (const address of ["note://child_a/1/1/1", "note://missing/1/1/1"]) {
             const absent = await perform(frame(`READ (${address})`, null));
-            assert.equal(absent.status, 404, "worker authorities are exact, not silently case-folded");
+            assert.equal(absent.status, 404, "session authorities are exact, not silently case-folded");
         }
-        const copied = await perform(frame("COPY (note://child_A/1/1/1) (worker:///shared-note.md)", null));
+        const copied = await perform(frame("COPY (note://child_A/1/1/1) (workspace:///shared-note.md)", null));
         assert.equal(copied.status, 201, JSON.stringify(copied));
-        const copy = await perform(frame("READ (worker:///shared-note.md) <1,-1>", null));
+        const copy = await perform(frame("READ (workspace:///shared-note.md) <1,-1>", null));
         assert.equal("content" in copy && copy.content, "child_A note");
         const trimmed = await perform(frame("KILL (log:///1/1/1/NOTE)", null), child, childLoop);
         assert.equal(trimmed.status, 200);
@@ -171,62 +171,62 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "note-sharing");
-        const parent = await insertWorker(db, workspaceId, null, "parent");
-        const child = await insertWorker(db, workspaceId, parent, "child");
+        const parent = await insertSession(db, workspaceId, null, "parent");
+        const child = await insertSession(db, workspaceId, parent, "child");
         const parentLoop = await insertLoop(db, parent, 1);
         const childLoop = await insertLoop(db, child, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            injectWorker: async ({ workerId, sourceLoopId, prompt }) => {
-                assert.equal(workerId, parent);
+            injectSession: async ({ sessionId, sourceLoopId, prompt }) => {
+                assert.equal(sessionId, parent);
                 assert.equal(sourceLoopId, childLoop);
                 const message = await db.drain_enqueue_message.get({ loop_id: parentLoop, address: null,
-                    source: "worker://child", body: prompt, open_paths: "[]", evidence: "{}", opened_turn_id: null, opened_sequence: null });
+                    source: "session://child", body: prompt, open_paths: "[]", evidence: "{}", opened_turn_id: null, opened_sequence: null });
                 assert.ok(message);
                 return { action: "injected_next_turn", loopId: parentLoop, message: "message://parent/1" };
             },
         });
         const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
-        const context = { workspaceId, workerId: child, loopId: childLoop, turnId: turn.id, origin: "model" as const };
+        const context = { workspaceId, sessionId: child, loopId: childLoop, turnId: turn.id, origin: "model" as const };
         const note = await engine.dispatch({ ...context, sequence: 1, statement: statement(frame("NOTE", "The retry condition is idempotent.")) });
         assert.equal(note.status, 200);
         assert.equal("resource" in note && note.resource, "note://child/1/1/1");
-        const send = await engine.dispatch({ ...context, sequence: 2, statement: statement(frame("SEND (worker://parent)", "See note://child/1/1/1")) });
+        const send = await engine.dispatch({ ...context, sequence: 2, statement: statement(frame("SEND (session://parent)", "See note://child/1/1/1")) });
         assert.equal(send.status, 200, JSON.stringify(send));
         await Turn.complete(db, turn.id, 102);
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
             content: frame("READ (note://child/1/1/1) <1,-1>", null), reasoning: null,
         } }] });
-        await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, provider, messages: [] });
+        await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, provider, messages: [] });
         const history = await db.test_log_entries_by_loop.all<{ op: string; source: string; rx: string; tx: string }>({ loop_id: parentLoop });
         assert.ok(history.some(({ op, tx }) => op === "SEND" && tx.includes("See note://child/1/1/1")), "the addressed message reaches the parent's inbox");
-        assert.ok(!history.some(({ op, source }) => op === "NOTE" && source === "worker://child"), "source availability is not automatic observation");
+        assert.ok(!history.some(({ op, source }) => op === "NOTE" && source === "session://child"), "source availability is not automatic observation");
         assert.ok(history.some(({ op, rx }) => op === "READ" && JSON.parse(rx).content === "The retry condition is idempotent."), "the parent's READ resolves the exact shared source");
         const otherWorkspace = await insertWorkspace(db, "other-note-sharing");
-        const otherWorker = await insertWorker(db, otherWorkspace, null, "parent");
-        const isolated = await clientRead(engine, db, { workspaceId: otherWorkspace, workerId: otherWorker,
+        const otherSession = await insertSession(db, otherWorkspace, null, "parent");
+        const isolated = await clientRead(engine, db, { workspaceId: otherWorkspace, sessionId: otherSession,
             statement: statement(frame("READ (note://child/1/1/1)", null)) });
         assert.equal(isolated.status, 404, "an explicit authority never crosses the workspace boundary");
     } finally { await db.close(); }
 });
 
-for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit ${exitCode} is observed by its worker without forwarding output READs`, async () => {
+for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit ${exitCode} is observed by its session without forwarding output READs`, async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const exec = schemes.get("exec") as Exec;
     try {
         const workspaceId = await insertWorkspace(db, "executor-observation");
-        const parent = await insertWorker(db, workspaceId, null, "parent");
-        const child = await insertWorker(db, workspaceId, parent, "child");
+        const parent = await insertSession(db, workspaceId, null, "parent");
+        const child = await insertSession(db, workspaceId, parent, "child");
         const parentLoop = await insertLoop(db, parent, 1);
         const childLoop = await insertLoop(db, child, 1);
         const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
         const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
-        await engine.injectIntoLoop(childLoop, "Run the executor and report the result.", [], "worker://parent", {}, undefined, await sendingOperation(db, parentLoop));
+        await engine.injectIntoLoop(childLoop, "Run the executor and report the result.", [], "session://parent", {}, undefined, await sendingOperation(db, parentLoop));
         const executors = await testExecutors();
         engine.setExecutors(executors);
         schemes.registerRuntimeSchemes(executors);
         const proposed = Promise.withResolvers<number>();
-        const started = engine.dispatch({ workspaceId, workerId: child, loopId: childLoop, turnId: turn.id,
+        const started = engine.dispatch({ workspaceId, sessionId: child, loopId: childLoop, turnId: turn.id,
             sequence: 1, origin: "model", onDispatch: proposed.resolve,
             statement: statement(frame("sh", `printf 'child output\\n'; exit ${exitCode}`)),
         });
@@ -235,15 +235,15 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
         await exec.idle();
         await Turn.complete(db, turn.id, 102);
         const continuation = () => new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] });
-        await engine.runTurn({ workspaceId, workerId: child, loopId: childLoop,
+        await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("SEND [200]", "Executor result observed."), reasoning: null } }] }), messages: [] });
         const childRows = await db.test_log_entries_by_loop.all<{ op: string; rx: string; attrs: string }>({ loop_id: childLoop });
         const output = childRows.filter(({ op, rx }) => op === "READ" && JSON.parse(rx).terminal === true);
         assert.ok(output.length > 0, "the owner's terminal observation was actually materialized");
         assert.ok(output.some(({ rx }) => JSON.parse(rx).content?.includes("child output")), "the owner retains the output");
-        await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, provider: continuation(), messages: [] });
+        await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, provider: continuation(), messages: [] });
         const observations = (await db.test_log_entries_by_loop.all<{ op: string; source: string; attrs: string }>({ loop_id: parentLoop }))
-            .filter(({ source }) => source === "worker://child");
+            .filter(({ source }) => source === "session://child");
         assert.deepEqual(observations.map(({ op }) => op), ["sh", "READ"], "the invocation and child conclusion reach the parent; the child's READs and notes do not");
         assert.equal(JSON.parse(observations[1].attrs).kind, "loop_termination", "the child's conclusion still uses the lifecycle channel");
     } finally {
@@ -256,36 +256,36 @@ test("{§env-delta-child-activity}: WORK, FORK and outgoing SEND are observable;
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "delegation-observation");
-        const parent = await insertWorker(db, workspaceId, null, "parent");
-        const child = await insertWorker(db, workspaceId, parent, "child");
+        const parent = await insertSession(db, workspaceId, null, "parent");
+        const child = await insertSession(db, workspaceId, parent, "child");
         const parentLoop = await insertLoop(db, parent, 1);
         const childLoop = await insertLoop(db, child, 1, "Coordinate the work.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
-            injectWorker: async ({ workerId, prompt }) => {
-                const history = await db.test_fork_loops.all({ worker_id: workerId });
-                const loopId = await insertLoop(db, workerId, history.length + 1, prompt);
+            injectSession: async ({ sessionId, prompt }) => {
+                const history = await db.test_fork_loops.all({ session_id: sessionId });
+                const loopId = await insertLoop(db, sessionId, history.length + 1, prompt);
                 return { action: "enqueued_new_loop", loopId, message: `message://child/${loopId}` };
             },
         });
         const provider = new Mock({ contextWindow: 100_000, responses: [{ assistant: {
-            content: [frame("WORK (worker://research)", "Research the question."), frame("FORK (worker://review)", "Review the evidence."),
-                frame("SEND (worker://research)", "Use the retained evidence."),
+            content: [frame("WORK (session://research)", "Research the question."), frame("FORK (session://review)", "Review the evidence."),
+                frame("SEND (session://research)", "Use the retained evidence."),
                 frame("BARE", "Is the task clear?"), frame("WAIT", "Await both children.")].join("\n\n"), reasoning: null,
         } }] });
         const childProvider = new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: "Yes.", reasoning: null } }] });
-        const result = await engine.runTurn({ workspaceId, workerId: child, loopId: childLoop, provider, childProvider, messages: [] });
+        const result = await engine.runTurn({ workspaceId, sessionId: child, loopId: childLoop, provider, childProvider, messages: [] });
         assert.equal(result.status, 202);
-        const childRows = await db.test_log_entries_by_worker.all<{ op: string; origin: string; status_rx: number }>({ worker_id: child });
+        const childRows = await db.test_log_entries_by_session.all<{ op: string; origin: string; status_rx: number }>({ session_id: child });
         assert.deepEqual(childRows.filter(({ op, origin }) => origin === "model" && ["WORK", "FORK", "SEND", "BARE", "WAIT"].includes(op))
             .map(({ op, status_rx }) => [op, status_rx]), [["WORK", 200], ["FORK", 200], ["SEND", 200], ["BARE", 200], ["WAIT", 202]]);
-        await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, messages: [],
+        await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] }),
         });
-        const observations = (await db.engine_render_log.all<{ op: string; source: string; tx: string }>({ worker_id: parent }))
-            .filter(({ source }) => source === "worker://child");
+        const observations = (await db.engine_render_log.all<{ op: string; source: string; tx: string }>({ session_id: parent }))
+            .filter(({ source }) => source === "session://child");
         assert.deepEqual(observations.map(({ op }) => op), ["WORK", "FORK", "SEND"], "only child-authored topology changes and messages reach the parent");
         const sent = JSON.parse(observations[2].tx);
-        assert.equal(sent.target.raw, "worker://research");
+        assert.equal(sent.target.raw, "session://research");
         assert.equal(sent.body.raw, "Use the retained evidence.", "the observed SEND is the outgoing message, not the child's received assignment");
     } finally { await db.close(); }
 });
@@ -294,8 +294,8 @@ test("{§env-delta-child-activity}: parent receives actions, never child explora
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "action-observation");
-        const parent = await insertWorker(db, workspaceId, null, "parent");
-        const child = await insertWorker(db, workspaceId, parent, "child");
+        const parent = await insertSession(db, workspaceId, null, "parent");
+        const child = await insertSession(db, workspaceId, parent, "child");
         const parentLoop = await insertLoop(db, parent, 1);
         const childLoop = await insertLoop(db, child, 1);
         const turn = await Turn.open(db, { loopId: childLoop, producer: "model", kind: "inference" });
@@ -303,26 +303,26 @@ test("{§env-delta-child-activity}: parent receives actions, never child explora
         let sequence = 0;
         for (const [source, status] of [
             [frame("NOTE", "A tentative hypothesis, not a parent instruction."), 200],
-            [frame("EDIT (worker://child/scratch.md)", "A real change."), 201],
-            [frame("READ (worker://child/scratch.md)", null), 200],
-            [frame("FIND (worker://child/*)", null), 200],
+            [frame("EDIT (session://child/scratch.md)", "A real change."), 201],
+            [frame("READ (session://child/scratch.md)", null), 200],
+            [frame("FIND (session://child/*)", null), 200],
             [frame("KILL (log:///1/1/1/NOTE)", null), 200],
             [frame("KILL (log:///9/9/9)", null), 404],
-            [frame("KILL (worker://child/scratch.md)", null), 200],
+            [frame("KILL (session://child/scratch.md)", null), 200],
             [frame("EDIT (missing:///file)", "A failed action."), 501],
         ] as const) {
-            const result = await engine.dispatch({ workspaceId, workerId: child, loopId: childLoop, turnId: turn.id,
+            const result = await engine.dispatch({ workspaceId, sessionId: child, loopId: childLoop, turnId: turn.id,
                 sequence: ++sequence, origin: "model", statement: statement(source) });
             assert.equal(result.status, status, JSON.stringify(result));
         }
         await Turn.complete(db, turn.id, 102);
-        await engine.runTurn({ workspaceId, workerId: parent, loopId: parentLoop, messages: [],
+        await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Continue."), reasoning: null } }] }),
         });
-        const observed = (await db.test_log_entries_by_worker.all<{ op: string; source: string; status_rx: number }>({ worker_id: parent }))
-            .filter(({ source }) => source === "worker://child");
+        const observed = (await db.test_log_entries_by_session.all<{ op: string; source: string; status_rx: number }>({ session_id: parent }))
+            .filter(({ source }) => source === "session://child");
         assert.deepEqual(observed.map(({ op, status_rx }) => [op, status_rx]), [["EDIT", 201], ["KILL", 200], ["EDIT", 501]]);
-        const history = await db.test_log_entries_by_worker.all({ worker_id: child });
+        const history = await db.test_log_entries_by_session.all({ session_id: child });
         assert.equal(history.length, 8, "excluded observations remain durable in the child's history");
     } finally { await db.close(); }
 });

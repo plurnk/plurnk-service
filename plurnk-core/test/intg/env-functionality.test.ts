@@ -1,7 +1,7 @@
-import { ownWorker, serverProposals, TEST_OWNER } from "./_approval.ts";
+import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
 // {§functionality-scope} {§env-functionality} — the environment family beneath the shared
-// coordinator, registered by Core. Worker-scoped client actions, one durable value per worker, and
-// the model's manager bound to the invoking worker: the shared verbs, acting for one worker.
+// coordinator, registered by Core. Session-scoped client actions, one durable value per session, and
+// the model's manager bound to the invoking session: the shared verbs, acting for one session.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
@@ -18,13 +18,13 @@ import type { Db } from "../../src/core/Db.ts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { awaitExecOutcome } from "./_execs.ts";
 import { fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
-import { insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { waitFor, waitForDb } from "./_rpc.ts";
-import { modelOperation } from "./_workers.ts";
+import { modelOperation } from "./_sessions.ts";
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
 
-for (const scope of ["worker", "workspace"] as const) {
+for (const scope of ["session", "workspace"] as const) {
     test(`{§functionality-model-mutation} ${scope} env admission precedes the next shell invocation`, { timeout: 15_000 }, async (t) => {
         serverProposals(t, "accept");
         const db = await openMigrated();
@@ -40,11 +40,11 @@ for (const scope of ["worker", "workspace"] as const) {
         t.after(async () => { await daemon.stop(); await db.close(); });
         await daemon.start();
         const { workspaceId } = await daemon.createWorkspace({ name: `env-ordered-${scope}` });
-        const workerId = await insertWorker(db, workspaceId, null, "reader", "model");
-        const loop = await daemon.runLoop({ workspaceId, workerId, prompt: "Configure the witness and print it.", maxTurns: 2 });
+        const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+        const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Configure the witness and print it.", maxTurns: 2 });
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
-        const rows = await daemon.readLog({ workspaceId, workerId, limit: Number.MAX_SAFE_INTEGER });
+        const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
         assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201);
         assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
     });
@@ -81,7 +81,7 @@ const boot = async (db: Db): Promise<Daemon> => {
     return daemon;
 };
 
-test("{§functionality-scope} env projects worker-scoped actions; its state belongs to one worker and its manager acts for the invoking worker", async () => {
+test("{§functionality-scope} env projects session-scoped actions; its state belongs to one session and its manager acts for the invoking session", async () => {
     const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
     process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,ENV_WITNESS";
     process.env.ENV_WITNESS = "ambient";
@@ -92,22 +92,22 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
     let quiescent = false;
     try {
         const workspaceId = await insertWorkspace(db, `env-family-${crypto.randomUUID()}`);
-        const alice = await insertWorker(db, workspaceId, null, "alice", "model");
-        await ownWorker(db, workspaceId, alice);
-        const bob = await insertWorker(db, workspaceId, null, "bob", "model");
-        await ownWorker(db, workspaceId, bob);
-        const invoke = <T>(workerId: number, verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
-            daemon.invokeModuleAction(`worker.env.${verb}`, params, { scope: "worker", workspaceId, workerId }) as Promise<T>;
-        const listed = async (workerId: number) => (await invoke<FunctionalityListResult>(workerId, "list")).definitions;
-        const stateOf = async (workerId: number, alias: string): Promise<string | undefined> => {
-            const definition = (await listed(workerId)).find((entry) => entry.alias === alias);
+        const alice = await insertSession(db, workspaceId, null, "alice", "model");
+        await ownSession(db, workspaceId, alice);
+        const bob = await insertSession(db, workspaceId, null, "bob", "model");
+        await ownSession(db, workspaceId, bob);
+        const invoke = <T>(sessionId: number, verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
+            daemon.invokeModuleAction(`session.env.${verb}`, params, { scope: "session", workspaceId, sessionId }) as Promise<T>;
+        const listed = async (sessionId: number) => (await invoke<FunctionalityListResult>(sessionId, "list")).definitions;
+        const stateOf = async (sessionId: number, alias: string): Promise<string | undefined> => {
+            const definition = (await listed(sessionId)).find((entry) => entry.alias === alias);
             return definition === undefined ? undefined : `${definition.origin}:${definition.state}`;
         };
 
         // Both scopes use the same verbs; the action context binds their owner.
         assert.deepEqual(
             daemon.listModuleActions().filter(({ name }) => name.includes(".env.")).map(({ name, scope }) => `${name}:${scope}`),
-            ["worker", "workspace"].flatMap((scope) => VERBS.map((verb) => `${scope}.env.${verb}:${scope}`)),
+            ["session", "workspace"].flatMap((scope) => VERBS.map((verb) => `${scope}.env.${verb}:${scope}`)),
         );
 
         // The service baseline is what the ceiling admits, with its value, under the shell's alias grammar.
@@ -117,10 +117,10 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.deepEqual((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.provenance,
             { kind: "environment", source: "ENV_WITNESS" });
 
-        // add → worker origin, active, for alice alone.
+        // add → session origin, active, for alice alone.
         const added = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
         assert.equal(added.status, 201);
-        assert.equal(added.definition?.origin, "worker", "origin names ownership: alice set it, not the workspace");
+        assert.equal(added.definition?.origin, "session", "origin names ownership: alice set it, not the workspace");
         assert.equal(added.definition?.state, "active");
         assert.equal(await stateOf(bob, "CARGO_TARGET_DIR"), undefined, "a sibling sees nothing of it");
 
@@ -138,8 +138,8 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         // {§configuration-definition-resolution}
         assert.equal(await refusal(() => invoke(alice, "remove", { alias: "ENV_WITNESS" })), "https://problems.plurnk.xyz/functionality/alias-service-owned");
         const shadow = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "ENV_WITNESS", definition: { value: "mine" } });
-        assert.equal(shadow.definition?.origin, "worker");
-        assert.equal(shadow.definition?.provenance, undefined, "a worker's override is not the ambient configuration");
+        assert.equal(shadow.definition?.origin, "session");
+        assert.equal(shadow.definition?.provenance, undefined, "a session's override is not the ambient configuration");
         assert.equal(valueOf(shadow.definition?.definition), "mine");
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "ENV_WITNESS" })).removed, true);
         assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active", "removal restores inherited enabledness");
@@ -148,7 +148,7 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
         await invoke(alice, "disable", { alias: "ENV_WITNESS" });
 
-        // remove forgets a worker entry; discover is inert and reads a sibling package's declaration.
+        // remove forgets a session entry; discover is inert and reads a sibling package's declaration.
         assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "CARGO_TARGET_DIR" })).removed, true);
         assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), undefined);
         const discovered = await invoke<FunctionalityDiscoverResult>(alice, "discover", { query: "PAGER" });
@@ -169,17 +169,17 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         await invoke(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
         await daemon.stop();
         daemon = await boot(db);
-        assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), "worker:active");
+        assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), "session:active");
         assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled");
         assert.equal(await stateOf(bob, "ENV_WITNESS"), "service:active");
         assert.equal(await stateOf(bob, "CARGO_TARGET_DIR"), undefined);
 
         // Inheritance: a child of alice starts with her entries, each named for her; the child's own
         // entries carry no such name, and touching an inherited entry makes it the child's own.
-        const carol = await insertWorker(db, workspaceId, alice, "carol", "model");
-        const inheritedOf = async (workerId: number, alias: string) => (await listed(workerId)).find((entry) => entry.alias === alias)?.inherited;
-        assert.equal(await stateOf(carol, "CARGO_TARGET_DIR"), "worker:active");
-        assert.equal(await inheritedOf(carol, "CARGO_TARGET_DIR"), "alice", "list names the Worker that set an inherited value");
+        const carol = await insertSession(db, workspaceId, alice, "carol", "model");
+        const inheritedOf = async (sessionId: number, alias: string) => (await listed(sessionId)).find((entry) => entry.alias === alias)?.inherited;
+        assert.equal(await stateOf(carol, "CARGO_TARGET_DIR"), "session:active");
+        assert.equal(await inheritedOf(carol, "CARGO_TARGET_DIR"), "alice", "list names the Session that set an inherited value");
         assert.equal(await stateOf(carol, "ENV_WITNESS"), "service:disabled", "a parent's masking of an ambient name travels too");
         assert.equal(await inheritedOf(carol, "ENV_WITNESS"), "alice");
         await invoke(carol, "add", { alias: "CAROL_ONLY", definition: { value: "c" } });
@@ -190,33 +190,33 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         assert.equal(await stateOf(alice, "CAROL_ONLY"), undefined);
 
         // The model's projection: `plurnk (env)` is published on the `plurnk` manager, and Core binds it to the invoking
-        // worker at the operation, so alice's `list` is alice's and bob's is bob's.
+        // session at the operation, so alice's `list` is alice's and bob's is bob's.
         const outputs = async (): Promise<number> =>
             (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length;
-        const exec = async (workerId: number, program: string) => {
+        const exec = async (sessionId: number, program: string) => {
             const after = await outputs();
-            const { status } = await modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
+            const { status } = await modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
             return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after, timeoutMs: 10_000 }) };
         };
         const aliceList = await exec(alice, "````plurnk (env)````");
         assert.equal(aliceList.status, 200);
         const aliceView = await aliceList.result() as unknown as FunctionalityListResult;
-        assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "worker");
+        assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "session");
         assert.equal(aliceView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
         const bobView = await (await exec(bob, "````plurnk (env)````")).result() as unknown as FunctionalityListResult;
         assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
-        // A host verb proposes; acceptance persists for the invoking worker and no other. Then the
+        // A host verb proposes; acceptance persists for the invoking session and no other. Then the
         // spawn ({§exec-env-scoped}): what alice set reaches alice's next command, bob's command sees
         // his own entry and the untouched ceiling — a registry, not a prefix.
         const proposals: number[] = [];
         const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
             if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
         });
-        const accepted = async (workerId: number, program: string): Promise<{ status: number; logEntryId: number }> => {
+        const accepted = async (sessionId: number, program: string): Promise<{ status: number; logEntryId: number }> => {
             const seen = proposals.length;
-            const pending = modelOperation(daemon, db, { workspaceId, workerId, statement: parseOne(program) });
+            const pending = modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
             await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
             const logEntryId = proposals[seen];
             await daemon.resolveProposal(logEntryId, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
@@ -239,8 +239,8 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
             const bobAdded = await accepted(bob, `\`\`\`\`plurnk (env)\n${JSON.stringify({ verb: "add", alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
             assert.equal(bobAdded.status, 201, "the accepted add settled inside the operation");
             const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
-            assert.equal(outcome.definition?.origin, "worker");
-            assert.equal(await stateOf(bob, "BOB_ONLY"), "worker:active", "an accepted model add persisted for the invoking worker");
+            assert.equal(outcome.definition?.origin, "session");
+            assert.equal(await stateOf(bob, "BOB_ONLY"), "session:active", "an accepted model add persisted for the invoking session");
             assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
 
             const command = "````sh\necho \"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\"\n````";
@@ -261,25 +261,25 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
 
             // The spawn records what it received, name by name with provenance, on its own log row.
             const aliceEnv = await recorded(aliceRun.logEntryId);
-            assert.deepEqual(aliceEnv.CARGO_TARGET_DIR, { source: "worker", value: "/tmp/shared" });
+            assert.deepEqual(aliceEnv.CARGO_TARGET_DIR, { source: "session", value: "/tmp/shared" });
             assert.deepEqual(aliceEnv.ENV_WITNESS, { source: "masked" }, "a name alice withheld is recorded as masked, by her");
             assert.equal(aliceEnv.PATH?.source, "host");
             assert.deepEqual((await recorded(bobRun.logEntryId)).ENV_WITNESS, { source: "host", value: "ambient" });
             const carolRun = await accepted(carol, command);
             assert.match(await stdoutOf(carolRun.logEntryId), /target=\[\/tmp\/shared\] witness=\[ambient\] bob=\[\]/,
                 "carol's command receives the value she inherited and the name she re-enabled");
-            assert.deepEqual((await recorded(carolRun.logEntryId)).CARGO_TARGET_DIR, { source: "worker", from: "alice", value: "/tmp/shared" },
-                "the record names the Worker that set an inherited value");
+            assert.deepEqual((await recorded(carolRun.logEntryId)).CARGO_TARGET_DIR, { source: "session", from: "alice", value: "/tmp/shared" },
+                "the record names the Session that set an inherited value");
             await daemon.invokeModuleAction("workspace.env.add", { alias: "ENV_WITNESS", definition: { value: "workspace" } }, { scope: "workspace", workspaceId });
             const sharedRun = await accepted(bob, command);
             assert.match(await stdoutOf(sharedRun.logEntryId), /witness=\[workspace\]/u);
             assert.deepEqual((await recorded(sharedRun.logEntryId)).ENV_WITNESS, { source: "workspace", value: "workspace" });
-            assert.equal(await stateOf(alice, "ENV_WITNESS"), "workspace:disabled", "the worker's mask follows the name when its lower origin changes");
+            assert.equal(await stateOf(alice, "ENV_WITNESS"), "workspace:disabled", "the session's mask follows the name when its lower origin changes");
             const maskedRun = await accepted(alice, command);
             assert.match(await stdoutOf(maskedRun.logEntryId), /witness=\[\]/u);
-            await invoke(bob, "add", { alias: "ENV_WITNESS", definition: { value: "worker" } });
+            await invoke(bob, "add", { alias: "ENV_WITNESS", definition: { value: "session" } });
             const localRun = await accepted(bob, command);
-            assert.match(await stdoutOf(localRun.logEntryId), /witness=\[worker\]/u);
+            assert.match(await stdoutOf(localRun.logEntryId), /witness=\[session\]/u);
         } finally {
             unsubscribe();
         }
@@ -291,9 +291,9 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
         quiescent = true;
         Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(scratch, "digest") });
         const waterfall = await readFile(join(scratch, "digest", "digest.md"), "utf8");
-        assert.match(waterfall, /env: host [A-Z_,]+ · CARGO_TARGET_DIR=\/tmp\/shared \(worker\) · ENV_WITNESS \(masked\)/u,
+        assert.match(waterfall, /env: host [A-Z_,]+ · CARGO_TARGET_DIR=\/tmp\/shared \(session\) · ENV_WITNESS \(masked\)/u,
             "the waterfall names alice's spawn environment with each value's provenance");
-        assert.match(waterfall, /CARGO_TARGET_DIR=\/tmp\/shared \(from alice\)/u, "and carol's inherited value by the Worker that set it");
+        assert.match(waterfall, /CARGO_TARGET_DIR=\/tmp\/shared \(from alice\)/u, "and carol's inherited value by the Session that set it");
         assert.match(waterfall, /ENV_WITNESS=workspace \(workspace\)/u);
     } finally {
         if (!quiescent) {
@@ -307,35 +307,35 @@ test("{§functionality-scope} env projects worker-scoped actions; its state belo
     }
 });
 
-// {§workspace-env} — a module reading the environment on a Worker's behalf sees that Worker's own
+// {§workspace-env} — a module reading the environment on a Session's behalf sees that Session's own
 // overrides above the workspace layer, exactly what its commands run under; the workspace read
 // never includes them.
-test("{§functionality-scope} readWorkerEnvironment layers the Worker's overrides over the workspace's defaults", async () => {
+test("{§functionality-scope} readSessionEnvironment layers the Session's overrides over the workspace's defaults", async () => {
     const db = await openMigrated();
     const daemon = await boot(db);
     try {
         const workspaceId = await insertWorkspace(db, `env-seam-${crypto.randomUUID()}`);
-        const alice = await insertWorker(db, workspaceId, null, "alice", "model");
-        await ownWorker(db, workspaceId, alice);
-        const bob = await insertWorker(db, workspaceId, null, "bob", "model");
-        await ownWorker(db, workspaceId, bob);
+        const alice = await insertSession(db, workspaceId, null, "alice", "model");
+        await ownSession(db, workspaceId, alice);
+        const bob = await insertSession(db, workspaceId, null, "bob", "model");
+        await ownSession(db, workspaceId, bob);
         await daemon.invokeModuleAction("workspace.env.add", { alias: "TZ", definition: { value: "Europe/Paris" } }, { scope: "workspace", workspaceId });
-        await daemon.invokeModuleAction("worker.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, { scope: "worker", workspaceId, workerId: alice });
+        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, { scope: "session", workspaceId, sessionId: alice });
         const ambient = { TZ: "UTC", PATH: process.env.PATH ?? "" };
         assert.equal((await daemon.readWorkspaceEnvironment(workspaceId))(ambient).TZ, "Europe/Paris", "the workspace layer over the ambient value");
-        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, "Asia/Tokyo", "alice's own override wins for alice");
-        assert.equal((await daemon.readWorkerEnvironment(workspaceId, bob))(ambient).TZ, "Europe/Paris", "bob inherits the workspace layer");
-        const workerContext = { scope: "worker" as const, workspaceId, workerId: alice };
-        const removed = await daemon.invokeModuleAction("worker.env.remove", { alias: "TZ" }, workerContext) as FunctionalityMutationResult;
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Asia/Tokyo", "alice's own override wins for alice");
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, bob))(ambient).TZ, "Europe/Paris", "bob inherits the workspace layer");
+        const sessionContext = { scope: "session" as const, workspaceId, sessionId: alice };
+        const removed = await daemon.invokeModuleAction("session.env.remove", { alias: "TZ" }, sessionContext) as FunctionalityMutationResult;
         assert.deepEqual(removed.definition, { alias: "TZ", origin: "workspace", state: "active", definition: { value: "Europe/Paris" } });
-        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "removal restores the shared value for subsequent commands");
-        await daemon.invokeModuleAction("worker.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, workerContext);
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "removal restores the shared value for subsequent commands");
+        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, sessionContext);
         await daemon.invokeModuleAction("workspace.env.disable", { alias: "TZ" }, { scope: "workspace", workspaceId });
-        const disabled = await daemon.invokeModuleAction("worker.env.remove", { alias: "TZ" }, workerContext) as FunctionalityMutationResult;
+        const disabled = await daemon.invokeModuleAction("session.env.remove", { alias: "TZ" }, sessionContext) as FunctionalityMutationResult;
         assert.deepEqual(disabled.definition, { alias: "TZ", origin: "workspace", state: "disabled", definition: { value: "Europe/Paris" } });
-        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, undefined, "removal also inherits a workspace mask");
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, undefined, "removal also inherits a workspace mask");
         await daemon.invokeModuleAction("workspace.env.enable", { alias: "TZ" }, { scope: "workspace", workspaceId });
-        assert.equal((await daemon.readWorkerEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "no worker mask is left behind when the workspace changes");
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "no session mask is left behind when the workspace changes");
     } finally {
         await daemon.stop();
         await db.close();

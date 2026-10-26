@@ -4,7 +4,7 @@ import { AiSdkProvider } from "@plurnk/plurnk-providers";
 import { SessionTranslator } from "@plurnk/plurnk-acp";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { HARNESS_WAIT_MS, waitFor } from "./_rpc.ts";
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 
@@ -12,9 +12,9 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard ACP befor
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "streaming-reasoning");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "Report the finding.");
-        const translator = new SessionTranslator({ sessionId: "streaming", workspaceId, workerId, origin: "http://acp.test" });
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Report the finding.");
+        const translator = new SessionTranslator({ acpSessionId: "streaming", workspaceId, sessionId, origin: "http://acp.test" });
         const events: ReturnType<SessionTranslator["reasoning"]> = [];
         const ready = Promise.withResolvers<void>();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), reasoningEventNotify(_workspace, payload) {
@@ -36,13 +36,13 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard ACP befor
                 send("<think>Visible now.");
             } }), { headers: { "Content-Type": "text/event-stream" } }),
         });
-        const run = engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const run = engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         // The completion is held until the finally below, so reasoning that arrives at all arrived before it; the bound
         // only keeps a hang from outliving the test.
         const timer = setTimeout(() => ready.reject(new Error("ACP reasoning was withheld until completion")), HARNESS_WAIT_MS);
         try {
             await ready.promise;
-            assert.deepEqual(await db.test_model_reasoning_resources.all({ worker_id: workerId }), [], "the live signal cannot originate from a not-yet-created copy");
+            assert.deepEqual(await db.test_model_reasoning_resources.all({ session_id: sessionId }), [], "the live signal cannot originate from a not-yet-created copy");
             assert.equal(events.filter(({ update }) => update.sessionUpdate === "agent_thought_chunk").length, 1);
         } finally {
             clearTimeout(timer);
@@ -57,31 +57,31 @@ test("{§notifications-reasoning-event}: provider SSE reaches standard ACP befor
                 .map(({ update }) => (update as { content?: { text?: string } }).content?.text),
             ["Visible now."],
         );
-        const rows = await db.test_model_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
+        const rows = await db.test_model_reasoning_resources.all<{ content: string }>({ session_id: sessionId });
         assert.equal(rows[0].content, "Visible now.");
     } finally {
         await db.close();
     }
 });
 
-for (const style of ["structured", "think-tags"] as const) test(`{§notifications-reasoning-event}: interleaved ${style} responses retain their worker, packet and accounting owners`, async () => {
+for (const style of ["structured", "think-tags"] as const) test(`{§notifications-reasoning-event}: interleaved ${style} responses retain their session, packet and accounting owners`, async () => {
     const db = await openMigrated();
     const cancellation = new AbortController();
     const pending: Array<Promise<unknown>> = [];
     try {
         const workspaceId = await insertWorkspace(db, `concurrent-reasoning-${style}`);
-        const workers: Array<{ name: string; workerId: number; loopId: number }> = [];
+        const sessions: Array<{ name: string; sessionId: number; loopId: number }> = [];
         for (const name of ["alpha", "bravo", "charlie"]) {
-            const workerId = await insertWorker(db, workspaceId, null, name);
-            const loopId = await insertLoop(db, workerId, 1, `Report ONLY_${name}.`);
-            workers.push({ name, workerId, loopId });
+            const sessionId = await insertSession(db, workspaceId, null, name);
+            const loopId = await insertLoop(db, sessionId, 1, `Report ONLY_${name}.`);
+            sessions.push({ name, sessionId, loopId });
         }
         const observed = new Map<number, string[]>();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), reasoningEventNotify(_workspace, event) {
             if (event.phase !== "content") return;
-            const deltas = observed.get(event.workerId) ?? [];
+            const deltas = observed.get(event.sessionId) ?? [];
             deltas.push(event.delta);
-            observed.set(event.workerId, deltas);
+            observed.set(event.sessionId, deltas);
         } });
         const streams = new Map<string, ReadableStreamDefaultController<Uint8Array>>();
         const requests = new Map<string, Record<string, unknown>>();
@@ -95,7 +95,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
             fetch: async (_url, init) => {
                 const body = JSON.parse(requestBody(init));
                 const input = JSON.stringify(body.messages);
-                const owners = workers.filter(({ name }) => input.includes(`ONLY_${name}`));
+                const owners = sessions.filter(({ name }) => input.includes(`ONLY_${name}`));
                 assert.equal(owners.length, 1, "each request carries exactly its own prompt");
                 const { name } = owners[0];
                 requests.set(name, body);
@@ -104,8 +104,8 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
                 } }), { headers: { "Content-Type": "text/event-stream" } });
             },
         });
-        const running = workers.map(({ workerId, loopId }) => engine.runTurn({
-            provider, workspaceId, workerId, loopId, messages: [], signal: cancellation.signal,
+        const running = sessions.map(({ sessionId, loopId }) => engine.runTurn({
+            provider, workspaceId, sessionId, loopId, messages: [], signal: cancellation.signal,
         }));
         pending.push(...running);
         const emit = (name: string, delta: object, finish: string | null = null, usage?: object): void => {
@@ -114,16 +114,16 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
                 choices: [{ index: 0, delta, finish_reason: finish }], ...(usage ? { usage } : {}),
             })}\n\n`));
         };
-        await waitFor(() => [...streams.keys()], (names) => names.length === workers.length);
+        await waitFor(() => [...streams.keys()], (names) => names.length === sessions.length);
         assert.equal(new Set([...requests.values()].map(({ id_slot }) => id_slot)).size, 2,
             "shared backend affinity does not become a response ownership key");
-        for (const { name } of workers.toReversed()) emit(name, style === "structured"
+        for (const { name } of sessions.toReversed()) emit(name, style === "structured"
             ? { reasoning_content: `Thinking ${name}.` } : { content: `<think>Thinking ${name}.` });
-        await waitFor(() => [...observed.keys()], (ids) => ids.length === workers.length);
-        for (const { name, workerId } of workers) assert.equal(observed.get(workerId)!.join(""), `Thinking ${name}.`);
+        await waitFor(() => [...observed.keys()], (ids) => ids.length === sessions.length);
+        for (const { name, sessionId } of sessions) assert.equal(observed.get(sessionId)!.join(""), `Thinking ${name}.`);
         // Finish in a different order from admission while all three streams overlap.
         for (const index of [1, 2, 0]) {
-            const { name } = workers[index];
+            const { name } = sessions[index];
             emit(name, { content: `${style === "think-tags" ? "</think>" : ""}\`\`\`\`SEND [200]
 ONLY_${name}
 \`\`\`\`` }, "stop", {
@@ -134,17 +134,17 @@ ONLY_${name}
         }
         const results = await Promise.all(running);
         for (const [index, { turnId, status }] of results.entries()) {
-            const { name, workerId } = workers[index];
+            const { name, sessionId } = sessions[index];
             assert.equal(status, 200);
             const calls = await db.test_model_calls.all<{ response: string }>({ turn_id: turnId });
             const response = JSON.parse(calls[0].response);
             assert.equal(response.assistant.reasoning, `Thinking ${name}.`);
             assert.equal(response.assistant.content, `\`\`\`\`SEND [200]\nONLY_${name}
 \`\`\`\``);
-            for (const other of workers.filter((worker) => worker.workerId !== workerId)) {
+            for (const other of sessions.filter((session) => session.sessionId !== sessionId)) {
                 assert.ok(!JSON.stringify(response.rawBody).includes(other.name), "forensic raw chunks belong to this request only");
             }
-            const resources = await db.test_model_reasoning_resources.all<{ content: string }>({ worker_id: workerId });
+            const resources = await db.test_model_reasoning_resources.all<{ content: string }>({ session_id: sessionId });
             assert.deepEqual(resources.map(({ content }) => content), [`Thinking ${name}.`]);
             const accounting = await db.test_provider_requests.all<{ usage_input: number; usage_output: number }>({ turn_id: turnId });
             assert.deepEqual(accounting.map(({ usage_input, usage_output }) => [usage_input, usage_output]), [[10 + index, 20 + index]]);

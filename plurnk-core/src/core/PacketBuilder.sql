@@ -1,21 +1,21 @@
--- PacketBuilder: the request packet's sections, read from the durable log and worker tree.
+-- PacketBuilder: the request packet's sections, read from the durable log and session tree.
 
 -- PREP: engine_sent_messages_open
--- {§child-orientation} {§worker-obligations}: the messages this worker sent to other workers that await
+-- {§child-orientation} {§session-obligations}: the messages this session sent to other sessions that await
 -- completion, as `{status, path}` pointers beside its live children: the recipient loop's status, 100 queued,
 -- 102 processing, 202 parked. A completed message, or one whose recipient loop ended, is no longer held.
 SELECT m.path, l.status
 FROM message_sources m
 JOIN message_senders s ON s.message_id = m.id
 JOIN loops l ON l.id = m.loop_id
-WHERE s.sender_worker_id = $worker_id
+WHERE s.sender_session_id = $session_id
   AND l.status IN (100, 102, 202)
   AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)
 ORDER BY m.id ASC;
 
--- PREP: engine_child_workers_live
--- The worker's LIVE child workers — any loop non-terminal (100 pending / 102 processing / 202 parked).
--- Powers the Open Work workers list ({§child-orientation}): terse `* <status> worker://<name>`
+-- PREP: engine_child_sessions_live
+-- The session's LIVE child sessions — any loop non-terminal (100 pending / 102 processing / 202 parked).
+-- Powers the Open Work sessions list ({§child-orientation}): terse `* <status> session://<name>`
 -- pointers so the model SEES what it holds live and reasons for itself (READ/KILL), never told to.
 -- Empty → section omitted.
 SELECT r.name,
@@ -24,23 +24,23 @@ SELECT r.name,
            WHEN SUM(CASE WHEN l.status = 202 THEN 1 ELSE 0 END) > 0 THEN 202
            ELSE 100
        END AS status
-FROM workers r
-JOIN loops l ON l.worker_id = r.id AND l.status IN (100, 102, 202)
-WHERE r.parent_worker_id = $worker_id AND l.status IN (100, 102, 202)
+FROM sessions r
+JOIN loops l ON l.session_id = r.id AND l.status IN (100, 102, 202)
+WHERE r.parent_session_id = $session_id AND l.status IN (100, 102, 202)
 GROUP BY r.id, r.name
 ORDER BY r.name;
 
--- PREP: engine_parent_worker
--- The worker's PARENT, when it has one — its name and the status of its latest loop. Powers the
--- The parent on the Worker identity block ({§child-orientation}, #394): a child can only name its parent's
+-- PREP: engine_parent_session
+-- The session's PARENT, when it has one — its name and the status of its latest loop. Powers the
+-- The parent on the Session identity block ({§child-orientation}, #394): a child can only name its parent's
 -- streams and space if it is told the name. Absent → section omitted.
 SELECT p.name,
-       COALESCE((SELECT l.status FROM loops l WHERE l.worker_id = p.id ORDER BY l.id DESC LIMIT 1), 0) AS status
-FROM workers c JOIN workers p ON p.id = c.parent_worker_id
-WHERE c.id = $worker_id;
+       COALESCE((SELECT l.status FROM loops l WHERE l.session_id = p.id ORDER BY l.id DESC LIMIT 1), 0) AS status
+FROM sessions c JOIN sessions p ON p.id = c.parent_session_id
+WHERE c.id = $session_id;
 
 -- PREP: engine_child_streams_open
--- The worker's OPEN streams (subscriptions not yet closed), one row per published channel with its
+-- The session's OPEN streams (subscriptions not yet closed), one row per published channel with its
 -- size, publication cursor and durable activity clock. Powers the Open Work streams
 -- inventory ({§child-orientation}); output bodies remain explicit READs while active ({§exec-stream}).
 SELECT s.scheme, e.authority, e.pathname, sp.id AS publication_id, ec.name AS channel,
@@ -51,7 +51,7 @@ FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
 JOIN subscription_publications sp ON sp.subscription_id = s.id
 JOIN entry_channels ec ON ec.entry_id = s.entry_id AND ec.name = sp.channel
-WHERE s.worker_id = $worker_id AND s.closed_at IS NULL
+WHERE s.session_id = $session_id AND s.closed_at IS NULL
 ORDER BY e.pathname, ec.name;
 
 -- PREP: engine_streams_reported
@@ -121,7 +121,7 @@ ORDER BY p.sequence;
 
 -- PREP: engine_render_log
 -- Render-time log-section assembly ({§body-projection}).
--- Yields log_entries for the whole worker — the worker's working
+-- Yields log_entries for the whole session — the session's working
 -- memory carries across loops, not just the
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
@@ -132,7 +132,7 @@ SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
     le.sequence,
-    -- le.origin is attribution, never a render filter; the worker's actor — {§actor-boundary-origin-not-filter} {§machine-processes-worker-origin}
+    -- le.origin is attribution, never a render filter; the session's actor — {§actor-boundary-origin-not-filter} {§machine-processes-session-origin}
     le.origin,
     le.op, le.signal,
     le.scheme, le.username, le.password,
@@ -147,11 +147,11 @@ SELECT
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
--- WHERE renders exactly one worker's log — {§actor-boundary-isolation} {§machine-processes-worker-is-its-log}
+-- WHERE renders exactly one session's log — {§actor-boundary-isolation} {§machine-processes-session-is-its-log}
 -- Proposed rows wait for resolution ({§proposal-proposed-hidden}); a log-KILL that worked
 -- stays out of the packet ({§log-kill-meta-operation}).
 -- Every failed operation remains visible ({§operation-result-uniform-error-channel}).
-WHERE le.worker_id = $worker_id
+WHERE le.session_id = $session_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
       (COALESCE(le.op, '') = 'KILL' AND COALESCE(le.scheme, '') = 'log')
@@ -165,7 +165,7 @@ WHERE le.worker_id = $worker_id
           AND le.turn_id <> COALESCE($turn_id, -1)
           AND le.turn_id = (
               SELECT MAX(prior.turn_id) FROM active_log_entries prior
-              WHERE prior.worker_id = $worker_id AND prior.turn_id <> COALESCE($turn_id, -1)
+              WHERE prior.session_id = $session_id AND prior.turn_id <> COALESCE($turn_id, -1)
           )
       )
   )
@@ -197,13 +197,13 @@ FROM unanswered_messages m
 WHERE m.loop_id = $loop_id AND m.log_entry_id IS NOT NULL
 ORDER BY m.ordinal ASC;
 
--- PREP: engine_worker_latest_packet
--- {§worker-model-selection}: the worker's workspace, latest packet-bearing loop, and packet,
--- so a model switch can measure the worker's current curated context against the target model's budget.
+-- PREP: engine_session_latest_packet
+-- {§session-model-selection}: the session's workspace, latest packet-bearing loop, and packet,
+-- so a model switch can measure the session's current curated context against the target model's budget.
 SELECT w.workspace_id, l.id AS loop_id, t.packet
 FROM turns t
 JOIN loops l ON l.id = t.loop_id
-JOIN workers w ON w.id = l.worker_id
-WHERE l.worker_id = $worker_id AND t.packet IS NOT NULL
+JOIN sessions w ON w.id = l.session_id
+WHERE l.session_id = $session_id AND t.packet IS NOT NULL
 ORDER BY l.sequence DESC, t.sequence DESC
 LIMIT 1;

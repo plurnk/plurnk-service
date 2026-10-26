@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Db } from "../core/Db.ts";
-import type { WakeWorkerPayload } from "../core/ChannelWrite.ts";
+import type { WakeSessionPayload } from "../core/ChannelWrite.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import DrainSupervisor from "./DrainSupervisor.ts";
 
-const payload: WakeWorkerPayload = {
+const payload: WakeSessionPayload = {
     workspaceId: 1,
-    workerId: 2,
+    sessionId: 2,
     entryId: 3,
     target: "sh:///1/1/1/sh",
     subscriptionId: 4,
@@ -41,7 +41,7 @@ const supervisor = (
     ...overrides,
 });
 
-test("{§worker-wait-timing} a new supervisor restores the durable deadline without extending or duplicating it", async (t) => {
+test("{§session-wait-timing} a new supervisor restores the durable deadline without extending or duplicating it", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });
     const events: unknown[] = [];
     let parked = true;
@@ -81,7 +81,7 @@ test("{§worker-wait-timing} a new supervisor restores the durable deadline with
     await new Promise<void>((resolve) => setImmediate(resolve));
     await resumed.idle();
     assert.equal(starts, 1, "one expiry queues one drain at the original deadline");
-    assert.deepEqual(events, [{ workerId: 2, loopId: 7, notice: {
+    assert.deepEqual(events, [{ sessionId: 2, loopId: 7, notice: {
         source: "engine:lifecycle", kind: "loop_status", level: "info", status: 100, loopSeq: 3, waitUntil: null, packetCount: 4, claimedAt: 9_000,
     } }], "the wake clears the public countdown before waiting for inference, beside the woken loop's own number and observation");
     t.mock.timers.tick(10_000);
@@ -97,7 +97,7 @@ test("{§module-shutdown-order}: supervisor idle owns an accepted conclusion wak
         (_workspaceId, method, params) => { events.push({ method, params }); },
     );
     drains.start();
-    drains.notifyWakeWorker(payload);
+    drains.notifyWakeSession(payload);
 
     let settled = false;
     const idle = drains.idle().then(() => { settled = true; });
@@ -115,7 +115,7 @@ test("{§module-shutdown-order}: supervisor idle owns an accepted conclusion wak
             result: { status: 200 },
             scheme: "sh",
             summary: "sh:///1/1/1/sh completed",
-            workerId: 2,
+            sessionId: 2,
             wakeAction: "no-loop",
         },
     }]);
@@ -127,7 +127,7 @@ test("{§module-shutdown-order}: supervisor idle preserves a wake failure", asyn
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
     const drains = supervisor(async () => { throw cause; });
     drains.start();
-    drains.notifyWakeWorker(payload);
+    drains.notifyWakeSession(payload);
 
     await assert.rejects(
         drains.idle(),
@@ -140,39 +140,39 @@ test("{§module-shutdown-order}: supervisor idle preserves a wake failure", asyn
     await drains.idle();
 });
 
-for (const sameWorker of [true, false]) {
-    test(`{§notifications-loop-terminated}: a terminal ${sameWorker ? "waits for its worker's" : "does not wait for another worker's"} pending stream announcement`, async () => {
+for (const sameSession of [true, false]) {
+    test(`{§notifications-loop-terminated}: a terminal ${sameSession ? "waits for its session's" : "does not wait for another session's"} pending stream announcement`, async () => {
         const prompt = Promise.withResolvers<string>();
         const events: string[] = [];
         const drains = supervisor(() => prompt.promise, (_workspaceId, method) => events.push(method), {
             db: {
                 drain_find_slept_loop: { get: async () => undefined },
-                drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) },
-                find_open_subscriptions_for_worker: { all: async () => [] },
-                worker_parent_id: { get: async () => undefined },
+                drain_get_session_workspace: { get: async () => ({ workspace_id: 1 }) },
+                find_open_subscriptions_for_session: { all: async () => [] },
+                session_parent_id: { get: async () => undefined },
             } as unknown as Db,
             lifecycle: {
-                cancelTree: async () => ({ workerIds: [2], loops: [{
-                    loopId: 7, workerId: 2,
-                    result: Results.failure("lifecycle:cancel", "scope-cancelled", 499, "The worker scope was cancelled."),
+                cancelTree: async () => ({ sessionIds: [2], loops: [{
+                    loopId: 7, sessionId: 2,
+                    result: Results.failure("lifecycle:cancel", "scope-cancelled", 499, "The session scope was cancelled."),
                 }] }),
                 turnIds: async () => [],
                 observation: async () => ({ loopSeq: 1, terminatedAt: 1 }),
             } as never,
         });
         drains.start();
-        drains.notifyWakeWorker({ ...payload, workerId: sameWorker ? 2 : 5 });
-        const cancelled = drains.cancelWorkerTree(2, "operator cancelled");
+        drains.notifyWakeSession({ ...payload, sessionId: sameSession ? 2 : 5 });
+        const cancelled = drains.cancelSessionTree(2, "operator cancelled");
         try {
             await new Promise<void>((resolve) => setImmediate(resolve));
-            assert.deepEqual(events, sameWorker ? [] : ["loop/terminated"],
-                "durable closure does not prove delivery; another worker's delivery does not hold this terminal");
+            assert.deepEqual(events, sameSession ? [] : ["loop/terminated"],
+                "durable closure does not prove delivery; another session's delivery does not hold this terminal");
         } finally {
             prompt.resolve("system");
             await cancelled;
             await drains.idle();
         }
-        assert.deepEqual(events, sameWorker
+        assert.deepEqual(events, sameSession
             ? ["stream/concluded", "loop/terminated"]
             : ["loop/terminated", "stream/concluded"]);
     });
@@ -180,7 +180,7 @@ for (const sameWorker of [true, false]) {
 
 const cancellationCases = [
     { name: "immediate", includeRoot: true, cancel: (drains: DrainSupervisor) => drains.cancel(2, "operator cancelled") },
-    { name: "awaited", includeRoot: true, cancel: (drains: DrainSupervisor) => drains.cancelWorkerTree(2, "operator cancelled") },
+    { name: "awaited", includeRoot: true, cancel: (drains: DrainSupervisor) => drains.cancelSessionTree(2, "operator cancelled") },
     { name: "descendant", includeRoot: false, cancel: (drains: DrainSupervisor) => drains.cancelDescendants(2, "operator cancelled") },
 ] as const;
 
@@ -190,13 +190,13 @@ for (const { name, includeRoot, cancel } of cancellationCases) {
         const release = Promise.withResolvers<void>();
         const calls: unknown[][] = [];
         const drains = supervisor(async () => "system", undefined, {
-            db: { drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) } } as unknown as Db,
+            db: { drain_get_session_workspace: { get: async () => ({ workspace_id: 1 }) } } as unknown as Db,
             lifecycle: {
                 cancelTree: async (...args: unknown[]) => {
                     calls.push(args);
                     entered.resolve();
                     await release.promise;
-                    return { workerIds: [], loops: [] };
+                    return { sessionIds: [], loops: [] };
                 },
             } as never,
         });
@@ -222,7 +222,7 @@ for (const { name, includeRoot, cancel } of cancellationCases) {
         const diagnostics: unknown[][] = [];
         t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
         const drains = supervisor(async () => "system", undefined, {
-            db: { drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) } } as unknown as Db,
+            db: { drain_get_session_workspace: { get: async () => ({ workspace_id: 1 }) } } as unknown as Db,
             lifecycle: { cancelTree: async () => { throw cause; } } as never,
         });
         drains.start();
@@ -240,7 +240,7 @@ for (const { name, includeRoot, cancel } of cancellationCases) {
     });
 }
 
-test("{§worker-lifecycle-durable-disposition}: stopping during wait selection preserves the parked loop", async (t) => {
+test("{§session-lifecycle-durable-disposition}: stopping during wait selection preserves the parked loop", async (t) => {
     const selecting = Promise.withResolvers<void>();
     const selected = Promise.withResolvers<Array<{ id: number; wait_revision: number }>>();
     let wakes = 0;
@@ -263,12 +263,12 @@ test("{§worker-lifecycle-durable-disposition}: stopping during wait selection p
 });
 
 const delivery = {
-    workspaceId: 1, workerId: 2, sourceLoopId: 10, prompt: "message",
+    workspaceId: 1, sessionId: 2, sourceLoopId: 10, prompt: "message",
     providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
     effort: "adaptive", systemPrompt: "system",
 } as const;
 
-test("{§worker-lifecycle-durable-disposition}: stopping during prompt delivery preserves admission without waking", async () => {
+test("{§session-lifecycle-durable-disposition}: stopping during prompt delivery preserves admission without waking", async () => {
     const writing = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     let wakes = 0;
@@ -305,7 +305,7 @@ test("{§module-shutdown-order}: stopping during ready-queue selection cannot st
         } as unknown as Db,
     });
     drains.start();
-    const started = drains.ensureDrain({ workspaceId: 1, workerId: 2, systemPrompt: "system" });
+    const started = drains.ensureDrain({ workspaceId: 1, sessionId: 2, systemPrompt: "system" });
     await selecting.promise;
     drains.beginStop("daemon_stopping");
     selected.resolve({ id: 7 });
@@ -337,7 +337,7 @@ test("{§module-shutdown-order}: stopping during wait selection cannot install a
     } finally { drains.beginStop("fixture_cleanup"); }
 });
 
-test("{§worker-wait-timing}: a recovery park without a deadline receives no observation timer", async (t) => {
+test("{§session-wait-timing}: a recovery park without a deadline receives no observation timer", async (t) => {
     const drains = supervisor(async () => "system", undefined, {
         db: {} as unknown as Db,
         lifecycle: {
@@ -354,19 +354,19 @@ test("{§worker-wait-timing}: a recovery park without a deadline receives no obs
     } finally { drains.beginStop("fixture_cleanup"); }
 });
 
-test("{§worker-causal-admission}: cancellation follows accepted delivery without blocking another workspace", async (t) => {
+test("{§session-causal-admission}: cancellation follows accepted delivery without blocking another workspace", async (t) => {
     const writing = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const order: string[] = [];
     const drains = supervisor(async () => "system", undefined, {
         db: {
             drain_message_source: { get: async ({ loop_id }: { loop_id: number }) => ({ workspace_id: loop_id === 10 ? 1 : 2, status: 102 }) },
-            drain_message_recipient: { get: async ({ worker_id }: { worker_id: number }) => ({ id: worker_id }) },
-            drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) },
+            drain_message_recipient: { get: async ({ session_id }: { session_id: number }) => ({ id: session_id }) },
+            drain_get_session_workspace: { get: async () => ({ workspace_id: 1 }) },
         } as unknown as Db,
         lifecycle: {
             wake: async () => false,
-            cancelTree: async () => { order.push("cancel"); return { workerIds: [], loops: [] }; },
+            cancelTree: async () => { order.push("cancel"); return { sessionIds: [], loops: [] }; },
         } as never,
         injectPrompt: async (loopId) => {
             if (loopId === 2) { writing.resolve(); await release.promise; }
@@ -378,9 +378,9 @@ test("{§worker-causal-admission}: cancellation follows accepted delivery withou
     drains.start();
     const admitted = drains.inject(delivery);
     await writing.promise;
-    const cancelled = drains.cancelWorkerTree(1, "cancel source");
+    const cancelled = drains.cancelSessionTree(1, "cancel source");
     try {
-        const independent = await drains.inject({ ...delivery, workspaceId: 2, workerId: 3, sourceLoopId: 11 });
+        const independent = await drains.inject({ ...delivery, workspaceId: 2, sessionId: 3, sourceLoopId: 11 });
         assert.equal(independent.action, "injected_next_turn");
         assert.deepEqual(order, ["deliver:3"], "cancellation cannot cross an unfinished admission; another workspace can proceed");
     } finally { release.resolve(); }
@@ -388,7 +388,7 @@ test("{§worker-causal-admission}: cancellation follows accepted delivery withou
     assert.deepEqual(order, ["deliver:3", "deliver:2", "cancel"]);
 });
 
-test("{§worker-causal-admission}: cancellation wins before a queued causal delivery; independent arrivals remain legal", async (t) => {
+test("{§session-causal-admission}: cancellation wins before a queued causal delivery; independent arrivals remain legal", async (t) => {
     const cancelling = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     let sourceStatus = 102;
@@ -397,7 +397,7 @@ test("{§worker-causal-admission}: cancellation wins before a queued causal deli
         db: {
             drain_message_source: { get: async () => ({ workspace_id: 1, status: sourceStatus }) },
             drain_message_recipient: { get: async () => ({ id: 20 }) },
-            drain_get_worker_workspace: { get: async () => ({ workspace_id: 1 }) },
+            drain_get_session_workspace: { get: async () => ({ workspace_id: 1 }) },
         } as unknown as Db,
         lifecycle: {
             wake: async () => false,
@@ -405,14 +405,14 @@ test("{§worker-causal-admission}: cancellation wins before a queued causal deli
                 cancelling.resolve();
                 await release.promise;
                 sourceStatus = 499;
-                return { workerIds: [], loops: [] };
+                return { sessionIds: [], loops: [] };
             },
         } as never,
         injectPrompt: async (loopId, prompt) => { messages.push(prompt); return { loopId, turnSeq: 2, messageId: messages.length }; },
     });
     t.mock.method(drains, "ensureDrain", async () => null);
     drains.start();
-    const cancelled = drains.cancelWorkerTree(1, "cancel source");
+    const cancelled = drains.cancelSessionTree(1, "cancel source");
     await cancelling.promise;
     const rejected = assert.rejects(drains.inject(delivery), (error: unknown) => error instanceof OperationFailureError
         && error.result.status === 409
@@ -435,13 +435,13 @@ test("{§card-read-per-wake} every wake reads the card afresh and hands that rea
     const drains = supervisor(async () => `card ${++reads}`, () => {}, {
         db: {
             drain_find_slept_loop: { get: async () => ({ id: 7 }) },
-            message_reply_recipients: { all: async () => [{ worker_id: 2 }] },
+            message_reply_recipients: { all: async () => [{ session_id: 2 }] },
         } as unknown as Db,
     });
-    const settle = async (_workspaceId: number, _workerId: number, systemPrompt: string): Promise<void> => { handed.push(systemPrompt); };
+    const settle = async (_workspaceId: number, _sessionId: number, systemPrompt: string): Promise<void> => { handed.push(systemPrompt); };
     (drains as unknown as { settleCompletionWake: typeof settle }).settleCompletionWake = settle;
     await drains.operationSettled(1, 9);
-    drains.notifyWakeWorker(payload);
+    drains.notifyWakeSession(payload);
     await drains.idle();
     await drains.operationSettled(1, 10);
     await drains.idle();

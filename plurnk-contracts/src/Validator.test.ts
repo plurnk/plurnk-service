@@ -9,7 +9,7 @@ import Validator, {
     InvalidCapabilityDescriptorError,
     InvalidCapabilityPolicyError,
     InvalidFunctionalityListResultError,
-    InvalidWorkerOwnerError,
+    InvalidSessionOwnerError,
     InvalidPlurnkStatementError,
     InvalidMcpServerDefinitionError,
     InvalidMcpOAuthError,
@@ -237,7 +237,7 @@ test("{§client-interaction-wire} client interactions carry one generic tool con
     const projection = {
         interactionId: 1,
         recipient: "test://primary",
-        workerId: 2,
+        sessionId: 2,
         loopId: 3,
         turnId: 4,
         request: formRequest,
@@ -282,7 +282,7 @@ test("{§mcp-server-definition}: MCP definitions contain transport and authoriza
         { name: "deployment-api", type: "streamable-http", url: "https://deploy.example.com/mcp", headers: { "X-Tenant": "${TENANT}" } },
         { name: "creds", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" } },
         { name: "oauth", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "oauth", redirectUrl: "http://localhost/callback" } },
-        { name: "client", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "client-credentials", clientId: "worker", clientSecret: "${SECRET}" } },
+        { name: "client", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "client-credentials", clientId: "session", clientSecret: "${SECRET}" } },
     ];
     for (const definition of definitions) assert.equal(Validator.assertMcpServerDefinition(definition), definition);
     for (const invalid of [
@@ -308,13 +308,13 @@ test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientMetadataUrl: "https://plurnk.example/oauth/client.json" },
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientId: "plurnk", clientSecret: "${GITEA_SECRET}", scope: "read" },
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback" },
-        { type: "client-credentials", clientId: "worker", clientSecret: "${WORKER_SECRET}", issuer: "https://auth.example.com" },
+        { type: "client-credentials", clientId: "session", clientSecret: "${SESSION_SECRET}", issuer: "https://auth.example.com" },
     ];
     for (const setting of settings) assert.equal(Validator.assertMcpOAuth(setting), setting);
     for (const invalid of [
         { type: "oauth", redirectUrl: 8765 },
         { type: "oauth", redirectUrl: "http://127.0.0.1:8765/callback", clientMetadataUrl: "https://plurnk.example/oauth/client.json", clientId: "plurnk", clientSecret: "${S}" },
-        { type: "client-credentials", clientId: "worker", clientSecret: "literal-secret" },
+        { type: "client-credentials", clientId: "session", clientSecret: "literal-secret" },
         { type: "bearer", token: "${TOKEN}" },
     ]) {
         assert.throws(() => Validator.assertMcpOAuth(invalid), InvalidMcpOAuthError, JSON.stringify(invalid));
@@ -333,7 +333,7 @@ test("{§mcp-oauth}: an interactive sign-in may bind its issuer and add authoriz
         { type: "oauth", authorizationParams: {} },
         { type: "oauth", authorizationParams: { access_type: 1 } },
         { type: "oauth", issuer: "accounts.example.com" },
-        { type: "client-credentials", clientId: "worker", clientSecret: "${WORKER_SECRET}", authorizationParams: { access_type: "offline" } },
+        { type: "client-credentials", clientId: "session", clientSecret: "${SESSION_SECRET}", authorizationParams: { access_type: "offline" } },
     ]) {
         assert.throws(() => Validator.assertMcpOAuth(invalid), InvalidMcpOAuthError, JSON.stringify(invalid));
     }
@@ -342,7 +342,7 @@ test("{§mcp-oauth}: an interactive sign-in may bind its issuer and add authoriz
 test("{§client-display-capabilities} ClientDisplayCapabilities admits only discriminated client display metadata", () => {
     const capabilities: ClientDisplayCapabilities = [
         { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
-        { kind: "scheme", scheme: "worker", display: {} },
+        { kind: "scheme", scheme: "session", display: {} },
         { kind: "mimetype", mimetype: "text/markdown", display: { glyph: "󰽛" } },
     ];
     assert.equal(Validator.assertClientDisplayCapabilities(capabilities), capabilities);
@@ -701,14 +701,14 @@ test("{§contract-proposal-projection} CapabilityPolicy accepts only its canonic
     }
 });
 
-test("{§worker-ownership}: owner declarations require an address, explicit supported tools and attendance", () => {
+test("{§session-ownership}: owner declarations require an address, explicit supported tools and attendance", () => {
     for (const [tools, interactive] of [[[], false], [["request_approval"], false], [["request_approval", "question", "mcp_input_required"], true]] as const) {
         const owner = { address: "acp://operator", tools: [...tools], interactive };
-        assert.equal(Validator.assertWorkerOwner(owner), owner);
+        assert.equal(Validator.assertSessionOwner(owner), owner);
     }
     for (const invalid of [{}, { address: "" , tools: [], interactive: false }, { address: "owner", interactive: false }, { address: "owner", tools: [] }, { address: "owner", tools: [], interactive: "yes" }, { address: "owner", tools: ["question", "question"], interactive: true }, { address: "owner", tools: [42], interactive: true }, { address: "owner", tools: [], interactive: false, undeclared: true }, null, []]) {
-        assert.equal(Validator.validateWorkerOwner(invalid).valid, false);
-        assert.throws(() => Validator.assertWorkerOwner(invalid), InvalidWorkerOwnerError);
+        assert.equal(Validator.validateSessionOwner(invalid).valid, false);
+        assert.throws(() => Validator.assertSessionOwner(invalid), InvalidSessionOwnerError);
     }
     assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
 });
@@ -716,10 +716,10 @@ test("{§worker-ownership}: owner declarations require an address, explicit supp
 test("{§contract-proposal-projection} ProposalProjection validates one complete disposition-bearing client view", () => {
     const proposal = {
         logEntryId: 1,
-        workerId: 2,
+        sessionId: 2,
         loopId: 3,
         turnId: 4,
-        worker: "primary",
+        session: "primary",
         coordinate: "1/4/2",
         op: "SEND" as const,
         target: { scheme: null, authority: null, pathname: null },
@@ -754,7 +754,7 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
 
     for (const invalid of [
         { ...proposal, coordinate: "1/4" },
-        { ...proposal, worker: "" },
+        { ...proposal, session: "" },
         { ...proposal, disposition: { owner: "loop" } },
         { ...proposal, owner: "" },
         { ...proposal, target: { scheme: null, pathname: null } },
@@ -773,7 +773,7 @@ test("{§entry-read-result} EntryReadResult validates one exact client entry pro
         status: 200 as const,
         entry: {
             entryId: 17,
-            target: "worker://alice/notes.md",
+            target: "session://alice/notes.md",
             channels: {
                 body: {
                     content: "hello",
@@ -804,7 +804,7 @@ test("{§entry-read-result} EntryReadResult validates one exact client entry pro
         { ...result, entry: { ...result.entry, tags: ["research"] } },
         { ...result, entry: { ...result.entry, scope: "workspace" } },
         { ...result, entry: { ...result.entry, workspaceId: 2 } },
-        { ...result, entry: { ...result.entry, scheme: "worker", pathname: "/notes.md" } },
+        { ...result, entry: { ...result.entry, scheme: "workspace", pathname: "/notes.md" } },
         {
             ...result,
             entry: {

@@ -7,7 +7,7 @@ import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 for (const wake of ["message", "same-drain", "restart"] as const) {
     test(`{§loop-execution-allowance}: ${wake} wake retains the task's remaining execution allowance`, async (t) => {
@@ -24,8 +24,8 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
         await withDaemon(provider, async (db, daemon) => {
             let activeDaemon = daemon;
             const { workspaceId } = await daemon.createWorkspace({ name: `execution-${wake}` });
-            const workerId = await namedModelWorker(daemon, workspaceId, "main");
-            await holdChild(db, workspaceId, workerId);
+            const sessionId = await namedModelSession(daemon, workspaceId, "main");
+            await holdChild(db, workspaceId, sessionId);
             const parked = Promise.withResolvers<void>();
             const resumed = Promise.withResolvers<AbortSignal>();
             const completed = Promise.withResolvers<number>();
@@ -35,7 +35,7 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
             let loopId: number | undefined;
             t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (this: DrainSupervisor, ...args: Parameters<typeof schedule>) {
                 await schedule.apply(this, args);
-                if (args[1] === workerId) parked.resolve();
+                if (args[1] === sessionId) parked.resolve();
             });
             if (wake === "same-drain") {
                 t.mock.method(LoopLifecycle.prototype, "park", async function (this: LoopLifecycle, ...args: Parameters<typeof park>) {
@@ -69,7 +69,7 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
             t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
             t.mock.method(performance, "now", () => Date.now());
             try {
-                loopId = (await daemon.runLoop({ workspaceId, workerId, prompt: "Wait and finish this assignment." })).loopId;
+                loopId = (await daemon.runLoop({ workspaceId, sessionId, prompt: "Wait and finish this assignment." })).loopId;
                 if (wake !== "same-drain") {
                     await parked.promise;
                     if (wake === "restart") {
@@ -78,7 +78,7 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
                         await activeDaemon.start();
                     } else {
                         t.mock.timers.tick(30_000);
-                        const delivered = await daemon.runLoop({ workspaceId, workerId, prompt: "Continue now." });
+                        const delivered = await daemon.runLoop({ workspaceId, sessionId, prompt: "Continue now." });
                         assert.equal(delivered.loopId, loopId);
                     }
                 }
@@ -91,7 +91,7 @@ for (const wake of ["message", "same-drain", "restart"] as const) {
                 assert.equal((await new LoopLifecycle(db).result(loopId))?.problem?.type,
                     "https://problems.plurnk.xyz/engine/rails/loop-timeout");
             } finally {
-                await activeDaemon.cancelWorker({ workspaceId, workerId });
+                await activeDaemon.cancelSession({ workspaceId, sessionId });
                 t.mock.timers.reset();
                 if (activeDaemon !== daemon) await activeDaemon.stop();
             }

@@ -17,9 +17,9 @@ const row = (log: string, op: string): Record<string, unknown> | undefined => ro
 test("{§log-kill-meta-operation} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
-        "````EDIT (worker:///note)\nfirst line\nsecond line\n````\n\n````READ (worker:///note)````\n````NOTE\nwrote\n````",
+        "````EDIT (workspace:///note)\nfirst line\nsecond line\n````\n\n````READ (workspace:///note)````\n````NOTE\nwrote\n````",
         "````KILL (log:///1/**/READ) <2,-1>````\n````KILL (log:///1/**/EDIT)````\n````KILL (log:///9/9/9)````\n````NOTE\ncurated\n````",
-        "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/2/KILL)````\n````READ (worker:///note)````\n````KILL (worker:///note)````\n````NOTE\nverified\n````",
+        "````KILL (log:///1/**/EDIT)````\n````READ (log:///1/3/2/KILL)````\n````READ (workspace:///note)````\n````KILL (workspace:///note)````\n````NOTE\nverified\n````",
         "````NOTE\nthe mismatch has been seen; moving on\n````",
         "````SEND [200]\ndone\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
@@ -63,8 +63,8 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             assert.deepEqual(history.filter(({ op, pathname, rx }) => op === "SEND" && pathname === null && JSON.parse(rx).completion === 200)
                 .map(({ status_rx }) => status_rx), [200], "the final reply resolves the message without curating a resource");
             assert.ok(recordedKills.every(({ active }) => active === 1), "packet suppression does not retire or delete receipt history");
-            assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; initialization reads nothing back ({§worker-initialization-entry})");
-            const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "worker" && pathname === "/note");
+            assert.equal(JSON.parse(recordedKills[0].rx).matched, 1, "the broad sweep matches the file READ; initialization reads nothing back ({§session-initialization-entry})");
+            const sourceReads = history.filter(({ op, scheme, pathname }) => op === "READ" && scheme === "workspace" && pathname === "/note");
             assert.equal(sourceReads.length, 2);
             for (const read of sourceReads) {
                 assert.equal(JSON.parse(read.rx).content, "first line\nsecond line", "log curation changes neither the original receipt evidence nor its source");
@@ -74,7 +74,7 @@ test("{§log-kill-meta-operation} a KILL that worked never renders; one that mat
             assert.equal(receiptRead.status_rx, 204, "the suppressed receipt remains addressable with its ordinary empty body, not a missing-entry error");
             assert.equal(JSON.parse(receiptRead.rx).content, "");
             assert.equal(history.filter(({ op }) => op === null).length, 0, "source retention does not add log rows");
-            const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ worker_id: result.modelWorkerId! });
+            const programs = await db.test_turn_sources.all<{ kind: string; turn_id: number; content: string }>({ session_id: result.modelSessionId! });
             for (const index of mock.received.keys()) {
                 assert.ok(programs.some(({ kind, turn_id }) => kind === "ops" && turn_id === ids[index + 1]), "every model turn retains its content source after curation");
             }

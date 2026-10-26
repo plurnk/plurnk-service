@@ -6,8 +6,8 @@
     "type": "object",
     "required": [
         "logEntryId",
-        "workerId",
-        "worker",
+        "sessionId",
+        "session",
         "loopId",
         "turnId",
         "coordinate",
@@ -24,12 +24,12 @@
             "type": "integer",
             "minimum": 1
         },
-        "workerId": {
+        "sessionId": {
             "type": "integer",
             "minimum": 1
         },
-        "worker": {
-            "description": "The requesting worker's name.",
+        "session": {
+            "description": "The requesting session's name.",
             "type": "string",
             "minLength": 1
         },

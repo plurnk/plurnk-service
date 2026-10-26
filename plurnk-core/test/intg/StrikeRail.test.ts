@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import StrikeRail, { type StrikeOutcome } from "../../src/core/StrikeRail.ts";
 import type { Db } from "../../src/core/Db.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 
 let db: Db;
 let loopId: number;
 test.beforeEach(async () => {
     db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "strike-state");
-    const workerId = await insertWorker(db, workspaceId);
-    loopId = await insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId);
+    loopId = await insertLoop(db, sessionId, 1);
 });
 test.afterEach(async () => { await db.close(); });
 
@@ -165,8 +165,8 @@ test("{§loop-rail-continuity}: clean recovery after a park resets only this loo
     assert.equal(await resumed.streak(loopId), 0);
 
     const workspaceId = await insertWorkspace(db, "independent-rail");
-    const workerId = await insertWorker(db, workspaceId);
-    const otherLoopId = await insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId);
+    const otherLoopId = await insertLoop(db, sessionId, 1);
     await resumed.assess(otherLoopId, { ...base, outcomes: [outcome("READ", 403)] });
     assert.equal(await resumed.streak(otherLoopId), 1);
     assert.equal(await resumed.streak(loopId), 0);

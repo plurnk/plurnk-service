@@ -44,7 +44,7 @@ test("{§executor-input-schema-preview} catalogs required top-level fields in th
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
     assert.equal(detail?.pathname, "/_plurnk/tools/gitea/issue%2Fread.json");
-    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
+    assert.match(family.content, /```gitea \(issue\/read\) <!-- List issues\. \(filter: \{state\?: "open"\|"closed"\}, mode: "open"\|"all"; page\?: integer\) Schema: workspace:\/\/\/_plurnk\/tools\/gitea\/issue%2Fread\.json -->\n\{"repo_id": 0, "filter": \{\}, "labels": \[\], "mode": "open", "selector": null\}\n```/);
     assert.doesNotMatch(family.content, /oneOf|Selection|minItems/);
     const parsed = JSON.parse(detail.content) as Record<string, unknown>;
     assert.equal(parsed.description, description, "complete multiline description is preserved");
@@ -90,7 +90,7 @@ test("{§executor-tool-catalog} links an exact JSON catalog without changing the
     assert.ok(catalog, "the family has a sibling JSON catalog");
     assert.deepEqual(JSON.parse(catalog.content), { tools: definitions });
     assert.equal(catalog.content, JSON.stringify({ tools: definitions }, null, 2));
-    assert.match(resources[0].content, /worker:\/\/\/_plurnk\/tools\/gitea\.json/);
+    assert.match(resources[0].content, /workspace:\/\/\/_plurnk\/tools\/gitea\.json/);
     assert.doesNotMatch(resources[0].content, /outputSchema|vendor|revision/);
     assert.deepEqual(resources.slice(1, 3).map(({ pathname }) => pathname), [
         "/_plurnk/tools/gitea/issue%2Fread.json", "/_plurnk/tools/gitea/issue_write.json",
@@ -132,7 +132,7 @@ test("{§tools-summary-invocation} a featured exact tool includes its required i
 
 test("{§tools-resource-discovery} aside normalization cannot rewrite schema addresses", () => {
     const [family, detail] = render("gitea--private");
-    assert.ok(family.content.includes(`Schema: worker://${detail.pathname} -->`));
+    assert.ok(family.content.includes(`Schema: workspace://${detail.pathname} -->`));
 });
 
 test("{§executor-input-schema-preview} general schema-backed runtimes also expose an on-demand schema", () => {
@@ -141,7 +141,7 @@ test("{§executor-input-schema-preview} general schema-backed runtimes also expo
         invocation: { body: { role: "JSON arguments", required: true }, inputSchema: schema },
     });
     assert.equal(detail.pathname, "/_plurnk/plurnk/query/input.json");
-    assert.ok(family.content.includes(`Schema: worker://${detail.pathname} -->`));
+    assert.ok(family.content.includes(`Schema: workspace://${detail.pathname} -->`));
     assert.ok(family.content.includes('{"repo_id": 0, "filter": {}, "labels": [], "mode": "open", "selector": null}'));
     assert.deepEqual((JSON.parse(detail.content) as Record<string, unknown>).properties, schema.properties);
 });
@@ -218,7 +218,7 @@ test("{§executor-input-schema-preview} surfaces optional properties, nested obj
             },
         }] },
     })[0].content;
-    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+    assert.match(withOptions, /```gitea \(search\) <!-- Search repos\. \(page\?: integer, sort\?: string, state\?: "open"\|"closed"\|"all", labels\?: string\[\]\) Schema: workspace:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 
     const fillForm = {
         type: "object",
@@ -272,5 +272,5 @@ test("{§executor-input-schema-preview} surfaces optional properties, nested obj
             },
         }] },
     })[0].content;
-    assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: worker:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
+    assert.match(noOptions, /```gitea \(search\) <!-- Search repos\. Schema: workspace:\/\/\/_plurnk\/tools\/gitea\/search\.json -->\n\{"query": ""\}\n```/);
 });

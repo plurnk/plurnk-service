@@ -12,7 +12,7 @@ import { promisify } from "node:util";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, seedEnvelope, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { openMigrated, seedEnvelope, insertWorkspace, insertSession, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 const execFileP = promisify(execFile);
@@ -27,14 +27,14 @@ const setup = async () => {
     let sequence = 0;
     const dispatch = (statement: EditStatement | ReadStatement | FindStatement | CopyStatement | MoveStatement) => {
         sequence += 1;
-        return engine.dispatch({ statement, workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence, origin: "client" });
+        return engine.dispatch({ statement, workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence, origin: "client" });
     };
     const channel = async (pathname: string, name: string) => (await db.test_get_channel_by_pathname.get<{ content: string; mimetype: string }>({ pathname, name }));
     return { db, env, dispatch, channel };
 };
 
-const page = urlPath("worker", "/users.html");
-const readable = urlPath("worker", "/users.html", "readable");
+const page = urlPath("workspace", "/users.html");
+const readable = urlPath("workspace", "/users.html", "readable");
 const regex = (pattern: string, flags = ""): MatcherBody => ({ dialect: "regex", raw: `/${pattern}/${flags}`, pattern, flags });
 
 test("{§readable-channel} an HTML source lands with its readable projection beside it, and the projection follows every source write", async () => {
@@ -55,7 +55,7 @@ test("{§readable-channel} an HTML source lands with its readable projection bes
 test("{§readable-channel} a Markdown source has no projection and no sibling", async () => {
     const { db, dispatch, channel } = await setup();
     try {
-        assert.equal((await dispatch(editStmt(urlPath("worker", "/notes.md"), "# Notes\n\nplain"))).status, 201);
+        assert.equal((await dispatch(editStmt(urlPath("workspace", "/notes.md"), "# Notes\n\nplain"))).status, 201);
         assert.equal(await channel("/notes.md", "readable"), undefined);
     } finally { await db.close(); }
 });
@@ -76,10 +76,10 @@ test("{§channel-selection-visibility} each channel matches in its own text and 
         assert.doesNotMatch(String(projection.content), /<p>/, "the projection's line, in the projection's coordinates");
         // A broad FIND matches the addressed (default) channel in its own coordinates and lists the
         // sibling beside it ({§channel-selection-visibility}); `#readable` addresses the projection.
-        const broad = await dispatch(findStmt(urlPath("worker", "/*"), regex("admin")));
+        const broad = await dispatch(findStmt(urlPath("workspace", "/*"), regex("admin")));
         assert.equal(broad.status, 200, JSON.stringify(broad));
         const rows = (broad.results as Array<Array<{ path?: string; mimetype?: string; region?: { startLine: number } }>>).flat();
-        assert.deepEqual(rows.map(({ path, mimetype }) => `${path} ${mimetype}`), ["worker:///users.html text/html", "worker:///users.html#readable text/markdown"]);
+        assert.deepEqual(rows.map(({ path, mimetype }) => `${path} ${mimetype}`), ["workspace:///users.html text/html", "workspace:///users.html#readable text/markdown"]);
         assert.equal(rows[0]?.region?.startLine, 4, "the match is reported in the source's coordinates");
         const projected = await dispatch(findStmt(readable, regex("admin")));
         assert.equal(projected.status, 200, JSON.stringify(projected));
@@ -91,8 +91,8 @@ test("{§readable-channel} full-text search reaches HTML through its readable ch
     const { db, env, dispatch } = await setup();
     try {
         await dispatch(editStmt(page, HTML));
-        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId: env.workspaceId, workerId: env.workerId }));
-        const hit = await dispatch(findStmt(urlPath("worker", "/*"), { dialect: "fts", raw: "~roster" }));
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId: env.workspaceId, sessionId: env.sessionId }));
+        const hit = await dispatch(findStmt(urlPath("workspace", "/*"), { dialect: "fts", raw: "~roster" }));
         assert.equal(hit.status, 200, JSON.stringify(hit));
         const paths = (hit.results as Array<Array<{ path?: string }>>).flat().map((row) => row.path);
         assert.ok(paths.some((path) => String(path).includes("users.html")), JSON.stringify(paths));
@@ -106,13 +106,13 @@ test("{§readable-channel} nothing writes the derived channel: EDIT, a transfer 
         const edit = await dispatch(editStmt(readable, "hand-written", { marks: [1] }));
         assert.equal(edit.status, 400, JSON.stringify(edit));
         assert.match(String(edit.problem?.type), /\/channel-derived$/);
-        const landing = await dispatch(copyStmt(urlPath("worker", "/notes.md"), readable));
+        const landing = await dispatch(copyStmt(urlPath("workspace", "/notes.md"), readable));
         assert.equal(landing.status, 400, JSON.stringify(landing));
         assert.match(String(landing.problem?.type), /\/channel-derived$/);
-        const move = await dispatch(moveStmt(readable, urlPath("worker", "/copy.md")));
+        const move = await dispatch(moveStmt(readable, urlPath("workspace", "/copy.md")));
         assert.equal(move.status, 400, JSON.stringify(move));
         assert.match(String(move.problem?.type), /\/channel-derived$/);
-        const copy = await dispatch(copyStmt(readable, urlPath("worker", "/copy.md")));
+        const copy = await dispatch(copyStmt(readable, urlPath("workspace", "/copy.md")));
         assert.equal(copy.status, 201, JSON.stringify(copy));
         assert.match(String((await channel("/copy.md", "body"))?.content), /Team Roster/);
     } finally { await db.close(); }
@@ -127,8 +127,8 @@ test("{§channel-selection-visibility} a tracked .html member materializes with 
         await execFileP("git", ["add", "page.html"], { cwd: root, env: hermeticGitEnv() });
         const workspaceId = await insertWorkspace(db, `readable-member-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        assert.deepEqual(await GitMembership.indexGitMembership(makeSchemeCtx({ db, workspaceId, workerId })), []);
+        const sessionId = await insertSession(db, workspaceId);
+        assert.deepEqual(await GitMembership.indexGitMembership(makeSchemeCtx({ db, workspaceId, sessionId })), []);
         const entry = await db.test_get_entry_by_path.get<{ id: number }>({ workspace_id: workspaceId, scheme: "file", pathname: "page.html" });
         assert.ok(entry);
         const source = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: entry.id, name: "body" });
@@ -153,8 +153,8 @@ test("{§readable-channel} a READ names the resource's other channels with their
         assert.ok(Number.isSafeInteger(channels["#readable"]) && channels["#readable"] > 0, "with its tokens");
         const projection = await dispatch(readStmt(readable, { marks: [1, -1] }));
         assert.deepEqual(Object.keys(projection.channels as Record<string, number>), ["#body"], "and the source is named from the projection");
-        await dispatch(editStmt(urlPath("worker", "/notes.md"), "plain"));
-        const plain = await dispatch(readStmt(urlPath("worker", "/notes.md"), { marks: [1, -1] }));
+        await dispatch(editStmt(urlPath("workspace", "/notes.md"), "plain"));
+        const plain = await dispatch(readStmt(urlPath("workspace", "/notes.md"), { marks: [1, -1] }));
         assert.equal(plain.channels, undefined, "a single-channel entry names no siblings");
     } finally { await db.close(); }
 });

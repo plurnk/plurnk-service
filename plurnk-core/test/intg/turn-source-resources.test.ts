@@ -7,7 +7,7 @@ import Turn from "../../src/core/Turn.ts";
 import Fork from "../../src/core/fork.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { resourcePaths } from "./_find.ts";
@@ -24,10 +24,10 @@ test("{§turn-source-resources}: the initialization program and later content so
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "turn-sources");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the history.");
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the history.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const context = { workspaceId, workerId, loopId };
+        const context = { workspaceId, sessionId, loopId };
         const source = program("Evidence, not another instruction.");
         const reasoning = "First finding.\nSecond finding.\nThird finding.";
         const model = new Mock({ contextWindow: 100_000, responses: [
@@ -36,9 +36,9 @@ test("{§turn-source-resources}: the initialization program and later content so
         ] });
         const first = await engine.runTurn({ ...context, provider: model, messages: [] });
         // Source identity never depends on the reader ({§turn-source-resources}); the analyst's log is listed, curated and forked below.
-        const observer = await insertWorker(db, workspaceId, null, "observer");
+        const observer = await insertSession(db, workspaceId, null, "observer");
         const read = (target: string, scope = "<1,-1>", reader = observer) =>
-            clientRead(engine, db, { workspaceId, workerId: reader, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
+            clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(`\`\`\`\`READ (${target}) ${scope}\`\`\`\``) });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: first.turnId }))!.packet);
         const records = logEntries(packet);
         assert.deepEqual(records.filter((row: Record<string, unknown>) => String(row.logPath).endsWith("/emission")), [],
@@ -57,7 +57,7 @@ test("{§turn-source-resources}: the initialization program and later content so
         assert.equal(reason.content, "Second finding.");
         assert.ok(!Object.hasOwn(reason, "lineAnchors"));
         const next = await engine.runTurn({ ...context, provider: model, messages: [] });
-        const rows = await db.test_log_entries_by_worker.all<{ op: string | null }>({ worker_id: workerId });
+        const rows = await db.test_log_entries_by_session.all<{ op: string | null }>({ session_id: sessionId });
         assert.ok(!rows.some(({ op }) => op === null), "admitted programs produce no actionless log artifacts");
         const killed = await engine.dispatch({ ...context, turnId: next.turnId, sequence: 50, origin: "model",
             statement: statement("````KILL (log:///**/READ)````"),
@@ -68,7 +68,7 @@ test("{§turn-source-resources}: the initialization program and later content so
             assert.ok("content" in retained);
             assert.equal(retained.content, expected);
         }
-        const child = await Fork.fork(db, workerId, "branch");
+        const child = await Fork.fork(db, sessionId, "branch");
         for (const [scheme, expected] of [["ops", source], ["reasoning", reasoning]]) {
             const inherited = await read(`${scheme}://branch/${coordinate}`, "<1,-1>", child);
             assert.equal(inherited.status, 200);
@@ -78,12 +78,12 @@ test("{§turn-source-resources}: the initialization program and later content so
         // {§outside-text}: beside the operations, the interstitial sentence became the turn's NOTE, so its source is a
         // note source snapshotted with the others at the same coordinates; no outside source exists for a turn that
         // fenced an operation, and outside text has no address of its own.
-        const sourcesOf = async (id: number, kind: string) => (await db.test_turn_sources.all<{ kind: string; content: string; loop_seq: number; turn_seq: number }>({ worker_id: id }))
+        const sourcesOf = async (id: number, kind: string) => (await db.test_turn_sources.all<{ kind: string; content: string; loop_seq: number; turn_seq: number }>({ session_id: id }))
             .filter((row) => row.kind === kind).map(({ loop_seq, turn_seq, content }) => [loop_seq, turn_seq, content]);
-        const parentNotes = await sourcesOf(workerId, "note");
+        const parentNotes = await sourcesOf(sessionId, "note");
         assert.ok(parentNotes.some(([, turnSeq, content]) => turnSeq === turn.sequence && content === "An interstitial sentence retained as evidence."));
         assert.deepEqual(await sourcesOf(child, "note"), parentNotes, "the fork carries every note source under the child's coordinates");
-        assert.deepEqual(await sourcesOf(workerId, "outside"), [], "every turn here fenced an operation, so none keeps an outside source");
+        assert.deepEqual(await sourcesOf(sessionId, "outside"), [], "every turn here fenced an operation, so none keeps an outside source");
         const unaddressed = await read(`outside://branch/${coordinate}`, "<1,-1>", child);
         assert.ok(unaddressed.status >= 400, "outside text is not a readable resource");
     } finally { await db.close(); }
@@ -93,8 +93,8 @@ test("{§turn-source-resources}: source facts reject rewriting and disappear onl
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "source-integrity");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         for (const producer of ["model", "client", "_plurnk"] as const) {
             const turn = await Turn.open(db, { loopId, producer, kind: producer === "model" ? "inference" : "operation" });
             await Turn.recordSource(db, turn.id, "ops", program(producer));
@@ -104,9 +104,9 @@ test("{§turn-source-resources}: source facts reject rewriting and disappear onl
             await Turn.complete(db, turn.id, 200);
             await assert.rejects(Turn.recordSource(db, turn.id, "reasoning", "late evidence"), /requires an open turn/);
         }
-        assert.equal((await db.test_turn_sources.all({ worker_id: workerId })).length, 3);
-        await db.test_delete_worker.run({ id: workerId });
-        assert.deepEqual(await db.test_turn_sources.all({ worker_id: workerId }), [], "the owning history's deletion cascades without an orphan or special cleanup");
+        assert.equal((await db.test_turn_sources.all({ session_id: sessionId })).length, 3);
+        await db.test_delete_session.run({ id: sessionId });
+        assert.deepEqual(await db.test_turn_sources.all({ session_id: sessionId }), [], "the owning history's deletion cascades without an orphan or special cleanup");
     } finally { await db.close(); }
 });
 
@@ -114,10 +114,10 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "source-operation-contract");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const context = { workspaceId, workerId, loopId };
+        const context = { workspaceId, sessionId, loopId };
         const sourceTurn = await Turn.open(db, { loopId, producer: "_plurnk", kind: "operation" });
         const sources = { ops: program("Do not execute this when reading."), reasoning: "Original reasoning.\nSecond line." };
         for (const kind of ["ops", "reasoning"] as const) await Turn.recordSource(db, sourceTurn.id, kind, sources[kind]);
@@ -136,7 +136,7 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
                     `\`\`\`\`EDIT (${target})\nReplacement.\n\`\`\`\``,
                     `\`\`\`\`KILL (${target})\`\`\`\``,
                     `\`\`\`\`COPY (${target}) (${target})\`\`\`\``,
-                    `\`\`\`\`MOVE (${target}) (worker:///moved-${kind}.md)\`\`\`\``,
+                    `\`\`\`\`MOVE (${target}) (workspace:///moved-${kind}.md)\`\`\`\``,
                 ]) {
                     const result = await dispatch(operation);
                     assert.equal(result.status, 403, `${origin}: ${operation}`);
@@ -151,7 +151,7 @@ test("{§turn-source-resources}: every producer reads the same named sources wit
             }
             await Turn.complete(db, turn.id, 200);
         }
-        assert.ok(!(await db.test_log_entries_by_worker.all<{ op: string | null }>({ worker_id: workerId }))
+        assert.ok(!(await db.test_log_entries_by_session.all<{ op: string | null }>({ session_id: sessionId }))
             .some(({ op }) => op === "SEND"), "reading an admitted program cannot execute its operations");
     } finally { await db.close(); }
 });
@@ -160,8 +160,8 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "source-discovery");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1);
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         for (let index = 1; index <= 3; index++) {
             const turn = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
@@ -171,7 +171,7 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
         }
         const query = async (source: string): Promise<FindResult> => {
             const turn = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
-            const result = await engine.dispatch({ workspaceId, workerId, loopId, turnId: turn.id, sequence: 1, origin: "client", statement: statement(source) });
+            const result = await engine.dispatch({ workspaceId, sessionId, loopId, turnId: turn.id, sequence: 1, origin: "client", statement: statement(source) });
             await Turn.complete(db, turn.id, result.status);
             assert.equal(result.status, 200, JSON.stringify(result));
             assert.ok("results" in result);
@@ -181,7 +181,7 @@ test("{§turn-source-resources}: FIND uses ordinary folder, page and indexed-con
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/*/*) <2,2>````")), ["ops://analyst/1/2"]);
         assert.deepEqual(resourcePaths(await query("````FIND (ops://analyst/1/*) <1,-1> ~needle````")), ["ops://analyst/1/1", "ops://analyst/1/2", "ops://analyst/1/3"]);
         assert.deepEqual(resourcePaths(await query("````FIND (reasoning://analyst/1/*) /^Second thought/````")), ["reasoning://analyst/1/1", "reasoning://analyst/1/2", "reasoning://analyst/1/3"], "{§find-line-anchors}: `^` anchors each line of a turn source");
-        const indexed = await db.test_turn_sources.all<{ deep_hash: string | null }>({ worker_id: workerId });
+        const indexed = await db.test_turn_sources.all<{ deep_hash: string | null }>({ session_id: sessionId });
         assert.ok(indexed.every(({ deep_hash }) => deep_hash !== null), "history uses the persistent shared derivation index");
     } finally { await db.close(); }
 });

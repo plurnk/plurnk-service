@@ -21,10 +21,10 @@ body?
 * COPY (source) <scope>? (destination) <scope>?: Copy files, entries, streams, or text regions (no body).
 * MOVE (source) <scope>? (destination) <scope>?: Move files, entries, streams, or text regions (no body).
 * KILL: Delete an entry, stop a process, or retire log items.
-* WORK: Delegate to a child worker (fresh log).
-* FORK: Delegate to a child worker (copied log).
-* WAIT: Yield to child workers or streams. You may include `[60]` to check in after 60 seconds.
-* SEND: Message endpoints, workers, or Open Messages (when the path is omitted, the oldest Open Message).
+* WORK: Delegate to a child session (fresh log).
+* FORK: Delegate to a child session (copied log).
+* WAIT: Yield to child sessions or streams. You may include `[60]` to check in after 60 seconds.
+* SEND: Message endpoints, sessions, or Open Messages (when the path is omitted, the oldest Open Message).
 
 ## Loop Protocol
 
@@ -57,13 +57,13 @@ a final deliverable response
 > [!TIP]
 > YOU SHOULD NOT deliberate while discovering. Submit necessary NOTE, FIND and READ operations, then deliberate on the next turn.
 
-## Delegation (worker:///_plurnk/plurnk/delegation.md)
+## Delegation (workspace:///_plurnk/plurnk/delegation.md)
 
-```WORK (worker://exampleWorkerName) <!-- the child's result lands in your log -->
+```WORK (session://exampleSessionName) <!-- the child's result lands in your log -->
 Describe the child's complete task in the body.
 ```
 
-## `pattern` (worker:///_plurnk/plurnk/pattern.md)
+## `pattern` (workspace:///_plurnk/plurnk/pattern.md)
 
 | prefix | dialect                     | example                         |
 |--------|-----------------------------|---------------------------------|
@@ -108,7 +108,7 @@ Describe the child's complete task in the body.
 * FIND results hold one inner array per path: its channels, default first; append `#channel` to the path to select another: `(sh:///ab3d5678#stderr)`.
 * Percent-encode in paths `(` as `%28` and `)` as `%29`.
 
-## Membership (worker:///_plurnk/tools/plurnk/members.json)
+## Membership (workspace:///_plurnk/tools/plurnk/members.json)
 
 ```plurnk (members) <!-- adding membership tracking for files outside of the project folder -->
 {"verb": "add", "files": ["../exampleSisterProject/*.md", "../exampleSisterProject/example.json"]}
@@ -155,8 +155,8 @@ bar
 example distillation or summarization
 ```
 
-## Environment (worker:///_plurnk/tools/plurnk/env.json)
+## Environment (workspace:///_plurnk/tools/plurnk/env.json)
 
-```plurnk (env) <!-- persists for this worker's commands -->
+```plurnk (env) <!-- persists for this session's commands -->
 {"verb":"add","alias":"PLANET","definition":{"value":"world"}}
 ```

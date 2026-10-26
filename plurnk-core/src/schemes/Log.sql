@@ -7,7 +7,7 @@ SELECT le.id, le.origin, le.op, le.scheme, le.pathname, le.status_rx, le.folded,
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
+WHERE l.session_id = $session_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_append_patch
 -- {§log-mutation-patch}: a file mutation appends the unified diff it made to the operation row it
@@ -17,14 +17,14 @@ UPDATE log_entries
  WHERE id = $id;
 
 -- PREP: log_file_mutations_after
--- {§rollback}: a worker's settled file mutations after a coordinate, latest first. A row keeps its
+-- {§rollback}: a session's settled file mutations after a coordinate, latest first. A row keeps its
 -- patch ({§log-mutation-patch}) or, for a text-free write, none; both are listed so a rollback can
 -- say what it reversed and what it could not.
 SELECT le.id, l.sequence AS loop_seq, t.sequence AS turn_seq, le.sequence, le.op, le.scheme, le.pathname, le.patch
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id
+WHERE l.session_id = $session_id
   AND le.state = 'resolved' AND le.status_rx < 300
   AND le.op IN ('EDIT', 'COPY', 'MOVE', 'KILL')
   AND (l.sequence > $loop_seq
@@ -33,11 +33,11 @@ WHERE l.worker_id = $worker_id
 ORDER BY l.sequence DESC, t.sequence DESC, le.sequence DESC;
 
 -- PREP: log_id_by_coordinate
--- Resolve a concrete active log:/// coordinate within the worker.
+-- Resolve a concrete active log:/// coordinate within the session.
 SELECT le.id, le.origin, le.op, le.attrs, le.tx FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id
+WHERE l.session_id = $session_id
   AND l.sequence = $loop_seq
   AND t.sequence = $turn_seq
   AND le.sequence = $sequence
@@ -52,7 +52,7 @@ SELECT le.id, (l.sequence || '/' || t.sequence || '/' || le.sequence) AS coordin
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id
+WHERE l.session_id = $session_id
   AND ($max_id IS NULL OR le.id <= $max_id)
   AND ($scope_prefix IS NULL OR substr(
       (l.sequence || '/' || t.sequence || '/' || le.sequence),
@@ -109,7 +109,7 @@ WHERE log_entry_projections.log_entry_id = json_extract(plan.value, '$.id')
 RETURNING log_entry_id AS id;
 
 -- PREP: log_find_candidates
--- {§find-source-agnostic} ÷ {§log-coordinate-hierarchy} — the worker's log rows as FIND candidates,
+-- {§find-source-agnostic} ÷ {§log-coordinate-hierarchy} — the session's log rows as FIND candidates,
 -- three-part-coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
@@ -118,7 +118,7 @@ SELECT
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
-WHERE l.worker_id = $worker_id
+WHERE l.session_id = $session_id
   AND ($max_id IS NULL OR le.id <= $max_id)
   AND ($scope_prefix IS NULL OR substr(
       (l.sequence || '/' || t.sequence || '/' || le.sequence),
@@ -146,7 +146,7 @@ SELECT
     le.attrs, le.folded
 FROM active_log_entries le
 LEFT JOIN derivations d ON d.deep_hash = le.deep_hash
-JOIN workers w ON w.id = le.worker_id
+JOIN sessions w ON w.id = le.session_id
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = t.loop_id
 WHERE w.workspace_id = $workspace_id
@@ -259,7 +259,7 @@ BEGIN
             LEFT JOIN log_entry_projections projection ON projection.log_entry_id = target.id
             WHERE target.id IS NULL
                OR projection.log_entry_id IS NULL
-               OR target.worker_id != NEW.worker_id
+               OR target.session_id != NEW.session_id
                OR target.id = NEW.id
                OR projection.active != json_extract(selected.value, '$.activeBefore')
                OR json(projection.folded) != json(json_extract(selected.value, '$.foldedBefore'))

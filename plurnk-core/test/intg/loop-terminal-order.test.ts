@@ -5,15 +5,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import type Daemon from "../../src/server/Daemon.ts";
-import { ownWorker } from "./_approval.ts";
+import { ownSession } from "./_approval.ts";
 import StreamMock from "./_stream-mock.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 type Ending = "cancellation" | "timeout" | "shutdown" | "turn ceiling";
 type Holder = "turn" | "parked" | "stream";
-type Ends = { daemon: Daemon; workspaceId: number; workerId: number; expire: () => void };
+type Ends = { daemon: Daemon; workspaceId: number; sessionId: number; expire: () => void };
 
 const QUESTION = "````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````";
 const WAIT = "````WAIT\nAwaiting an answer.\n````";
@@ -30,7 +30,7 @@ const CASES: ReadonlyArray<{ gate: "proposal" | "interaction"; op: string; holde
 const HOLDERS: Record<Holder, string> = { turn: "a running turn", parked: "a parked loop", stream: "a loop working on" };
 
 const END: Record<Ending, (ends: Ends) => Promise<void>> = {
-    cancellation: ({ daemon, workspaceId, workerId }) => daemon.cancelWorker({ workspaceId, workerId, reason: "user_escape" }),
+    cancellation: ({ daemon, workspaceId, sessionId }) => daemon.cancelSession({ workspaceId, sessionId, reason: "user_escape" }),
     timeout: async ({ expire }) => expire(),
     shutdown: ({ daemon }) => daemon.stop(),
     "turn ceiling": async () => {},
@@ -72,8 +72,8 @@ for (const { gate, op, holder, emission, endings } of CASES) {
             t.after(() => release.resolve());
             await withDaemon(provider, async (db, daemon) => {
                 const { workspaceId } = await daemon.createWorkspace({ name: `terminal-order-${gate}-${holder}-${ending}` });
-                const workerId = await namedModelWorker(daemon, workspaceId, "main");
-                await ownWorker(db, workspaceId, workerId);
+                const sessionId = await namedModelSession(daemon, workspaceId, "main");
+                await ownSession(db, workspaceId, sessionId);
                 const order: string[] = [];
                 const delayedAnnouncement = gate === "interaction" && ending === "timeout";
                 const announcing = Promise.withResolvers<void>();
@@ -105,20 +105,20 @@ for (const { gate, op, holder, emission, endings } of CASES) {
                 });
                 try {
                     const { loopId, drainPromise } = await daemon.inject({
-                        workspaceId, workerId, prompt: "Go.",
+                        workspaceId, sessionId, prompt: "Go.",
                         providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
                         effort: "adaptive", systemPrompt: "test system",
                         ...(ending === "turn ceiling" ? { turnCeiling: { effective: 1, source: "explicit" as const } } : {}),
                     });
                     await waitForDb(async () => order, (events) => events.includes("held"));
                     if (holder === "parked") {
-                        assert.ok(drainPromise !== undefined, "the injection started the worker's drain");
+                        assert.ok(drainPromise !== undefined, "the injection started the session's drain");
                         await drainPromise;
                         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status, 202, "the loop is parked");
                     }
                     if (holder === "stream" && ending !== "turn ceiling") await held.promise;
                     const expire = (): void => (timers.get(loopId) ?? assert.fail("the loop never started executing"))();
-                    const ended = END[ending]({ daemon, workspaceId, workerId, expire });
+                    const ended = END[ending]({ daemon, workspaceId, sessionId, expire });
                     release.resolve();
                     await ended;
                     const terminated = `terminated ${loopId}`;

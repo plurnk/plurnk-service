@@ -6,7 +6,7 @@ import type { CopyStatement, MoveStatement } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EntryScheme from "./_entry-scheme.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import { openMigrated, seedEnvelope } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 import { urlPath, localPath, editStmt, copyStmt, moveStmt, fullReplace } from "./_dsl.ts";
@@ -20,33 +20,33 @@ const setup = async () => {
     return { db, ...env, engine };
 };
 
-const dispatch = async (engine: Engine, env: { workspaceId: number; workerId: number; loopId: number; turnId: number }, statement: CopyStatement | MoveStatement) => {
+const dispatch = async (engine: Engine, env: { workspaceId: number; sessionId: number; loopId: number; turnId: number }, statement: CopyStatement | MoveStatement) => {
     return await engine.dispatch({
         statement, ...env, sequence: 1, origin: "client",
     });
 };
 
 test("{§copy} Engine.copy copies the default channel", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/france/capital"), "Paris"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/france/capital"), "Paris"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/france/capital"), urlPath("worker", "/europe/france")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, copyStmt(urlPath("workspace", "/france/capital"), urlPath("workspace", "/europe/france")));
         assert.equal(r.status, 201);
 
-        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string; pathname: string }>({ pathname: "/europe/france", scheme: "worker" });
-        assert.equal(dst?.scheme, "worker");
+        const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string; pathname: string }>({ pathname: "/europe/france", scheme: "workspace" });
+        assert.equal(dst?.scheme, "workspace");
         const channel = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/europe/france", name: "body" });
         assert.equal(channel?.content, "Paris");
     } finally { await db.close(); }
 });
 
-test("{§copy} Engine.copy cross-scheme (worker commons → fixture)", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+test("{§copy} Engine.copy cross-scheme (session commons → fixture)", async () => {
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/topic"), "open question"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/topic"), urlPath("fixture", "/topic")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, copyStmt(urlPath("workspace", "/topic"), urlPath("fixture", "/topic")));
         assert.equal(r.status, 201);
 
         const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/topic", scheme: "fixture" });
@@ -57,23 +57,23 @@ test("{§copy} Engine.copy cross-scheme (worker commons → fixture)", async () 
 });
 
 test("{§copy-missing-source-404} Engine.copy missing source returns 404", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/nope"), urlPath("worker", "/elsewhere")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, copyStmt(urlPath("workspace", "/nope"), urlPath("workspace", "/elsewhere")));
         assert.equal(r.status, 404);
-        assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/worker/entry-not-found");
-        assert.equal(r.problem?.target, "worker:///nope");
+        assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/workspace/entry-not-found");
+        assert.equal(r.problem?.target, "workspace:///nope");
     } finally { await db.close(); }
 });
 
 test("{§copy} Engine.copy conflicting destination returns 409", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        const k = new Worker();
-        await k.edit(editStmt(urlPath("worker", "/src"), "source body"), makeSchemeCtx({ db, workspaceId, workerId }));
-        await k.edit(editStmt(urlPath("worker", "/dst"), "dest body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const k = new Workspace();
+        await k.edit(editStmt(urlPath("workspace", "/src"), "source body"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        await k.edit(editStmt(urlPath("workspace", "/dst"), "dest body"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, copyStmt(urlPath("workspace", "/src"), urlPath("workspace", "/dst")));
         assert.equal(r.status, 409);
         const dstBody = (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "dest body");
@@ -81,17 +81,17 @@ test("{§copy} Engine.copy conflicting destination returns 409", async () => {
 });
 
 test("{§copy} Engine.copy to a destination already holding identical content returns 304", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        const k = new Worker();
-        await k.edit(editStmt(urlPath("worker", "/src"), "same body"), makeSchemeCtx({ db, workspaceId, workerId }));
+        const k = new Workspace();
+        await k.edit(editStmt(urlPath("workspace", "/src"), "same body"), makeSchemeCtx({ db, workspaceId, sessionId }));
         // Three dispatches in one turn → distinct sequences (log_entries is unique on turn_id+sequence).
-        const copy = (sequence: number) => engine.dispatch({ statement: copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")), workspaceId, workerId, loopId, turnId, sequence, origin: "client" });
+        const copy = (sequence: number) => engine.dispatch({ statement: copyStmt(urlPath("workspace", "/src"), urlPath("workspace", "/dst")), workspaceId, sessionId, loopId, turnId, sequence, origin: "client" });
 
         const created = await copy(1);
         assert.equal(created.status, 201, "first copy creates the destination");
         assert.deepEqual(created.effects, [{
-            target: "worker:///dst",
+            target: "workspace:///dst",
             action: "create",
         }]);
         const unchanged = await copy(2);
@@ -99,18 +99,18 @@ test("{§copy} Engine.copy to a destination already holding identical content re
         assert.equal(unchanged.effects, undefined, "a no-op reports no effects");
 
         // Divergent destination is still a real collision; it stays untouched.
-        await k.edit(editStmt(urlPath("worker", "/src"), "changed body", fullReplace), makeSchemeCtx({ db, workspaceId, workerId }));
+        await k.edit(editStmt(urlPath("workspace", "/src"), "changed body", fullReplace), makeSchemeCtx({ db, workspaceId, sessionId }));
         assert.equal((await copy(3)).status, 409, "divergent content is a collision");
         const dstBody = (await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/dst", name: "body" }))?.content;
         assert.equal(dstBody, "same body", "collision leaves the destination untouched");
     } finally { await db.close(); }
 });
 test("{§copy} Engine.move relocates: source deleted, dest created", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/src"), "movable"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/src"), "movable"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, moveStmt(urlPath("workspace", "/src"), urlPath("workspace", "/dst")));
         assert.equal(r.status, 201);
 
         const src = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/src" });
@@ -122,19 +122,19 @@ test("{§copy} Engine.move relocates: source deleted, dest created", async () =>
 });
 
 test("{§move-canonical-whole-source}: Engine.move treats <1,-1> as whole-channel source selection", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/src"), "movable"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/src"), "movable"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const result = await dispatch(
             engine,
-            { workspaceId, workerId, loopId, turnId },
-            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), fullReplace),
+            { workspaceId, sessionId, loopId, turnId },
+            moveStmt(urlPath("workspace", "/src"), urlPath("workspace", "/dst"), fullReplace),
         );
         assert.equal(result.status, 201);
         assert.deepEqual(result.effects, [
-            { target: "worker:///dst", action: "create" },
-            { target: "worker:///src", action: "delete" },
+            { target: "workspace:///dst", action: "create" },
+            { target: "workspace:///src", action: "delete" },
         ]);
         assert.equal(
             await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/src" }),
@@ -151,14 +151,14 @@ test("{§move-canonical-whole-source}: Engine.move treats <1,-1> as whole-channe
 });
 
 test("{§copy} Engine.move keeps an ordinary source region regional when it covers the current content", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/src"), "only line"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/src"), "only line"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
         const result = await dispatch(
             engine,
-            { workspaceId, workerId, loopId, turnId },
-            moveStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"), { marks: [1] }),
+            { workspaceId, sessionId, loopId, turnId },
+            moveStmt(urlPath("workspace", "/src"), urlPath("workspace", "/dst"), { marks: [1] }),
         );
         assert.equal(result.status, 201);
         assert.deepEqual(
@@ -173,13 +173,13 @@ test("{§copy} Engine.move keeps an ordinary source region regional when it cove
 });
 
 test("{§move-dev-null-not-special} Engine.move to /dev/null is not a delete — source survives", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/obsolete"), "stale"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/obsolete"), "stale"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
         // /dev/null carries no special meaning now (KILL is the delete). It's a
         // plain relocation to an unwritable dest — it fails, and the source stays.
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/obsolete"), localPath("/dev/null")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, moveStmt(urlPath("workspace", "/obsolete"), localPath("/dev/null")));
         assert.notEqual(r.status, 200, "not a successful delete");
 
         const remaining = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/obsolete" });
@@ -188,22 +188,22 @@ test("{§move-dev-null-not-special} Engine.move to /dev/null is not a delete —
 });
 
 test("{§move-missing-source-404} Engine.move missing source returns 404", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/nope"), urlPath("worker", "/elsewhere")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, moveStmt(urlPath("workspace", "/nope"), urlPath("workspace", "/elsewhere")));
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
 
-test("{§copy} Engine.move cross-scheme (worker commons → fixture) deletes source, creates dest", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+test("{§copy} Engine.move cross-scheme (session commons → fixture) deletes source, creates dest", async () => {
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/draft"), "answer"), makeSchemeCtx({ db, workspaceId, workerId }));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/draft"), "answer"), makeSchemeCtx({ db, workspaceId, sessionId }));
 
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, moveStmt(urlPath("worker", "/draft"), urlPath("fixture", "/answer")));
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, moveStmt(urlPath("workspace", "/draft"), urlPath("fixture", "/answer")));
         assert.equal(r.status, 201);
 
-        const srcRemaining = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ pathname: "/draft", scheme: "worker" });
+        const srcRemaining = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ pathname: "/draft", scheme: "workspace" });
         assert.equal(srcRemaining, undefined, "the commons source is deleted");
 
         const dst = await db.test_get_entry_by_pathname_scheme.get<{ scheme: string }>({ pathname: "/answer", scheme: "fixture" });
@@ -212,12 +212,12 @@ test("{§copy} Engine.move cross-scheme (worker commons → fixture) deletes sou
 });
 
 test("{§copy-l-source-range} Engine.copy with <L> slices the source range into the dest, no N:\\t prefix", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const base = copyStmt(urlPath("worker", "/long"), urlPath("worker", "/sliced"));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const base = copyStmt(urlPath("workspace", "/long"), urlPath("workspace", "/sliced"));
         const stmt: CopyStatement = { ...base, source: { ...base.source, lineMarker: { marks: [2, 3] } } };
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
         assert.ok(Array.isArray(r.effects));
         const [effect] = r.effects as Array<{
@@ -242,23 +242,23 @@ test("{§copy-l-source-range} Engine.copy with <L> slices the source range into 
 });
 
 test("{§copy} Engine.copy with <L> out of range returns 416", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/src"), "only one line"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const base = copyStmt(urlPath("worker", "/src"), urlPath("worker", "/dst"));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/src"), "only one line"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const base = copyStmt(urlPath("workspace", "/src"), urlPath("workspace", "/dst"));
         const stmt: CopyStatement = { ...base, source: { ...base.source, lineMarker: { marks: [99] } } };
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, stmt);
         assert.equal(r.status, 416);
     } finally { await db.close(); }
 });
 
 test("{§copy} Engine.move with a source region removes only that region", async () => {
-    const { db, workspaceId, workerId, loopId, turnId, engine } = await setup();
+    const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
-        await new Worker().edit(editStmt(urlPath("worker", "/orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, workspaceId, workerId }));
-        const base = moveStmt(urlPath("worker", "/orig"), urlPath("worker", "/moved"));
+        await new Workspace().edit(editStmt(urlPath("workspace", "/orig"), "first\nsecond\nthird"), makeSchemeCtx({ db, workspaceId, sessionId }));
+        const base = moveStmt(urlPath("workspace", "/orig"), urlPath("workspace", "/moved"));
         const stmt: MoveStatement = { ...base, source: { ...base.source, lineMarker: { marks: [1, 2] } } };
-        const r = await dispatch(engine, { workspaceId, workerId, loopId, turnId }, stmt);
+        const r = await dispatch(engine, { workspaceId, sessionId, loopId, turnId }, stmt);
         assert.equal(r.status, 201);
         assert.ok(Array.isArray(r.effects));
         const effects = r.effects as Array<{

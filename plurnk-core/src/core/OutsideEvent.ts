@@ -3,7 +3,7 @@
 // `outside` source remains the durable authority; the event carries its exact text once.
 
 export type OutsideEventPayload = {
-    workerId: number;
+    sessionId: number;
     loopId: number;
     turnId: number;
     coordinate: string;

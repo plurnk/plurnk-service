@@ -1,5 +1,5 @@
-import WorkerOwners from "../../src/core/WorkerOwners.ts";
-import { ownWorker, TEST_OWNER, serverProposals } from "./_approval.ts";
+import SessionOwners from "../../src/core/SessionOwners.ts";
+import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
 // Daemon-level drain + inject + cancel contract ({§actor-boundary-passive-wake}).
 // Engine-level inject mechanics are covered in Engine.inject.test.ts;
 // this file exercises the application seam and durable lifecycle.
@@ -12,7 +12,7 @@ import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { isArrivalRow } from "./_packet.ts";
-import { admitTogether, namedModelWorker } from "./_workers.ts";
+import { admitTogether, namedModelSession } from "./_sessions.ts";
 
 // {§message-arrival} — an arrival row's body is its sent side.
 const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { body: { raw: string } }).body.raw;
@@ -20,7 +20,7 @@ const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { bo
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
 test("{§send-premature-terminate} loop.run: enqueues + drains + returns first loop's result", async () => {
-    const dsl = "````EDIT (worker:///x)\nhello\n````\n\n````SEND\ndone\n````";
+    const dsl = "````EDIT (workspace:///x)\nhello\n````\n\n````SEND\ndone\n````";
     // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
@@ -39,7 +39,7 @@ test("{§send-premature-terminate} loop.run: enqueues + drains + returns first l
     });
 });
 
-test("{§worker-lifecycle-single-drain}: concurrent admissions before the first claim create distinct ordered loops", async (t) => {
+test("{§session-lifecycle-single-drain}: concurrent admissions before the first claim create distinct ordered loops", async (t) => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [
@@ -50,13 +50,13 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
 
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: "concurrent-loop-allocation" });
-        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
+        const sessionId = await namedModelSession(daemon, workspace.workspaceId, "main");
         const providerSpec = { alias: "mocktest", provider: "openai", model: "mocktest" } as const;
-        // {§worker-message-admission}: both admissions must precede the first drain claim.
-        const accepted = await admitTogether(t, workerId, [
+        // {§session-message-admission}: both admissions must precede the first drain claim.
+        const accepted = await admitTogether(t, sessionId, [
             () => daemon.inject({
                 workspaceId: workspace.workspaceId,
-                workerId,
+                sessionId,
                 prompt: "concurrent prompt one",
                 providerSpec,
                 effort: "adaptive",
@@ -64,7 +64,7 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
             }),
             () => daemon.inject({
                 workspaceId: workspace.workspaceId,
-                workerId,
+                sessionId,
                 prompt: "concurrent prompt two",
                 providerSpec,
                 effort: "adaptive",
@@ -79,9 +79,9 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
 
         const acceptedLoopIds = new Set(accepted.map(({ loopId }) => loopId));
         const loops = await waitForDb(
-            async () => (await db.test_loop_queue_by_worker.all<{
+            async () => (await db.test_loop_queue_by_session.all<{
                 id: number; sequence: number; status: number; prompt: string;
-            }>({ worker_id: workerId })).filter(({ id }) => acceptedLoopIds.has(id)),
+            }>({ session_id: sessionId })).filter(({ id }) => acceptedLoopIds.has(id)),
             (rows) => rows.length === 2 && rows.every(({ status }) => status === 200),
         );
         assert.deepEqual(loops.map(({ sequence }) => sequence), [1, 2]);
@@ -90,24 +90,24 @@ test("{§worker-lifecycle-single-drain}: concurrent admissions before the first 
     });
 });
 
-test("{§worker-ownership}: a fresh injection preserves the worker owner", async () => {
+test("{§session-ownership}: a fresh injection preserves the session owner", async () => {
     const mock = new Mock({
         contextWindow: 16384,
         responses: [sendOnly("````SEND [200]\ndone\n````")],
     });
     await withDaemon(mock, async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `fresh-loop-${crypto.randomUUID()}` });
-        const workerId = await namedModelWorker(daemon, workspace.workspaceId, "main");
-        await ownWorker(db, workspace.workspaceId, workerId);
+        const sessionId = await namedModelSession(daemon, workspace.workspaceId, "main");
+        await ownSession(db, workspace.workspaceId, sessionId);
         const accepted = await daemon.inject({
             workspaceId: workspace.workspaceId,
-            workerId,
+            sessionId,
             prompt: "delegated work",
             providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" },
             effort: "adaptive",
             systemPrompt: "test system",
         });
-        assert.equal((await WorkerOwners.read(db, workerId)).address, TEST_OWNER);
+        assert.equal((await SessionOwners.read(db, sessionId)).address, TEST_OWNER);
         await accepted.drainPromise;
     });
 });
@@ -225,7 +225,7 @@ test("{§actor-boundary-passive-wake} loop.run: post-cancel, a fresh loop.run st
             assert.equal((firstResp.result as { status: number }).status, 100,
                 "loop.run accepted (100); the cancelled loop's terminal arrives via events");
             // Wait for the cancelled first loop to actually terminate (499 via loop/terminated)
-            // so the worker is genuinely idle before the second loop.run.
+            // so the session is genuinely idle before the second loop.run.
             const firstLoop = (firstResp.result as { loopId: number }).loopId;
             await waitFor(() => terminated() as Array<{ loopId: number }>,
                 (ts) => ts.some((t) => t.loopId === firstLoop), { timeoutMs: 5000 });
@@ -286,7 +286,7 @@ test("{§methods-loop-run-open-paths}: an active-loop prompt carries its paths i
             await rpcCall(ws, 4, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
             await firstPromise;  // resolves at the 100 accept; loop 1 completes asynchronously on turn 2
 
-            // Exactly one loop ran for the worker: the second call injected, it did not spin up a
+            // Exactly one loop ran for the session: the second call injected, it did not spin up a
             // parallel drain. Wait for the single termination (loop.run does not block to it).
             const ended = await waitFor(
                 () => terminated() as Array<{ loopId: number; result: { status: number } }>,
@@ -320,7 +320,7 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````WAIT\npark\n````"),
-            sendOnly("````SEND\ndone with the parked work\n````\n````KILL (worker://parked)\n````"),
+            sendOnly("````SEND\ndone with the parked work\n````\n````KILL (session://parked)\n````"),
         ],
     });
     const parkedBoundary = Promise.withResolvers<void>();
@@ -343,10 +343,10 @@ test("{§methods-loop-run-open-paths}: a parked-loop prompt carries its paths in
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "openpaths-parked" });
-            const { workerId } = await daemon.createWorker({ workspaceId: (created.result as { id: number }).id, name: "parked" });
+            const { sessionId } = await daemon.createSession({ workspaceId: (created.result as { id: number }).id, name: "parked" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const started = await rpcCall(ws, 2, "loop.run", {
-                workerId,
+                sessionId,
                 prompt: "start and park",
 
             });
@@ -399,7 +399,7 @@ test("{§message-loop-containment}: an injection crossing the park transition is
         contextWindow: 16384,
         responses: [
             sendOnly("````sh\nsleep 30\n````\n\n````WAIT\npark\n````"),
-            sendOnly("````SEND\ndone with the injected prompt\n````\n````KILL (worker://parked)\n````"),
+            sendOnly("````SEND\ndone with the injected prompt\n````\n````KILL (session://parked)\n````"),
         ],
     });
     const parking = Promise.withResolvers<void>();
@@ -419,10 +419,10 @@ test("{§message-loop-containment}: an injection crossing the park transition is
         const ws = await connect(addr);
         try {
             const created = await rpcCall(ws, 1, "workspace.create", { name: "inject-at-park-boundary" });
-            const { workerId } = await daemon.createWorker({ workspaceId: (created.result as { id: number }).id, name: "parked" });
+            const { sessionId } = await daemon.createSession({ workspaceId: (created.result as { id: number }).id, name: "parked" });
             const terminated = subscribeNotifications(ws, "loop/terminated");
             const started = await rpcCall(ws, 2, "loop.run", {
-                workerId,
+                sessionId,
                 prompt: "start and park",
 
             });
@@ -461,7 +461,7 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
     // loop 1 at a proposal (status=102, turn 1), inject two turn-2 frames, then
     // let turn 1 complete so loop 1 ends and turn 2 never runs. The drain
     // must promote the orphaned frames to a fresh loop that surfaces them — so two
-    // loops terminate for the worker, not one (it would be one if the wake were
+    // loops terminate for the session, not one (it would be one if the wake were
     // lost; no other op here spawns a loop — the execution proposal is rejected).
     // 16384: the inject-then-reconcile path accumulates both loops' rows across turns, cresting at the 8192 edge;
     // grammar 0.76.4's plurnk.md growth consumed the margin. Headroom for the reconcile, not a budget probe.
@@ -565,7 +565,7 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
     });
 });
 
-test("{§actor-boundary-passive-wake} loop.cancel reaps the worker's open streams by the subscription registry (closed 499)", async (approvalContext) => {
+test("{§actor-boundary-passive-wake} loop.cancel reaps the session's open streams by the subscription registry (closed 499)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A backgrounded sleep registers an active exec subscription; loop.cancel must reap
     // it THROUGH the registry — the open row closes with the exact 499 Problem — not
@@ -605,10 +605,10 @@ test("{§actor-boundary-passive-wake} loop.cancel reaps the worker's open stream
     });
 });
 
-test("{§completion-defers-to-messages} a cancelled worker is not revived by its straggler stream's conclusion", async (approvalContext) => {
+test("{§completion-defers-to-messages} a cancelled session is not revived by its straggler stream's conclusion", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // After loop.cancel, the backgrounded exec's conclusion must NOT open a fresh loop
-    // in the worker — the cancel was deliberate. Proven by the worker's loop count staying at
+    // in the session — the cancel was deliberate. Proven by the session's loop count staying at
     // its single model loop after the conclusion lands (a resurrection would add a
     // wake-opened loop), plus the conclusion's wakeAction being a skip, not opened-loop.
     const mock = new Mock({
@@ -646,14 +646,14 @@ test("{§completion-defers-to-messages} a cancelled worker is not revived by its
             assert.ok(wake, "exec stream concluded");
             assert.match(wake.wakeAction, /^skipped-/, `the daemon skipped opening a loop; got ${wake.wakeAction}`);
 
-            // The worker was not resurrected: no prompt-bearing model loop was
+            // The session was not resurrected: no prompt-bearing model loop was
             // opened after the original. Runtime documentation reconciliation
-            // may have authored terminal administrative loops in the same Worker.
-            const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
-            const modelLoops = (await db.test_loop_queue_by_worker.all<{
+            // may have authored terminal administrative loops in the same Session.
+            const sessionId = (await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId }))?.session_id;
+            const modelLoops = (await db.test_loop_queue_by_session.all<{
                 id: number; prompt: string;
-            }>({ worker_id: workerId })).filter(({ prompt }) => prompt !== "");
-            assert.deepEqual(modelLoops.map(({ id }) => id), [loopId], "no wake loop was opened for the cancelled worker");
+            }>({ session_id: sessionId })).filter(({ prompt }) => prompt !== "");
+            assert.deepEqual(modelLoops.map(({ id }) => id), [loopId], "no wake loop was opened for the cancelled session");
         } finally { ws.close(); }
     });
 });
@@ -719,8 +719,8 @@ for (const silent of [false, true]) {
                 const prompts = rows.filter((r) => isArrivalRow(r));
                 assert.equal(prompts.length, 3, "the initial message plus both follow-ups were published");
                 assert.ok(prompts.slice(1).every((p) => p.turn_id === replies[1].turn_id), "both follow-ups were published in the turn the model completed from");
-                const workerId = (await db.test_get_worker_id_by_loop.get<{ worker_id: number }>({ loop_id: loopId }))?.worker_id;
-                const modelLoops = (await db.test_loop_queue_by_worker.all<{ id: number; prompt: string }>({ worker_id: workerId })).filter(({ prompt }) => prompt !== "");
+                const sessionId = (await db.test_get_session_id_by_loop.get<{ session_id: number }>({ loop_id: loopId }))?.session_id;
+                const modelLoops = (await db.test_loop_queue_by_session.all<{ id: number; prompt: string }>({ session_id: sessionId })).filter(({ prompt }) => prompt !== "");
                 assert.deepEqual(modelLoops.map(({ id }) => id), [loopId], "the observed follow-ups belong to the completed loop, not an orphan recovery loop");
             } finally { ws.close(); }
         });

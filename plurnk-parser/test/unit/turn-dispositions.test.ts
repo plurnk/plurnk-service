@@ -52,7 +52,7 @@ for (const [op, status] of [["WAIT", 202]] as const) {
         const body = "Let the verification suite finish.";
         for (const decoration of [
             "(10)", "(notes.md)", "(sh:///56d607dc)", "[{\"trace\":true}]",
-            "(worker://missing) [{\"timeout\":42}]",
+            "(session://missing) [{\"timeout\":42}]",
         ]) {
             const source = PlurnkParser.frame(`${op} ${decoration} <!-- suite -->`, body);
             for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
@@ -94,7 +94,7 @@ test("{§turn-shape} tolerating WAIT decorations does not admit unclosed slots",
 });
 
 test("{§turn-shape} SEND does not conclude a turn or manufacture a disposition", () => {
-    const result = PlurnkParser.parse(PlurnkParser.frame("SEND (worker://peer)", "hello"));
+    const result = PlurnkParser.parse(PlurnkParser.frame("SEND (session://peer)", "hello"));
     assert.deepEqual(result.items.flatMap((item) => item.kind === "statement" ? [item.statement.op] : []), ["SEND"]);
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
 });

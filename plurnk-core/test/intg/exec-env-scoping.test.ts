@@ -11,7 +11,7 @@ import HostPaths from "../../src/core/HostPaths.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Daemon from "../../src/server/Daemon.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { execStmt, readStmt, urlPath } from "./_dsl.ts";
 
@@ -34,14 +34,14 @@ test(
             const engine = new Engine({ db, schemes });
             engine.setExecutors(await testExecutors());
             const workspaceId = await insertWorkspace(db, `exec-env-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "exec env scoping");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "exec env scoping");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
             const idDeferred = deferred<number>();
             const dispatchPromise = engine.dispatch({
                 statement: execStmt(null, `echo "$${CANARY}"`),  // host runtime → propose
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });
             const logEntryId = await idDeferred.promise;
@@ -88,14 +88,14 @@ test(
             const engine = new Engine({ db, schemes });
             engine.setExecutors(await testExecutors());
             const workspaceId = await insertWorkspace(db, `exec-env-ceiling-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "exec env ceiling");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "exec env ceiling");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
             const idDeferred = deferred<number>();
             const dispatchPromise = engine.dispatch({
                 statement: execStmt(null, `echo "admitted=$${ADMITTED_IN_ENV} withheld=$${WITHHELD}"`),
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });
             const logEntryId = await idDeferred.promise;
@@ -121,13 +121,13 @@ test(
     },
 );
 
-// {§exec-env-scoped} layer four — the Worker's own state over the ambient ceiling, read at the spawn.
+// {§exec-env-scoped} layer four — the Session's own state over the ambient ceiling, read at the spawn.
 // The row is what the env verbs persist ({§functionality-scope}); here it is written directly so the
-// spawn is witnessed alone: an enabled worker entry sets its value, a disabled entry masks an ambient
-// name for this Worker only, a sibling with no row sees the ceiling untouched, and the invariant strips
+// spawn is witnessed alone: an enabled session entry sets its value, a disabled entry masks an ambient
+// name for this Session only, a sibling with no row sees the ceiling untouched, and the invariant strips
 // a reserved name even when the state names it.
 test(
-    "{§exec-env-scoped} a Worker's own environment reaches its next spawn; its sibling's ceiling is untouched",
+    "{§exec-env-scoped} a Session's own environment reaches its next spawn; its sibling's ceiling is untouched",
     async () => {
         const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
         const previousCi = process.env.CI;
@@ -139,24 +139,24 @@ test(
             const exec = schemes.get("exec") as Exec;
             const engine = new Engine({ db, schemes });
             engine.setExecutors(await testExecutors());
-            const workspaceId = await insertWorkspace(db, `exec-env-worker-${crypto.randomUUID()}`);
-            const shaped = await insertWorker(db, workspaceId);
-            const plain = await insertWorker(db, workspaceId);
-            await db.worker_module_state_put.run({
-                worker_id: shaped, namespace_owner: "@plurnk/plurnk-service",
+            const workspaceId = await insertWorkspace(db, `exec-env-session-${crypto.randomUUID()}`);
+            const shaped = await insertSession(db, workspaceId);
+            const plain = await insertSession(db, workspaceId);
+            await db.session_module_state_put.run({
+                session_id: shaped, namespace_owner: "@plurnk/plurnk-service",
                 state: JSON.stringify({ version: 1, definitions: {
-                    CARGO_TARGET_DIR: { origin: "worker", enabled: true, definition: { value: "/tmp/shared" } },
+                    CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" } },
                     CI: { origin: "service", enabled: false },
-                    PLURNK_SERVICE_LEAK: { origin: "worker", enabled: true, definition: { value: "never" } },
+                    PLURNK_SERVICE_LEAK: { origin: "session", enabled: true, definition: { value: "never" } },
                 } }),
             });
-            const stdoutOf = async (workerId: number): Promise<string> => {
-                const loopId = await insertLoop(db, workerId, 1, "exec env worker state");
+            const stdoutOf = async (sessionId: number): Promise<string> => {
+                const loopId = await insertLoop(db, sessionId, 1, "exec env session state");
                 const turnId = await insertTurn(db, loopId, 1, 102);
                 const idDeferred = deferred<number>();
                 const dispatchPromise = engine.dispatch({
                     statement: execStmt(null, 'echo "target=[$CARGO_TARGET_DIR] ci=[$CI] leak=[$PLURNK_SERVICE_LEAK]"'),
-                    workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                    workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
                     onDispatch: (id) => idDeferred.resolve(id),
                 });
                 const logEntryId = await idDeferred.promise;
@@ -169,7 +169,7 @@ test(
                 return (await db.test_get_channel.get<{ content: string }>({ entry_id: entry!.id, name: "stdout" }))?.content ?? "";
             };
             assert.match(await stdoutOf(shaped), /target=\[\/tmp\/shared\] ci=\[\] leak=\[\]/,
-                "the Worker's value is set, its masked ambient name is withheld, and a reserved name never reaches the command");
+                "the Session's value is set, its masked ambient name is withheld, and a reserved name never reaches the command");
             assert.match(await stdoutOf(plain), /target=\[\] ci=\[1\] leak=\[\]/, "a sibling with no state sees the ceiling untouched");
         } finally {
             await db.close();
@@ -197,16 +197,16 @@ test(
             assert.equal(daemon.operatorEnvironment().HOME, isolatedHome, "module launch base carries the daemon's isolated HOME");
             const { workspaceId } = await daemon.createWorkspace({ name: `isolated-home-${crypto.randomUUID()}` });
             await daemon.activateWorkspace({ workspaceId });
-            const { workerId } = await daemon.createWorker({ workspaceId });
-            const workerEnv = (await daemon.readWorkerEnvironment(workspaceId, workerId))();
-            assert.equal(workerEnv.HOME, isolatedHome, "worker environment resolves HOME to the daemon's HostPaths.home");
+            const { sessionId } = await daemon.createSession({ workspaceId });
+            const sessionEnv = (await daemon.readSessionEnvironment(workspaceId, sessionId))();
+            assert.equal(sessionEnv.HOME, isolatedHome, "session environment resolves HOME to the daemon's HostPaths.home");
 
-            const loopId = await insertLoop(db, workerId, 1, "isolated home");
+            const loopId = await insertLoop(db, sessionId, 1, "isolated home");
             const turnId = await insertTurn(db, loopId, 1, 102);
 
             const envRead = await daemon.engine.dispatch({
                 statement: readStmt(urlPath("env", "/HOME")),
-                workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             });
             assert.equal(envRead.status, 200);
             assert.equal(envRead.content, isolatedHome, "READ (env:///HOME) matches the daemon's isolated HOME");
@@ -214,7 +214,7 @@ test(
             const idDeferred = deferred<number>();
             const dispatchPromise = daemon.engine.dispatch({
                 statement: execStmt(null, 'printf "%s" "$HOME"'),
-                workspaceId, workerId, loopId, turnId, sequence: 2, origin: "model",
+                workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
                 onDispatch: (id) => idDeferred.resolve(id),
             });
             const logEntryId = await idDeferred.promise;

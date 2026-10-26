@@ -7,14 +7,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 
 test("{§message-loop-containment} concurrent injections keep arrival order across a new Engine", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ordered-messages");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "initial");
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "initial");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await Promise.all([engine.injectIntoLoop(loopId, "first"), engine.injectIntoLoop(loopId, "second")]);
         await new Engine({ db, schemes: new SchemeRegistry() }).injectIntoLoop(loopId, "third");
@@ -30,8 +30,8 @@ test("{§message-causal-source} engine.inject: persists a message with its ordin
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const workspaceId = await insertWorkspace(db, "engine-inject");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "initial prompt");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "initial prompt");
         // Loop starts at status=102 (insertLoop default). Insert a turn
         // 1 placeholder so engine.inject's next-turn query returns 2 —
         // matches the realistic mid-loop state.
@@ -41,7 +41,7 @@ test("{§message-causal-source} engine.inject: persists a message with its ordin
             loopId,
             "follow-up",
             ["src/context.ts", "README.md"],
-            "worker://researcher",
+            "session://researcher",
         );
         assert.ok(result, "engine.inject returned a result");
         assert.equal(result.loopId, loopId);
@@ -52,7 +52,7 @@ test("{§message-causal-source} engine.inject: persists a message with its ordin
         const [, message] = inbox;
         assert.deepEqual(
             { ordinal: message.ordinal, body: message.body, source: message.source, openPaths: JSON.parse(message.open_paths), published: message.log_entry_id },
-            { ordinal: 2, body: "follow-up", source: "worker://researcher", openPaths: ["src/context.ts", "README.md"], published: null },
+            { ordinal: 2, body: "follow-up", source: "session://researcher", openPaths: ["src/context.ts", "README.md"], published: null },
             "the message durably owns its selected workspace paths and causal source ({§message-causal-source})",
         );
     } finally { await db.close(); }
@@ -63,8 +63,8 @@ test("{§message-loop-containment} concurrent injects are contained as distinct 
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const workspaceId = await insertWorkspace(db, "engine-inject-containment");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "initial");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "initial");
         await insertTurn(db, loopId, 1, 102);
 
         const [r1, r2] = await Promise.all([
@@ -93,13 +93,13 @@ test("{§message-loop-containment} engine.inject: returns null when the addresse
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const workspaceId = await insertWorkspace(db, "engine-inject-no-active");
-        const workerId = await insertWorker(db, workspaceId);
-        // No loops at all in this worker.
+        const sessionId = await insertSession(db, workspaceId);
+        // No loops at all in this session.
         const result = await engine.injectIntoLoop(999_999, "orphan prompt");
         assert.equal(result, null, "no active loop → null (caller falls back to enqueue path)");
 
         // Also returns null when a loop exists but it's terminal.
-        const closedLoop = await insertLoop(db, workerId, 1, "done");
+        const closedLoop = await insertLoop(db, sessionId, 1, "done");
         await db.test_set_loop_status.run({
             id: closedLoop,
             status: 200,
@@ -114,15 +114,15 @@ test("{§loop-addressed-admission}: a queued recipient accepts messages without 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "queued-recipient");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "queued");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "queued");
         await db.test_set_loop_status.run({ id: loopId, status: 100, terminal_result: null });
-        const recipient = await db.drain_message_recipient.get<{ id: number }>({ worker_id: workerId, loop_id: loopId });
+        const recipient = await db.drain_message_recipient.get<{ id: number }>({ session_id: sessionId, loop_id: loopId });
         assert.equal(recipient?.id, loopId);
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         assert.equal((await engine.injectIntoLoop(loopId, "before execution"))?.loopId, loopId);
         assert.deepEqual((await db.test_messages_by_loop.all<{ body: string }>({ loop_id: loopId })).map(({ body }) => body), ["queued", "before execution"]);
-        assert.equal((await db.drain_message_recipient.get<{ id: number }>({ worker_id: workerId, loop_id: loopId }))?.id, loopId);
+        assert.equal((await db.drain_message_recipient.get<{ id: number }>({ session_id: sessionId, loop_id: loopId }))?.id, loopId);
     } finally { await db.close(); }
 });
 
@@ -130,8 +130,8 @@ test("{§loop-addressed-admission}: completion between recipient lookup and inse
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "injection-completion-race");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "original");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "original");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const query = db.drain_next_turn_seq_for_loop;
         const get = query.get.bind(query);

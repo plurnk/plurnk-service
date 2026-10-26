@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Engine from "../../src/core/Engine.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { completeStmt, } from "./_dsl.ts";
 
 // {§tokenomics-client-gauge}: cardinal request totals are billing evidence; the
@@ -45,8 +45,8 @@ test("{§tokenomics-client-gauge} loopUsage.contextTokens is the latest turn's p
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         // Two turns, a context that grows: prompts 100 then 250.
         const first = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
@@ -73,8 +73,8 @@ test("{§tokenomics-client-gauge} loopUsage.contextTokens ignores later BARE cal
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-bare-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const turn = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
@@ -95,8 +95,8 @@ test("{§tokenomics-client-gauge} loopUsage keeps latest-turn curation and physi
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-size-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         // Turn 1 ran a 49k-window model; turn 2 switched to a 200k-window model.
         const first = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
@@ -125,8 +125,8 @@ test("{§tokenomics-client-gauge} loopUsage.curationBudget is null when provider
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-null-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         // A provider with unknown input capacity leaves the curation denominator NULL.
         const turn = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
@@ -145,8 +145,8 @@ test("{§tokenomics-client-gauge} loopUsage does not reuse an earlier turn's con
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-failed-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const completed = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
@@ -173,8 +173,8 @@ test("{§tokenomics-client-gauge} loopUsage binds physical usage and capacity to
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-preflight-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const turn = await db.test_context_insert_turn.get<{ id: number }>({
             loop_id: loopId,
             sequence: 1,
@@ -210,11 +210,11 @@ test("{§tokenomics-client-gauge} runTurn stores provider-derived curation and r
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ctx-budget-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 8192, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("done")] } }] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "S" }, { role: "user", content: "go" }] });
         const usage = await engine.loopUsage(loopId);
         const expected = 8192 - Number(process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET);
         assert.equal(usage.curationBudget, expected);

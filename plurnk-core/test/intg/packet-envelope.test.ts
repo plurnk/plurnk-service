@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { killStmt, urlPath } from "./_dsl.ts";
 
 const say = (content: string, reasoning: string | null = null) => ({ assistant: { content, reasoning } });
@@ -19,32 +19,32 @@ const previous = (request: readonly ChatMessage[]): string => request.filter(({ 
 const run = async (name: string, prompt: string, responses: ReturnType<typeof say>[], maxTurns: number) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, name);
-    const workerId = await insertWorker(db, workspaceId, null, "analyst");
-    const loopId = await insertLoop(db, workerId, 1, prompt);
+    const sessionId = await insertSession(db, workspaceId, null, "analyst");
+    const loopId = await insertLoop(db, sessionId, 1, prompt);
     const provider = new Mock({ contextWindow: 100000, responses });
     const schemes = new SchemeRegistry();
     const engine = new Engine({ db, schemes });
-    const result = await engine.runLoop({ workspaceId, workerId, loopId, provider, messages: [], maxTurns });
-    const rows = await db.test_emission_rows_by_worker.all<{
+    const result = await engine.runLoop({ workspaceId, sessionId, loopId, provider, messages: [], maxTurns });
+    const rows = await db.test_emission_rows_by_session.all<{
         coordinate: string; origin: string; op: string; scheme: string; hostname: string; pathname: string;
         attrs: string; rx: string; initial_folded: string; active: number; folded: string;
-    }>({ worker_id: workerId });
-    return { db, result, provider, rows, workspaceId, workerId, loopId, engine, schemes };
+    }>({ session_id: sessionId });
+    return { db, result, provider, rows, workspaceId, sessionId, loopId, engine, schemes };
 };
 
 test("{§emission-history}: curation removes memory receipts; source READ still restores exact bodies", async (t) => {
     const body = Array.from({ length: 120 }, (_, index) => `FULL-BODY line ${index + 1}`).join("\n");
-    const first = `${frame("EDIT (worker:///memory.md) <!-- remember -->", body)}\n\n${frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`;
+    const first = `${frame("EDIT (workspace:///memory.md) <!-- remember -->", body)}\n\n${frame("NOTE", "CURATABLE-MEMORY: retain the actual observation.")}`;
     const curate = frame("KILL (log:///1/2/*/NOTE)", null);
     const read = frame("READ (ops://analyst/1/2) <1,-1>", null);
-    const { db, result, provider, rows, workerId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
+    const { db, result, provider, rows, sessionId } = await run("envelope-source", "Work, curate, then inspect your original program.", [
         say(first, frame("NOTE", "REASONING-MEMORY: independent reasoning note.")),
         say(curate), say(read), say(frame("SEND [200]", "Complete.")),
     ], 5);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);
     assert.equal(provider.received.length, 4);
-    const edit = frame("EDIT (worker:///memory.md) <!-- remember -->", body);
+    const edit = frame("EDIT (workspace:///memory.md) <!-- remember -->", body);
     assert.equal(previous(provider.received[1]), first, "EDIT and NOTE replay whole");
     assert.match(userText(provider.received[1]), /REASONING-MEMORY/u);
     assert.doesNotMatch(userText(provider.received[1]), /CURATABLE-MEMORY/u, "the paired NOTE receipt does not duplicate its body");
@@ -53,7 +53,7 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.equal(previous(provider.received[3]), `${edit}\n\n${read}`, "the explicit source READ joins the surviving history");
     assert.match(userText(provider.received[3]), /CURATABLE-MEMORY/u, "an explicit READ retrieves the complete program");
     assert.match(userText(provider.received[3]), /FULL-BODY line 120/u);
-    const reads = await db.test_log_entries_by_worker_op_full.all<{ pathname: string; rx: string }>({ worker_id: workerId, op: "READ" });
+    const reads = await db.test_log_entries_by_session_op_full.all<{ pathname: string; rx: string }>({ session_id: sessionId, op: "READ" });
     assert.ok(reads.some(({ pathname, rx }) => pathname === "/1/2" && (JSON.parse(rx) as { content?: string }).content === first));
     assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, first);
 });
@@ -104,7 +104,7 @@ test("{§emission-row}: curation retires the immediately preceding emission with
 
 test("{§emission-row}: a scoped KILL cannot partially curate a program; a sweep preserves it and an unscoped KILL retires it", async (t) => {
     const { db, result, provider, rows } = await run("envelope-scope", "Answer.\nSecond line.\nThird line.", [
-        say(frame("EDIT (worker:///scope.md)", "line one\nline two\nline three")),
+        say(frame("EDIT (workspace:///scope.md)", "line one\nline two\nline three")),
         say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)),
         say(frame("KILL (log:///1/2/*) <2,3>", null)),
         say(frame("KILL (log:///1/2/2/emission)", null)), say(frame("SEND [200]", "Answer.")),
@@ -124,7 +124,7 @@ test("{§emission-row}: a scoped KILL cannot partially curate a program; a sweep
 
 test("{§emission-row} {§fabricated-log-entry}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
-        say(`### log:///1/2/2/emission (ops://exampleWorkerName/1/2) · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("SEND [200]", "Answer.")),
+        say(`### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("SEND [200]", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);

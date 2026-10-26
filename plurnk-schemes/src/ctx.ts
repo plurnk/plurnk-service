@@ -212,7 +212,7 @@ export interface StreamSubscription extends AbortSignal {
     notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
 
     // Settle the subscription: validate and persist the exact universal
-    // operation result, derive channel state, and fire the worker wake. Exact
+    // operation result, derive channel state, and fire the session wake. Exact
     // named channel results override the universal result.
     close(
         result: ChannelProducerResult,
@@ -228,7 +228,7 @@ export interface StreamSubscription extends AbortSignal {
 // returns ({§scheme-ctx-lifetime}).
 export interface SubscriptionCaps {
     // Register the subscription for cancel routing and return the signal the
-    // sibling should await for teardown. The returned AbortSignal is the worker
+    // sibling should await for teardown. The returned AbortSignal is the session
     // signal COMPOSED WITH this subscription's own teardown — it fires on
     // `loop.cancel` OR local teardown (connection drop). Await this, not
     // ctx.signal (which it subsumes). `handle` is the force-cancel hook the
@@ -253,7 +253,7 @@ export interface SubscriptionHandle {
 // coordinates.
 export interface SchemeAddressCtx {
     readonly workspaceId: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
     readonly turnId: number;
     readonly writer: WriterTier;

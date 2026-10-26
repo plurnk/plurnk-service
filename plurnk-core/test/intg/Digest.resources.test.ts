@@ -9,7 +9,7 @@ import SqlRiteSync from "@possumtech/sqlrite/sync";
 import { Mock } from "@plurnk/plurnk-providers";
 import { Digest, DigestRender } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { insertLoop, insertPacketTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertPacketTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 test("{§digest-programmatic-surface}: artifact failure closes the reader and cannot publish a complete digest", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-interrupted-"));
@@ -45,7 +45,7 @@ for (const surface of ["run", "requiem"] as const) {
             if (failed) {
                 const all = StatementSync.prototype.all;
                 t.mock.method(StatementSync.prototype, "all", function (this: StatementSync, ...args: Parameters<StatementSync["all"]>) {
-                    if (this.sourceSQL.includes("SELECT * FROM workers ORDER BY id")) throw failure;
+                    if (this.sourceSQL.includes("SELECT * FROM sessions ORDER BY id")) throw failure;
                     return all.call(this, ...args);
                 });
             }
@@ -57,7 +57,7 @@ for (const surface of ["run", "requiem"] as const) {
             if (failed) await assert.rejects(async () => invoke(), (cause) => cause === failure);
             else await invoke();
             assert.equal(closed.length, 1, "the forensic reader is explicitly closed exactly once");
-            assert.throws(() => (closed[0].digest_workers as { all(): unknown[] }).all(), { code: "ERR_INVALID_STATE" });
+            assert.throws(() => (closed[0].digest_sessions as { all(): unknown[] }).all(), { code: "ERR_INVALID_STATE" });
         });
     }
 }
@@ -69,8 +69,8 @@ test("{§digest-requiem}: releases the reader before waiting for the witness, in
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "reader-lifetime");
-        const workerId = await insertWorker(db, workspaceId, null, "witness");
-        const loopId = await insertLoop(db, workerId, 1, "inspect");
+        const sessionId = await insertSession(db, workspaceId, null, "witness");
+        const loopId = await insertLoop(db, sessionId, 1, "inspect");
         await insertPacketTurn(db, loopId, 1, {
             weight: 1,
             sections: [{ name: "log", slot: "user", header: "Log", content: "evidence", weight: 1 }],

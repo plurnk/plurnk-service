@@ -11,7 +11,7 @@ import { join } from "node:path";
 import GitMembership from "../../src/core/git-membership.ts";
 import GitState from "../../src/core/git-state.ts";
 import { excludesFile, hermeticGitEnv } from "../../src/core/git-env.ts";
-import { openMigrated, insertWorkspace, rootWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, rootWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
 import { initializeDemoRepository } from "../demo/_git.ts";
@@ -56,11 +56,11 @@ test("{§membership-git-hermetic} demo fixture + production git spawns ignore a 
         // Production class: membership resolution against the sandbox must read the SANDBOX.
         const workspaceId = await insertWorkspace(db, `hermetic-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, sandbox);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, loopId, turnId,
+            db, workspaceId, sessionId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
@@ -163,11 +163,11 @@ test("{§membership-git-hermetic} automatic inspection never runs a repository-s
         const status = await GitState.status(db, workspaceId, undefined);
         assert.ok(status, "status still answers under the pinned configuration");
         assert.deepEqual(status.files.map((file) => file.path), ["tracked.md"], "ordinary status content is intact");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, loopId, turnId,
+            db, workspaceId, sessionId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
@@ -226,12 +226,12 @@ test("{§membership-git-hermetic} automatic inspection refuses a supplied reposi
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
         process.env.PLURNK_SERVICE_GIT_AUTO = "1";
         assert.equal(await GitState.status(db, workspaceId, undefined), null, "status answers as for a non-repository");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const notices: Array<Record<string, unknown>> = [];
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, loopId, turnId,
+            db, workspaceId, sessionId, loopId, turnId,
             writer: "_plurnk", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
             pushNotice: (notice) => { notices.push(notice); },
@@ -260,12 +260,12 @@ test("{§membership-git-hermetic} automatic inspection refuses a supplied reposi
         const plainWorkspace = await insertWorkspace(db, `plain-${crypto.randomUUID()}`);
         await rootWorkspace(db, plainWorkspace, plain);
         assert.deepEqual((await GitState.status(db, plainWorkspace, undefined))?.branch !== undefined, true, "an ordinary repository still answers status");
-        const plainWorker = await insertWorker(db, plainWorkspace);
-        const plainLoop = await insertLoop(db, plainWorker, 1);
+        const plainSession = await insertSession(db, plainWorkspace);
+        const plainLoop = await insertLoop(db, plainSession, 1);
         const plainTurn = await insertTurn(db, plainLoop, 1, 102);
         const plainNotices: unknown[] = [];
         await GitMembership.indexGitMembership({
-            ...ctx, workspaceId: plainWorkspace, workerId: plainWorker, loopId: plainLoop, turnId: plainTurn,
+            ...ctx, workspaceId: plainWorkspace, sessionId: plainSession, loopId: plainLoop, turnId: plainTurn,
             pushNotice: (notice) => { plainNotices.push(notice); },
         });
         const plainMember = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: plainWorkspace, scheme: "file", authority: "", pathname: "ok.md" });

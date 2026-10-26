@@ -24,14 +24,14 @@ const inspectedEvidence = (ops, evidence) => {
 };
 
 const setupErrors = (digest) => {
-    const workers = new Map((digest?.workers ?? []).map((worker) => [worker.id, worker]));
+    const sessions = new Map((digest?.sessions ?? []).map((session) => [session.id, session]));
     const loops = new Map((digest?.loops ?? []).map((loop) => [loop.id, loop]));
     const turns = new Map((digest?.turns ?? []).map((turn) => [turn.id, turn]));
     return (digest?.log_entries ?? []).filter((entry) => {
         if (Number(entry?.status_rx) < 400) return false;
         const turn = turns.get(entry.turn_id);
         const loop = loops.get(turn?.loop_id);
-        return workers.get(loop?.worker_id)?.name === "_plurnk";
+        return sessions.get(loop?.session_id)?.name === "_plurnk";
     });
 };
 

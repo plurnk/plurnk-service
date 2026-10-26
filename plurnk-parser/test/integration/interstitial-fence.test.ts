@@ -64,7 +64,7 @@ test("{§response-text}: headings inside bodies remain body content", () => {
 });
 
 test("{§forgotten-tag}: a heading under a bare fence at the top level runs, and one warning states the form", () => {
-    const source = unlabeled("KILL (worker:///notes.md)") + "\n" + task;
+    const source = unlabeled("KILL (workspace:///notes.md)") + "\n" + task;
     const result = PlurnkParser.parse(source);
     assert.deepEqual(statements(result).map(({ op }) => op), ["KILL", "WAIT"]);
     assert.deepEqual(errors(result).map(({ severity, message }) => [severity, message]), [["warning", "`KILL` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line."]]);
@@ -72,7 +72,7 @@ test("{§forgotten-tag}: a heading under a bare fence at the top level runs, and
 
 test("{§interstitial-fence}: explicit SEND keeps its aside, target, and literal body", () => {
     const aside = "reply";
-    const body = "````KILL (worker:///notes.md)````\n<!-- body comment -->";
+    const body = "````KILL (workspace:///notes.md)````\n<!-- body comment -->";
     const source = `${PlurnkParser.frame(`SEND <!-- ${aside} -->`, body)}\n${task}`;
     const result = PlurnkParser.parse(source);
     assert.deepEqual(errors(result), []);
@@ -86,8 +86,8 @@ test("{§interstitial-fence}: explicit SEND keeps its aside, target, and literal
 });
 
 test("{§fence-boundary}: unlabeled fences already inside a body remain ordinary body content", () => {
-    const body = unlabeled("KILL (worker:///notes.md)");
-    for (const header of ["SEND", "EDIT (worker:///example.md)", "sh"]) {
+    const body = unlabeled("KILL (workspace:///notes.md)");
+    for (const header of ["SEND", "EDIT (workspace:///example.md)", "sh"]) {
         const result = PlurnkParser.parseStatements(PlurnkParser.frame(header, body));
         assert.equal(result.unparsedTail, undefined);
         assert.deepEqual(errors(result), []);
@@ -101,7 +101,7 @@ test("{§fence-boundary}: unlabeled fences already inside a body remain ordinary
 
 test("{§closer-fallback}: an unlabeled fence after an unclosed block is that block's closer, not a message", () => {
     for (const tail of ["````", "````\nprose after", "````\nbody\n````"]) {
-        const source = "````READ (worker:///notes.md)\n" + tail;
+        const source = "````READ (workspace:///notes.md)\n" + tail;
         const result = PlurnkParser.parseStatements(source);
         assert.equal(result.unparsedTail, undefined, tail);
         assert.deepEqual(statements(result).map(({ op }) => op), ["READ"], tail);

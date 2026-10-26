@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ResourceState from "./resource-state.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
-import { openMigrated, insertWorkspace, insertWorker, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, rootWorkspace } from "./_db.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 
 test("{§fs-resource-state} consistent resource state reports no violations after real lifecycle traffic", async () => {
@@ -15,8 +15,8 @@ test("{§fs-resource-state} consistent resource state reports no violations afte
     try {
         const workspaceId = await insertWorkspace(db, `ws-clean-${crypto.randomUUID()}`);
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, mimetypes: DEFAULT_MIMETYPES });
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES });
         await writeFile(join(root, "a.md"), "a\n");
         await EntryCrud.writeEntry({ authority: "", pathname: "a.md" }, { channels: { body: { content: "a\n", mimetype: "text/markdown" } } }, ctx, "file");
         await db.crud_register_workspace_member.get({ workspace_id: workspaceId, scheme: "file", authority: "", pathname: "b.md", membership_origin: "git" });

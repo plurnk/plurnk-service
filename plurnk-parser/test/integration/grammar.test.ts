@@ -54,19 +54,19 @@ test("{§fence-heading-in-body} protocol operations parse as executable fences",
     const cases: Array<[string, string, string | undefined]> = [
         ["WAIT", "", "inspect, act, report"],
         ["WAIT", " <5>", "[]"],
-        ["FIND", " (worker:///**) <1,20> @Paris*", undefined],
+        ["FIND", " (workspace:///**) <1,20> @Paris*", undefined],
         ["READ", " (README.md)", undefined],
         ["EDIT", " (notes.md) <2>", "replacement"],
         ["COPY", " (notes.md) (archive.md) <0>", undefined],
         ["MOVE", " (notes.md) (archive.md)", undefined],
         ["KILL", " (log:///**) <@aB3dE> ~topic", undefined],
         ["KILL", " (log:///**) <17,-1>", undefined],
-        ["SEND", " (worker://child)", "progress"],
+        ["SEND", " (session://child)", "progress"],
         ["sh", " (node/./) <60,5>", "console.log(1)"],
         ["BARE", "", "What is the capital of Germany?"],
-        ["WORK", " (worker://child)", "do the work"],
-        ["FORK", " (worker://child)", "recheck the work"],
-        ["KILL", " (worker://child)", undefined],
+        ["WORK", " (session://child)", "do the work"],
+        ["FORK", " (session://child)", "recheck the work"],
+        ["KILL", " (session://child)", undefined],
     ];
 
     for (const [op, slots, body] of cases) {
@@ -91,13 +91,13 @@ test("{§send-directed-scope}: directed SEND carries a numeric scope to its owne
 
 test("{§fence-heading-in-body} trailing operation asides are durable, single-line, and follow every modifier", () => {
     const statement = oneStatement([
-        "````gitea (list_issues) <!-- Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.json) -->",
+        "````gitea (list_issues) <!-- Lists issues (details: workspace:///_plurnk/tools/gitea/list_issues.json) -->",
         "{\"owner\":\"plurnk\",\"repo\":\"plurnk-service\"}",
         "````",
     ].join("\n"));
     assert.equal(
         statement.aside,
-        "Lists issues (details: worker:///_plurnk/tools/gitea/list_issues.json)",
+        "Lists issues (details: workspace:///_plurnk/tools/gitea/list_issues.json)",
     );
     assert.equal(oneStatement("````READ (README.md)````").aside, null);
     assert.equal(oneStatement("````READ (README.md) <!-- -->````").aside, "");
@@ -156,16 +156,16 @@ test("{§fence-heading-in-body} target escapes preserve literal and percent-enco
 });
 
 test("{§fence-heading-in-body} COPY and MOVE destinations use the target escape layer", () => {
-    const statement = oneStatement(("````COPY (worker:///draft) (https://example.test/archive?literal=\\)&encoded=%29)````"));
+    const statement = oneStatement(("````COPY (workspace:///draft) (https://example.test/archive?literal=\\)&encoded=%29)````"));
     if (statement.op !== "COPY" || statement.destination.target.kind !== "url") assert.fail("expected COPY URL destination");
     assert.equal(statement.destination.target.raw, "https://example.test/archive?literal=)&encoded=%29");
     assert.equal(statement.destination.target.query, "literal=)&encoded=%29");
 });
 
 test("{§transfer-resource-selections} a COPY destination path excludes the whitespace before its scope", () => {
-    const statement = oneStatement("````COPY (log:///1/2/1/SEND) (worker://alice/prompts.md) <-1>````");
+    const statement = oneStatement("````COPY (log:///1/2/1/SEND) (session://alice/prompts.md) <-1>````");
     if (statement.op !== "COPY") assert.fail("expected COPY");
-    assert.equal(statement.destination.target.raw, "worker://alice/prompts.md");
+    assert.equal(statement.destination.target.raw, "session://alice/prompts.md");
     assert.equal(statement.destination.target.kind === "url" ? statement.destination.target.hostname : null, "alice");
     assert.deepEqual(statement.destination.lineMarker, { marks: [-1] });
 });
@@ -173,12 +173,12 @@ test("{§transfer-resource-selections} a COPY destination path excludes the whit
 // {§transfer-resource-selections}
 test("{§fence-heading-in-body} COPY and MOVE bind a terminal scope to the immediately preceding operand", () => {
     for (const op of ["COPY", "MOVE"] as const) {
-        const statement = oneStatement(section(op, " (worker:///src.md) <2,3> (worker:///slice.md) <0>"));
+        const statement = oneStatement(section(op, " (workspace:///src.md) <2,3> (workspace:///slice.md) <0>"));
         if (statement.op !== op) assert.fail(`expected ${op}`);
         assert.deepEqual(statement.source.lineMarker, { marks: [2, 3] });
         assert.deepEqual(statement.destination.lineMarker, { marks: [0] });
 
-        const result = PlurnkParser.parseStatements(section(op, " (worker:///src.md) (worker:///slice.md) <0>:"));
+        const result = PlurnkParser.parseStatements(section(op, " (workspace:///src.md) (workspace:///slice.md) <0>:"));
         const errors = result.items.filter((item) => item.kind === "error");
         assert.ok(errors.length >= 1);
     }
@@ -221,7 +221,7 @@ test("{§invalid-scope-diagnostic} {§error-shape} scope diagnostics do not borr
     // {§diagnostic-observation} — a hash written without its `@` is said as read, never rewritten into the anchor it might be.
     assert.equal(firstError(section("EDIT", " (sympy/utilities/iterables.py) <@WFYC2,tXN17>", "x")).message,
         "invalid EDIT scope \"<@WFYC2,tXN17>\"; use numeric coordinates or `@hash` line anchors");
-    assert.equal(firstError(section("SEND", " (worker://peer) <later>")).message,
+    assert.equal(firstError(section("SEND", " (session://peer) <later>")).message,
         "invalid SEND scope \"<later>\"; use a numeric scope supported by the recipient");
     // {§scope-on-scopeless} — an operation that takes no scope drops it and runs, with one advisory naming its slots.
     for (const op of ["BARE", "WORK", "FORK"] as const) {
@@ -284,9 +284,9 @@ test("{§extra-path-slot}: parentheses in bodies remain literal text, not operan
 
 test("{§bare-statement} BARE accepts a prompt resource, inline input, or both", () => {
     for (const body of [undefined, "Compare the conclusions."]) {
-        const statement = oneStatement(section("BARE", " (worker://alice/prompt.md) <!-- isolated review -->", body));
+        const statement = oneStatement(section("BARE", " (session://alice/prompt.md) <!-- isolated review -->", body));
         if (statement.op !== "BARE") assert.fail("expected BARE");
-        assert.equal(statement.target?.raw, "worker://alice/prompt.md");
+        assert.equal(statement.target?.raw, "session://alice/prompt.md");
         assert.equal(statement.body, body ?? "");
         assert.equal(statement.aside, "isolated review");
         assert.equal(statement.lineMarker, null);
@@ -298,7 +298,7 @@ test("{§bare-statement} BARE accepts a prompt resource, inline input, or both",
     if (metadata.op !== "BARE") assert.fail("expected BARE");
     assert.deepEqual(metadata.metadata, ['{"Accept": "text/plain"}']);
 
-    const body = "````BARE (worker://alice/prompt.md)````";
+    const body = "````BARE (session://alice/prompt.md)````";
     const fenced = PlurnkParser.parseStatements(section("WAIT", "", body));
     assert.equal(fenced.items.some((item) => item.kind === "statement" && item.statement.op === "BARE"), false);
     const send = fenced.items.find((item) => item.kind === "statement")?.statement;
@@ -316,7 +316,7 @@ test("{§fence-heading-in-body} resource-selection admission leaves angle bracke
         ["MOVE", "https://example.test/a%3C0%3E:tail"],
         ["COPY", "https://example.test/a%3C0%3E:"],
     ] as const) {
-        const statement = oneStatement(section(op, ` (worker:///src.md) (${destination})`));
+        const statement = oneStatement(section(op, ` (workspace:///src.md) (${destination})`));
         if (statement.op !== op) assert.fail(`expected ${op}`);
         assert.equal(statement.destination.target.raw, destination);
     }
@@ -328,11 +328,11 @@ test("{§fence-heading-in-body} empty sections normalize to their operation-owne
         ["READ", " (a)"],
         ["EDIT", " (a) <1>"],
         ["KILL", " (log:///1)"],
-        ["SEND", " (worker://child)"],
+        ["SEND", " (session://child)"],
         ["sh", ""],
         ["BARE", ""],
-        ["WORK", " (worker://child)"],
-        ["FORK", " (worker://child)"],
+        ["WORK", " (session://child)"],
+        ["FORK", " (session://child)"],
         ["KILL", " (a)"],
     ] as const) {
         const statement = oneStatement(section(op, slots));
@@ -436,7 +436,7 @@ test("{§fence-heading-in-body} a disposition inside EDIT is data and does not c
 });
 test("{§fence-heading-in-body} model turns without WAIT or SEND stand as written", () => {
     const waiting = PlurnkParser.parse(sections(
-        section("READ", " (worker:///notes.md)"),
+        section("READ", " (workspace:///notes.md)"),
         section("WAIT", "", "continue"),
     ));
     assert.equal(waiting.unparsedTail, undefined);
@@ -446,7 +446,7 @@ test("{§fence-heading-in-body} model turns without WAIT or SEND stand as writte
     assert.equal(waiting.items.some((item) => item.kind === "error"), false, "no diagnostic");
 
     const unconcluded = PlurnkParser.parse(sections(
-        section("READ", " (worker:///notes.md)"),
+        section("READ", " (workspace:///notes.md)"),
     ));
     assert.equal(unconcluded.unparsedTail, undefined);
     const unconcludedStatements = unconcluded.items.flatMap((item) =>
@@ -545,10 +545,10 @@ test("{§fence-heading-in-body} modifier delimiters make horizontal spacing opti
         assert.deepEqual(statement.metadata, ['{"a": 1}'], input);
     }
 
-    const send = oneStatement("````SEND(worker://child)\ndone\n````");
+    const send = oneStatement("````SEND(session://child)\ndone\n````");
     if (send.op !== "SEND") assert.fail("expected SEND");
     assert.equal(Object.hasOwn(send, "status"), false);
-    assert.equal(send.target?.raw, "worker://child");
+    assert.equal(send.target?.raw, "session://child");
 });
 
 test("{§fence-heading-in-body} scheme metadata is an opaque ordered modifier outside the target", () => {
@@ -566,11 +566,11 @@ test("{§fence-heading-in-body} scheme metadata is an opaque ordered modifier ou
 
 test("{§slot-order}: target and scope precede opaque metadata in every scoped heading", () => {
     for (const op of ["FIND", "READ", "EDIT", "KILL", "SEND", "js"] as const) {
-        const header = `${op} (worker:///item) <1,4> [{"request": {"value": "]"}}] [{"mode": "quiet"}] <!-- inspect -->`;
+        const header = `${op} (workspace:///item) <1,4> [{"request": {"value": "]"}}] [{"mode": "quiet"}] <!-- inspect -->`;
         const statement = oneStatement(PlurnkParser.frame(header, op === "EDIT" ? "replacement" : null));
         if (isExecution(statement)) assert.equal(statement.runtime, op);
         else assert.equal(statement.op, op);
-        assert.equal(statement.target?.raw, "worker:///item");
+        assert.equal(statement.target?.raw, "workspace:///item");
         assert.deepEqual(statement.lineMarker, { marks: [1, 4] });
         assert.deepEqual(statement.metadata, ['{"request": {"value": "]"}}', '{"mode": "quiet"}']);
         assert.equal(statement.aside, "inspect");
@@ -584,11 +584,11 @@ test("{§transfer-resource-selections}: scope and metadata stay with their own C
     for (const op of ["COPY", "MOVE"] as const) {
         for (const sourceScope of ["", " <@abcde,@f1234>"]) {
             for (const destinationScope of ["", " <0>"]) {
-                const header = `${op} (worker:///source#body)${sourceScope} [{"source": "one"}] [{"source": "two"}] (worker:///destination#notes)${destinationScope} [{"destination": "one"}] <!-- transfer -->`;
+                const header = `${op} (workspace:///source#body)${sourceScope} [{"source": "one"}] [{"source": "two"}] (workspace:///destination#notes)${destinationScope} [{"destination": "one"}] <!-- transfer -->`;
                 const statement = oneStatement(PlurnkParser.frame(header, null));
                 if (statement.op !== "COPY" && statement.op !== "MOVE") assert.fail("expected transfer");
-                assert.equal(statement.source.target.raw, "worker:///source#body");
-                assert.equal(statement.destination.target.raw, "worker:///destination#notes");
+                assert.equal(statement.source.target.raw, "workspace:///source#body");
+                assert.equal(statement.destination.target.raw, "workspace:///destination#notes");
                 assert.deepEqual(statement.source.metadata, ['{"source": "one"}', '{"source": "two"}']);
                 assert.deepEqual(statement.destination.metadata, ['{"destination": "one"}']);
                 assert.deepEqual(statement.source.lineMarker, sourceScope ? { marks: ["@abcde", "@f1234"] } : null);
@@ -605,7 +605,7 @@ test("{§slot-order}: a resource selection never silently accepts a second scope
         'READ (item) <1> [{"mode": "one"}] <2>',
         'COPY (source) <1> [{"mode": "one"}] <2> (destination)',
         'MOVE (source) (destination) <1> [{"mode": "one"}] <2>',
-        'SEND (worker://reviewer) <1> [{"mode": "one"}] <2>',
+        'SEND (session://reviewer) <1> [{"mode": "one"}] <2>',
     ]) {
         const errors = errorsOf(PlurnkParser.frame(header, null));
         assert.ok(errors.some(({ severity }) => severity === "error"), header);
@@ -654,7 +654,7 @@ test("{§heading-inline-body} body text on the heading line runs as the body and
 });
 
 test("{§naked-pattern}: a sigil matcher is selected only on the heading", () => {
-    for (const [op, pattern, dialect] of [["FIND", "/resolveWorkerPrimary/", "regex"], ["KILL", "~topic", "fts"]] as const) {
+    for (const [op, pattern, dialect] of [["FIND", "/resolveSessionPrimary/", "regex"], ["KILL", "~topic", "fts"]] as const) {
         const source = PlurnkParser.frame(op + " (Engine.ts) " + pattern, null);
         const result = PlurnkParser.parse(source);
         assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
@@ -801,7 +801,7 @@ test("{§send-wait-scope} WAIT retains a positive duration while execution keeps
 test("{§fence-heading-in-body} unscoped EDIT remains syntax-valid for runtime create-or-refuse semantics", () => {
     for (const input of [
         section("EDIT", " (notes.md)", "whole body"),
-        section("EDIT", " (worker:///plan.md)", "draft"),
+        section("EDIT", " (workspace:///plan.md)", "draft"),
         section("EDIT", " (empty.md)"),
     ]) {
         const statement = oneStatement(input);
@@ -829,7 +829,7 @@ test("{§fence-heading-in-body} ParsedPath distinguishes local paths and decompo
     });
 
     for (const [raw, scheme, pathname] of [
-        ["worker:///entries/foo/bar", "worker", "/entries/foo/bar"],
+        ["workspace:///entries/foo/bar", "workspace", "/entries/foo/bar"],
         ["log:///1/turn/2/action/3/get", "log", "/1/turn/2/action/3/get"],
         ["file:///tmp/foo.txt", "file", "/tmp/foo.txt"],
         ["sh:///run-tests", "sh", "/run-tests"],
@@ -842,7 +842,7 @@ test("{§fence-heading-in-body} ParsedPath distinguishes local paths and decompo
         assert.equal(parsed.pathname, pathname);
     }
 
-    const authority = parsePath("worker://entries/foo");
+    const authority = parsePath("session://entries/foo");
     if (authority?.kind !== "url") assert.fail("expected URL");
     assert.equal(authority.hostname, "entries");
     assert.equal(authority.pathname, "/foo");
@@ -961,7 +961,7 @@ test("{§fence-heading-in-body} matcher validation is per section and does not c
 });
 
 test("{§fence-heading-in-body} ordinary matcher text remains glob and EDIT bodies remain opaque", () => {
-    const glob = oneStatement(patterned("FIND", " (worker:///**)", "@:<1,-1>:/hello/i:"));
+    const glob = oneStatement(patterned("FIND", " (workspace:///**)", "@:<1,-1>:/hello/i:"));
     if (glob.op !== "FIND") assert.fail("expected FIND");
     assert.equal(glob.matcher?.dialect, "glob");
 
@@ -987,7 +987,7 @@ test("{§read-find-normalization} full-text matcher accepts arbitrary text and a
     assert.equal(kill.matcher?.dialect, "fts");
     assert.equal(kill.body, null);
 
-    const find = oneStatement(patterned("FIND", " (worker:///**) <5>", "~graph algorithms"));
+    const find = oneStatement(patterned("FIND", " (workspace:///**) <5>", "~graph algorithms"));
     if (find.op !== "FIND") assert.fail("expected FIND");
     assert.deepEqual(find.lineMarker, { marks: [5] });
     assert.equal(find.matcher?.dialect, "fts");
@@ -996,11 +996,11 @@ test("{§read-find-normalization} full-text matcher accepts arbitrary text and a
 // {§read-find-normalization} — a READ is never rewritten: a glob target stays a READ (the runtime fans it out).
 test("{§fence-heading-in-body} READ of a glob target stays a schema-valid READ; a matcher keeps its op", () => {
     const cases = [
-        { input: section("READ", " (worker:///page.md) <2,4>"), op: "READ", dialect: null, marks: [2, 4] },
-        { input: patterned("READ", " (worker:///page.md) <3,5>", "/header/i"), op: "READ", dialect: "regex", marks: [3, 5] },
+        { input: section("READ", " (workspace:///page.md) <2,4>"), op: "READ", dialect: null, marks: [2, 4] },
+        { input: patterned("READ", " (workspace:///page.md) <3,5>", "/header/i"), op: "READ", dialect: "regex", marks: [3, 5] },
         { input: section("READ", " (src/**/*.ts) <2>"), op: "READ", dialect: null, marks: [2] },
-        { input: section("READ", " (worker:///src/**/*.ts) <4,8>"), op: "READ", dialect: null, marks: [4, 8] },
-        { input: patterned("READ", " (worker:///src/**/*.ts)", "@TODO"), op: "READ", dialect: "glob", marks: null },
+        { input: section("READ", " (workspace:///src/**/*.ts) <4,8>"), op: "READ", dialect: null, marks: [4, 8] },
+        { input: patterned("READ", " (workspace:///src/**/*.ts)", "@TODO"), op: "READ", dialect: "glob", marks: null },
     ] as const;
 
     for (const { input, op, dialect, marks } of cases) {
@@ -1021,19 +1021,19 @@ test("READ matcher admission keeps its dialect diagnostic as the matcher's refus
 test("{§fence-heading-in-body} COPY and MOVE operands project path, metadata, fragment, and scope independently", () => {
     const copy = oneStatement(section(
         "COPY",
-        ' (worker:///draft#body) [{"source": "metadata"}] <2,4> (worker:///archive#notes) [{"destination": "metadata"}] <1,3,1,3>',
+        ' (workspace:///draft#body) [{"source": "metadata"}] <2,4> (workspace:///archive#notes) [{"destination": "metadata"}] <1,3,1,3>',
     ));
     if (copy.op !== "COPY" || copy.destination.target.kind !== "url") assert.fail("expected COPY");
     assert.equal(copy.destination.target.fragment, "notes");
-    assert.equal(copy.destination.target.raw, "worker:///archive#notes");
+    assert.equal(copy.destination.target.raw, "workspace:///archive#notes");
     assert.deepEqual(copy.destination.metadata, ['{"destination": "metadata"}']);
     assert.deepEqual(copy.destination.lineMarker, { marks: [1, 3, 1, 3] });
     assert.deepEqual(copy.source.metadata, ['{"source": "metadata"}']);
     assert.deepEqual(copy.source.lineMarker, { marks: [2, 4] });
 
-    const move = oneStatement(section("MOVE", " (worker:///draft) (./out.txt)"));
+    const move = oneStatement(section("MOVE", " (workspace:///draft) (./out.txt)"));
     if (move.op !== "MOVE") assert.fail("expected MOVE");
-    assert.deepEqual(move.source.target, parsePath("worker:///draft"));
+    assert.deepEqual(move.source.target, parsePath("workspace:///draft"));
     assert.deepEqual(move.destination.target, { kind: "local", raw: "./out.txt" });
 });
 
@@ -1050,7 +1050,7 @@ test("{§send-body} SEND projects JSON when valid and always preserves raw body"
 });
 
 test("{§fence-heading-in-body} multiline EDIT and execution bodies remain character-perfect raw strings", () => {
-    const edit = oneStatement(section("EDIT", " (worker:///entry)", "line one\nline two"));
+    const edit = oneStatement(section("EDIT", " (workspace:///entry)", "line one\nline two"));
     const exec = oneStatement(section("sh", " (node/./)", "console.log(1+1)"));
     if (edit.op !== "EDIT" || !isExecution(exec)) assert.fail("expected EDIT and an execution");
     assert.equal(edit.body, "line one\nline two");
@@ -1100,7 +1100,7 @@ test("{§fence-heading-in-body} body punctuation and Markdown remain opaque", ()
         section("WAIT", "", '{"expected":["a","b"],"got":[1,2]}'),
         section("WAIT", "", "]]]) }{[ <> mixed"),
         section("EDIT", " (a.md)", "x = arr[0] + (y) + {z}"),
-        section("SEND", " (worker://parent)", "result ] arr[0]"),
+        section("SEND", " (session://parent)", "result ] arr[0]"),
         section("WAIT", "", "# User heading\n\n- one\n- two"),
     ]) {
         assert.equal(["SEND", "EDIT", "WAIT", "WAIT"].includes(writtenOp(oneStatement(input))), true, input);
@@ -1109,7 +1109,7 @@ test("{§fence-heading-in-body} body punctuation and Markdown remain opaque", ()
 
 test("{§send-mid-reservation} {§turn-disposition} parse accepts a WAIT-terminated turn, and another WAIT after it is one more park label", () => {
     const turn = sections(
-        section("READ", " (worker:///x)"),
+        section("READ", " (workspace:///x)"),
         section("WAIT", "", "done"),
     );
     const result = PlurnkParser.parse(turn);
@@ -1130,7 +1130,7 @@ test("{§send-mid-reservation} {§turn-disposition} parse accepts a WAIT-termina
 
 test("{§fence-heading-in-body} parseStatements accepts direct consecutive turns and flattens them in order", () => {
     const input = sections(
-        section("READ", " (worker:///x)"),
+        section("READ", " (workspace:///x)"),
         section("WAIT", "", "reading"),
         section("WAIT", "", "done"),
     );
@@ -1145,7 +1145,7 @@ test("{§fence-heading-in-body} parseStatements accepts direct consecutive turns
 
 test("{§fence-heading-in-body} statement sequences need no lifecycle delimiter or operation", () => {
     assert.deepEqual(PlurnkParser.parseStatements("").items, []);
-    const result = PlurnkParser.parseStatements(section("READ", " (worker:///x)"));
+    const result = PlurnkParser.parseStatements(section("READ", " (workspace:///x)"));
     assert.deepEqual(result.items.filter((item) => item.kind === "error"), []);
     assert.equal(result.items[0]?.kind === "statement" && result.items[0].statement.op, "READ");
 });

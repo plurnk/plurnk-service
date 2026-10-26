@@ -24,10 +24,10 @@ portable hook standard or vendor configuration-file loader.
 Each process receives one line such as:
 
 ```json
-{"hook_event_name":"Stop","session_id":"7","plurnk":{"workspaceId":42,"method":"loop/terminated","params":{"workerId":7,"loopId":9,"result":{"status":200}}}}
+{"hook_event_name":"Stop","session_id":"7","plurnk":{"workspaceId":42,"method":"loop/terminated","params":{"sessionId":7,"loopId":9,"result":{"status":200}}}}
 ```
 
-`session_id` identifies the owning worker. Tool hooks include `tool_use_id`,
+`session_id` identifies the owning session. Tool hooks include `tool_use_id`,
 `tool_name`, `tool_input`, and, after settlement, `tool_response`; `cwd` is
 included when the operation has a project root. `plurnk` retains the original
 core event unchanged. `PostToolUse` reports settled dispatch, not a background
@@ -61,7 +61,7 @@ process.stdout.write(`${event.hook_event_name} workspace=${String(event.plurnk.w
 Test it before restarting the daemon:
 
 ```sh
-printf '%s\n' '{"hook_event_name":"Stop","session_id":"7","plurnk":{"workspaceId":42,"method":"loop/terminated","params":{"workerId":7}}}' \
+printf '%s\n' '{"hook_event_name":"Stop","session_id":"7","plurnk":{"workspaceId":42,"method":"loop/terminated","params":{"sessionId":7}}}' \
   | /usr/bin/node /absolute/path/to/plurnk-hook.mjs
 ```
 

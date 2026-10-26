@@ -49,8 +49,8 @@ for (const op of ["FIND", "READ", "EDIT", "KILL"]) {
 for (const op of ["BARE", "WORK", "FORK", "WAIT"]) {
     test(`{§slot-order}: ${op} accepts leading metadata without changing its body`, () => {
         const metadata = op === "WAIT" ? "[60]" : '[{"x":1}]';
-        assert.deepEqual(parse(`${op} ${metadata} (worker://child)`, "literal body"),
-            parse(`${op} (worker://child) ${metadata}`, "literal body"));
+        assert.deepEqual(parse(`${op} ${metadata} (session://child)`, "literal body"),
+            parse(`${op} (session://child) ${metadata}`, "literal body"));
     });
 }
 

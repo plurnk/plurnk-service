@@ -4,7 +4,7 @@ export {
     default as Validator,
     InvalidCapabilityDescriptorError,
     InvalidCapabilityPolicyError,
-    InvalidWorkerOwnerError,
+    InvalidSessionOwnerError,
     InvalidNoticeError,
     InvalidOperationResultError,
     InvalidEntryReadResultError,
@@ -40,7 +40,7 @@ export { default as Problems } from "./Problems.ts";
 export { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 export type { MessageResource, MessageResourceReceipt, MessageEvidence, ApplicationMessage, ApplicationInboxMessage } from "./MessageResource.ts";
 export type { ApplicationStream, ApplicationStreamChannel } from "./ApplicationStream.ts";
-export { lifecycleOfLoopStatus, selectWorkerLoop, type LoopLifecycle } from "./LoopLifecycle.ts";
+export { lifecycleOfLoopStatus, selectSessionLoop, type LoopLifecycle } from "./LoopLifecycle.ts";
 export { excerptOf } from "./Excerpt.ts";
 export type { ProblemOptions, ProblemProjectionContext } from "./Problems.ts";
 export type { ValidationResult } from "./Validator.ts";
@@ -70,6 +70,6 @@ export type { AcpConformanceRow } from "./AcpConformance.ts";
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 
-export { PLURNK_FENCE, PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, isPlurnkOp, writtenOp, EFFORTS, WORKER_NAME, SKILL_NAME, UNKNOWN_POSITION, MAX_TIMER_MS } from "./types.ts";
+export { PLURNK_FENCE, PLURNK_OPS, PROPOSAL_POLICIES, RUNTIME_TAG, INTERNAL_ROW_OPS, isExecution, isExecutionOp, isPlurnkOp, writtenOp, EFFORTS, SESSION_NAME, SKILL_NAME, UNKNOWN_POSITION, MAX_TIMER_MS } from "./types.ts";
 export type * from "./types.ts";
 export type { ErrorSource, Severity } from "./PlurnkParseError.ts";

@@ -2,7 +2,7 @@
 -- Released in 1.24.0 and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never an edit here.
 -- {§emission-row} (#907): every admitted emission is announced by one `_plurnk` log row, `/emission`,
 -- whose frozen body is the emission as the grammar admitted it. The packet projects that body as the
--- worker's own assistant message in the row's chronological place ({§packet-wire-envelope}).
+-- session's own assistant message in the row's chronological place ({§packet-wire-envelope}).
 -- No table is rebuilt (log_entries is referenced) and nothing is backfilled: earlier turns' sequences
 -- are contiguous and immutable, and the canonical text needs the parser. Each invariant is stated
 -- once, here, as a guard ({§validation-topology}).
@@ -48,7 +48,7 @@ WHEN json_extract(NEW.attrs, '$.kind') = 'emission'
       )
       AND (
           NEW.inherited_history = 1
-          OR NEW.hostname = (SELECT name FROM workers WHERE id = NEW.worker_id)
+          OR NEW.hostname = (SELECT name FROM sessions WHERE id = NEW.session_id)
       )
   ), 0)
 BEGIN

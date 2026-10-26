@@ -1,7 +1,7 @@
 // {§functionality-model-projection} — the model-facing `plurnk` runtime
 // executor: one tool per workspace Functionality family plus `question`,
-// published under `worker:///_plurnk/tools/plurnk.md` and
-// `worker:///_plurnk/tools/plurnk/<tool>.json` and expanded at turn 0.
+// published under `workspace:///_plurnk/tools/plurnk.md` and
+// `workspace:///_plurnk/tools/plurnk/<tool>.json` and expanded at turn 0.
 import { BaseExecutor } from "@plurnk/plurnk-execs";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, RuntimeDecl, RuntimeRegisteredTool, RuntimeToolRegistry } from "@plurnk/plurnk-execs";
 import type { FunctionalityDiscovery } from "@plurnk/plurnk-modules";
@@ -68,14 +68,14 @@ export type FunctionalityManagerOptions =
     | {
         readonly coordinator: Functionality;
         readonly workspaceId?: number;
-        readonly workerId?: number;
+        readonly sessionId?: number;
         readonly entries: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
         readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
     }
     | ({
         readonly coordinator: Functionality;
         readonly workspaceId?: number;
-        readonly workerId?: number;
+        readonly sessionId?: number;
         readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
     } & FunctionalityFamilyEntry);
 
@@ -101,7 +101,7 @@ const stripLeadingHeading = (markdown: string): string =>
 export default class FunctionalityManager extends BaseExecutor {
     readonly #coordinator: Functionality;
     readonly #workspaceId: number;
-    readonly #workerId: number | undefined;
+    readonly #sessionId: number | undefined;
     readonly #entriesSource: readonly FunctionalityFamilyEntry[] | ((workspaceId?: number) => readonly FunctionalityFamilyEntry[]);
     readonly #includeQuestionSource: boolean | ((workspaceId?: number) => boolean);
     readonly #question = new QuestionTool({ runtime: "plurnk", glyph: "🔌" });
@@ -110,23 +110,23 @@ export default class FunctionalityManager extends BaseExecutor {
         super({ runtime: "plurnk", glyph: "🔌" });
         this.#coordinator = args.coordinator;
         this.#workspaceId = args.workspaceId ?? 1;
-        this.#workerId = args.workerId;
+        this.#sessionId = args.sessionId;
         this.#entriesSource = "entries" in args ? args.entries : [args];
         this.#includeQuestionSource = args.includeQuestion ?? false;
     }
 
     // {§functionality-model-projection} — the published manager closes over the coordinator; Core binds
-    // the invoking workspace and Worker at the operation ({§functionality-scope}), so a worker-scoped family's
-    // verbs act for that Worker. A bound instance is per operation, never retained on the published one.
-    forWorker(workerId: number): FunctionalityManager {
-        return this.forContext(this.#workspaceId, workerId);
+    // the invoking workspace and Session at the operation ({§functionality-scope}), so a session-scoped family's
+    // verbs act for that Session. A bound instance is per operation, never retained on the published one.
+    forSession(sessionId: number): FunctionalityManager {
+        return this.forContext(this.#workspaceId, sessionId);
     }
 
-    forContext(workspaceId: number, workerId: number): FunctionalityManager {
+    forContext(workspaceId: number, sessionId: number): FunctionalityManager {
         return new FunctionalityManager({
             coordinator: this.#coordinator,
             workspaceId,
-            workerId,
+            sessionId,
             entries: this.#entriesSource,
             includeQuestion: this.#includeQuestionSource,
         });
@@ -328,7 +328,7 @@ export default class FunctionalityManager extends BaseExecutor {
             verb = rawVerb;
             params = rest;
         }
-        const identity = { workspaceId: this.#workspaceId, ...(this.#workerId === undefined ? {} : { workerId: this.#workerId }) };
+        const identity = { workspaceId: this.#workspaceId, ...(this.#sessionId === undefined ? {} : { sessionId: this.#sessionId }) };
         let result: { status: number; body: unknown };
         let refusal: ExecResult | null = null;
         try {

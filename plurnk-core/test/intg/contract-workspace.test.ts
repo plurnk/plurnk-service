@@ -18,7 +18,7 @@ import File from "../../src/schemes/File.ts";
 import GitMembership from "../../src/core/git-membership.ts";
 import type { Db } from "../../src/core/Db.ts";
 import type { PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
 import { DEFAULT_MIMETYPES, readThroughScheme } from "./_scheme.ts";
 import { logEntries } from "./_packet.ts";
 
@@ -80,11 +80,11 @@ const withGitWorkspace = async (
         // performs (headless is forever: production sets the pointer only at
         // create; a raw UPDATE alone would skip the resolve).
         await rootWorkspace(db, workspaceId, root);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const ctx: PlurnkSchemeContext = {
-            db, workspaceId, workerId, loopId, turnId,
+            db, workspaceId, sessionId, loopId, turnId,
             writer: "model", signal: undefined, mimetypes: DEFAULT_MIMETYPES,
             weigh: (t: string) => Math.ceil(t.length / 4),
         };
@@ -202,7 +202,7 @@ test("{§membership} an out-of-band disk change between propose and accept is an
         const proposal = await file.edit(editStmt(filePath(trackedPath), "# Tracked by git\n\nthe model's revision.\n", fullReplace), ctx);
         assert.equal(proposal.status, 202, "edit proposes (202)");
 
-        // An ambient writer (the user's editor, a build step, a sibling worker) changes the file on
+        // An ambient writer (the user's editor, a build step, a sibling session) changes the file on
         // disk after the proposal was computed — the captured revision must reject that drift.
         const ambient = "# Tracked by git\n\nAMBIENT out-of-band change — written under the paused proposal, clearly a different size.\n";
         await writeFile(join(root, trackedPath), ambient, "utf8");
@@ -258,20 +258,20 @@ test("{§membership} resolveOverlay reports members and the files an exclusion r
     });
 });
 
-test("{§machine-processes-one-overlay} membership is the workspace's — one overlay, identical for every worker", async () => {
+test("{§machine-processes-one-overlay} membership is the workspace's — one overlay, identical for every session", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
-        // ctx.workerId is worker A. Create a second worker on the same workspace.
-        const workerB = await insertWorker(db, ctx.workspaceId);
-        assert.notEqual(ctx.workerId, workerB, "two distinct workers on one workspace");
+        // ctx.sessionId is session A. Create a second session on the same workspace.
+        const sessionB = await insertSession(db, ctx.workspaceId);
+        assert.notEqual(ctx.sessionId, sessionB, "two distinct sessions on one workspace");
 
-        // The overlay is keyed by workspace, never worker: resolveOverlay and crud_find_workspace_entry
+        // The overlay is keyed by workspace, never session: resolveOverlay and crud_find_workspace_entry
         // both take workspace_id ONLY (membership lives on workspace_constraints.workspace_id; entry workspace derives from owner —
-        // there is no worker_id anywhere in it). So both workers resolve the IDENTICAL member set; there is no
-        // per-worker overlay to diverge. Divergent membership is a different workspace ({§machine-processes}).
+        // there is no session_id anywhere in it). So both sessions resolve the IDENTICAL member set; there is no
+        // per-session overlay to diverge. Divergent membership is a different workspace ({§machine-processes}).
         const overlay = await GitMembership.resolveOverlay(db, ctx.workspaceId, undefined, undefined);
-        assert.ok(overlay?.members.includes(trackedPath), "the git-tracked file is a member of the workspace (not of a worker)");
+        assert.ok(overlay?.members.includes(trackedPath), "the git-tracked file is a member of the workspace (not of a session)");
         const entry = await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: ctx.workspaceId, scheme: "file", authority: "", pathname: trackedPath });
-        assert.ok(entry, "the member entry is commons-owned — worker A and worker B see the identical row (one filesystem)");
+        assert.ok(entry, "the member entry is commons-owned — session A and session B see the identical row (one filesystem)");
     });
 });
 
@@ -315,30 +315,30 @@ test("{§membership} out-of-band change to a member remains truthful runtime-act
         // EMI re-reads disk each turn (git materialization); the build-time delta
         // detector turns an out-of-band member change into a runtime-owned EDIT
         // naming the file (source="file"). It must remain durable without becoming
-        // an ambient packet event for an unrelated model worker.
+        // an ambient packet event for an unrelated model session.
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({
             contextWindow: 100000,
             responses: [mockResponse([completeStmt()]), mockResponse([completeStmt()])],
         });
 
-        await engine.runTurn({ provider, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, messages: [] });
 
         await writeFile(join(root, trackedPath), "# Tracked by git\n\nEDITED OUT OF BAND.\n");
 
-        const t2 = await engine.runTurn({ provider, workspaceId: ctx.workspaceId, workerId: ctx.workerId, loopId: ctx.loopId, messages: [] });
+        const t2 = await engine.runTurn({ provider, workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, loopId: ctx.loopId, messages: [] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: t2.turnId });
         if (row === undefined) throw new Error("turn packet not found");
         const log = logEntries(JSON.parse(row.packet));
         assert.equal(log.some((r) => r.origin === "_plurnk" && JSON.stringify(r).includes(trackedPath)), false,
-            "runtime reconciliation does not broadcast the project-file change into the model worker");
-        const runtimeWorker = await db.envelope_get_worker_by_name.get<{ id: number }>({
+            "runtime reconciliation does not broadcast the project-file change into the model session");
+        const runtimeSession = await db.envelope_get_session_by_name.get<{ id: number }>({
             workspace_id: ctx.workspaceId,
             name: "_plurnk",
         });
-        assert.ok(runtimeWorker, "filesystem reconciliation owns the runtime worker");
+        assert.ok(runtimeSession, "filesystem reconciliation owns the runtime session");
         const runtimeRows = await db.engine_render_log.all<{ source: string | null; op: string; pathname: string | null }>({
-            worker_id: runtimeWorker.id,
+            session_id: runtimeSession.id,
         });
         assert.ok(runtimeRows.some(({ source, op, pathname }) => source === "file" && op === "EDIT" && pathname === trackedPath),
             "EMI preserves the divergence as an exact runtime-actor operation row");

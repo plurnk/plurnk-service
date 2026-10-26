@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { AiSdkProvider, type ProviderCost } from "@plurnk/plurnk-providers";
-import { insertLoop, insertWorker } from "./_db.ts";
+import { insertLoop, insertSession } from "./_db.ts";
 import Dsl from "./dsl.ts";
 import { waitForDb, withDaemon } from "./_rpc.ts";
-import { modelOperation, namedModelWorker } from "./_workers.ts";
+import { modelOperation, namedModelSession } from "./_sessions.ts";
 
 for (const reported of [false, true]) {
     for (const stop of ["KILL", "shutdown"] as const) {
@@ -27,7 +27,7 @@ for (const reported of [false, true]) {
                                 id: "cancelled-child", model: "cancellation-witness",
                                 choices: [{ index: 0, delta: {
                                     reasoning_content: "Still reasoning.",
-                                    content: "````EDIT (worker:///must-not-exist.txt)\nnot authorized after cancellation\n````",
+                                    content: "````EDIT (workspace:///must-not-exist.txt)\nnot authorized after cancellation\n````",
                                 }, finish_reason: null }],
                                 ...(reported ? {
                                     usage: { prompt_tokens: 100, completion_tokens: 10, total_tokens: 110 }, charge,
@@ -42,22 +42,22 @@ for (const reported of [false, true]) {
             });
             await withDaemon(provider, async (db, daemon) => {
                 const { workspaceId } = await daemon.createWorkspace({ name: `cancellation-${stop}-${reported}` });
-                const parent = await namedModelWorker(daemon, workspaceId, "main");
+                const parent = await namedModelSession(daemon, workspaceId, "main");
                 await insertLoop(db, parent, 1, "parent delegation");
-                const child = await insertWorker(db, workspaceId, parent, "child", "model");
+                const child = await insertSession(db, workspaceId, parent, "child", "model");
                 const observed = Promise.withResolvers<void>();
                 const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
-                    const event = params as { workerId?: number; phase?: string };
-                    if (method === "reasoning/event" && event.workerId === child && event.phase === "content") observed.resolve();
+                    const event = params as { sessionId?: number; phase?: string };
+                    if (method === "reasoning/event" && event.sessionId === child && event.phase === "content") observed.resolve();
                 });
                 try {
-                    const task = await daemon.runLoop({ workspaceId, workerId: child, prompt: "Think about the task." });
+                    const task = await daemon.runLoop({ workspaceId, sessionId: child, prompt: "Think about the task." });
                     await observed.promise;
                     if (stop === "KILL") {
                         // The parent's own KILL of its child.
                         const result = await modelOperation(daemon, db, {
-                            workspaceId, workerId: parent,
-                            statement: Dsl.parseSingleStatement("````KILL (worker://child)\n````"),
+                            workspaceId, sessionId: parent,
+                            statement: Dsl.parseSingleStatement("````KILL (session://child)\n````"),
                         });
                         assert.equal(result.status, 200);
                     } else {
@@ -85,19 +85,19 @@ for (const reported of [false, true]) {
                     assert.match(evidence.content, /must-not-exist.txt/);
                     assert.equal(evidence.rawBody[0].id, "cancelled-child");
                     assert.match(JSON.stringify(evidence.error), /cancel|abort|shutdown/i);
-                    const descendants = await daemon.workerAccounting({ workspaceId, workerId: parent });
+                    const descendants = await daemon.sessionAccounting({ workspaceId, sessionId: parent });
                     assert.equal(descendants.requests.length, 1);
                     assert.equal(descendants.costUsd, reported ? "0.0123" : null);
                     assert.equal(descendants.usage?.inputTokens, reported ? 100 : undefined);
-                    assert.deepEqual(descendants, await daemon.engine.workerAccounting(parent));
+                    assert.deepEqual(descendants, await daemon.engine.sessionAccounting(parent));
                     assert.equal(calls, 1, "cancellation never starts a replacement request");
-                    assert.equal(await db.test_get_entry_by_pathname_scheme.get({ pathname: "/must-not-exist.txt", scheme: "worker" }), undefined,
+                    assert.equal(await db.test_get_entry_by_pathname_scheme.get({ pathname: "/must-not-exist.txt", scheme: "workspace" }), undefined,
                         "a cancelled partial emission never executes");
-                    assert.deepEqual(await db.test_error_rows_for_worker.all({ worker_id: child }), [],
+                    assert.deepEqual(await db.test_error_rows_for_session.all({ session_id: child }), [],
                         "cancellation is lifecycle truth, not a new model-facing provider error");
                 } finally {
                     unsubscribe();
-                    if (stop === "KILL") await daemon.cancelWorker({ workspaceId, workerId: parent });
+                    if (stop === "KILL") await daemon.cancelSession({ workspaceId, sessionId: parent });
                 }
             });
         });

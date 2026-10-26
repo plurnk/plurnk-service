@@ -9,8 +9,8 @@ export function previousAssistantEnvelope(messages) {
     const previousAt = user.indexOf(separator);
     if (previousAt < 0) return messages;
     if (previousAt !== user.lastIndexOf(separator)) throw new Error("ambiguous recorded Previous Emission boundary");
-    const footerAt = user.lastIndexOf("\n\n## Worker\n", previousAt);
-    if (footerAt < 0) throw new Error("recorded previous emission has no Worker footer boundary");
+    const footerAt = user.lastIndexOf("\n\n## Session\n", previousAt);
+    if (footerAt < 0) throw new Error("recorded previous emission has no Session footer boundary");
     return [
         messages[0],
         { role: "user", content: user.slice(0, footerAt) },

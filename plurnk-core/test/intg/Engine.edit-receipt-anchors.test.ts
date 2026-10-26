@@ -54,7 +54,7 @@ second
                 await rpcCall(ws, 1, "workspace.create", { name: "recanchor", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(first.result.status, 200);
-                const editRow = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: first.modelWorkerId! }))
+                const editRow = (await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: first.modelSessionId! }))
                     .find(({ op, status_rx }) => op === "EDIT" && status_rx === 200);
                 const context = JSON.parse(editRow!.rx).receipt.effect.context as string;
                 const lines = context.split("\n");
@@ -68,8 +68,8 @@ second
                 pending.anchor = /<(@[0-9A-Za-z]{5})>/.exec(line3)![1]!;
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit again" });
                 assert.equal(second.result.status, 200);
-                // The worker persists across loops: the first loop's one EDIT row precedes this loop's.
-                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ worker_id: second.modelWorkerId! });
+                // The session persists across loops: the first loop's one EDIT row precedes this loop's.
+                const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: second.modelSessionId! });
                 const edits = rows.filter(({ op }) => op === "EDIT").slice(1);
                 assert.deepEqual(edits.map(({ status_rx }) => status_rx), [200], JSON.stringify(edits.map(({ rx }) => JSON.parse(rx).problem ?? null)));
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int64\n\nfunc requireFn(a int) int { // anchored\n\treturn a\n}\n\nfunc other() {}\n", "the anchor cited from the EDIT receipt resolved to line 3 with no READ in between");

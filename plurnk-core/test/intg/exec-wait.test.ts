@@ -1,4 +1,4 @@
-// {§worker-optimistic-settlement} — an execution receives one turn-scoped opportunity
+// {§session-optimistic-settlement} — an execution receives one turn-scoped opportunity
 // to settle before the terminal SEND judges whether the stream needs monitoring.
 
 import test from "node:test";
@@ -13,7 +13,7 @@ import type Exec from "../../src/schemes/Exec.ts";
 import { Results } from "@plurnk/plurnk-schemes";
 import { completeStmt, execStmt, dispositionStmt, sendStmt, killStmt, urlPath } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 
 let runtimeSequence = 0;
@@ -64,9 +64,9 @@ const wire = async (run: Executor["run"]) => {
         detail: undefined,
     } as never);
     const workspaceId = await insertWorkspace(db, `settlement-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "settle the stream");
-    return { db, engine, schemes, tag, workspaceId, workerId, loopId };
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "settle the stream");
+    return { db, engine, schemes, tag, workspaceId, sessionId, loopId };
 };
 
 const idle = async (schemes: SchemeRegistry): Promise<void> => {
@@ -81,25 +81,25 @@ test("{§subscriptions-subscription-registry-routes-cancellation} a failed execu
     try {
         const result = await fixture.engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
-            workspaceId: fixture.workspaceId, workerId: fixture.workerId, loopId: fixture.loopId, messages: [],
+            workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId, messages: [],
         });
         assert.equal(result.status, 202);
         const settling = idle(fixture.schemes);
         completion.resolve({ status: 200 });
         await settling;
         assert.equal(close.mock.callCount(), 1);
-        const open = await fixture.db.find_open_subscriptions_for_worker.all<{ id: number }>({ worker_id: fixture.workerId });
+        const open = await fixture.db.find_open_subscriptions_for_session.all<{ id: number }>({ session_id: fixture.sessionId });
         assert.equal(open.length, 1, "failed persistence cannot pretend the obligation has settled");
         const subscription = await fixture.db.test_get_subscription.get<{ entry_id: number }>({ id: open[0].id });
         const entry = await fixture.db.test_get_entry_by_id.get<{ pathname: string }>({ id: subscription!.entry_id });
         const logs = await fixture.db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: result.turnId });
         const killed = await fixture.engine.dispatch({
             statement: killStmt(urlPath(fixture.tag, entry!.pathname)),
-            workspaceId: fixture.workspaceId, workerId: fixture.workerId, loopId: fixture.loopId,
+            workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId,
             turnId: result.turnId, sequence: Math.max(...logs.map(({ sequence }) => sequence)) + 1, origin: "model",
         });
         assert.equal(killed.status, 200, "KILL can settle the durable obligation through its retained owner");
-        assert.equal((await fixture.db.find_open_subscriptions_for_worker.all({ worker_id: fixture.workerId })).length, 0);
+        assert.equal((await fixture.db.find_open_subscriptions_for_session.all({ session_id: fixture.sessionId })).length, 0);
         const closed = await fixture.db.test_get_subscription.get<{ close_status: number }>({ id: open[0].id });
         assert.equal(closed?.close_status, 200, "settlement retains the producer's actual result, not a fabricated cancellation");
     } finally {
@@ -117,11 +117,11 @@ test("{§send-wait-scope} a decorated WAIT parks on its actual live stream; the 
     try {
         const content = [
             PlurnkParser.frame(fixture.tag, "go"),
-            PlurnkParser.frame("WAIT (worker://absent) <0,0> [{\"timeout\":0}]", "Await results."),
+            PlurnkParser.frame("WAIT (session://absent) <0,0> [{\"timeout\":0}]", "Await results."),
         ].join("\n\n");
         const result = await fixture.engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
-            workspaceId: fixture.workspaceId, workerId: fixture.workerId, loopId: fixture.loopId, messages: [],
+            workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId, messages: [],
         });
         assert.equal(result.status, 202);
         assert.deepEqual(result.outcomes, [
@@ -139,7 +139,7 @@ test("{§send-wait-scope} a decorated WAIT parks on its actual live stream; the 
     }
 });
 
-test("{§worker-lifecycle-subscription-matrix} fast current-turn streams settle before waiting and do not become monitored work", async () => {
+test("{§session-lifecycle-subscription-matrix} fast current-turn streams settle before waiting and do not become monitored work", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     // The cap is a minute, past the runner's bound, so the elapsed bound below separates "ended when the stream
     // settled" from "waited for the cap" by far more than any loaded host's turn costs.
@@ -154,7 +154,7 @@ test("{§worker-lifecycle-subscription-matrix} fast current-turn streams settle 
         const result = await fixture.engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
             workspaceId: fixture.workspaceId,
-            workerId: fixture.workerId,
+            sessionId: fixture.sessionId,
             loopId: fixture.loopId,
             messages: [],
         });
@@ -172,7 +172,7 @@ test("{§worker-lifecycle-subscription-matrix} fast current-turn streams settle 
     }
 });
 
-test("{§worker-lifecycle-subscription-matrix} a current-turn stream still active at the settlement cap follows the ordinary monitored path", async () => {
+test("{§session-lifecycle-subscription-matrix} a current-turn stream still active at the settlement cap follows the ordinary monitored path", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "40";
     let release!: () => void;
@@ -185,7 +185,7 @@ test("{§worker-lifecycle-subscription-matrix} a current-turn stream still activ
         const result = await fixture.engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
             workspaceId: fixture.workspaceId,
-            workerId: fixture.workerId,
+            sessionId: fixture.sessionId,
             loopId: fixture.loopId,
             messages: [],
         });
@@ -206,7 +206,7 @@ test("{§worker-lifecycle-subscription-matrix} a current-turn stream still activ
 });
 
 // {§send-premature-terminate}: a fast failure must settle before strike exhaustion reaps work.
-test("{§worker-optimistic-settlement} a fast failed stream settles naturally and its observed failure does not itself strike out the loop", async () => {
+test("{§session-optimistic-settlement} a fast failed stream settles naturally and its observed failure does not itself strike out the loop", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
     const fixture = await wire(async () => {
@@ -219,7 +219,7 @@ test("{§worker-optimistic-settlement} a fast failed stream settles naturally an
                 assistant: { content: "", reasoning: null, ops: [completeStmt("")] },
             }] }),
             workspaceId: fixture.workspaceId,
-            workerId: fixture.workerId,
+            sessionId: fixture.sessionId,
             loopId: fixture.loopId,
             maxStrikes: 1,
             messages: [],
@@ -227,8 +227,8 @@ test("{§worker-optimistic-settlement} a fast failed stream settles naturally an
         assert.equal(result.result.status, 200, "a handled executor failure does not manufacture a loop failure");
         assert.equal(result.turnIds.length, 3, "initialization, execution, and observation");
         await idle(fixture.schemes);
-        const subscription = await fixture.db.test_latest_subscription_for_worker.get<{ close_status: number | null }>({
-            worker_id: fixture.workerId,
+        const subscription = await fixture.db.test_latest_subscription_for_session.get<{ close_status: number | null }>({
+            session_id: fixture.sessionId,
         });
         assert.equal(subscription?.close_status, 500, "the stream retains its own failure, never a cancellation");
     } finally {

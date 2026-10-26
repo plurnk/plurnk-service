@@ -197,11 +197,11 @@ const coordinateCandidatePrefix = (prefix: string | null): string | null => pref
 const NEAR_MISS_LISTED = 6;
 const nearMissRecovery = async (
     coord: LogCoordinate,
-    ctx: { readonly db: PlurnkSchemeContext["db"]; readonly workerId: number },
+    ctx: { readonly db: PlurnkSchemeContext["db"]; readonly sessionId: number },
     maxLogEntryId: number | null,
 ): Promise<string | undefined> => {
     const under = async (prefix: string): Promise<CoordinateRow[]> => projectedCoordinateRows(await ctx.db.log_match_coordinates.all<CoordinateRow>({
-        worker_id: ctx.workerId,
+        session_id: ctx.sessionId,
         scope_prefix: prefix,
         max_id: maxLogEntryId,
     }));
@@ -276,16 +276,16 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         textEditScopes: true,
     };
 
-    // {§actor-boundary-client-operations} A client operation reads the log of the worker its person acts for,
-    // as that worker reads it; acting for none, it addresses no log.
+    // {§actor-boundary-client-operations} A client operation reads the log of the session its person acts for,
+    // as that session reads it; acting for none, it addresses no log.
     static #reading(core: PlurnkSchemeContext): PlurnkSchemeContext | null {
         if (core.client === undefined) return core;
-        return core.client.contextWorkerId === null ? null : { ...core, workerId: core.client.contextWorkerId };
+        return core.client.contextSessionId === null ? null : { ...core, sessionId: core.client.contextSessionId };
     }
 
     static #unaddressed(): SchemeResultBase {
         return Results.failure("scheme:log", "log-unaddressed", 404,
-            "This client operation acts for no worker, so log:/// names no log.",
+            "This client operation acts for no session, so log:/// names no log.",
             { content: null, mimetype: null, channel: null });
     }
 
@@ -305,7 +305,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         if (addressFailure !== null) return { result: addressFailure };
         const core = Log.#reading(this.coreContext(ctx));
         if (core === null) return { result: Log.#unaddressed() };
-        const { db, workerId } = core;
+        const { db, sessionId } = core;
         const failure = (
             code: string,
             status: number,
@@ -360,10 +360,10 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             attrs: string;
             folded: string;
             patch: string | null;
-        }>({ worker_id: workerId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
+        }>({ session_id: sessionId, loop_seq: coord.loopSeq, turn_seq: coord.turnSeq, sequence: coord.sequence });
 
         if (row === undefined || !LogEntryProjection.accepts(coord.op, row)) {
-            const recovery = await nearMissRecovery(coord, { db, workerId }, null);
+            const recovery = await nearMissRecovery(coord, { db, sessionId }, null);
             return failure("entry-not-found", 404, `No log entry exists at log:///${pathname}.`, {
                 target: `log:///${pathname}`,
                 ...(recovery === undefined ? {} : { recovery }),
@@ -414,7 +414,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         };
     }
 
-    // {§log-uniform-query} — FIND over the worker's log rows, on the SAME source-agnostic primitive
+    // {§log-uniform-query} — FIND over the session's log rows, on the SAME source-agnostic primitive
     // every entry scheme runs (Matcher.matchCandidates, {§find-source-agnostic}): candidates are the
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
     // dialect works on log BY CONSTRUCTION and log FIND -> coordinate READ composes like any scheme.
@@ -432,11 +432,11 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         allowTargetless = false,
         maxLogEntryId: number | null = null,
     ): Promise<FindResult> {
-        const { db, workerId } = core;
+        const { db, sessionId } = core;
         const found = await this.#findScope(statement, core, allowTargetless, maxLogEntryId);
         if ("status" in found) return found;
         const { scope, glob } = found;
-        const selected = await Log.#selectLogCandidates(db, workerId, scope, glob, maxLogEntryId);
+        const selected = await Log.#selectLogCandidates(db, sessionId, scope, glob, maxLogEntryId);
         if ("status" in selected) return selected;
         const { candidateRows, rows } = selected;
         const candidateByCanonicalCoord = new Map(candidateRows.map((row) => [LogEntryProjection.base(row.coordinate), row] as const));
@@ -549,13 +549,13 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     // which refuses a malformed glob by name.
     static async #selectLogCandidates(
         db: PlurnkSchemeContext["db"],
-        workerId: number,
+        sessionId: number,
         scope: ReturnType<typeof pathScope>,
         glob: string,
         maxLogEntryId: number | null,
     ): Promise<{ candidateRows: Candidate[]; rows: Candidate[] } | FindResult> {
         const storedCandidateRows = await db.log_find_candidates.all<Candidate>({
-            worker_id: workerId,
+            session_id: sessionId,
             scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
             max_id: maxLogEntryId,
         });
@@ -585,7 +585,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         scope: ReturnType<typeof pathScope>,
         maxLogEntryId: number | null,
     ): Promise<Candidate[]> {
-        const { db, workerId } = core;
+        const { db, sessionId } = core;
         // {§relation-indexed-dialects} — an index-backed dialect (~, &) holds the program until the pass
         // covers its candidates: settle once, then re-read the attachments it produced. The 503s
         // below remain the truth when coverage is still incomplete afterwards.
@@ -594,7 +594,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             if (coverage.state === "incomplete") {
                 await core.settleDerivations();
                 const refreshed = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({
-                    worker_id: workerId,
+                    session_id: sessionId,
                     scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
                     max_id: maxLogEntryId,
                 }));
@@ -614,7 +614,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         projected: LogProjection[],
         maxLogEntryId: number | null,
     ): Promise<Match[] | FindResult> {
-        const { db, workerId, mimetypes } = core;
+        const { db, sessionId, mimetypes } = core;
         let matches: Match[];
         if (statement.matcher?.dialect === "fts") {
             const candidateSet = resolveSearchCandidates(
@@ -634,7 +634,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             );
             if (candidateSet.state === "incomplete") return Log.#incompleteIndex(candidateSet, "selected log results");
             const universeRows = projectedCoordinateRows(await db.log_find_candidates.all<Candidate>({
-                worker_id: workerId,
+                session_id: sessionId,
                 scope_prefix: null,
                 max_id: maxLogEntryId,
             }));
@@ -766,7 +766,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         maxLogEntryId: number | null,
     ): Promise<number | null> {
         const row = await ctx.db.log_id_by_coordinate.get<Pick<CoordinateRow, "id" | "origin" | "op" | "attrs" | "tx">>({
-            worker_id: ctx.workerId,
+            session_id: ctx.sessionId,
             loop_seq: coordinate.loopSeq,
             turn_seq: coordinate.turnSeq,
             sequence: coordinate.sequence,
@@ -800,7 +800,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         ctx: PlurnkSchemeContext,
         maxLogEntryId: number | null,
     ): Promise<{ status: number; ids: number[]; error?: string }> {
-        const { db, workerId } = ctx;
+        const { db, sessionId } = ctx;
         const target = normalizeLogTarget(pathname);
         const coord = parseCoordinate(target);
         if (coord !== null) {
@@ -814,7 +814,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
         const candidates = projectedCoordinateRows(await db.log_match_coordinates.all<CoordinateRow>({
-            worker_id: workerId,
+            session_id: sessionId,
             scope_prefix: coordinateCandidatePrefix(scope.candidatePrefix),
             max_id: maxLogEntryId,
         }));

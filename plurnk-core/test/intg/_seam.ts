@@ -1,15 +1,15 @@
 // Test-only JSON-RPC-shaped adapter over ApplicationPort. It is harness plumbing, not a
 // product protocol or ACP projection; client parsing remains ACP-owned.
 // {§methods} {§acp-op-parse}
-// It holds the attached envelope, lazy model-worker binding, and workspace-filtered
+// It holds the attached envelope, lazy model-session binding, and workspace-filtered
 // notification fan-in that integration tests need. Its operations are one person's client
-// operations ({§connection-lifecycle}): they journal in the workspace's runtime worker,
-// attributed to `owner`, and act for the bound model worker when there is one.
+// operations ({§connection-lifecycle}): they journal in the workspace's runtime session,
+// attributed to `owner`, and act for the bound model session when there is one.
 import type { ClientEnvelope, PlurnkStatement, CapabilityPolicy } from "@plurnk/plurnk-contracts";
 import Dsl from "./dsl.ts";
 import type Daemon from "../../src/server/Daemon.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
-import { namedModelWorker } from "./_workers.ts";
+import { namedModelSession } from "./_sessions.ts";
 
 type Listener = (data: string) => void;
 
@@ -18,18 +18,18 @@ export default class SeamSocket {
     #listeners = new Map<string, Set<Listener>>();
     #unsubscribe: () => void;
     #workspace: ClientEnvelope | null = null;
-    #modelWorkerId: number | null = null;
+    #modelSessionId: number | null = null;
     #closed = false;
     static readonly owner = "test://primary";
-    // A client names the worker its runs address ({§acp-thread-binding}). A run that names no worker
+    // A client names the session its runs address ({§acp-thread-binding}). A run that names no session
     // addresses this one, so every connection to a workspace shares it.
-    static readonly worker = "main";
+    static readonly session = "main";
 
-    async #claim(workerId: number): Promise<void> {
+    async #claim(sessionId: number): Promise<void> {
         const { workspaceId } = this.#attached();
-        // A harness answers nothing, so nobody attends its workers ({§worker-ownership}).
-        await this.#daemon.registerWorkerOwner(workspaceId, { address: SeamSocket.owner, tools: ["request_approval", "question", "mcp_input_required"], interactive: false });
-        await this.#daemon.claimWorkerOwner({ workspaceId, workerId, owner: SeamSocket.owner });
+        // A harness answers nothing, so nobody attends its sessions ({§session-ownership}).
+        await this.#daemon.registerSessionOwner(workspaceId, { address: SeamSocket.owner, tools: ["request_approval", "question", "mcp_input_required"], interactive: false });
+        await this.#daemon.claimSessionOwner({ workspaceId, sessionId, owner: SeamSocket.owner });
     }
 
     constructor(daemon: Daemon) {
@@ -100,22 +100,22 @@ export default class SeamSocket {
                     settings: p.settings as string | object | undefined,
                 });
                 this.#workspace = envelope;
-                this.#modelWorkerId = null;
+                this.#modelSessionId = null;
                 return { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot };
             }
             case "workspace.attach": {
                 const envelope = await daemon.attachWorkspace({ workspaceId: (p.workspaceId ?? p.id) as number });
                 this.#workspace = envelope;
-                this.#modelWorkerId = null;
+                this.#modelSessionId = null;
                 return { id: envelope.workspaceId, name: envelope.workspaceName, projectRoot: envelope.projectRoot };
             }
             case "loop.run": {
                 const s = this.#attached();
-                const modelWorkerId = p.workerId as number | undefined ?? this.#modelWorkerId ?? await namedModelWorker(daemon, s.workspaceId, SeamSocket.worker);
-                this.#modelWorkerId = modelWorkerId;
-                await this.#claim(modelWorkerId);
+                const modelSessionId = p.sessionId as number | undefined ?? this.#modelSessionId ?? await namedModelSession(daemon, s.workspaceId, SeamSocket.session);
+                this.#modelSessionId = modelSessionId;
+                await this.#claim(modelSessionId);
                 const loop = await daemon.runLoop({
-                    workspaceId: s.workspaceId, workerId: modelWorkerId, prompt: p.prompt as string,
+                    workspaceId: s.workspaceId, sessionId: modelSessionId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.openPaths !== undefined ? { openPaths: p.openPaths as string[] } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
@@ -123,18 +123,18 @@ export default class SeamSocket {
                     ...(p.source !== undefined ? { source: p.source as string } : {}),
                     ...(p.messageAddress !== undefined ? { messageAddress: p.messageAddress as string } : {}),
                 });
-                return { ...loop, modelWorkerId };
+                return { ...loop, modelSessionId };
             }
             case "loop.inject": {
-                // inject speaks to an EXISTING model worker; the seam's runLoop injects into a live
+                // inject speaks to an EXISTING model session; the seam's runLoop injects into a live
                 // drain identically (daemon.inject under both) — refusing only a new loop start.
                 const s = this.#attached();
-                if (this.#modelWorkerId === null) {
+                if (this.#modelSessionId === null) {
                     throw new OperationFailureError(Results.failure(
-                        "daemon:worker",
-                        "model-worker-required",
+                        "daemon:session",
+                        "model-session-required",
                         409,
-                        "No model worker exists for prompt injection.",
+                        "No model session exists for prompt injection.",
                         {},
                         {
                             stage: "loop-injection",
@@ -144,19 +144,19 @@ export default class SeamSocket {
                     ));
                 }
                 const result = await daemon.runLoop({
-                    workspaceId: s.workspaceId, workerId: this.#modelWorkerId, prompt: p.prompt as string,
+                    workspaceId: s.workspaceId, sessionId: this.#modelSessionId, prompt: p.prompt as string,
                     ...(p.maxTurns !== undefined ? { maxTurns: p.maxTurns as number } : {}),
                     ...(p.selector !== undefined ? { selector: p.selector as string } : {}),
                     ...(p.childSelector !== undefined ? { childSelector: p.childSelector as string | null } : {}),
                 });
-                return { ...result, modelWorkerId: this.#modelWorkerId };
+                return { ...result, modelSessionId: this.#modelSessionId };
             }
             case "loop.cancel": {
                 this.#attached();
                 const reason = (typeof p.reason === "string" && p.reason.length > 0) ? p.reason : "user_cancelled";
-                const modelWorkerId = this.#modelWorkerId;
-                const cancelled = modelWorkerId !== null && daemon.cancelDrain(modelWorkerId, reason);
-                return { cancelled, workerId: modelWorkerId, reason };
+                const modelSessionId = this.#modelSessionId;
+                const cancelled = modelSessionId !== null && daemon.cancelDrain(modelSessionId, reason);
+                return { cancelled, sessionId: modelSessionId, reason };
             }
             case "loop.resolve": {
                 await daemon.resolveProposal(p.logEntryId as number, {
@@ -171,41 +171,41 @@ export default class SeamSocket {
                 return { proposals: await daemon.pendingProposals(s.workspaceId) };
             }
             case "log.read": {
-                // Default = the runtime worker, where this harness's own client operations journal
+                // Default = the runtime session, where this harness's own client operations journal
                 // ({§connection-lifecycle}); a read mints nothing, so before any operation there is no log.
-                // The model worker is read by explicit workerId (loop.run returns modelWorkerId for exactly that).
+                // The model session is read by explicit sessionId (loop.run returns modelSessionId for exactly that).
                 const s = this.#attached();
-                const workerId = (p.workerId as number | undefined)
-                    ?? (await daemon.readWorker({ workspaceId: s.workspaceId, identity: { name: "_plurnk" } }))?.id;
-                if (workerId === undefined) return { status: 200, entries: [] };
-                const entries = await daemon.readLog({ workspaceId: s.workspaceId, workerId, ...(p as object) });
+                const sessionId = (p.sessionId as number | undefined)
+                    ?? (await daemon.readSession({ workspaceId: s.workspaceId, identity: { name: "_plurnk" } }))?.id;
+                if (sessionId === undefined) return { status: 200, entries: [] };
+                const entries = await daemon.readLog({ workspaceId: s.workspaceId, sessionId, ...(p as object) });
                 return { status: 200, entries };
             }
             case "entry.read": {
-                // The bound model worker's perspective, else the runtime worker's.
+                // The bound model session's perspective, else the runtime session's.
                 const s = this.#attached();
-                const workerId = (p.workerId as number | undefined) ?? this.#modelWorkerId ?? await daemon.ensureRuntimeWorker(s.workspaceId);
-                return daemon.readEntry({ workspaceId: s.workspaceId, workerId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
+                const sessionId = (p.sessionId as number | undefined) ?? this.#modelSessionId ?? await daemon.ensureRuntimeSession(s.workspaceId);
+                return daemon.readEntry({ workspaceId: s.workspaceId, sessionId, target: p.target as string, channel: p.channel as string | undefined, offset: p.offset as number | undefined });
             }
             case "run.fork": {
-                // fork branches an EXISTING model worker — no worker yet is a caller error, never an implicit create.
+                // fork branches an EXISTING model session — no session yet is a caller error, never an implicit create.
                 const s = this.#attached();
-                const workerId = (p.workerId as number | undefined) ?? this.#modelWorkerId;
-                if (workerId === null || workerId === undefined) {
+                const sessionId = (p.sessionId as number | undefined) ?? this.#modelSessionId;
+                if (sessionId === null || sessionId === undefined) {
                     throw new OperationFailureError(Results.failure(
-                        "daemon:worker",
-                        "model-worker-required",
+                        "daemon:session",
+                        "model-session-required",
                         409,
-                        "No model worker exists to fork.",
+                        "No model session exists to fork.",
                         {},
                         {
-                            stage: "worker-fork",
-                            recovery: "Start a loop before forking its worker.",
+                            stage: "session-fork",
+                            recovery: "Start a loop before forking its session.",
                             retryable: false,
                         },
                     ));
                 }
-                return daemon.forkWorker({ workspaceId: s.workspaceId, workerId, name: p.name as string | undefined });
+                return daemon.forkSession({ workspaceId: s.workspaceId, sessionId, name: p.name as string | undefined });
             }
             case "workspace.rename": {
                 const s = this.#attached();
@@ -214,10 +214,10 @@ export default class SeamSocket {
             case "workspace.list": return { workspaces: await daemon.listWorkspaces() };
             case "workspace.capabilities.get": return daemon.readWorkspaceCapabilities({ workspaceId: this.#attached().workspaceId });
             case "workspace.capabilities.set": return daemon.setWorkspaceCapabilities({ workspaceId: this.#attached().workspaceId, policy: p.policy as CapabilityPolicy });
-            case "workspace.workers": { const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId; return { workers: await daemon.listWorkers(sid) }; }
+            case "workspace.sessions": { const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId; return { sessions: await daemon.listSessions(sid) }; }
             case "workspace.prompts": {
                 const sid = ((p.workspaceId ?? p.id) as number | undefined) ?? this.#attached().workspaceId;
-                return { prompts: await daemon.listPrompts(sid, p.limit as number | undefined, p.workerId as number | undefined) };
+                return { prompts: await daemon.listPrompts(sid, p.limit as number | undefined, p.sessionId as number | undefined) };
             }
             case "workspace.share": return daemon.shareWorkspace({ workspaceId: this.#attached().workspaceId, folder: p.folder as string });
             case "providers.list": return daemon.listProviders();
@@ -237,13 +237,13 @@ export default class SeamSocket {
         }
     }
 
-    // One statement as one client operation of `owner`, acting for the bound model worker
+    // One statement as one client operation of `owner`, acting for the bound model session
     // ({§methods-op-mirror}, {§actor-boundary-client-operations}).
     async #operate(statement: PlurnkStatement): Promise<unknown> {
         const { workspaceId } = this.#attached();
         const [result] = await this.#daemon.dispatchClientAction({
             workspaceId, actor: SeamSocket.owner,
-            ...(this.#modelWorkerId === null ? {} : { contextWorkerId: this.#modelWorkerId }),
+            ...(this.#modelSessionId === null ? {} : { contextSessionId: this.#modelSessionId }),
             statements: [statement],
         });
         return result;

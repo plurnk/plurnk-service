@@ -1,6 +1,6 @@
 // {§exec-entry-sink} {§env-delta-entry-materialization} — the executor's `entry()` sink. Each materialization is one
 // durable entry write, serialized behind the previous, narrated as one `_plurnk` EDIT row through the one
-// reserved-worker turn this spawn owns; the spawn's tail settles the chain and closes that turn ({§exec-entry-sink}).
+// reserved-session turn this spawn owns; the spawn's tail settles the chain and closes that turn ({§exec-entry-sink}).
 
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
@@ -20,10 +20,10 @@ import type { EntryData } from "./_entry-crud.ts";
 import { renderAddress } from "../core/plurnk-uri.ts";
 import Results, { OperationFailureError, type SchemeResult } from "../core/results.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
-import WorkerControlAddress from "../core/WorkerControlAddress.ts";
+import SessionControlAddress from "../core/SessionControlAddress.ts";
 import Turn from "../core/Turn.ts";
 import AdministrativeLoop from "../core/AdministrativeLoop.ts";
-import RuntimeWorker from "../core/RuntimeWorker.ts";
+import RuntimeSession from "../core/RuntimeSession.ts";
 import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
@@ -46,7 +46,7 @@ export interface EntrySinkDeps {
 }
 
 type EntryNarration = {
-    workerId: number;
+    sessionId: number;
     loopId: number;
     loopSeq: number;
     turnId: number;
@@ -82,9 +82,9 @@ export default class ExecEntrySink {
     async #resolveCallerSource(): Promise<string> {
         if (this.#callerSource !== undefined) return this.#callerSource;
         const { ctx } = this.#deps;
-        const caller = await ctx.db.worker_name_by_id.get<{ name: string }>({ worker_id: ctx.workerId });
-        if (caller === undefined) throw new Error(`entry(): calling worker ${ctx.workerId} does not exist`);
-        this.#callerSource = WorkerControlAddress.render(caller.name);
+        const caller = await ctx.db.session_name_by_id.get<{ name: string }>({ session_id: ctx.sessionId });
+        if (caller === undefined) throw new Error(`entry(): calling session ${ctx.sessionId} does not exist`);
+        this.#callerSource = SessionControlAddress.render(caller.name);
         return this.#callerSource;
     }
 
@@ -174,15 +174,15 @@ export default class ExecEntrySink {
                 }),
             );
             if (this.#narration === null) {
-                const workerId = await RuntimeWorker.ensure(db, ctx.workspaceId);
-                const loop = await AdministrativeLoop.open(db, workerId);
+                const sessionId = await RuntimeSession.ensure(db, ctx.workspaceId);
+                const loop = await AdministrativeLoop.open(db, sessionId);
                 const turn = await Turn.open(db, {
                     loopId: loop.id,
                     producer: "_plurnk",
                     kind: "operation",
                 });
                 this.#narration = {
-                    workerId,
+                    sessionId,
                     loopId: loop.id,
                     loopSeq: loop.sequence,
                     turnId: turn.id,
@@ -216,7 +216,7 @@ export default class ExecEntrySink {
                 throw new Error("entry(): ctx.weigh is required for curation-weight accounting");
             }
             const logRow = await db.engine_insert_log_entry.get<{ id: number }>({
-                worker_id: narration.workerId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
+                session_id: narration.sessionId, loop_id: narration.loopId, turn_id: narration.turnId, sequence,
                 origin: "_plurnk", source: causalSource, model_call_id: null,
                 op: "EDIT", signal: null,
                 scheme, username: null, password: null,

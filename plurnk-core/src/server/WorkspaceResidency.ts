@@ -153,33 +153,33 @@ export default class WorkspaceResidency {
         return row === undefined ? null : JSON.parse(row.state) as unknown;
     }
 
-    // {§module-workspace-state} — the same snapshot, owned by a worker. A family declares the
+    // {§module-workspace-state} — the same snapshot, owned by a session. A family declares the
     // scope its definitions belong to; the coordinator keys state by it, so origin, enabledness
     // and the service-baseline rules remain one implementation rather than one per family.
-    async readWorkerModuleState(workerId: number, namespaceOwner: string): Promise<unknown> {
-        if (namespaceOwner.trim().length === 0) throw new Error("worker module state requires a non-empty namespace owner");
-        const row = await this.#db.worker_module_state_get.get<{ state: string }>({
-            worker_id: workerId, namespace_owner: namespaceOwner,
+    async readSessionModuleState(sessionId: number, namespaceOwner: string): Promise<unknown> {
+        if (namespaceOwner.trim().length === 0) throw new Error("session module state requires a non-empty namespace owner");
+        const row = await this.#db.session_module_state_get.get<{ state: string }>({
+            session_id: sessionId, namespace_owner: namespaceOwner,
         });
         return row === undefined ? null : JSON.parse(row.state) as unknown;
     }
 
-    // The worker-scoped counterpart of `replace`: state alone, no runtimes, no workspace exclusivity.
-    // A Worker's context changes nothing resident; the next spawn reads it ({§functionality-scope}).
-    // The real foreign key refuses a Worker that does not exist.
-    async replaceWorkerModuleState(workerId: number, namespaceOwner: string, state: unknown): Promise<void> {
-        if (namespaceOwner.trim().length === 0) throw new Error("worker module state requires a non-empty namespace owner");
-        const key = { worker_id: workerId, namespace_owner: namespaceOwner };
+    // The session-scoped counterpart of `replace`: state alone, no runtimes, no workspace exclusivity.
+    // A Session's context changes nothing resident; the next spawn reads it ({§functionality-scope}).
+    // The real foreign key refuses a Session that does not exist.
+    async replaceSessionModuleState(sessionId: number, namespaceOwner: string, state: unknown): Promise<void> {
+        if (namespaceOwner.trim().length === 0) throw new Error("session module state requires a non-empty namespace owner");
+        const key = { session_id: sessionId, namespace_owner: namespaceOwner };
         if (state === null) {
-            await this.#db.worker_module_state_delete.run(key);
+            await this.#db.session_module_state_delete.run(key);
             return;
         }
         const encoded = JSON.stringify(state);
         if (encoded === undefined) throw residencyFailure(
-            "state-not-json", 400, "Worker module state is not JSON-serializable.",
+            "state-not-json", 400, "Session module state is not JSON-serializable.",
             { namespaceOwner, retryable: false },
         );
-        await this.#db.worker_module_state_put.run({ ...key, state: encoded });
+        await this.#db.session_module_state_put.run({ ...key, state: encoded });
     }
 
     async reconcile(workspaceId: number): Promise<void> {

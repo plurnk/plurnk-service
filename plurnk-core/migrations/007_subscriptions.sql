@@ -5,24 +5,24 @@
 
 -- subscriptions
 -- Durable subscription lifecycle per SPEC {§subscriptions}. The row records what
--- the worker holds and routes cancellation to a separate process-local callable;
+-- the session holds and routes cancellation to a separate process-local callable;
 -- it never serializes that callable. Closed rows persist for forensics; partial
--- unique index enforces one active subscription per entry. Causal worker and
+-- unique index enforces one active subscription per entry. Causal session and
 -- resource owner may differ within the same workspace ({§runtime-resource-binding}).
 CREATE TABLE IF NOT EXISTS subscriptions (
     id           INTEGER NOT NULL PRIMARY KEY,
     version      INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
-    worker_id       INTEGER,
+    session_id       INTEGER,
     entry_id     INTEGER NOT NULL,
     scheme       TEXT    NOT NULL CHECK (length(scheme) > 0),
     handle       TEXT    NOT NULL CHECK (length(handle) > 0),
     published_channel TEXT          CHECK (published_channel IS NULL OR length(published_channel) > 0),
     source       TEXT             CHECK (source IS NULL OR length(source) > 0),
     opened_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    -- `[{"lifetime":"turn"}]`: the stream is reaped at the worker's next pre-turn so it never survives
+    -- `[{"lifetime":"turn"}]`: the stream is reaped at the session's next pre-turn so it never survives
     -- into the subsequent turn; its terminal output surfaces initially visible like any conclusion. {§exec-lifetime}
     turn_scoped  INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
-    -- {§worker-obligations}: a `[{"lifetime":"detached"}]` spawn outlives its loop and is nobody's obligation.
+    -- {§session-obligations}: a `[{"lifetime":"detached"}]` spawn outlives its loop and is nobody's obligation.
     detached     INTEGER NOT NULL DEFAULT 0 CHECK (detached IN (0, 1)),
     closed_at    TEXT,
     close_status INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     channel_results TEXT          CHECK (channel_results IS NULL OR json_valid(channel_results)),
     CHECK ((closed_at IS NULL AND close_status IS NULL AND close_result IS NULL AND channel_results IS NULL)
         OR (closed_at IS NOT NULL AND close_status IS NOT NULL AND close_result IS NOT NULL AND channel_results IS NOT NULL)),
-    CHECK (worker_id IS NOT NULL OR closed_at IS NOT NULL),
-    FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE SET NULL,
+    CHECK (session_id IS NOT NULL OR closed_at IS NOT NULL),
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE SET NULL,
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
 ) STRICT;
 
@@ -39,7 +39,7 @@ CREATE TRIGGER IF NOT EXISTS subscriptions_workspace_insert
 BEFORE INSERT ON subscriptions
 WHEN NOT EXISTS (
     SELECT 1 FROM entries e
-    JOIN workers caller ON caller.id = NEW.worker_id
+    JOIN sessions caller ON caller.id = NEW.session_id
     WHERE e.id = NEW.entry_id AND e.workspace_id = caller.workspace_id
 )
 BEGIN
@@ -47,9 +47,9 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS subscriptions_identity_update
-BEFORE UPDATE OF worker_id, entry_id, scheme, source ON subscriptions
+BEFORE UPDATE OF session_id, entry_id, scheme, source ON subscriptions
 WHEN NEW.entry_id != OLD.entry_id OR NEW.scheme != OLD.scheme OR NEW.source IS NOT OLD.source
-  OR (NEW.worker_id IS NOT OLD.worker_id AND NOT (NEW.worker_id IS NULL AND NEW.closed_at IS NOT NULL))
+  OR (NEW.session_id IS NOT OLD.session_id AND NOT (NEW.session_id IS NULL AND NEW.closed_at IS NOT NULL))
 BEGIN
     SELECT RAISE(ABORT, 'subscription identity is immutable');
 END;
@@ -58,9 +58,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
     ON subscriptions (entry_id)
     WHERE closed_at IS NULL;
 
--- {§db-fk-indexes} Worker and entry deletion, and every by-worker stream lookup, otherwise scan all subscriptions,
+-- {§db-fk-indexes} Session and entry deletion, and every by-session stream lookup, otherwise scan all subscriptions,
 -- closed ones included; the active-only partial indexes above do not cover foreign-key checks.
-CREATE INDEX IF NOT EXISTS subscriptions_worker_id ON subscriptions (worker_id) WHERE worker_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS subscriptions_session_id ON subscriptions (session_id) WHERE session_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS subscriptions_entry_id  ON subscriptions (entry_id);
 
@@ -137,22 +137,22 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription channel result violates the channel producer contract');
 END;
 
--- {§worker-obligations}: the shared worker work a loop is held on.
-CREATE VIEW IF NOT EXISTS worker_obligations AS
-SELECT w.id AS worker_id,
+-- {§session-obligations}: the shared session work a loop is held on.
+CREATE VIEW IF NOT EXISTS session_obligations AS
+SELECT w.id AS session_id,
        EXISTS (
            SELECT 1 FROM subscriptions s
-           WHERE s.worker_id = w.id AND s.closed_at IS NULL AND s.detached = 0
+           WHERE s.session_id = w.id AND s.closed_at IS NULL AND s.detached = 0
        ) AS streams,
        EXISTS (
-           SELECT 1 FROM workers c JOIN loops l ON l.worker_id = c.id
-           WHERE c.parent_worker_id = w.id AND l.status IN (100, 102, 202)
-       ) AS workers
-FROM workers w;
+           SELECT 1 FROM sessions c JOIN loops l ON l.session_id = c.id
+           WHERE c.parent_session_id = w.id AND l.status IN (100, 102, 202)
+       ) AS sessions
+FROM sessions w;
 
 CREATE VIEW IF NOT EXISTS loop_obligations AS
-SELECT l.id AS loop_id, held.streams, held.workers
-FROM loops l JOIN worker_obligations held ON held.worker_id = l.worker_id;
+SELECT l.id AS loop_id, held.streams, held.sessions
+FROM loops l JOIN session_obligations held ON held.session_id = l.session_id;
 
 -- {§exec-stream}: publication cursors survive curation of generated observations.
 CREATE TABLE IF NOT EXISTS subscription_publications (

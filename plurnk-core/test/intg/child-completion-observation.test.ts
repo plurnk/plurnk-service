@@ -5,7 +5,7 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, sendingOperation } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, sendingOperation } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 
@@ -14,15 +14,15 @@ const frame = (op: string, body = "") => `\`\`\`\`${op}\n${body}\n\`\`\`\``;
 const fixture = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "completion-observation");
-    const parent = await insertWorker(db, workspaceId, null, "parent");
+    const parent = await insertSession(db, workspaceId, null, "parent");
     const parentLoop = await insertLoop(db, parent, 1, "Collect the child's answer.");
-    const child = await insertWorker(db, workspaceId, parent, "child");
+    const child = await insertSession(db, workspaceId, parent, "child");
     const childLoop = await insertLoop(db, child, 1);
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const lifecycle = new LoopLifecycle(db);
-    const run = async (workerId: number, loopId: number, content = frame("NOTE", "Observed.")) => {
+    const run = async (sessionId: number, loopId: number, content = frame("NOTE", "Observed.")) => {
         const result = await engine.runTurn({
-            messages: [], workspaceId, workerId, loopId,
+            messages: [], workspaceId, sessionId, loopId,
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content, reasoning: null } }] }),
         });
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
@@ -35,7 +35,7 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
     test(`{§loop-answer}: the parent receives ${outcome} once, as the child's own loop answer`, async (t) => {
         const f = await fixture();
         t.after(() => f.db.close());
-        await f.engine.injectIntoLoop(f.childLoop, "What did you find?", [], "worker://parent", {}, undefined, await sendingOperation(f.db, f.parentLoop));
+        await f.engine.injectIntoLoop(f.childLoop, "What did you find?", [], "session://parent", {}, undefined, await sendingOperation(f.db, f.parentLoop));
         await f.run(f.child, f.childLoop, frame("SEND", "The answer is 42.") + "\n\n" + frame("FIND (*)"));
         const before = await f.run(f.parent, f.parentLoop);
         assert.deepEqual(before.entries.filter(({ answers }) => Array.isArray(answers)), [],
@@ -48,7 +48,7 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
         const exact = await f.lifecycle.finish(f.childLoop, result, { terminatedBy: outcome === "cancel" ? "cancel" : null });
         assert.ok(exact);
         const after = await f.run(f.parent, f.parentLoop);
-        const observations = after.entries.filter(({ source }) => source === "worker://child");
+        const observations = after.entries.filter(({ source }) => source === "session://child");
         assert.deepEqual(observations.map(({ logPath: path }) => path.split("/").at(-1)), ["READ"]);
         const completion = observations[0];
         assert.equal(completion.path, "ops://child/1");
@@ -60,9 +60,9 @@ for (const outcome of ["success", "failure", "cancel"] as const) {
             assert.equal(completion.status, exact.status);
             assert.match(JSON.stringify(completion), /The child could not finish\./);
             assert.ok(String(completion.body).length > 0, "a failure stays visible even after an answer was written");
-            if (outcome === "cancel") assert.match(String(completion.body), /worker cancelled/);
+            if (outcome === "cancel") assert.match(String(completion.body), /session cancelled/);
         }
-        const history = await f.db.message_history.all<{ direction: string; body: string }>({ workspace_id: f.workspaceId, worker_id: f.child, loop_id: f.childLoop });
+        const history = await f.db.message_history.all<{ direction: string; body: string }>({ workspace_id: f.workspaceId, session_id: f.child, loop_id: f.childLoop });
         assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["The answer is 42."], "the reply is still the child's own outbound message");
     });
 }
@@ -90,7 +90,7 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     assert.equal(completions[0].preview, undefined, "nothing is previewed on the model's behalf");
     assert.match(String(completions[1].body), /Second loop failed\./);
     assert.equal(completions[1].status, 502);
-    assert.equal((await f.db.engine_worker_has_undelivered_child_term.get({ worker_id: f.parent })), undefined);
+    assert.equal((await f.db.engine_session_has_undelivered_child_term.get({ session_id: f.parent })), undefined);
 
     const curated = await f.run(f.parent, f.parentLoop,
         frame(`READ (${String(completions[0].path)}) <1,-1>`) + "\n\n"
@@ -98,9 +98,9 @@ test("{§env-delta-child-termination}: delayed observation preserves each comple
     const rows = await f.db.test_log_entries_by_loop.all<{ turn_id: number; op: string; status_rx: number; rx: string; attrs: string }>({ loop_id: f.parentLoop });
     const actions = rows.filter((row) => row.turn_id === curated.result.turnId && !LogEntryProjection.isEmission(row));
     assert.deepEqual(actions.map(({ op, status_rx }) => [op, status_rx]), [["READ", 200], ["KILL", 200]]);
-    assert.equal(JSON.parse(actions[0].rx).content, first, "source READ recovers the exact original result, never the current worker loop");
+    assert.equal(JSON.parse(actions[0].rx).content, first, "source READ recovers the exact original result, never the current session loop");
     assert.equal((await f.lifecycle.result(f.childLoop))?.content, first, "curation never changes the producer's result");
     assert.deepEqual((await f.lifecycle.result(secondLoop))?.problem, failure.problem);
     const again = await f.run(f.parent, f.parentLoop);
-    assert.equal(again.entries.filter(({ source, path }) => source === "worker://child" && String(path).startsWith("ops://child/")).length, 2, "observing again creates no duplicate occurrences");
+    assert.equal(again.entries.filter(({ source, path }) => source === "session://child" && String(path).startsWith("ops://child/")).length, 2, "observing again creates no duplicate occurrences");
 });

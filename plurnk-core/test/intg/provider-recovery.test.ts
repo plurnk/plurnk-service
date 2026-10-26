@@ -1,4 +1,4 @@
-import { serverProposals, ownWorker } from "./_approval.ts";
+import { serverProposals, ownSession } from "./_approval.ts";
 // {§provider-recovery} — a transient provider failure never ends a loop: the turn records the
 // failure, backs off, and re-issues its call; when the recovery budget is spent the loop parks
 // like a [202] wait and the next prompt resumes it with its log intact.
@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AiSdkProvider, Mock, ProviderError } from "@plurnk/plurnk-providers";
 import Daemon from "../../src/server/Daemon.ts";
-import { insertWorkspace, insertWorker, openMigrated } from "./_db.ts";
+import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
 import { viableWindow } from "./_provider.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
@@ -21,7 +21,7 @@ class Flaky extends Mock {
         super({
             contextWindow: viableWindow() * 4,
             responses: signals.map((signal) => makeMockResponse(signal === 102
-                ? "\n````FIND (worker:///**)````\n````NOTE\ncontinue\n````"
+                ? "\n````FIND (workspace:///**)````\n````NOTE\ncontinue\n````"
                 : "````SEND [200]\ndone\n````", 20)),
         });
         this.failures = failures;
@@ -66,14 +66,14 @@ test("{§provider-recovery} two dropped provider calls are absorbed inside the t
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
+        const sessionId = await insertSession(db, workspaceId, null, "primary", "model");
         const provider = new Flaky(2, [102, 200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];
         daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
         try {
-            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "hello" });
+            const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "hello" });
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.loopId, started.loopId);
             assert.equal(done.result.status, 200, "the loop concludes despite two dropped calls");
@@ -117,7 +117,7 @@ test("{§provider-recovery} a whole-call deadline recovers through the real prov
                     init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
                 });
                 const content = requests.length === 2
-                    ? "````FIND (worker:///**)\n````"
+                    ? "````FIND (workspace:///**)\n````"
                     : "````SEND [200]\nRecovered.\n````";
                 return new Response(`data: ${JSON.stringify({
                     id: `response-${requests.length}`, model: "deadline-recovery",
@@ -128,13 +128,13 @@ test("{§provider-recovery} a whole-call deadline recovers through the real prov
         });
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `deadline-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
+        const sessionId = await insertSession(db, workspaceId, null, "primary", "model");
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];
         daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
         try {
-            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "Inspect the workspace and conclude." });
+            const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "Inspect the workspace and conclude." });
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.result.status, 200);
             assert.equal(requests.length, 3, "one expired request, its recovered response, and one new turn");
@@ -162,14 +162,14 @@ test("{§provider-recovery} the panel's ceiling bounds the doubling delay", asyn
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "1000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX: "5" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
+        const sessionId = await insertSession(db, workspaceId, null, "primary", "model");
         const provider = new Flaky(4, [102, 200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];
         daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
         try {
-            await daemon.runLoop({ workspaceId, workerId, prompt: "hello" });
+            await daemon.runLoop({ workspaceId, sessionId, prompt: "hello" });
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.result.status, 200);
             assert.equal(provider.calls, 6, "four failed calls, the recovered response, and one new model turn");
@@ -187,15 +187,15 @@ test("{§provider-recovery} a spent recovery budget parks the loop as 202; the n
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "0", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `recovery-park-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId, null, "primary", "model");
-        await ownWorker(db, workspaceId, workerId);
+        const sessionId = await insertSession(db, workspaceId, null, "primary", "model");
+        await ownSession(db, workspaceId, sessionId);
         const provider = new Flaky(99, [200, 200]);
         const daemon = new Daemon({ db, provider });
         await daemon.start();
         const terminated: Terminated[] = [];
         daemon.subscribeToEvents((_w, method, params) => { if (method === "loop/terminated") terminated.push(params as Terminated); });
         try {
-            const started = await daemon.runLoop({ workspaceId, workerId, prompt: "hello" });
+            const started = await daemon.runLoop({ workspaceId, sessionId, prompt: "hello" });
             // A parked loop is not terminated: it is the [202] wait, observed on the loop itself.
             const status = async () => (await db.engine_loop_status.get<{ status: number }>({ loop_id: started.loopId }))?.status;
             const start = Date.now();
@@ -209,7 +209,7 @@ test("{§provider-recovery} a spent recovery budget parks the loop as 202; the n
 
             // The provider is back: the next prompt wakes the parked loop and it concludes.
             provider.failures = 0;
-            const resumed = await daemon.runLoop({ workspaceId, workerId, prompt: "continue" });
+            const resumed = await daemon.runLoop({ workspaceId, sessionId, prompt: "continue" });
             const done = await untilTerminated(terminated, 0);
             assert.equal(done.result.status, 200, "the resumed loop concludes");
             assert.equal(resumed.loopId, started.loopId, "the parked loop itself resumes — the chain is never dropped");

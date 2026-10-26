@@ -9,7 +9,7 @@ import { Mimetypes, emptyRegistry } from "@plurnk/plurnk-mimetypes";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
 import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 
 const response = (content: string): MockResponse => ({
     assistant: {
@@ -19,7 +19,7 @@ const response = (content: string): MockResponse => ({
     assistantRaw: null,
 });
 
-const invalid = response("````READ (worker:///unframed-prose");
+const invalid = response("````READ (workspace:///unframed-prose");
 const valid = response("\n````SEND\ndone\n````");
 const canonical = (...tags: string[]): string[] => [...new Set(tags)].toSorted();
 
@@ -27,9 +27,9 @@ test("{§attribution} each emission attempt composes opaque family hooks and rec
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `attr-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const workerIdentity = await db.test_workers_get_provider_identity.get<{ provider_identity: string }>({ id: workerId });
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const sessionIdentity = await db.test_sessions_get_provider_identity.get<{ provider_identity: string }>({ id: sessionId });
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const contexts: ExtensionAttributionContext[] = [];
 
         const schemes = new SchemeRegistry();
@@ -51,21 +51,21 @@ test("{§attribution} each emission attempt composes opaque family hooks and rec
         };
         const engine = new Engine({ db, schemes, mimetypes });
         engine.setExecutors(executors);
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         const first = canonical("shared", "scheme:1", "executor:1", "mimetype:1", "provider:1");
         const second = canonical("shared", "scheme:2", "executor:2", "mimetype:2", "provider:2");
         assert.deepEqual(contexts, [
             {
                 workspaceId: String(workspaceId),
-                workerId: workerIdentity?.provider_identity,
+                sessionId: sessionIdentity?.provider_identity,
                 loop: 1,
                 turn: 2,
                 attempt: 1,
             },
             {
                 workspaceId: String(workspaceId),
-                workerId: workerIdentity?.provider_identity,
+                sessionId: sessionIdentity?.provider_identity,
                 loop: 1,
                 turn: 2,
                 attempt: 2,
@@ -101,11 +101,11 @@ test("{§attribution} an empty folksonomy omits the provider field but persists 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `attr-empty-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const provider = new Mock({ contextWindow: 100_000, responses: [valid] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
 
         const row = await db.test_get_turn.get<{ packet: string }>({ id: result.turnId });
         assert.deepEqual((JSON.parse(row!.packet) as { attributions: string[] }).attributions, []);

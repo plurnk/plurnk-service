@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { catalogSnapshot } from "@plurnk/plurnk-models";
 import { exactSpecimen, liveFiles, liveInvocation } from "./live.mjs";
 import { stampTierRun, tierArguments, tierEnvironment } from "./lib/tier.mjs";
-import { compose, isSpecimenVerdict, render, workerRows } from "./lib/census-reporter.mjs";
+import { compose, isSpecimenVerdict, render, sessionRows } from "./lib/census-reporter.mjs";
 import { censuses, history } from "./tier-history.mjs";
 import { collectLiveSpecimens, collectLiveTestNames, liveTimeoutMs } from "../test/live-test.ts";
 import { aliasesSatisfying, checkoutPath, onPath, parseRequirement, requirementsOfSkip, unmetRequirements } from "../test/live-requirements.ts";
@@ -155,17 +155,17 @@ test("{§tier-census} a census row is a specimen's own verdict, never a file's o
     assert.ok(!isSpecimenVerdict({ type: "test:diagnostic", data: { nesting: 0, message: "x" } }));
 });
 
-test("{§tier-census} the census joins verdicts with the workers each specimen claimed and names unmet requirements; the history ledgers runs", async (t) => {
+test("{§tier-census} the census joins verdicts with the sessions each specimen claimed and names unmet requirements; the history ledgers runs", async (t) => {
     const home = await mkdtemp(join(tmpdir(), "plurnk-census-"));
     t.after(() => rm(home, { recursive: true, force: true }));
     const dir = join(home, "tier-live-20261012T000000Z");
-    const worker = (name, specimen, usd) => ({ specimen, label: name, runDir: join(dir, name), loops: 1, turns: 3, requests: 2, tokens: { input: 10, output: 5 }, cost: { usd, kinds: ["estimated"] } });
+    const session = (name, specimen, usd) => ({ specimen, label: name, runDir: join(dir, name), loops: 1, turns: 3, requests: 2, tokens: { input: 10, output: 5 }, cost: { usd, kinds: ["estimated"] } });
     for (const [name, specimen, usd] of [["live-a-AAAAAA", "a", 0.001], ["live-a-BBBBBB", "a", 0.002], ["live-stray-CCCCCC", null, 0]]) {
         await mkdir(join(dir, name), { recursive: true });
-        await writeFile(join(dir, name, "census.json"), JSON.stringify(worker(name, specimen, usd)));
+        await writeFile(join(dir, name, "census.json"), JSON.stringify(session(name, specimen, usd)));
     }
-    const workers = workerRows(dir);
-    assert.deepEqual(workers.map(({ label }) => label), ["live-a-AAAAAA", "live-a-BBBBBB", "live-stray-CCCCCC"]);
+    const sessions = sessionRows(dir);
+    assert.deepEqual(sessions.map(({ label }) => label), ["live-a-AAAAAA", "live-a-BBBBBB", "live-stray-CCCCCC"]);
     const census = compose({
         run: "live-20261012T000000Z", route: "deepdumb = deepseek/deepseek-flash",
         aliases: [{ alias: "local", provider: "openai", model: "x.gguf" }],
@@ -174,10 +174,10 @@ test("{§tier-census} the census joins verdicts with the workers each specimen c
             { name: "b", file: "b.test.ts", verdict: "skip", reason: "requires input:pdf: the route advertises image input", duration_ms: 1 },
             { name: "c", file: "c.test.ts", verdict: "fail", reason: "one is not two", duration_ms: 1 },
         ],
-        workers, started: "2026-10-12T00:00:00.000Z", finished: "2026-10-12T00:01:00.000Z",
+        sessions, started: "2026-10-12T00:00:00.000Z", finished: "2026-10-12T00:01:00.000Z",
     });
     assert.deepEqual(census.totals, { pass: 1, fail: 1, skip: 1, todo: 0 });
-    assert.deepEqual(census.specimens[0].workers, ["live-a-AAAAAA", "live-a-BBBBBB"]);
+    assert.deepEqual(census.specimens[0].sessions, ["live-a-AAAAAA", "live-a-BBBBBB"]);
     assert.equal(census.specimens[0].turns, 6);
     assert.equal(census.specimens[0].usd, 0.003);
     assert.deepEqual(census.unattributed, ["live-stray-CCCCCC"]);

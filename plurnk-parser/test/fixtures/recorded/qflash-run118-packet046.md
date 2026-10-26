@@ -1,4 +1,4 @@
-```SEND (worker://5d26dbe5) <!-- Reporting findings: syntax error in resolvers.py prevents all test execution -->
+```SEND (session://5d26dbe5) <!-- Reporting findings: syntax error in resolvers.py prevents all test execution -->
 ## Test Run Results: FAILED — Syntax Error Prevents All Tests
 
 ### Root Cause

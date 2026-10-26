@@ -12,7 +12,7 @@ import type { SchemeManifest } from "./scheme-types.ts";
 
 const attributionContext = (attempt: number): ExtensionAttributionContext => ({
     workspaceId: "workspace",
-    workerId: "worker",
+    sessionId: "session",
     loop: 1,
     turn: 1,
     attempt,

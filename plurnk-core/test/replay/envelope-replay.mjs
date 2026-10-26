@@ -5,29 +5,29 @@
 // task, and whether the first operation matches what the model actually did at that turn.
 // A paid experiment, never a test.
 // #1043: previous-assistant tests only the complete prior program between log and footer.
-// usage: node --conditions=plurnk-dev test/replay/envelope-replay.mjs <alias> <run-digest-dir> <worker> <turns e.g. 4,8,12> <samples> <concurrency> <out.jsonl> [arms=today,previous-assistant,turns,ops,turnsline,lastturn,lastturn-causal,syslog]
+// usage: node --conditions=plurnk-dev test/replay/envelope-replay.mjs <alias> <run-digest-dir> <session> <turns e.g. 4,8,12> <samples> <concurrency> <out.jsonl> [arms=today,previous-assistant,turns,ops,turnsline,lastturn,lastturn-causal,syslog]
 import { readFileSync, appendFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadActiveProvider } from "@plurnk/plurnk-providers";
 import { previousAssistantEnvelope } from "./envelope-variants.mjs";
 
-const [alias, digestDir, worker, turnsArg, samplesArg, concurrencyArg, out, armsArg = "today,turns,ops"] = process.argv.slice(2);
-if (!alias || !digestDir || !worker || !turnsArg || !out) throw new Error("usage: envelope-replay.mjs <alias> <digest-dir> <worker> <turns> <samples> <concurrency> <out.jsonl> [arms]");
+const [alias, digestDir, session, turnsArg, samplesArg, concurrencyArg, out, armsArg = "today,turns,ops"] = process.argv.slice(2);
+if (!alias || !digestDir || !session || !turnsArg || !out) throw new Error("usage: envelope-replay.mjs <alias> <digest-dir> <session> <turns> <samples> <concurrency> <out.jsonl> [arms]");
 const samples = Number(samplesArg ?? 3);
 const concurrency = Number(concurrencyArg ?? 3);
 process.loadEnvFile(`${process.env.HOME}/.config/plurnk/.env`);
 const provider = await loadActiveProvider({ ...process.env, PLURNK_MODEL: alias });
 
 const packet = (turn) => {
-    const base = join(digestDir, `${worker}-1-${turn}`);
+    const base = join(digestDir, `${session}-1-${turn}`);
     if (!existsSync(`${base}.user.md`)) throw new Error(`no recorded packet for turn ${turn}`);
     return { system: readFileSync(`${base}.system.md`, "utf8"), user: readFileSync(`${base}.user.md`, "utf8"), recorded: readFileSync(`${base}.assistant.md`, "utf8") };
 };
 
 // The turn envelope: the Log section split by the turn each row belongs to.
 const turnEnvelope = (user) => {
-    const clumpAt = user.indexOf("\n## Worker\n");
-    if (clumpAt < 0) throw new Error("recorded packet has no Worker section");
+    const clumpAt = user.indexOf("\n## Session\n");
+    if (clumpAt < 0) throw new Error("recorded packet has no Session section");
     const log = user.slice(0, clumpAt);
     const clump = user.slice(clumpAt + 1);
     const lines = log.split("\n");
@@ -53,8 +53,8 @@ const turnEnvelope = (user) => {
 // verbatim from the retained emission; each turn's rows (arrivals, receipts, results, whatever
 // origin) are the user message that follows; the current turn's rows and the clump close it.
 const emissionEnvelope = (user, turn) => {
-    const clumpAt = user.indexOf("\n## Worker\n");
-    if (clumpAt < 0) throw new Error("recorded packet has no Worker section");
+    const clumpAt = user.indexOf("\n## Session\n");
+    if (clumpAt < 0) throw new Error("recorded packet has no Session section");
     const clump = user.slice(clumpAt + 1);
     const rowsByTurn = new Map();
     let currentTurn = null;
@@ -66,7 +66,7 @@ const emissionEnvelope = (user, turn) => {
     }
     const messages = [];
     for (let t = 1; t <= turn; t += 1) {
-        const emission = join(digestDir, `${worker}-1-${t}.assistant.md`);
+        const emission = join(digestDir, `${session}-1-${t}.assistant.md`);
         if (t < turn && existsSync(emission)) messages.push({ role: "assistant", content: readFileSync(emission, "utf8").trimEnd() });
         const rows = rowsByTurn.get(t);
         if (rows !== undefined) messages.push({ role: "user", content: rows.join("\n").trimEnd() });
@@ -79,8 +79,8 @@ const emissionEnvelope = (user, turn) => {
 
 // The operator's shapes (2026-09-28). Rows by turn, all origins, from the recorded packet.
 const rowsAndClump = (user) => {
-    const clumpAt = user.indexOf("\n## Worker\n");
-    if (clumpAt < 0) throw new Error("recorded packet has no Worker section");
+    const clumpAt = user.indexOf("\n## Session\n");
+    if (clumpAt < 0) throw new Error("recorded packet has no Session section");
     const clump = user.slice(clumpAt + 1);
     const rowsByTurn = new Map();
     let currentTurn = null;
@@ -93,7 +93,7 @@ const rowsAndClump = (user) => {
     return { rowsByTurn, clump, log: user.slice(0, clumpAt).trimEnd() };
 };
 const previousEmission = (turn) => {
-    const path = join(digestDir, `${worker}-1-${turn - 1}.assistant.md`);
+    const path = join(digestDir, `${session}-1-${turn - 1}.assistant.md`);
     return existsSync(path) ? `## Previous Turn Emission\n\n${readFileSync(path, "utf8").trimEnd()}` : null;
 };
 // lastturn: [user rows 1]…[user rows T-1][assistant emission T-1][user rows T + clump]
@@ -121,13 +121,13 @@ const firstOp = (text) => {
     return m === null ? null : `${m[1]}${m[2].trim().length > 0 ? ` ${m[2].trim().split(/\s+/u)[0]}` : ""}`;
 };
 // A packet echo: the reply continues the packet's own shape instead of answering it.
-const echoes = (content) => /^### log:\/\/\/|^## (Log|Worker|Open Work|Open Messages|Context(?: Curation)?)/mu.test(content);
+const echoes = (content) => /^### log:\/\/\/|^## (Log|Session|Open Work|Open Messages|Context(?: Curation)?)/mu.test(content);
 const restarts = (reasoning) => /(understand|analy[sz]e|look at|re-?read|figure out) (the|this) (task|issue|problem|repository|codebase)/iu.test((reasoning ?? "").slice(0, 600));
 
 const cells = [];
 for (const turn of turnsArg.split(",").map(Number)) for (const arm of armsArg.split(",")) for (let i = 0; i < samples; i += 1) cells.push({ turn, arm, i });
 let next = 0;
-const worker_ = async () => {
+const session_ = async () => {
     while (next < cells.length) {
         const cell = cells[next++];
         const { system, user, recorded } = packet(cell.turn);
@@ -151,7 +151,7 @@ const worker_ = async () => {
         const t0 = Date.now();
         let row;
         try {
-            const r = await provider.generate({ workerId: `envelope-${cell.arm}-${cell.turn}-${cell.i}`, messages });
+            const r = await provider.generate({ sessionId: `envelope-${cell.arm}-${cell.turn}-${cell.i}`, messages });
             const content = r.assistant?.content ?? "";
             const reasoning = r.assistant?.reasoning ?? "";
             const usage = r.accounting?.[0]?.usage ?? {};
@@ -173,15 +173,15 @@ const worker_ = async () => {
         } catch (error) {
             row = { error: String(error).slice(0, 300) };
         }
-        const line = { alias, worker, ...cell, ...row };
+        const line = { alias, session, ...cell, ...row };
         appendFileSync(out, `${JSON.stringify(line)}\n`);
         console.log(JSON.stringify(line).slice(0, 220));
     }
 };
-await Promise.all(Array.from({ length: concurrency }, worker_));
+await Promise.all(Array.from({ length: concurrency }, session_));
 
 // Summary: per arm, mean reasoning tokens, restart share, first-op match share.
-const rows = readFileSync(out, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((r) => r.alias === alias && r.worker === worker && r.error === undefined);
+const rows = readFileSync(out, "utf8").trim().split("\n").map((l) => JSON.parse(l)).filter((r) => r.alias === alias && r.session === session && r.error === undefined);
 const by = new Map();
 for (const r of rows) { const k = r.arm; const a = by.get(k) ?? { n: 0, reasoning: 0, restarts: 0, match: 0, echoes: 0, seconds: 0 }; a.n += 1; a.echoes += r.echoes ? 1 : 0; a.reasoning += r.reasoningTokens ?? 0; a.restarts += r.restarts ? 1 : 0; a.match += r.match ? 1 : 0; a.seconds += r.seconds; by.set(k, a); }
 console.log("\narm | samples | mean reasoning tokens | restarts from the task | first op matches recorded | packet echoes | mean seconds");

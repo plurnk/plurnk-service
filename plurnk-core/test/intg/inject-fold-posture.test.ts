@@ -13,7 +13,7 @@ const heldLoopMock = () => new Mock({ contextWindow: 16384, responses: [
     makeMockResponse("````SEND [200]\ndone again\n````", 10),
 ] });
 
-test("{§worker-ownership}: injecting a message preserves the owner's pending review", async () => {
+test("{§session-ownership}: injecting a message preserves the owner's pending review", async () => {
     await withDaemon(heldLoopMock(), async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -21,11 +21,11 @@ test("{§worker-ownership}: injecting a message preserves the owner's pending re
             const workspaceId = (created.result as { id: number }).id;
             const proposals = subscribeNotifications(ws, "loop/proposal");
             const started = await rpcCall(ws, 2, "loop.run", { prompt: "start working" });
-            const { modelWorkerId } = started.result as { modelWorkerId: number };
+            const { modelSessionId } = started.result as { modelSessionId: number };
             const pending = await waitFor(() => proposals() as Array<{ logEntryId: number }>, (items) => items.length === 1);
             const folded = await rpcCall(ws, 3, "loop.run", { prompt: "also do this" });
             assert.equal((folded.result as { action: string }).action, "injected_next_turn");
-            assert.equal((await daemon.readWorker({ workspaceId, identity: { id: modelWorkerId } }))?.owner, TEST_OWNER);
+            assert.equal((await daemon.readSession({ workspaceId, identity: { id: modelSessionId } }))?.owner, TEST_OWNER);
             assert.equal((await daemon.pendingProposals(workspaceId)).length, 1);
             await rpcCall(ws, 5, "loop.resolve", { logEntryId: pending[0].logEntryId, decision: "reject" });
         } finally { ws.close(); }

@@ -4,10 +4,10 @@
 // another stored representation.
 
 export type ReasoningEventPayload = {
-    workerId: number;
+    sessionId: number;
     loopId: number;
     turnId: number;
-    // The turn's ordinals in its worker's log, its `L/T` ({§turn-source-resources}).
+    // The turn's ordinals in its session's log, its `L/T` ({§turn-source-resources}).
     loopSeq: number;
     turnSeq: number;
     modelCallId: number;

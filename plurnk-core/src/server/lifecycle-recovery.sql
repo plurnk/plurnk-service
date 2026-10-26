@@ -1,5 +1,5 @@
 -- Process-bound lifecycle recovery, before client transports open or drains resume.
--- {§worker-lifecycle-restart-recovery}: database settlement is one idempotent transaction.
+-- {§session-lifecycle-restart-recovery}: database settlement is one idempotent transaction.
 
 -- TX: recovery_settle_process_owners
 -- 102 is a claim held by a process-local drain. After restart that owner is gone;
@@ -13,7 +13,7 @@ SET status = 500,
             'title', 'Owner vanished',
             'status', 500,
             'detail', 'The daemon restarted while this loop was active; its process-local owner no longer exists.',
-            'instance', 'ops://' || (SELECT name FROM workers WHERE workers.id = loops.worker_id) || '/' || sequence
+            'instance', 'ops://' || (SELECT name FROM sessions WHERE sessions.id = loops.session_id) || '/' || sequence
         )
     )
 WHERE status = 102;
@@ -54,7 +54,7 @@ SET status = 500,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE completed_at IS NULL;
 
--- {§worker-lifecycle-restart-recovery} Every proposed row depended on a
+-- {§session-lifecycle-restart-recovery} Every proposed row depended on a
 -- process-local resolution waiter. At boot that owner is necessarily gone, so
 -- terminalize the occurrence before {§proposal-list} can open to clients.
 UPDATE log_entries
@@ -122,34 +122,34 @@ UPDATE loops
 SET status = 100,
     wait_poll_at = NULL
 WHERE status = 202
-  AND (observed_wake_revision < (SELECT wake_revision FROM workers WHERE id = loops.worker_id)
+  AND (observed_wake_revision < (SELECT wake_revision FROM sessions WHERE id = loops.session_id)
   OR EXISTS (SELECT 1 FROM loop_obligations held WHERE held.loop_id = loops.id
-      AND held.streams = 0 AND held.workers = 0 AND held.messages = 0));
+      AND held.streams = 0 AND held.sessions = 0 AND held.messages = 0));
 
 -- PREP: recovery_orphan_message_sources
 -- {§message-loop-containment}: finish an absent or partially staged orphan
 -- recovery before queued drains become visible at boot. A non-queued recovery
 -- already crossed its delivery boundary and must never be replayed.
-SELECT source.id AS loop_id, source.worker_id AS worker_id, w.origin
+SELECT source.id AS loop_id, source.session_id AS session_id, w.origin
 FROM loops source
-JOIN workers w ON w.id = source.worker_id
+JOIN sessions w ON w.id = source.session_id
 LEFT JOIN loops recovery ON recovery.orphan_source_loop_id = source.id
 WHERE source.status IN (200, 413, 429, 499, 500, 504, 508)
   AND source.terminated_by IS NOT 'cancel'
   AND source.sequence > w.cancelled_through_sequence
   AND (recovery.id IS NULL OR recovery.status = 100)
   AND EXISTS (SELECT 1 FROM loop_messages m WHERE m.loop_id = source.id AND m.ordinal > 1 AND m.log_entry_id IS NULL)
-ORDER BY source.worker_id, source.sequence;
--- PREP: recovery_queued_workers
-SELECT DISTINCT w.id AS worker_id, w.workspace_id, w.origin
-FROM workers w
-JOIN loops l ON l.worker_id = w.id
+ORDER BY source.session_id, source.sequence;
+-- PREP: recovery_queued_sessions
+SELECT DISTINCT w.id AS session_id, w.workspace_id, w.origin
+FROM sessions w
+JOIN loops l ON l.session_id = w.id
 WHERE l.status = 100
 ORDER BY w.id;
 
--- PREP: recovery_parked_workers
-SELECT DISTINCT w.id AS worker_id, w.workspace_id, w.origin
-FROM workers w
-JOIN loops l ON l.worker_id = w.id
+-- PREP: recovery_parked_sessions
+SELECT DISTINCT w.id AS session_id, w.workspace_id, w.origin
+FROM sessions w
+JOIN loops l ON l.session_id = w.id
 WHERE l.status = 202
 ORDER BY w.id;

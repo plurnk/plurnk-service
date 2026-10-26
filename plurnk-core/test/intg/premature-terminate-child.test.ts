@@ -1,6 +1,6 @@
-// {§send-premature-terminate} extended to child workers — completion while a spawned child is still
+// {§send-premature-terminate} extended to child sessions — completion while a spawned child is still
 // live is premature exactly as completion with an open stream is (children and streams are the same
-// kind of "live thing the worker holds", {§worker-loop-lifecycle}). Engine-level A/B so it's race-free.
+// kind of "live thing the session holds", {§session-loop-lifecycle}). Engine-level A/B so it's race-free.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -8,7 +8,7 @@ import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
 import { completeStmt, execStmt, killStmt, dispositionStmt, readStmt, sendStmt, urlPath, noteStmt } from "./_dsl.ts";
@@ -16,20 +16,20 @@ import DispatchAsPlurnk from "../../src/server/dispatch-as-plurnk.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 const knownPath = (pathname: string): ParsedPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null, pathname, query: null, fragment: null,
 });
 
-test("{§completion-joins-live-work} completion with a live child worker joins it on the record (no erasure), never a strike", async () => {
+test("{§completion-joins-live-work} completion with a live child session joins it on the record (no erasure), never a strike", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-child-${crypto.randomUUID()}`);
-        const parentWorker = await insertWorker(db, workspaceId);
-        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
+        const parentSession = await insertSession(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentSession, 1, "parent");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const send200 = (loopId: number) => engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("Complete.")] } }] }),
-            workspaceId, workerId: parentWorker, loopId,
+            workspaceId, sessionId: parentSession, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
 
@@ -37,12 +37,12 @@ test("{§completion-joins-live-work} completion with a live child worker joins i
         const clean = await send200(parentLoop);
         assert.equal(clean.status, 200, "with no live child, completed inventory terminates cleanly");
 
-        // Spawn a live child worker (parent_worker_id = parentWorker, a non-terminal loop — default status 102).
-        const childWorker = await insertWorker(db, workspaceId, parentWorker);
-        await insertLoop(db, childWorker, 1, "child");
+        // Spawn a live child session (parent_session_id = parentSession, a non-terminal loop — default status 102).
+        const childSession = await insertSession(db, workspaceId, parentSession);
+        await insertLoop(db, childSession, 1, "child");
 
         // Completion over a live child is a join ({§completion-joins-live-work}): the loop parks.
-        const joiningLoop = await insertLoop(db, parentWorker, 2, "parent again");
+        const joiningLoop = await insertLoop(db, parentSession, 2, "parent again");
         const premature = await send200(joiningLoop);
         assert.equal(premature.status, 202, "the completion joins the live child: the loop parks, it never went terminal");
 
@@ -58,13 +58,13 @@ test("{§send-administrative-terminal} an _plurnk administrative completion clos
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `admin-terminal-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const modelLoopId = await insertLoop(db, workerId, 1, "model work");
-        const childWorkerId = await insertWorker(db, workspaceId, workerId);
-        const childLoopId = await insertLoop(db, childWorkerId, 1, "child work");
+        const sessionId = await insertSession(db, workspaceId);
+        const modelLoopId = await insertLoop(db, sessionId, 1, "model work");
+        const childSessionId = await insertSession(db, workspaceId, sessionId);
+        const childLoopId = await insertLoop(db, childSessionId, 1, "child work");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        await DispatchAsPlurnk.dispatch(engine, db, workspaceId, workerId, [noteStmt("Maintenance.")]);
-        const loops = await db.test_loop_queue_by_worker.all<{ id: number; status: number }>({ worker_id: workerId });
+        await DispatchAsPlurnk.dispatch(engine, db, workspaceId, sessionId, [noteStmt("Maintenance.")]);
+        const loops = await db.test_loop_queue_by_session.all<{ id: number; status: number }>({ session_id: sessionId });
         assert.ok(loops.some(({ id, status }) => id !== modelLoopId && status === 200),
             "the administrative transaction closes despite unrelated model work");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: modelLoopId }))?.status, 102, "the model loop remains live");
@@ -79,11 +79,11 @@ test("{§completion-defers-to-results} a newer terminal loop cannot mask a child
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-concluded-${crypto.randomUUID()}`);
-        const parentWorker = await insertWorker(db, workspaceId);
-        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
-        const childWorker = await insertWorker(db, workspaceId, parentWorker);
-        const unresolvedLoop = await insertLoop(db, childWorker, 1, "unresolved");
-        const ownLoop = await insertLoop(db, childWorker, 2, "own work");        // seq 2 — the child's actual loop
+        const parentSession = await insertSession(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentSession, 1, "parent");
+        const childSession = await insertSession(db, workspaceId, parentSession);
+        const unresolvedLoop = await insertLoop(db, childSession, 1, "unresolved");
+        const ownLoop = await insertLoop(db, childSession, 2, "own work");        // seq 2 — the child's actual loop
         await db.test_set_loop_status.run({
             id: ownLoop,
             status: 200,
@@ -93,7 +93,7 @@ test("{§completion-defers-to-results} a newer terminal loop cannot mask a child
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const refused = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("Complete.")] } }] }),
-            workspaceId, workerId: parentWorker, loopId: parentLoop,
+            workspaceId, sessionId: parentSession, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(refused.status, 202, "the older unresolved loop keeps the child live: the completion joins it");
@@ -104,10 +104,10 @@ test("{§completion-defers-to-results} a newer terminal loop cannot mask a child
             terminal_result: JSON.stringify({ status: 200 }),
         });
         await new LoopLifecycle(db).wake(parentLoop);
-        assert.equal((await db.drain_claim_next_loop.get<{ id: number }>({ worker_id: parentWorker }))?.id, parentLoop);
+        assert.equal((await db.drain_claim_next_loop.get<{ id: number }>({ session_id: parentSession }))?.id, parentLoop);
         const completed = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null } }] }),
-            workspaceId, workerId: parentWorker, loopId: parentLoop,
+            workspaceId, sessionId: parentSession, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(completed.status, 200, "completion succeeds only after every child loop is terminal");
@@ -120,13 +120,13 @@ test("{§completion-defers-to-results}: READ + completed inventory in the same t
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pend-read-${crypto.randomUUID()}`);
-        const parentWorker = await insertWorker(db, workspaceId);
-        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        const parentSession = await insertSession(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentSession, 1, "parent");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), sendStmt(null, "the host is db.internal")] } }] }),
-            workspaceId, workerId: parentWorker, loopId: parentLoop,
+            workspaceId, sessionId: parentSession, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "the turn stays a continue — the loop never went terminal");
@@ -143,18 +143,18 @@ test("{§send-wait-scope} WAIT ignores a non-duration decoration and continues w
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "wait");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "```WAIT <-1>\nstanding by\n```", reasoning: null } }] }),
-            workspaceId, workerId, loopId,
+            workspaceId, sessionId, loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102);
         const loopStatus = (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status;
         assert.equal(loopStatus, 102, "an ignored scope does not invent a future wake");
-        const row = await db.test_disposition_rows_for_worker.all<{ status_rx: number; rx: string }>({ worker_id: workerId });
+        const row = await db.test_disposition_rows_for_session.all<{ status_rx: number; rx: string }>({ session_id: sessionId });
         assert.equal(row.length, 1);
         assert.equal(row[0].status_rx, 102);
         assert.equal(JSON.parse(row[0].rx).problem, undefined);
@@ -166,14 +166,14 @@ test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, a
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `next-scope-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "read the note");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "read the note");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.txt", channel: "body", content: "the note", mimetype: "text/plain", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const content = "````READ (worker:///note.txt)````\n````WAIT (sh:///missing) [60] [{\"timeout\":42}]\nstanding by\n````";
+        const content = "````READ (workspace:///note.txt)````\n````WAIT (sh:///missing) [60] [{\"timeout\":42}]\nstanding by\n````";
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
-            workspaceId, workerId, loopId,
+            workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "read the note" }],
         });
         assert.equal(result.status, 102);
@@ -199,8 +199,8 @@ test("{§send-premature-terminate} waiting cannot complete an empty join over a 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-failure-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "wait");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "wait");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({
@@ -217,7 +217,7 @@ test("{§send-premature-terminate} waiting cannot complete an empty join over a 
                 }],
             }),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
@@ -236,11 +236,11 @@ test("{§send-premature-terminate} a successful same-turn scoped KILL continues 
     try {
         const run = async (status: 200 | 202) => {
             const workspaceId = await insertWorkspace(db, `fold-disposition-${status}-${crypto.randomUUID()}`);
-            const workerId = await insertWorker(db, workspaceId);
-            const loopId = await insertLoop(db, workerId, 1, "curate");
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "curate");
             await seedEntryWithChannel(db, {
                 workspaceId,
-                scheme: "worker",
+                scheme: "workspace",
                 pathname: "/notes.md",
                 channel: "body",
                 content: "context to curate",
@@ -254,7 +254,7 @@ test("{§send-premature-terminate} a successful same-turn scoped KILL continues 
                     responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/notes.md")), noteStmt("Continue.")] } }],
                 }),
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
             });
@@ -278,7 +278,7 @@ test("{§send-premature-terminate} a successful same-turn scoped KILL continues 
                     }],
                 }),
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 messages: [{ role: "system", content: "SD" }, { role: "user", content: "continue" }],
             });
@@ -302,13 +302,13 @@ test("{§send-premature-terminate} a READ with a NOTE continues while its messag
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-read-ok-${crypto.randomUUID()}`);
-        const parentWorker = await insertWorker(db, workspaceId);
-        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
+        const parentSession = await insertSession(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentSession, 1, "parent");
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/config.json", channel: "body", content: '{"host":"db.internal"}', mimetype: "application/json", state: "static" });
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const result = await engine.runTurn({
             provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [readStmt(knownPath("/config.json")), noteStmt("Continue.")] } }] }),
-            workspaceId, workerId: parentWorker, loopId: parentLoop,
+            workspaceId, sessionId: parentSession, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 102, "READ with a NOTE does not answer the assignment");
@@ -322,14 +322,14 @@ test("{§completion-joins-live-work} a model declaring done with a live child pa
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `prem-strike-${crypto.randomUUID()}`);
-        const parentWorker = await insertWorker(db, workspaceId);
-        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
+        const parentSession = await insertSession(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentSession, 1, "parent");
         // A persistently live child (its loop stays non-terminal through the parent's whole loop).
-        const childWorker = await insertWorker(db, workspaceId, parentWorker);
-        await insertLoop(db, childWorker, 1, "child");
+        const childSession = await insertSession(db, workspaceId, parentSession);
+        await insertLoop(db, childSession, 1, "child");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 6 }, () => ({ assistant: { content: "", reasoning: null, ops: [completeStmt("Complete.")] } })) });
-        const result = await engine.runLoop({ provider, workspaceId, workerId: parentWorker, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId: parentSession, loopId: parentLoop, messages: [], maxTurns: 10, maxStrikes: 3 });
         assert.equal(result.result.status, 202, "the first claim joins the live child: the loop parks");
         assert.equal(provider.received.length, 1, "no further turn runs until the child concludes and wakes the loop");
         assert.notEqual(result.result.status, 200, "a model declaring done with work running NEVER gets a false 200");
@@ -340,23 +340,23 @@ test("{§completion-defers-to-results} 499 is never gated by live work: it recur
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `guard-499-${crypto.randomUUID()}`);
-        const parentWorker = await insertWorker(db, workspaceId);
-        const parentLoop = await insertLoop(db, parentWorker, 1, "parent");
-        const childWorker = await insertWorker(db, workspaceId, parentWorker);
-        const childLoop = await insertLoop(db, childWorker, 1, "child"); // live child
-        await seedEntryWithChannel(db, { workspaceId, scheme: "worker", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
+        const parentSession = await insertSession(db, workspaceId);
+        const parentLoop = await insertLoop(db, parentSession, 1, "parent");
+        const childSession = await insertSession(db, workspaceId, parentSession);
+        const childLoop = await insertLoop(db, childSession, 1, "child"); // live child
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/config.json", channel: "body", content: '{"host":"x"}', mimetype: "application/json", state: "static" });
         const lifecycle = new LoopLifecycle(db);
         const engine = new Engine({
             db,
             schemes: new SchemeRegistry(),
             mimetypes: DEFAULT_MIMETYPES,
-            cancelWorker: async (root, reason) => { await lifecycle.cancelTree(root, reason, true); },
+            cancelSession: async (root, reason) => { await lifecycle.cancelTree(root, reason, true); },
         });
-        const parent = await db.envelope_get_worker_by_id.get<{ name: string }>({ id: parentWorker });
+        const parent = await db.envelope_get_session_by_id.get<{ name: string }>({ id: parentSession });
         assert.ok(parent);
         const result = await engine.runTurn({
-            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [killStmt({ ...urlPath("worker", ""), hostname: parent.name, raw: `worker://${parent.name}` })] } }] }),
-            workspaceId, workerId: parentWorker, loopId: parentLoop,
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [killStmt({ ...urlPath("session", ""), hostname: parent.name, raw: `session://${parent.name}` })] } }] }),
+            workspaceId, sessionId: parentSession, loopId: parentLoop,
             messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }],
         });
         assert.equal(result.status, 499, "the abandon lands — live work never gates a 499 ({§completion-defers-to-results} defers only settled results)");

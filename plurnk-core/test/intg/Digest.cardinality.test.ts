@@ -10,7 +10,7 @@ import Engine from "../../src/core/Engine.ts";
 import Fork from "../../src/core/fork.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { editStmt, noteStmt, urlPath } from "./_dsl.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 
 test("{§digest-forensic-fidelity}: original failures, ambient observations and forked history retain their provenance", async (t) => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-provenance-"));
@@ -23,8 +23,8 @@ test("{§digest-forensic-fidelity}: original failures, ambient observations and 
     let branch = 0;
     try {
         const workspaceId = await insertWorkspace(db, "digest-provenance");
-        parent = await insertWorker(db, workspaceId, null, "parent");
-        child = await insertWorker(db, workspaceId, parent, "child");
+        parent = await insertSession(db, workspaceId, null, "parent");
+        child = await insertSession(db, workspaceId, parent, "child");
         const parentLoop = await insertLoop(db, parent, 1, "inspect");
         const childLoop = await insertLoop(db, child, 1, "inspect");
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -35,22 +35,22 @@ test("{§digest-forensic-fidelity}: original failures, ambient observations and 
             response([noteStmt("observed")]),
         ] });
         const messages = [{ role: "user" as const, content: "inspect" }];
-        await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages, turnNumber: 1 });
-        await engine.runTurn({ provider, workspaceId, workerId: child, loopId: childLoop, messages, turnNumber: 1 });
-        await engine.runTurn({ provider, workspaceId, workerId: parent, loopId: parentLoop, messages, turnNumber: 2 });
+        await engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages, turnNumber: 1 });
+        await engine.runTurn({ provider, workspaceId, sessionId: child, loopId: childLoop, messages, turnNumber: 1 });
+        await engine.runTurn({ provider, workspaceId, sessionId: parent, loopId: parentLoop, messages, turnNumber: 2 });
         branch = await Fork.fork(db, parent, "branch");
     } finally { await db.close(); }
 
     Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir });
     const { log_entries: entries } = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
-        log_entries: Array<{ worker_id: number; origin: string; target: string; status_rx: number; inherited_history: boolean; ambient_event_id: number | null }>;
+        log_entries: Array<{ session_id: number; origin: string; target: string; status_rx: number; inherited_history: boolean; ambient_event_id: number | null }>;
     };
     const failures = entries.filter(({ status_rx }) => status_rx >= 400);
-    const original = failures.find(({ worker_id, target }) => worker_id === parent && target === "missing:///parent");
-    const inherited = failures.find(({ worker_id, target }) => worker_id === branch && target === "missing:///parent");
-    const childOriginal = failures.find(({ worker_id, target }) => worker_id === child && target === "missing:///child");
-    const observation = failures.find(({ worker_id, target }) => worker_id === parent && target === "missing:///child");
-    const inheritedObservation = failures.find(({ worker_id, target }) => worker_id === branch && target === "missing:///child");
+    const original = failures.find(({ session_id, target }) => session_id === parent && target === "missing:///parent");
+    const inherited = failures.find(({ session_id, target }) => session_id === branch && target === "missing:///parent");
+    const childOriginal = failures.find(({ session_id, target }) => session_id === child && target === "missing:///child");
+    const observation = failures.find(({ session_id, target }) => session_id === parent && target === "missing:///child");
+    const inheritedObservation = failures.find(({ session_id, target }) => session_id === branch && target === "missing:///child");
     assert.ok(original && inherited && childOriginal && observation && inheritedObservation, "each original failure and its observed/copied forms survive export");
     assert.equal(original.origin, "model");
     assert.equal(original.inherited_history, false);
@@ -73,15 +73,15 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const db = await openMigrated(dbPath);
-    let workerId = 0;
+    let sessionId = 0;
     let loopId = 0;
     let turnId = 0;
     let killId = 0;
     const readIds: number[] = [];
     try {
         const workspaceId = await insertWorkspace(db, "digest-cardinality");
-        workerId = await insertWorker(db, workspaceId);
-        loopId = await insertLoop(db, workerId, 1, "amplify");
+        sessionId = await insertSession(db, workspaceId);
+        loopId = await insertLoop(db, sessionId, 1, "amplify");
         turnId = await insertTurn(db, loopId, 1, 200);
         const insert = async (
             sequence: number,
@@ -96,8 +96,8 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
             fragment: string | null = null,
         ): Promise<number> => {
             const row = await db.engine_insert_log_entry.get<{ id: number }>({
-                worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence,
-                origin, source: origin === "_plurnk" ? "worker://researcher" : null, model_call_id: null,
+                session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence,
+                origin, source: origin === "_plurnk" ? "session://researcher" : null, model_call_id: null,
                 op,
                 scheme, username: null, password: null, hostname, port,
                 pathname, query, fragment, lineMarker: null,
@@ -141,7 +141,7 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
         const markdown = await readFile(join(digestDir, "digest.md"), "utf8");
         const json = JSON.parse(await readFile(join(digestDir, "digest.json"), "utf8")) as {
             log_entries: Array<{
-                worker_id: number; loop_id: number; turn_id: number;
+                session_id: number; loop_id: number; turn_id: number;
                 origin: string; source: string | null; attrs: unknown;
                 target: string | null; stream?: string;
             }>;
@@ -161,9 +161,9 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
             12,
             "distinct materialization targets remain distinct Markdown evidence",
         );
-        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/repeat\.test:9443\/page\?q=1#body source=worker:\/\/researcher ×2 \(seq 65–66\)/);
-        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/ source=worker:\/\/researcher\n/, "an absent query has its own group");
-        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\? source=worker:\/\/researcher\n/, "an explicit empty query has its own group");
+        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/repeat\.test:9443\/page\?q=1#body source=session:\/\/researcher ×2 \(seq 65–66\)/);
+        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/ source=session:\/\/researcher\n/, "an absent query has its own group");
+        assert.match(markdown, /\[_plurnk\] materialized entry\[200\] https:\/\/empty\.test\/\? source=session:\/\/researcher\n/, "an explicit empty query has its own group");
         assert.match(markdown, /\[model\] atlas\[200\] filesystem_read_text_file stream=atlas:\/\/\/1\/1\/64/);
         assert.equal(json.log_entries.length, 69, "machine-readable evidence remains lossless");
         assert.equal(json.log_curation_effects.length, 50, "the suppressed broad scoped KILL retains every exact selected target");
@@ -179,7 +179,7 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
         assert.deepEqual(
             json.log_entries[0],
             {
-                id: 1, worker_id: workerId, loop_id: loopId, turn_id: turnId, sequence: 1,
+                id: 1, session_id: sessionId, loop_id: loopId, turn_id: turnId, sequence: 1,
                 origin: "model", source: null, model_call_id: null,
                 inherited_history: false, ambient_event_id: null,
                 attrs: {}, op: "READ", target: "https://example.test/whale",
@@ -189,7 +189,7 @@ test("{§digest-forensic-fidelity} digest Markdown exposes amplification as exac
             "JSON preserves the row's actor and lifecycle coordinates",
         );
         assert.equal(json.log_entries[50]?.origin, "_plurnk", "JSON distinguishes automatic materialization from model actions");
-        assert.equal(json.log_entries[50]?.source, "worker://researcher", "JSON preserves the causal worker identity");
+        assert.equal(json.log_entries[50]?.source, "session://researcher", "JSON preserves the causal session identity");
         assert.deepEqual(json.log_entries[50]?.attrs, { kind: "entry_materialized" }, "JSON preserves typed machine provenance");
         assert.equal(json.log_entries.find((entry) => entry.target?.includes("wikipedia"))?.target, "https://en.wikipedia.org:8443/wiki/Paris?b=2&a=1&a=3", "JSON preserves authority, port, and serialized query");
         assert.equal(json.log_entries.find((entry) => entry.stream !== undefined)?.stream, "atlas:///1/1/64/atlas", "JSON preserves an the execution's runtime stream identity");

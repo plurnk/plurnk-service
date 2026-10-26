@@ -5,7 +5,7 @@ import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import Engine from "../../src/core/Engine.ts";
 import DbChannelCaps from "../../src/core/caps/DbChannelCaps.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { provider } from "./reasoning-fixture.ts";
 import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { testExecutors } from "./_execs.ts";
@@ -17,26 +17,26 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "stream-timing");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const entryId = await seedEntryWithChannel(db, {
             workspaceId, scheme: "sh", authority: "", pathname: "/1234abcd",
             channel: "stdout", content: "", mimetype: "text/stream", state: "active",
         });
         const subscriptionId = await ChannelWrite.openSubscription(db, {
-            workerId, entryId, scheme: "sh", handle: "quiet-command",
+            sessionId, entryId, scheme: "sh", handle: "quiet-command",
         });
         const row = await db.test_stream_opened_at.get<{ opened_at: string }>({ id: subscriptionId });
         assert.ok(row);
         t.mock.method(Date, "now", () => Date.parse(row.opened_at) + 125_500);
         const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
         const build = () => packets.buildRequestPacket({
-            initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 1,
+            initialMessages: [], workspaceId, sessionId, loopId, currentTurnSeq: 1,
             provider: provider(), gitStatus: null,
         });
         const first = await build();
         assert.deepEqual(JSON.parse(first.sections.find(({ name }) => name === "work")!.content), {
-            workers: [],
+            sessions: [],
             streams: [{
                 status: "active", path: "sh:///1234abcd",
                 detail: "elapsed 125s; output unchanged 125s; stdout 0 lines (+0 bytes)",
@@ -51,7 +51,7 @@ test("{§child-orientation}: a quiet stream's packet reports elapsed runtime and
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         const terminal = await build();
         assert.deepEqual(JSON.parse(terminal.sections.find(({ name }) => name === "work")!.content),
-            { workers: [], streams: [], messages: [] }, "closed streams leave the active inventory");
+            { sessions: [], streams: [], messages: [] }, "closed streams leave the active inventory");
     } finally { await db.close(); }
 });
 
@@ -59,7 +59,7 @@ test("{§child-orientation}: only changes to published output reset the durable 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "stream-clock-writes");
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const pathname = "/abcd1234";
         const entryId = await seedEntryWithChannel(db, {
             workspaceId, scheme: "sh", authority: "", pathname,
@@ -69,9 +69,9 @@ test("{§child-orientation}: only changes to published output reset the durable 
             entry_id: entryId, name, content: "", mimetype: "text/stream", state: "active",
         });
         let subscriptionId = await ChannelWrite.openSubscription(db, {
-            workerId, entryId, scheme: "sh", handle: "fixture", publishedChannel: "stdout",
+            sessionId, entryId, scheme: "sh", handle: "fixture", publishedChannel: "stdout",
         });
-        const channels = new DbChannelCaps(makeSchemeCtx({ db, workspaceId, workerId }), "sh", "");
+        const channels = new DbChannelCaps(makeSchemeCtx({ db, workspaceId, sessionId }), "sh", "");
         const executors = await testExecutors();
         const schemes = new SchemeRegistry();
         schemes.registerRuntimeSchemes(executors);
@@ -92,8 +92,8 @@ test("{§child-orientation}: only changes to published output reset the durable 
             { name: "equal-sized replacement", changed: true, write: () => channels.replace(pathname, "stdout", "bravo") },
             { name: "clearing content", changed: true, write: () => channels.replace(pathname, "stdout", "") },
             { name: "empty-to-empty replacement", changed: false, write: () => channels.replace(pathname, "stdout", "") },
-            { name: "executor append", changed: true, write: () => ChannelWrite.appendToChannel(db, { entryId, producerWorkerId: workerId, channel: "stdout", chunk: "visible\n" }) },
-            { name: "ordinary stream READ", changed: false, write: () => clientRead(engine, db, { workspaceId, workerId, statement: readStmt(urlPath("sh", pathname, "stdout"), { marks: [1, -1] }) }) },
+            { name: "executor append", changed: true, write: () => ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "stdout", chunk: "visible\n" }) },
+            { name: "ordinary stream READ", changed: false, write: () => clientRead(engine, db, { workspaceId, sessionId, statement: readStmt(urlPath("sh", pathname, "stdout"), { marks: [1, -1] }) }) },
         ]) await t.test(specimen.name, async () => {
             await rebase();
             const result = await specimen.write();
@@ -116,7 +116,7 @@ test("{§child-orientation}: only changes to published output reset the durable 
         await ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         await channels.append(pathname, "stdout", "after close");
         assert.equal((await clock())?.output_changed_at, original, "a closed subscription's clock is settled");
-        subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "all-channels" });
+        subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "all-channels" });
         await rebase();
         await channels.append(pathname, "stderr", "published\n");
         assert.ok((await clock())!.output_changed_at! > original, "another published channel also resets the one stream clock");
@@ -127,14 +127,14 @@ test("{§child-orientation}: packet durations advance independently, clamp clock
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "stream-clock-packets");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const entryId = await seedEntryWithChannel(db, {
             workspaceId, scheme: "sh", authority: "", pathname: "/1234abcd",
             channel: "stdout", content: "ready\n", mimetype: "text/stream", state: "active",
         });
         await db.test_seed_channel.run({ entry_id: entryId, name: "stderr", content: "", mimetype: "text/stream", state: "active" });
-        const subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId, scheme: "sh", handle: "fixture" });
+        const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId, scheme: "sh", handle: "fixture" });
         const openedAt = "2026-01-01T00:00:00.000Z";
         const changedAt = "2026-01-01T00:01:40.000Z";
         await db.test_stream_set_clock.run({ id: subscriptionId, opened_at: openedAt, output_changed_at: changedAt });
@@ -142,7 +142,7 @@ test("{§child-orientation}: packet durations advance independently, clamp clock
         t.mock.method(Date, "now", () => now);
         const packets = new PacketBuilder({ db, schemes: new SchemeRegistry(), executors: () => undefined });
         const build = () => packets.buildRequestPacket({
-            initialMessages: [], workspaceId, workerId, loopId, currentTurnSeq: 1, provider: provider(), gitStatus: null,
+            initialMessages: [], workspaceId, sessionId, loopId, currentTurnSeq: 1, provider: provider(), gitStatus: null,
         });
         const first = await build();
         assert.equal(JSON.parse(first.sections.find(({ name }) => name === "work")!.content).streams[0].detail,

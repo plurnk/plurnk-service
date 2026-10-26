@@ -44,7 +44,7 @@ test("{§edit-batch-merges} separate numeric EDITs never negotiate a shared endp
                 await rpcCall(ws, 1, "workspace.create", { name: "merge", projectRoot: root });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
+                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: result.modelSessionId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
                 assert.equal(edits[0].rx.merged, undefined, "the requested region is not silently shrunk");
                 assert.equal(edits[1].rx.merged, undefined, "the claiming row is an ordinary applied edit");
@@ -88,7 +88,7 @@ editing
                 await rpcCall(ws, 1, "workspace.create", { name: "paste", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<Row>({ session_id: first.modelSessionId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
                 assert.equal(anchors.length, 7);
                 // Lines 1-2 pasted back exactly as rendered (right-aligned ordinal, the anchor as the delimiter, text);
@@ -97,7 +97,7 @@ editing
                 pending.fake = "7<@zzzzz>func other() { /* kept */ }";
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
+                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: second.modelSessionId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [304, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
                 assert.deepEqual(edits[0].rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "current" }]);
                 assert.deepEqual(edits[1].rx.merged, [{ rule: "rendered-prefix-unverified", lines: 1 }]);
@@ -137,7 +137,7 @@ editing
                 await rpcCall(ws, 1, "workspace.create", { name: "stale-paste", projectRoot: root });
                 const first = await runLoopToTerminal(ws, 2, { prompt: "look" });
                 assert.equal(first.result.status, 200);
-                const readRow = (await db.engine_render_log.all<Row>({ worker_id: first.modelWorkerId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
+                const readRow = (await db.engine_render_log.all<Row>({ session_id: first.modelSessionId! })).find(({ op, origin, status_rx }) => op === "READ" && origin === "model" && status_rx === 200);
                 const anchors = JSON.parse(readRow!.rx).lineAnchors as string[];
                 // Line 4 changes out-of-band after the READ: line 2's neighbourhood now differs, so the
                 // pasted prefixes no longer verify against the current anchors - only against the READ's.
@@ -145,7 +145,7 @@ editing
                 pending.body = `1<${anchors[0]}>var x int64\n2<${anchors[1]}>`;
                 const second = await runLoopToTerminal(ws, 3, { prompt: "edit" });
                 assert.equal(second.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: second.modelWorkerId! }));
+                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: second.modelSessionId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
                 assert.deepEqual(edits[0].rx.merged, [{ rule: "rendered-prefix-stripped", lines: 2, source: "log" }]);
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int64\n\nfunc requireFn(a int) int {\n\treturn a // changed\n}\n\nfunc other() {}\n", "stripped by the READ's own anchors; lines 1-2 replaced as rendered");
@@ -169,7 +169,7 @@ test("{§edit-batch-merges} an identical subsequent EDIT reports its own ordinar
                 await rpcCall(ws, 1, "workspace.create", { name: "twin", projectRoot: root });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
+                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: result.modelSessionId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 304]);
                 assert.ok(edits[0].rx.receipt !== undefined, "the first row carries the effect");
                 assert.equal(edits[1].rx.merged, undefined);
@@ -196,7 +196,7 @@ test("{§edit-batch-merges} a numeric EDIT can modify content introduced by an e
                 await rpcCall(ws, 1, "workspace.create", { name: "relocate", projectRoot: root });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
+                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: result.modelSessionId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200], JSON.stringify(edits.map(({ rx }) => rx.problem ?? null)));
                 assert.equal(edits[1].rx.merged, undefined);
                 assert.ok(edits[1].rx.receipt !== undefined, "the later EDIT owns its own effect");
@@ -221,7 +221,7 @@ test("{§edit-batch-merges} a shortened region does not secretly relocate a late
                 await rpcCall(ws, 1, "workspace.create", { name: "contain", projectRoot: root });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "edit" });
                 assert.equal(result.result.status, 200);
-                const edits = editRows(await db.engine_render_log.all<Row>({ worker_id: result.modelWorkerId! }));
+                const edits = editRows(await db.engine_render_log.all<Row>({ session_id: result.modelSessionId! }));
                 assert.deepEqual(edits.map(({ status }) => status), [200, 200]);
                 assert.equal(await readFile(join(root, "f.go"), "utf8"), "var x int\n\nfunc requireFn(a int) int { return a }\n\treturn a * 2\nfunc other() {}\n", "the second EDIT names current line 4, not a former line inside the rewritten region");
             } finally { ws.close(); }

@@ -36,7 +36,7 @@ const installWire = () => {
     return calls;
 };
 
-const generateArgs = { workerId: "sampling-test", messages: [{ role: "user" as const, content: "hello" }] };
+const generateArgs = { sessionId: "sampling-test", messages: [{ role: "user" as const, content: "hello" }] };
 const samplingKeys = new Set(["temperature", "top_p", "top_k", "presence_penalty", "frequency_penalty", "seed"]);
 const samplingOf = (body: Record<string, unknown> | undefined) =>
     Object.fromEntries(Object.entries(body ?? {}).filter(([key]) => samplingKeys.has(key)));

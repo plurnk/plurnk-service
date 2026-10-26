@@ -86,7 +86,7 @@ const fixture = (streaming: boolean, billing: Record<string, unknown>, failure =
     });
     return {
         generate: () => provider.generate({
-            workerId: "router-worker",
+            sessionId: "router-session",
             messages: [{ role: "user", content: "Reply ok." }],
             maxOutputTokens: 1024,
         }),

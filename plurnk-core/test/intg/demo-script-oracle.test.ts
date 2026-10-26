@@ -30,9 +30,9 @@ test("{§demo-oracles} script oracle recognizes actual shell terminal receipts t
                 await rpcCall(ws, 1, "workspace.create", { name: "script-oracle", projectRoot: workspace });
                 const result = await runLoopToTerminal(ws, 2, { prompt: "run greet.sh" });
                 assert.equal(result.finalStatus, 200);
-                assert.ok(result.modelWorkerId);
-                const execs = await db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: result.modelWorkerId, op: "sh" });
-                const reads = await db.test_log_entries_by_worker_op_full.all<ScriptReceipt>({ worker_id: result.modelWorkerId, op: "READ" });
+                assert.ok(result.modelSessionId);
+                const execs = await db.test_log_entries_by_session_op_full.all<ScriptReceipt>({ session_id: result.modelSessionId, op: "sh" });
+                const reads = await db.test_log_entries_by_session_op_full.all<ScriptReceipt>({ session_id: result.modelSessionId, op: "READ" });
                 assert.equal(observedScriptExecution(execs, reads, "greet.sh", "GREETING"), true, JSON.stringify({ execs, reads }));
             } finally { ws.close(); }
         });

@@ -63,11 +63,11 @@ that location; the caller provisions it. This is file placement, not a sandbox.
 
 Stdio servers inherit the operator's environment without Plurnk settings or
 model-provider keys. Workspace `env` entries apply on top, then the definition's
-`env`; worker-local overrides do not ({§mcp-launch-environment}). A running
+`env`; session-local overrides do not ({§mcp-launch-environment}). A running
 server keeps its launch environment; disable then enable it to pick up changes.
 
 A tool marked `annotations.readOnlyHint` runs with the `read` effect;
-other tools retain the `host` effect: each call is reviewed by the worker's
+other tools retain the `host` effect: each call is reviewed by the session's
 owner unless `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
 
 ## Manage a workspace's servers
@@ -107,11 +107,11 @@ JSON-RPC 2.0 method, receiving the action result or exact RFC 9457 Problem Detai
 ```
 
 The model manages the same family through ````` ````plurnk (mcp) ````` with `"verb": "list" | "discover" | "add" | "replace" | "enable" | "disable" | "remove"`
-(`discover` while a registry is configured), each change a proposal reviewed by the worker's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
+(`discover` while a registry is configured), each change a proposal reviewed by the session's owner unless `PLURNK_SERVICE_PROPOSALS` accepts or
 rejects it. Disabling is durable and workspace-shared; enabling an unavailable server retries its
 connection.
 
-Tool discovery uses ordinary `FIND (worker:///_plurnk/tools/*.md)` and READ.
+Tool discovery uses ordinary `FIND (workspace:///_plurnk/tools/*.md)` and READ.
 Each server's document lists enabled tool calls with required-field previews
 and links to full input schemas under `tools/<server>/<encoded-tool>.json`.
 The manager uses the same layout under `tools/plurnk.md` and `tools/plurnk/mcp.json`;
@@ -164,9 +164,9 @@ so each search runs under the proposal policy.
 
 | MCP surface | Plurnk surface |
 |---|---|
-| Server tools | `worker:///_plurnk/tools/<server>.md` runtime summary |
-| Complete tool definitions | `worker:///_plurnk/tools/<server>.json`: `{"tools":[...]}`, readable on demand with ordinary patterns |
-| Enabled tool | `server (tool)` invocation in the runtime document; full input schema at `worker:///_plurnk/tools/<server>/<encoded-tool>.json` |
+| Server tools | `workspace:///_plurnk/tools/<server>.md` runtime summary |
+| Complete tool definitions | `workspace:///_plurnk/tools/<server>.json`: `{"tools":[...]}`, readable on demand with ordinary patterns |
+| Enabled tool | `server (tool)` invocation in the runtime document; full input schema at `workspace:///_plurnk/tools/<server>/<encoded-tool>.json` |
 | Resource catalog | `server:///` or `server:///resources` |
 | Resource | `server:///resources/<encoded-uri>` through ordinary `FIND` and `READ` |
 | Prompt catalog | `server:///prompts` |

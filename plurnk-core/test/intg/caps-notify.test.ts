@@ -12,12 +12,12 @@ import assert from "node:assert/strict";
 import DbEntryCaps from "../../src/core/caps/DbEntryCaps.ts";
 import DbNotifyCaps from "../../src/core/caps/DbNotifyCaps.ts";
 import type { StreamEventPayload } from "../../src/core/ChannelWrite.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx, schemeManifest } from "./_scheme.ts";
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 // Wall-clock wait for a condition — the emit's entryId lookup goes through the shared
-// SqlRite worker, which serializes every test's queries under load, so the wait must be
+// SqlRite session, which serializes every test's queries under load, so the wait must be
 // measured in real time, not in event-loop turns (a turn count exhausts while queued).
 const waitUntil = async (cond: () => boolean, timeoutMs = 10000): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
@@ -28,11 +28,11 @@ test("{§capability-ctx} DbNotifyCaps: streamEvent emits for the resolved entry;
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `caps-notify-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const captured: Array<{ sid: number; payload: StreamEventPayload }> = [];
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
-        const entries = new DbEntryCaps(ctx, "worker", schemeManifest("worker"), "");
-        const notify = new DbNotifyCaps(ctx, "worker", "");
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, streamEventNotify: (sid, payload) => captured.push({ sid, payload }) });
+        const entries = new DbEntryCaps(ctx, "workspace", schemeManifest("workspace"), "");
+        const notify = new DbNotifyCaps(ctx, "workspace", "");
 
         await entries.write("/stream.md", { channels: { body: { content: "data", mimetype: "text/markdown" } } });
 
@@ -41,11 +41,11 @@ test("{§capability-ctx} DbNotifyCaps: streamEvent emits for the resolved entry;
         await waitUntil(() => captured.length >= 1);
         assert.equal(captured.length, 1);
         assert.equal(captured[0].sid, workspaceId);
-        assert.equal(captured[0].payload.workerId, workerId, "notification identifies the producing worker");
+        assert.equal(captured[0].payload.sessionId, sessionId, "notification identifies the producing session");
         assert.equal(captured[0].payload.channel, "body");
         assert.equal(captured[0].payload.state, "active");
         assert.equal(captured[0].payload.contentLength, 42);
-        assert.match(captured[0].payload.target, /worker:\/\/\/.*stream\.md/);
+        assert.match(captured[0].payload.target, /workspace:\/\/\/.*stream\.md/);
 
         // a vanished entry resolves to null → never emits (give the resolve room)
         notify.streamEvent("/missing.md", "body", "active", 1);
@@ -53,7 +53,7 @@ test("{§capability-ctx} DbNotifyCaps: streamEvent emits for the resolved entry;
         assert.equal(captured.length, 1);
 
         // no notifier wired → silent sync no-op, never throws, nothing scheduled
-        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, workspaceId }), "worker", "");
+        const noNotifier = new DbNotifyCaps(makeSchemeCtx({ db, workspaceId }), "session", "");
         assert.doesNotThrow(() => noNotifier.streamEvent("/stream.md", "body", "active", 1));
         for (let i = 0; i < 5; i++) await tick();
         assert.equal(captured.length, 1);
@@ -72,12 +72,12 @@ test("{§notifications-stream-event-failure-isolation} lookup and notifier failu
             workspaceId,
             streamEventNotify: () => { throw notifyCause; },
         });
-        const entries = new DbEntryCaps(notifyCtx, "worker", schemeManifest("worker"), "");
+        const entries = new DbEntryCaps(notifyCtx, "session", schemeManifest("session"), "");
         await entries.write("/stream.md", {
             channels: { body: { content: "data", mimetype: "text/markdown" } },
         });
 
-        new DbNotifyCaps(notifyCtx, "worker", "").streamEvent("/stream.md", "body", "active", 4);
+        new DbNotifyCaps(notifyCtx, "session", "").streamEvent("/stream.md", "body", "active", 4);
         await waitUntil(() => diagnostics.length === 1, 4000);
         assert.equal(diagnostics.length, 1);
         assert.equal(diagnostics[0]?.[1], notifyCause, "the notifier exception remains the diagnostic cause");
@@ -97,7 +97,7 @@ test("{§notifications-stream-event-failure-isolation} lookup and notifier failu
             streamEventNotify: () => { throw new Error("not reached"); },
         });
 
-        new DbNotifyCaps(lookupCtx, "worker", "").streamEvent("/stream.md", "body", "active", 4);
+        new DbNotifyCaps(lookupCtx, "session", "").streamEvent("/stream.md", "body", "active", 4);
         await waitUntil(() => diagnostics.length === 2, 4000);
         assert.equal(diagnostics.length, 2);
         assert.equal(diagnostics[1]?.[1], lookupCause, "the database exception remains the diagnostic cause");

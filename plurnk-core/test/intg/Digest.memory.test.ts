@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { testDeferredProviderCapacity } from "./_provider.ts";
 import { digestStems } from "./_packet.ts";
 import Turn from "../../src/core/Turn.ts";
@@ -23,8 +23,8 @@ test("{§digest-forensic-fidelity}: exports repeated large wire evidence under a
     const count = 16;
     try {
         const workspaceId = await insertWorkspace(db, "large-evidence");
-        const workerId = await insertWorker(db, workspaceId, null, "witness");
-        const loopId = await insertLoop(db, workerId, 1, "retain every response");
+        const sessionId = await insertSession(db, workspaceId, null, "witness");
+        const loopId = await insertLoop(db, sessionId, 1, "retain every response");
         for (let index = 0; index < count; index++) {
             const content = `response-${index}`;
             const assistant = { content, ops: [], reasoning: `reasoning-${index}` };

@@ -17,14 +17,14 @@ CREATE TABLE IF NOT EXISTS log_entries (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
 
-    worker_id          INTEGER NOT NULL,
+    session_id          INTEGER NOT NULL,
     loop_id         INTEGER NOT NULL,
     turn_id         INTEGER NOT NULL,
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', '_plurnk', 'plugin')),
-    -- {§env-delta-attribution}: a causal worker:// identity, log:/// operation
-    -- address, or stable subsystem token ('file'); NULL = the owning worker
+    -- {§env-delta-attribution}: a causal session:// identity, log:/// operation
+    -- address, or stable subsystem token ('file'); NULL = the owning session
     -- itself, rendered without causal attribution.
     source          TEXT,
     -- Engine-owned occurrence identity. Source rows are stamped NULL→id by the
@@ -98,14 +98,14 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ),
     CHECK (json_extract(attrs, '$.kind') != 'emissionAttempt' OR origin = 'model'),
 
-    FOREIGN KEY (worker_id)  REFERENCES workers(id)  ON DELETE CASCADE,
+    FOREIGN KEY (session_id)  REFERENCES sessions(id)  ON DELETE CASCADE,
     FOREIGN KEY (loop_id) REFERENCES loops(id) ON DELETE CASCADE,
     FOREIGN KEY (turn_id) REFERENCES turns(id) ON DELETE CASCADE
 ) STRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_turn_id_sequence ON log_entries (turn_id, sequence);
 
-CREATE        INDEX IF NOT EXISTS log_entries_worker_id           ON log_entries (worker_id);
+CREATE        INDEX IF NOT EXISTS log_entries_session_id           ON log_entries (session_id);
 
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 
@@ -115,7 +115,7 @@ CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (d
 -- {§loop-response-messages}: delivered messages remain executed evidence;
 -- curation and loop termination cannot retract or replace them.
 CREATE VIEW IF NOT EXISTS log_responses AS
-SELECT le.id, le.loop_id, le.turn_id, le.worker_id, le.sequence, le.source, le.origin,
+SELECT le.id, le.loop_id, le.turn_id, le.session_id, le.sequence, le.source, le.origin,
        CASE WHEN json_valid(le.rx) THEN le.rx END AS rx,
        CASE WHEN json_valid(le.tx) THEN COALESCE(json_extract(le.tx, '$.body.raw'), json_extract(le.tx, '$.body'), '') END AS content
 FROM log_entries le
@@ -127,57 +127,57 @@ FROM log_entries le
       AND typeof(content) = 'text';
 
 CREATE VIEW IF NOT EXISTS message_responses AS
-SELECT DISTINCT r.id, m.loop_id, m.worker_id, r.source, r.content, r.rx
+SELECT DISTINCT r.id, m.loop_id, m.session_id, r.source, r.content, r.rx
 FROM log_responses r
-JOIN workers producer ON producer.id = r.worker_id
+JOIN sessions producer ON producer.id = r.session_id
 JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 UNION ALL
-SELECT r.id, r.loop_id, r.worker_id, r.source, r.content, r.rx
+SELECT r.id, r.loop_id, r.session_id, r.source, r.content, r.rx
 FROM log_responses r WHERE json_array_length(r.rx, '$.answers') = 0;
 
 CREATE VIEW IF NOT EXISTS unanswered_messages AS
 SELECT m.* FROM message_sources m
 WHERE NOT EXISTS (
     SELECT 1 FROM log_responses r
-    JOIN workers w ON w.id = r.worker_id, json_each(r.rx, '$.answers') answer
+    JOIN sessions w ON w.id = r.session_id, json_each(r.rx, '$.answers') answer
     WHERE w.workspace_id = m.workspace_id AND answer.value = m.path
 );
 
--- {§message-reply-delivery}: notify the sender and the assigned worker.
--- UNION prevents duplicate delivery when both roles belong to the same worker.
+-- {§message-reply-delivery}: notify the sender and the assigned session.
+-- UNION prevents duplicate delivery when both roles belong to the same session.
 -- {§loop-answer}: a child's answer to the very task its parent delegated is NOT delivered here;
 -- the parent receives it once, as the child's termination row, which carries that answer at
 -- ops://<child>/<loop> (operator, 2026-09-19). Replies to any other message still deliver.
 CREATE VIEW IF NOT EXISTS delegated_task_answers AS
-SELECT r.id AS source_record_id, parent.id AS recipient_worker_id
+SELECT r.id AS source_record_id, parent.id AS recipient_session_id
 FROM log_responses r
-JOIN workers producer ON producer.id = r.worker_id
-JOIN workers parent ON parent.id = producer.parent_worker_id
+JOIN sessions producer ON producer.id = r.session_id
+JOIN sessions parent ON parent.id = producer.parent_session_id
 JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
-WHERE m.loop_id = r.loop_id AND m.ordinal = 1 AND m.source = 'worker://' || parent.name;
+WHERE m.loop_id = r.loop_id AND m.ordinal = 1 AND m.source = 'session://' || parent.name;
 
 CREATE VIEW IF NOT EXISTS message_reply_deliveries AS
 SELECT DISTINCT r.id AS source_record_id, r.loop_id, m.workspace_id,
-       r.worker_id AS producer_worker_id, m.worker_id AS recipient_worker_id
+       r.session_id AS producer_session_id, m.session_id AS recipient_session_id
 FROM log_responses r
-JOIN workers producer ON producer.id = r.worker_id
+JOIN sessions producer ON producer.id = r.session_id
 JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 UNION
-SELECT r.id, r.loop_id, m.workspace_id, r.worker_id, sender.id
+SELECT r.id, r.loop_id, m.workspace_id, r.session_id, sender.id
 FROM log_responses r
-JOIN workers producer ON producer.id = r.worker_id
+JOIN sessions producer ON producer.id = r.session_id
 JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
-JOIN workers sender ON sender.workspace_id = m.workspace_id AND m.source = 'worker://' || sender.name;
+JOIN sessions sender ON sender.workspace_id = m.workspace_id AND m.source = 'session://' || sender.name;
 
 CREATE VIEW IF NOT EXISTS delivered_message_replies AS
 SELECT d.* FROM message_reply_deliveries d
 WHERE NOT EXISTS (
     SELECT 1 FROM delegated_task_answers t
-    WHERE t.source_record_id = d.source_record_id AND t.recipient_worker_id = d.recipient_worker_id
+    WHERE t.source_record_id = d.source_record_id AND t.recipient_session_id = d.recipient_session_id
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
@@ -188,8 +188,8 @@ CREATE INDEX IF NOT EXISTS log_entries_subscription_publication_id
     ON log_entries (subscription_publication_id)
     WHERE subscription_publication_id IS NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS log_entries_worker_ambient_event
-    ON log_entries (worker_id, ambient_event_id)
+CREATE UNIQUE INDEX IF NOT EXISTS log_entries_session_ambient_event
+    ON log_entries (session_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
 
 -- {§log-history-projection} — log_entries is append-only execution evidence;
@@ -229,17 +229,17 @@ BEFORE UPDATE OF output_admission_turn_id ON log_entry_projections
 WHEN NEW.output_admission_turn_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM turns turn
     JOIN loops loop ON loop.id = turn.loop_id
-    JOIN log_entries entry ON entry.worker_id = loop.worker_id
+    JOIN log_entries entry ON entry.session_id = loop.session_id
     WHERE turn.id = NEW.output_admission_turn_id AND entry.id = NEW.log_entry_id
 )
 BEGIN
-    SELECT RAISE(ABORT, 'log output admission must belong to its worker');
+    SELECT RAISE(ABORT, 'log output admission must belong to its session');
 END;
 
 -- The ordinary operation surface reads this view. Forensic and lifecycle
 -- machinery names log_entries directly and therefore retains complete history.
 CREATE VIEW IF NOT EXISTS active_log_entries AS
-SELECT le.id, le.version, le.worker_id, le.loop_id, le.turn_id, le.sequence,
+SELECT le.id, le.version, le.session_id, le.loop_id, le.turn_id, le.sequence,
        le.at, le.origin, le.source, le.ambient_event_id, le.inherited_history,
        le.deep_hash, le.model_call_id, le.subscription_publication_id,
        le.op, le.signal, le.scheme, le.username, le.password,
@@ -254,7 +254,7 @@ WHERE projection.active = 1;
 
 -- Individual execution events are append-only. Containing-history teardown is
 -- the one removal owner: a cascading delete has already removed at least one
--- ancestor in the workspace→worker→loop→turn chain. A direct row delete while
+-- ancestor in the workspace→session→loop→turn chain. A direct row delete while
 -- that complete owner chain remains would fabricate chronology and is rejected.
 CREATE TRIGGER IF NOT EXISTS log_entries_delete_with_owner_only
 BEFORE DELETE ON log_entries
@@ -262,24 +262,24 @@ WHEN EXISTS (
     SELECT 1
     FROM turns
     JOIN loops ON loops.id = turns.loop_id
-    JOIN workers ON workers.id = loops.worker_id
-    JOIN workspaces ON workspaces.id = workers.workspace_id
+    JOIN sessions ON sessions.id = loops.session_id
+    JOIN workspaces ON workspaces.id = sessions.workspace_id
     WHERE turns.id = OLD.turn_id
 )
 BEGIN
     SELECT RAISE(ABORT, 'log entries can only be removed with their containing history');
 END;
 
--- A log row belongs to one exact worker/loop/turn chain. Its writer is either
+-- A log row belongs to one exact session/loop/turn chain. Its writer is either
 -- that turn's producer or `_plurnk` observing the turn. Primitive absence,
 -- enum, and foreign-key failures remain owned by their column constraints.
 CREATE TRIGGER IF NOT EXISTS log_entries_turn_ownership
 BEFORE INSERT ON log_entries
-WHEN NEW.worker_id IS NOT NULL
+WHEN NEW.session_id IS NOT NULL
  AND NEW.loop_id IS NOT NULL
  AND NEW.turn_id IS NOT NULL
  AND NEW.origin IN ('model', 'client', '_plurnk', 'plugin')
- AND EXISTS (SELECT 1 FROM workers WHERE id = NEW.worker_id)
+ AND EXISTS (SELECT 1 FROM sessions WHERE id = NEW.session_id)
  AND EXISTS (SELECT 1 FROM loops WHERE id = NEW.loop_id)
  AND EXISTS (SELECT 1 FROM turns WHERE id = NEW.turn_id)
  AND NOT EXISTS (
@@ -288,7 +288,7 @@ WHEN NEW.worker_id IS NOT NULL
     JOIN loops ON loops.id = turns.loop_id
     WHERE turns.id = NEW.turn_id
       AND loops.id = NEW.loop_id
-      AND loops.worker_id = NEW.worker_id
+      AND loops.session_id = NEW.session_id
       AND (NEW.origin = turns.producer OR NEW.origin = '_plurnk')
 )
 BEGIN
@@ -436,7 +436,7 @@ END;
 
 -- Make an invalid curation record structurally unavailable: the event must be
 -- one successful log-KILL row, both rows must belong to the same
--- worker, and its state transition must match that op.
+-- session, and its state transition must match that op.
 CREATE TRIGGER IF NOT EXISTS log_curation_effects_valid
 BEFORE INSERT ON log_curation_effects
 BEGIN
@@ -448,7 +448,7 @@ BEGIN
             WHERE operation.id = NEW.operation_log_entry_id
               AND operation.op = 'KILL'
               AND operation.status_rx < 400
-              AND operation.worker_id = target.worker_id
+              AND operation.session_id = target.session_id
         )
         OR NOT EXISTS (
             -- {§log-kill-scope} — a scoped KILL keeps the row active and changes its visibility;
@@ -524,7 +524,7 @@ END;
 -- curation trigger's private-payload removal cannot exempt other columns.
 CREATE TRIGGER IF NOT EXISTS log_entries_immutable_core
 BEFORE UPDATE OF
-    worker_id, loop_id, turn_id, sequence, at, origin, source, inherited_history, model_call_id,
+    session_id, loop_id, turn_id, sequence, at, origin, source, inherited_history, model_call_id,
     op, signal,
     scheme, username, password, hostname,
     port, pathname, query, fragment,
@@ -559,18 +559,18 @@ CREATE VIEW IF NOT EXISTS ambient_activity_candidates AS
 SELECT *
 FROM (
     SELECT w.workspace_id,
-           le.worker_id AS producer_worker_id,
+           le.session_id AS producer_session_id,
            -- {§env-delta-child-activity} — the runtime's own materialization (turn-0
            -- initialization, doc-reconciliation maintenance, operation batches) is
-           -- private to the worker it serves and never crosses to the parent.
+           -- private to the session it serves and never crosses to the parent.
            CASE
                WHEN t.producer = '_plurnk' AND t.kind IN ('operation', 'initialization', 'maintenance') THEN NULL
                WHEN EXISTS (
                    SELECT 1 FROM message_reply_deliveries d
-                   WHERE d.source_record_id = le.id AND d.recipient_worker_id = w.parent_worker_id
+                   WHERE d.source_record_id = le.id AND d.recipient_session_id = w.parent_session_id
                ) THEN NULL
-               ELSE w.parent_worker_id
-           END AS recipient_worker_id,
+               ELSE w.parent_session_id
+           END AS recipient_session_id,
            CASE
                WHEN le.state = 'resolved'
                 AND NOT (t.producer = '_plurnk' AND t.kind = 'maintenance')
@@ -579,7 +579,7 @@ FROM (
                 AND (
                     (
                         le.op IN ('EDIT', 'KILL')
-                        AND le.scheme = 'worker'
+                        AND le.scheme = 'workspace'
                         AND le.hostname IS NULL
                         AND le.pathname IS NOT NULL
                     )
@@ -589,7 +589,7 @@ FROM (
                         AND EXISTS (
                             SELECT 1 FROM json_each(le.rx, '$.effects') effect
                             WHERE json_type(effect.value) = 'object'
-                              AND substr(CAST(json_extract(effect.value, '$.target') AS TEXT), 1, 10) = 'worker:///'
+                              AND substr(CAST(json_extract(effect.value, '$.target') AS TEXT), 1, 13) = 'workspace:///'
                         )
                     )
                 )
@@ -618,7 +618,7 @@ FROM (
            le.outcome,
            json_remove(le.attrs, '$.__plurnk_curation') AS attrs
     FROM log_entries le
-    JOIN workers w ON w.id = le.worker_id
+    JOIN sessions w ON w.id = le.session_id
     JOIN turns t ON t.id = le.turn_id
     WHERE le.ambient_event_id IS NULL
       AND le.inherited_history = 0
@@ -636,4 +636,4 @@ FROM (
       )
       AND le.state != 'proposed'
 ) candidate
-WHERE recipient_worker_id IS NOT NULL OR workspace_broadcast = 1;
+WHERE recipient_session_id IS NOT NULL OR workspace_broadcast = 1;

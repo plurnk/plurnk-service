@@ -7,7 +7,7 @@ import type { InputModality, Provider, ProviderResponse } from "@plurnk/plurnk-p
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { completeStmt, } from "./_dsl.ts";
 
@@ -46,12 +46,12 @@ test("{§meta-passthrough} a provider's opaque meta blob rides through to the lo
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `meta-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
 
         const meta = { balance: { amount: "0.000123456789", currency: "XMR" }, vendorWhatever: { nested: true }, future: "field we never coded for" };
-        await engine.runTurn({ provider: new MetaProvider(meta), workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider: new MetaProvider(meta), workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const usage = await engine.loopUsage(loopId);
         // Forwarded verbatim — including fields the service has never heard of (the honest passthrough).
@@ -64,12 +64,12 @@ test("{§meta-passthrough} no provider meta → empty {} (never null, never fabr
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `meta-empty-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "go");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         // A plain Mock returns no `meta`.
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
 
         const usage = await engine.loopUsage(loopId);
         assert.deepEqual(usage.meta, {}, "absent provider meta surfaces as {}, so the client renders nothing");

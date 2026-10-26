@@ -1,4 +1,4 @@
-import WorkerName from "../../src/core/WorkerName.ts";
+import SessionName from "../../src/core/SessionName.ts";
 import { completeStmt, sendStmt, killStmt, noteStmt } from "./_dsl.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import Turn from "../../src/core/Turn.ts";
 import TurnMaterialization from "../../src/core/TurnMaterialization.ts";
 import { Mock } from "@plurnk/plurnk-providers";
 import type { MockResponse } from "@plurnk/plurnk-providers";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, seedEntryWithChannel } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, seedEntryWithChannel } from "./_db.ts";
 
 const urlPath = (scheme: string, pathname: string): UrlPath => ({
     kind: "url", raw: `${scheme}://${pathname}`, scheme,
@@ -22,7 +22,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
 const editStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
-    target: urlPath("worker", pathname),
+    target: urlPath("workspace", pathname),
     lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
 });
 
@@ -37,28 +37,28 @@ const contentResponse = (content: string): MockResponse => ({
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "test prompt");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "test prompt");
     const lifecycle = new LoopLifecycle(db);
-    const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelWorker: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
-    return { db, engine, workspaceId, workerId, loopId };
+    const engine = new Engine({ db, schemes: new SchemeRegistry(), cancelSession: async (id, reason) => { await lifecycle.cancelTree(id, reason, true); } });
+    return { db, engine, workspaceId, sessionId, loopId };
 };
 
 for (const kind of ["child", "stream"] as const) for (const phase of ["before observation", "after observation", "during inference"] as const) {
 test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only by the input that contains it`, async (t) => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const lifecycle = new LoopLifecycle(db);
-        const parkedLoop = await insertLoop(db, workerId, 2, "An independent waiting task.");
+        const parkedLoop = await insertLoop(db, sessionId, 2, "An independent waiting task.");
         await lifecycle.park(parkedLoop, { wakenBy: "test-fixture" });
         let finish: () => Promise<unknown>;
         if (kind === "child") {
-            const child = await insertWorker(db, workspaceId, workerId, "child");
+            const child = await insertSession(db, workspaceId, sessionId, "child");
             const childLoop = await insertLoop(db, child, 1, "Look up the answer.");
             finish = () => lifecycle.finish(childLoop, { status: 200, content: "The observed answer is 42." });
         } else {
             const entry = await seedEntryWithChannel(db, { workspaceId, scheme: "sh", content: "The observed answer is 42.", state: "active" });
-            const subscriptionId = await ChannelWrite.openSubscription(db, { workerId, entryId: entry, scheme: "exec", handle: "answer" });
+            const subscriptionId = await ChannelWrite.openSubscription(db, { sessionId, entryId: entry, scheme: "exec", handle: "answer" });
             finish = () => ChannelWrite.closeSubscription(db, { subscriptionId, result: { status: 200 } });
         }
         let settled = false;
@@ -95,7 +95,7 @@ test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only b
                 return generate(...args);
             });
         }
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         const observed = phase === "before observation";
         assert.equal(JSON.stringify(provider.received[0]).includes("The observed answer is 42."), observed);
         assert.match(JSON.stringify(provider.received.at(-1)), /The observed answer is 42\./, "the terminal evidence reaches the producer before completion");
@@ -107,7 +107,7 @@ test(`{§loop-wake-identity}: ${kind} completion ${phase} is acknowledged only b
 }
 
 test("{§send-premature-terminate} Engine.runLoop: three edits are observed before answered work concludes", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -120,7 +120,7 @@ test("{§send-premature-terminate} Engine.runLoop: three edits are observed befo
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "do three steps" }],
         });
         assert.equal(result.turnIds.length, 5, "packetless initialization precedes three edit turns and the observation turn");
@@ -128,7 +128,7 @@ test("{§send-premature-terminate} Engine.runLoop: three edits are observed befo
         assert.equal(result.hitMaxTurns, false);
 
         for (const [pathname, content] of [["/a", "1"], ["/b", "2"], ["/c", "3"]]) {
-            const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "worker", pathname, name: "body" });
+            const entry = await db.test_get_channel_by_pathname_scheme.get({ scheme: "workspace", pathname, name: "body" });
             assert.equal(entry?.content, content);
         }
 
@@ -138,7 +138,7 @@ test("{§send-premature-terminate} Engine.runLoop: three edits are observed befo
 });
 
 test("{§loop-terminals} Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns flag", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -146,7 +146,7 @@ test("{§loop-terminals} Engine.runLoop: maxTurns hit — force-terminate with 4
             responses: Array.from({ length: 10 }, (_, i) => response([editStmt(`/t${i}`, "x"), noteStmt("more")])),
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: 3,
+            provider, workspaceId, sessionId, loopId, maxTurns: 3,
             messages: [{ role: "user", content: "never terminate" }],
         });
         assert.equal(result.turnIds.length, 4, "packetless initialization does not consume the three-model-turn ceiling");
@@ -158,7 +158,7 @@ test("{§loop-terminals} Engine.runLoop: maxTurns hit — force-terminate with 4
 });
 
 test("{§operator-config-max-turns-ceiling} maxTurns=-1 disables the turn terminator — loop ends on completed inventory, not a cap", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Four continuing turns then completion. A positive cap of 3 would
         // stop at turn 3; -1 must permit the final completed inventory.
@@ -173,7 +173,7 @@ test("{§operator-config-max-turns-ceiling} maxTurns=-1 disables the turn termin
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId, maxTurns: -1,
+            provider, workspaceId, sessionId, loopId, maxTurns: -1,
             messages: [{ role: "user", content: "run until I say done" }],
         });
         assert.equal(result.turnIds.length, 6, "initialization plus all five model turns — no turn cap");
@@ -183,7 +183,7 @@ test("{§operator-config-max-turns-ceiling} maxTurns=-1 disables the turn termin
 });
 
 test("{§engine-cycle-evidence} Engine.runLoop: repeated identical NOTE-only turns remain subject to the cycle rail", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // {§engine-cycle-evidence}
         const provider = new Mock({
@@ -192,26 +192,26 @@ test("{§engine-cycle-evidence} Engine.runLoop: repeated identical NOTE-only tur
                 "\n````NOTE\nidling\n````",
             )),
         });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 508, "identical inventory repetition is a cycle, not an idle-operation violation");
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
         assert.equal(result.reason, "strike_threshold");
-        const errors = await db.test_error_rows_for_worker.all<{ rx: string }>({ worker_id: workerId });
+        const errors = await db.test_error_rows_for_session.all<{ rx: string }>({ session_id: sessionId });
         assert.deepEqual(errors, [], "the cycle rail does not invent an idle-operation error");
     } finally { await db.close(); }
 });
 
 test("{§completion-joins-live-work} Engine.runLoop: a completion over a live stream joins it — the loop parks, never a false 200", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
-        // Seed a live stream the worker holds: an open subscription (closed_at NULL) against a real entry.
-        const entryId = await seedEntryWithChannel(db, { workspaceId, authority: await WorkerName.forId(db, workerId), pathname: "/live-stream" });
-        await db.open_subscription.get<{ id: number }>({ worker_id: workerId, entry_id: entryId, scheme: "exec", handle: "live-1" });
+        // Seed a live stream the session holds: an open subscription (closed_at NULL) against a real entry.
+        const entryId = await seedEntryWithChannel(db, { workspaceId, authority: await SessionName.forId(db, sessionId), pathname: "/live-stream" });
+        await db.open_subscription.get<{ id: number }>({ session_id: sessionId, entry_id: entryId, scheme: "exec", handle: "live-1" });
         const provider = new Mock({ contextWindow: 100000, responses: [
             response([completeStmt("all done")]),   // turn 1: a live stream makes this a join → 202 park
             response([noteStmt("Observe the settled stream.")]),
         ] });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.turnIds.length, 2, "initialization plus the one model turn: the join parked the loop on its first claim");
         assert.equal(result.result.status, 202, "the loop parked on the live stream, never a false 200");
         assert.equal(provider.remaining, 1, "no further turn runs until the stream concludes and wakes the loop");
@@ -222,13 +222,13 @@ test("{§completion-joins-live-work} Engine.runLoop: a completion over a live st
     } finally { await db.close(); }
 });
 
-test("{§worker-lifecycle-durable-disposition} Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+test("{§session-lifecycle-durable-disposition} Engine.runLoop: terminates immediately if loop.status is already non-102", async () => {
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         await new LoopLifecycle(db).finish(loopId, { status: 200 });
         const provider = new Mock({ contextWindow: 100000, responses: [response([completeStmt("")])] });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [],
         });
         assert.deepEqual(result.turnIds, []);
@@ -238,8 +238,8 @@ test("{§worker-lifecycle-durable-disposition} Engine.runLoop: terminates immedi
     } finally { await db.close(); }
 });
 
-test("{§worker-lifecycle-durable-disposition} Engine.runLoop: a durable 202 park outranks a later abort observation", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+test("{§session-lifecycle-durable-disposition} Engine.runLoop: a durable 202 park outranks a later abort observation", async () => {
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         await db.test_set_loop_status.run({
             id: loopId,
@@ -253,7 +253,7 @@ test("{§worker-lifecycle-durable-disposition} Engine.runLoop: a durable 202 par
         const result = await engine.runLoop({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [],
             signal: controller.signal,
@@ -270,18 +270,18 @@ test("{§worker-lifecycle-durable-disposition} Engine.runLoop: a durable 202 par
     } finally { await db.close(); }
 });
 
-test("{§worker-lifecycle-total-reap} Engine.runLoop: KILL of the current worker cancels its scope", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+test("{§session-lifecycle-total-reap} Engine.runLoop: KILL of the current session cancels its scope", async () => {
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([noteStmt("thinking")]), response([killStmt({
-                ...urlPath("worker", ""), raw: `worker://${await WorkerName.forId(db, workerId)}`,
-                hostname: await WorkerName.forId(db, workerId),
+                ...urlPath("session", ""), raw: `session://${await SessionName.forId(db, sessionId)}`,
+                hostname: await SessionName.forId(db, sessionId),
             })])],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "may abort" }],
         });
         assert.equal(result.turnIds.length, 3, "packetless initialization precedes both model turns");
@@ -291,12 +291,12 @@ test("{§worker-lifecycle-total-reap} Engine.runLoop: KILL of the current worker
 });
 
 test("{§op-execution-order} Engine.runLoop: cross-turn state — turn 2 sees what turn 1 wrote", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const readStmt = (pathname: string) => ({
             metadata: null,
             op: "READ" as const, aside: null,
-            target: urlPath("worker", pathname),
+            target: urlPath("workspace", pathname),
             lineMarker: null, matcher: null, body: null,
             position: { line: 1, column: 1 },
         });
@@ -310,7 +310,7 @@ test("{§op-execution-order} Engine.runLoop: cross-turn state — turn 2 sees wh
             ],
         });
         const result = await engine.runLoop({
-            provider, workspaceId, workerId, loopId,
+            provider, workspaceId, sessionId, loopId,
             messages: [{ role: "user", content: "store then retrieve" }],
         });
         assert.equal(result.turnIds.length, 4, "packetless initialization precedes three model turns");
@@ -320,7 +320,7 @@ test("{§op-execution-order} Engine.runLoop: cross-turn state — turn 2 sees wh
 });
 
 test("{§methods-loop-cancel} Engine.runLoop: signal abort between turns throws AbortError", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const controller = new AbortController();
         const provider = new Mock({
@@ -329,14 +329,14 @@ test("{§methods-loop-cancel} Engine.runLoop: signal abort between turns throws 
         });
         controller.abort();
         await assert.rejects(
-            () => engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [], signal: controller.signal }),
+            () => engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [], signal: controller.signal }),
             { name: "AbortError" },
         );
     } finally { await db.close(); }
 });
 
 test("{§lifecycle-terms} Engine.runLoop: turn sequence numbers monotonic", async () => {
-    const { db, engine, workspaceId, workerId, loopId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
@@ -346,7 +346,7 @@ test("{§lifecycle-terms} Engine.runLoop: turn sequence numbers monotonic", asyn
                 response([completeStmt("3")]),
             ],
         });
-        await engine.runLoop({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runLoop({ provider, workspaceId, sessionId, loopId, messages: [] });
         const seqs = await db.test_list_turns_in_loop.all<{ sequence: number }>({ loop_id: loopId });
         assert.deepEqual(seqs.map((s) => s.sequence), [1, 2, 3, 4]);
     } finally { await db.close(); }
@@ -357,23 +357,23 @@ test("{§problems-loop}: a strike-threshold abandonment names itself in its exac
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {
         const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "strike out");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "strike out");
         // A bounded heading failure, a third COPY operand, is a hard 400 ({§extra-path-slot}); a fumbled
         // matcher would not strike ({§matcher-refusal}). Distinct paths keep the failures out of cycle detection.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
-            `\`\`\`\`COPY (worker:///note-${i}) (worker:///b) (worker:///c)\`\`\`\`
+            `\`\`\`\`COPY (workspace:///note-${i}) (workspace:///b) (workspace:///c)\`\`\`\`
 \`\`\`\`NOTE
 going
 \`\`\`\``,
         )) });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 10, maxStrikes: 2, messages: [] });
         assert.equal(result.result.status, 500, "struck out to the engine's 500");
 
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/strike-threshold");
         assert.equal(result.result.problem?.turns, 2);
         assert.equal(result.result.problem?.retryable, false);
-        assert.equal(result.result.problem?.instance, `ops://${(await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name}/1`);
+        assert.equal(result.result.problem?.instance, `ops://${(await db.session_name_by_id.get<{ name: string }>({ session_id: sessionId }))!.name}/1`);
     } finally { await db.close(); }
 });
 
@@ -382,14 +382,14 @@ test("{§loop-terminals} the full terminal enumeration names itself — max_turn
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {
         const workspaceId = await insertWorkspace(db, `ws-terminals-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "run to the ceiling");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "run to the ceiling");
         // A model that works forever (non-terminal SENDs) runs into the configured ceiling.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 4 }, () => response([noteStmt("working")])) });
-        const result = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 2, maxStrikes: 99, messages: [] });
+        const result = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 2, maxStrikes: 99, messages: [] });
         assert.equal(result.result.status, 429);
         assert.equal(result.result.problem?.type, "https://problems.plurnk.xyz/engine/rails/max-turns");
         assert.match(result.result.problem?.detail ?? "", /turn ceiling/i);
-        assert.equal(result.result.problem?.instance, `ops://${(await db.worker_name_by_id.get<{ name: string }>({ worker_id: workerId }))!.name}/1`);
+        assert.equal(result.result.problem?.instance, `ops://${(await db.session_name_by_id.get<{ name: string }>({ session_id: sessionId }))!.name}/1`);
     } finally { await db.close(); }
 });

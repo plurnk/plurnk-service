@@ -1,6 +1,6 @@
 // {§schedule-family} — the one definition `add` accepts and the coordinator persists: the rule
-// text ({§schedule-rule}), the worker the message is delivered to, and the message.
-import { Validator, WORKER_NAME, type JsonSchema } from "@plurnk/plurnk-contracts";
+// text ({§schedule-rule}), the session the message is delivered to, and the message.
+import { Validator, SESSION_NAME, type JsonSchema } from "@plurnk/plurnk-contracts";
 
 export interface ScheduleDefinition {
     readonly rule: string;
@@ -8,7 +8,7 @@ export interface ScheduleDefinition {
     readonly prompt: string;
 }
 
-const TARGET = new RegExp(`^worker://(${WORKER_NAME.source.slice(1, -1)})$`, "u");
+const TARGET = new RegExp(`^session://(${SESSION_NAME.source.slice(1, -1)})$`, "u");
 
 export const DEFINITION_SCHEMA = Object.freeze({
     type: "object",
@@ -23,7 +23,7 @@ export const DEFINITION_SCHEMA = Object.freeze({
         target: {
             type: "string",
             pattern: TARGET.source,
-            description: "The worker the message is delivered to.",
+            description: "The session the message is delivered to.",
         },
         prompt: {
             type: "string",
@@ -50,8 +50,8 @@ export const readDefinition = (value: unknown): ScheduleDefinition => {
     return structuredClone(value as ScheduleDefinition);
 };
 
-export const targetWorkerName = (target: string): string => {
+export const targetSessionName = (target: string): string => {
     const match = TARGET.exec(target);
-    if (match === null) throw new TypeError(`'${target}' is not a worker:// target.`);
+    if (match === null) throw new TypeError(`'${target}' is not a session:// target.`);
     return match[1];
 };

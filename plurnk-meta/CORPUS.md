@@ -10,11 +10,11 @@ Authored defaults published by `@plurnk/plurnk-meta` and consumed by
 | ------------------------------- | ---------------------------------------------------------------------------- |
 | `POLICY.md`                     | Read before the first-run seed of the user-owned XDG config `AGENTS.md`.     |
 | `recap.md`                       | Read for an optional Recap rendered last when its content is nonempty.       |
-| `docs/worker.md`                | Read when registered built-in pull docs are materialized.                    |
+| `docs/session.md`                | Read when registered built-in pull docs are materialized.                    |
 | `skills/plurnk/SKILL.md`         | Standard skill entry; Core composes its package-owned and generated resources. |
 
 Core materializes eligible scheme and runtime pull docs at
-`worker:///_plurnk/plurnk/<name>.md` and exposes them through turn-0 FIND surveys. Merely
+`workspace:///_plurnk/plurnk/<name>.md` and exposes them through turn-0 FIND surveys. Merely
 placing a file in `docs/` does not register a scheme or make speculative
 teaching current. Every listed source is a required package member; a missing
 or failed read surfaces at the admission boundary rather than silently reducing

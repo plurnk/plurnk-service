@@ -7,7 +7,7 @@ import LineAnchors from "../content/line-anchors.ts";
 import LineMarkerOps from "../content/line-marker.ts";
 import { editReceipt, projectEditReceipt, reviewerReplacementReceipt } from "../content/edit-receipt.ts";
 
-const identity = "worker:///sequence.md";
+const identity = "workspace:///sequence.md";
 const original = "one\ntwo\nthree\nfour\nfive\nsix\n";
 const statement = (marker: LineMarker, body: string): ResolvedEditStatement => ({
     op: "EDIT", aside: null, target: null, metadata: null,
@@ -99,7 +99,7 @@ test("{§edit-anchor-continuity}: retained bindings never cross resource identit
     const sequence = new EditSequence();
     const hash = LineAnchors.tokens(identity, original)[2];
     const updated = apply(sequence, original, { marks: [2] }, "TWO");
-    const other = "worker:///other.md";
+    const other = "workspace:///other.md";
     const snapshot = sequence.observe(other, updated);
     assert.deepEqual(LineAnchors.resolve(LineAnchors.tokens(other, updated), { marks: [hash] }, snapshot.anchors), {
         ok: false, failure: { kind: "missing", anchor: hash },

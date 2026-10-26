@@ -126,7 +126,7 @@ test("{§pairing-algorithm}: two stray fences after closed operations are an emp
     const emission = [
         "````BARE", "Quote the exact hint string.", "````",
         "",
-        "````WORK (worker://fresh)", "Answer from memory.", "````",
+        "````WORK (session://fresh)", "Answer from memory.", "````",
         "````",
         "````",
     ].join("\n");

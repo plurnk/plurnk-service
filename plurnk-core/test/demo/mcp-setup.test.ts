@@ -67,7 +67,7 @@ for (const oauth of [false, true]) {
             const listed = await s.invokeWorkspaceAction("workspace.mcp.list", {}) as FunctionalityListResult;
             const installed = listed.definitions.find(({ definition }) => isRecord(definition) && definition.url === served.url);
             assert.equal(installed?.state, "active");
-            const log = await s.daemon.readLog({ workspaceId: s.workspaceId, workerId: result.modelWorkerId, limit: Number.MAX_SAFE_INTEGER });
+            const log = await s.daemon.readLog({ workspaceId: s.workspaceId, sessionId: result.modelSessionId, limit: Number.MAX_SAFE_INTEGER });
             assert.ok(log.some((row) => row.op === "READ" && row.scheme === installed?.alias && row.status_rx === 200 && JSON.stringify(row.rx).includes(marker)),
                 "the model observes the tool result through the ordinary stream/log path");
         } finally { await s.cleanup(); }

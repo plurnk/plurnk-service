@@ -16,7 +16,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { copyStmt, urlPath } from "./_dsl.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel } from "./_db.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
@@ -86,7 +86,7 @@ class OwnerBoundPreparationScheme implements SchemeHandler {
         if (prior.status === 404) {
             const written = await ctx.entries.write(request.pathname, {
                 channels: {
-                    body: { content: "prepared for resolved worker", mimetype: "text/plain" },
+                    body: { content: "prepared for resolved session", mimetype: "text/plain" },
                 },
             });
             assert.equal(written.status, 201);
@@ -216,8 +216,8 @@ test("{§markerless-first-page} entry-backed data schemes inherit exact READ pro
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `universal-read-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const lines = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`);
         await seedEntryWithChannel(db, {
@@ -232,7 +232,7 @@ test("{§markerless-first-page} entry-backed data schemes inherit exact READ pro
         const result = await engine.dispatch({
             statement: parseRead("````READ (entry-backed:///document.txt)````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -261,22 +261,22 @@ test("{§markerless-first-page} inherited READ uses the scheme's canonical pathn
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `resolved-read-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         await seedEntryWithChannel(db, {
             workspaceId,
             scheme: "resolved-entry",
             pathname: "/canonical.txt",
             channel: "body",
-            content: "canonical worker content",
+            content: "canonical session content",
             mimetype: "text/plain",
         });
 
         const result = await engine.dispatch({
             statement: parseRead("````READ (resolved-entry:///alias_%28v1%29.txt#body) <1,-1>````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -284,7 +284,7 @@ test("{§markerless-first-page} inherited READ uses the scheme's canonical pathn
         });
 
         assert.equal(result.status, 200);
-        assert.equal(result.content, "canonical worker content");
+        assert.equal(result.content, "canonical session content");
     } finally {
         await db.close();
     }
@@ -297,13 +297,13 @@ test("{§markerless-first-page} preparation capabilities bind to the already-res
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `owner-bound-preparation-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: parseRead("````READ (owner-bound-preparation:///alias.txt) <1,-1>````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -311,7 +311,7 @@ test("{§markerless-first-page} preparation capabilities bind to the already-res
         });
 
         assert.equal(result.status, 200);
-        assert.equal(result.content, "prepared for resolved worker");
+        assert.equal(result.content, "prepared for resolved session");
     } finally {
         await db.close();
     }
@@ -324,15 +324,15 @@ test("{§read-preparation} scope-blind preparation durably composes producer sta
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `prepared-read-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         for (const sequence of [1, 2]) {
             const result = await engine.dispatch({
                 statement: parseRead("````READ (archive:///aliases/latest) <17,18>````"),
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 sequence,
@@ -361,13 +361,13 @@ test("{§markerless-first-page} core selects one channel before applying its ind
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `independent-channel-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const dispatch = (statement: ReadStatement, sequence: number) => engine.dispatch({
             statement,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence,
@@ -406,13 +406,13 @@ test("{§markerless-first-page} exact FIND shares representation preparation but
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `prepared-find-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: parseFind("````FIND (archive:///aliases/latest)````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -447,8 +447,8 @@ test("{§markerless-first-page} COPY resolves and prepares the canonical source 
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `prepared-copy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: copyStmt(
@@ -456,7 +456,7 @@ test("{§markerless-first-page} COPY resolves and prepares the canonical source 
                 urlPath("archive", "/imported.txt"),
             ),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -486,8 +486,8 @@ test("{§markerless-first-page} COPY refuses a selected channel whose canonical 
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `failed-copy-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const result = await engine.dispatch({
             statement: copyStmt(
@@ -495,7 +495,7 @@ test("{§markerless-first-page} COPY refuses a selected channel whose canonical 
                 urlPath("independent-channel", "/copied.html", "html"),
             ),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -525,8 +525,8 @@ test("{§markerless-first-page} public schemes cannot replace canonical COPY sto
     const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
     try {
         const workspaceId = await insertWorkspace(db, `public-crud-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         await seedEntryWithChannel(db, {
             workspaceId,
@@ -543,7 +543,7 @@ test("{§markerless-first-page} public schemes cannot replace canonical COPY sto
                 urlPath("public-crud-trap", "/destination"),
             ),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -581,14 +581,14 @@ test("{§markerless-first-page} cold finite HTTP READ acquires before applying t
     });
     try {
         const workspaceId = await insertWorkspace(db, `http-read-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
 
         const result = await engine.dispatch({
             statement: parseRead("````READ (https://93.184.216.34/document.txt) <17,18>````"),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -604,7 +604,7 @@ test("{§markerless-first-page} cold finite HTTP READ acquires before applying t
             returned: [17, 18],
         });
         assert.deepEqual(requests, ["https://93.184.216.34/document.txt"]);
-        const subscriptions = await db.test_count_subscriptions_for_worker.get<{ n: number }>({ worker_id: workerId });
+        const subscriptions = await db.test_count_subscriptions_for_session.get<{ n: number }>({ session_id: sessionId });
         assert.equal(subscriptions?.n, 0, "a finite representation never opens a subscription");
     } finally {
         globalThis.fetch = originalFetch;

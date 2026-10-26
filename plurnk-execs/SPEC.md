@@ -87,8 +87,8 @@ interface ExecArgs {
 }
 ```
 
-`ExecArgs` deliberately carries **no Worker identity**: an executor is a
-worker-agnostic capability, and `run` may assume nothing about which Worker,
+`ExecArgs` deliberately carries **no Session identity**: an executor is a
+session-agnostic capability, and `run` may assume nothing about which Session,
 Loop, or workspace invoked it beyond the arguments given. A runtime whose
 behavior depends on a workspace — an attached MCP server or Functionality
 manager — is published per workspace by its module, closing over that
@@ -295,12 +295,12 @@ This is the ordinary subscription publication selection, not another delivery pa
 
 `entry(path, content, { mimetype?, name? })` is a consumer-implemented sink, not
 executor access to storage. It returns the canonical address of an ordinary
-resource; publication alone does not attach media or wake a Worker.
+resource; publication alone does not attach media or wake a Session.
 
 | Input | Meaning |
 | --- | --- |
 | Absolute resource URL | Materialize or update that resource through its scheme owner. |
-| `path: null` | Publish beneath this invocation's output address, in `resources/`. Preserve `name` as one URI-encoded component; otherwise allocate an eight-character hexadecimal identifier. Duplicate names receive a hash suffix, never overwrite another publication. The returned address is workspace-stable and carries no Worker selector. |
+| `path: null` | Publish beneath this invocation's output address, in `resources/`. Preserve `name` as one URI-encoded component; otherwise allocate an eight-character hexadecimal identifier. Duplicate names receive a hash suffix, never overwrite another publication. The returned address is workspace-stable and carries no Session selector. |
 | String content + mimetype | Supplied text; preserve its source layout. |
 | `Uint8Array` content + mimetype | Supplied bytes, retained as bytes, not a JSON/base64 body. |
 | `content: null` | Consumer-sourced acquisition from an absolute HTTP(S) URL. |

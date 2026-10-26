@@ -3,14 +3,14 @@ import test from "node:test";
 import type { EditStatement } from "@plurnk/plurnk-contracts";
 import LineAnchors from "./line-anchors.ts";
 
-const identity = "worker:///notes.md";
+const identity = "workspace:///notes.md";
 
 test("{§line-anchors} LineAnchors: tokens are deterministic Base62 handles over identity, content, and configured context", () => {
     const content = Array.from({ length: 13 }, (_, index) => `line-${index + 1}`).join("\n");
     const token = LineAnchors.token(identity, 7, content);
     assert.match(token, /^@[0-9A-Za-z]{5}$/);
     assert.equal(LineAnchors.token(identity, 7, content), token);
-    assert.notEqual(LineAnchors.token("worker:///other.md", 7, content), token);
+    assert.notEqual(LineAnchors.token("workspace:///other.md", 7, content), token);
     assert.notEqual(LineAnchors.token(identity, 8, content), token);
 
     const nearby = content.replace("line-5", "changed-nearby");

@@ -45,14 +45,14 @@
 - b28031f: `@opencode-ai/models` moves to `^0.0.113` ({§model-catalog-build}).
   `effort-unsupported` and `effort-invalid` name the route's supported or valid
   efforts in `recovery`, and `provider-unavailable` includes the provider's
-  instantiation failure ({§worker-effort}, {§problems-functionality}).
+  instantiation failure ({§session-effort}, {§problems-functionality}).
 - 2b882f9: Translate the calibrated curation budget additively by measured overhead
   without extrapolating unmeasured content, remove daemon-side row shedding at
   the context wall, resolve `PLURNK_PROVIDERS_OUTPUT_FLOOR` percentages against
   the effective output ceiling, and refuse model changes whose calibrated budget
   cannot hold the worker's current context with `413 context-exceeds-model-budget`
   ({§tokenomics-calibrated-readout}, {§context-wall}, {§provider-output-floor},
-  {§worker-model-selection}) (#1225).
+  {§session-model-selection}) (#1225).
 - Updated dependencies [c30873c]
 - Updated dependencies [2b882f9]
 - Updated dependencies [b28031f]
@@ -88,7 +88,7 @@
   unnamed default ({§entry-read-result}).
 - 0cee49c: Workspaces and workers hide and show by a durable mark ({§place-hiding}):
   `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
-  {§methods-worker-hide}). A worker's hide covers its subtree as one group;
+  {§methods-session-hide}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group
   and workspace. `listWorkspaces` and `listWorkers` take `hidden` and carry
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
@@ -147,12 +147,12 @@
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
   ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
-  ({§methods-worker-streams}). `stream/event`'s `contentLength` counts Unicode
+  ({§methods-session-streams}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-worker-overview}, {§worker-finished-reply},
-  {§application-worker-overview}); `excerptOf` is the one list excerpt rule
+  finished first and bounded ({§methods-session-overview}, {§session-finished-reply},
+  {§application-session-overview}); `excerptOf` is the one list excerpt rule
   ({§list-excerpt}). `workspace/renamed` announces a rename
   ({§notifications-workspace-renamed}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
@@ -161,7 +161,7 @@
   {§acp-overview-updates}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
   `PLURNK_AGUI_EXCERPT_CHARS` caps every list excerpt.
 - 2693a59: A change to a worker's model, effort or spawn model is announced as
-  `worker/policy` ({§notifications-worker-policy}), and every client attached to
+  `worker/policy` ({§notifications-session-policy}), and every client attached to
   the worker is sent the new route as `STATE_DELTA /plurnk/status/model`,
   whichever view made the change ({§acp-status-model}). A delta an event causes
   reaches the Run before any later event, its terminal included
@@ -199,7 +199,7 @@
   `2. Evaluate and react to the Open Message.` and closes with its second step. A
   survey that would select nothing is left out of the program, and the program no
   longer READs its own `ops://` source ({§actor-boundary-catalog-preview},
-  {§worker-initialization-entry}).
+  {§session-initialization-entry}).
 - 70b19d7: A loop's terminal reaps every loop-bound stream, one spawned before a park
   included, and is announced once those streams have concluded
   ({§exec-lifetime}, {§notifications-loop-terminated}).
@@ -232,7 +232,7 @@
   ({§notifications-loop-terminated}).
 - f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
-  reported ({§notifications-loop-packet}, {§methods-worker-gauge}). AG-UI moves
+  reported ({§notifications-loop-packet}, {§methods-session-gauge}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
   a reattached observer agree ({§acp-state-patches}).
 - e52015a: A worker name lost to a concurrent claim is refused as `name-conflict` (409),

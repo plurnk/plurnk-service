@@ -1,6 +1,6 @@
 // Producer-neutral runtime entry point ({§actor-boundary-doc-injection}). The
 // harness opens an administrative loop and durable `_plurnk` turn in the
-// addressed worker, then admits a real operation program through the same turn
+// addressed session, then admits a real operation program through the same turn
 // executor used by model and recovery programs. Generated state and its causal
 // evidence therefore share one owner; neither is a hidden write or a kernel
 // mirror.
@@ -23,16 +23,16 @@ export default class DispatchAsPlurnk {
         engine: Engine,
         db: Db,
         workspaceId: number,
-        workerId: number,
+        sessionId: number,
         statements: PlurnkStatement[],
-        summary = "Reconcile generated Worker reference documents.",
+        summary = "Reconcile generated Session reference documents.",
     ): Promise<void> {
         if (statements.length === 0) return;
-        const worker = await db.envelope_get_worker_by_id.get<{ workspace_id: number }>({ id: workerId });
-        if (worker?.workspace_id !== workspaceId) {
-            throw new Error(`_plurnk dispatch worker ${workerId} does not belong to workspace ${workspaceId}`);
+        const session = await db.envelope_get_session_by_id.get<{ workspace_id: number }>({ id: sessionId });
+        if (session?.workspace_id !== workspaceId) {
+            throw new Error(`_plurnk dispatch session ${sessionId} does not belong to workspace ${workspaceId}`);
         }
-        const { id: loopId } = await AdministrativeLoop.open(db, workerId);
+        const { id: loopId } = await AdministrativeLoop.open(db, sessionId);
         // kind 'maintenance' — a receipt answers an asker, and these turns
         // have none: the packet render suppresses their successful rows
         // entirely (engine_render_log), while the rows stay durable and
@@ -64,7 +64,7 @@ export default class DispatchAsPlurnk {
                 emission: null,
                 origin: "_plurnk",
                 workspaceId,
-                workerId,
+                sessionId,
                 loopId,
                 turnId,
                 fromSequence: 1,
@@ -73,7 +73,7 @@ export default class DispatchAsPlurnk {
             turnOpen = false;
             await Envelope.closeClientLoop(db, loopId, { status: 200 });
         } catch (cause) {
-            console.error(`_plurnk dispatch failed for worker ${workerId}, loop ${loopId}:`, cause);
+            console.error(`_plurnk dispatch failed for session ${sessionId}, loop ${loopId}:`, cause);
             const failure = cause instanceof OperationFailureError
                 ? cause.result
                 : Results.failure(

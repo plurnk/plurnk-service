@@ -62,7 +62,7 @@
         "probe:providers": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev scripts/providers-ping.mjs",
         "probe:tokens": "bash ../scripts/operator-environment.sh node --conditions=plurnk-dev scripts/token-envelope-probe.mjs",
         "test": "npm run test:lint && npm run test:unit",
-        "release:check": "node scripts/runtime-neutral-worker-smoke.mjs",
+        "release:check": "node scripts/runtime-neutral-session-smoke.mjs",
         "prepublishOnly": "npm audit --audit-level=moderate && npm test && npm run build && npm run release:check",
         "build:clean": "rm -rf dist",
         "build:dist": "tsc -p tsconfig.build.json",

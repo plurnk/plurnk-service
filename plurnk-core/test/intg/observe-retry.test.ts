@@ -23,7 +23,7 @@ test("{§observability-boundary} observe: an invalid first emission retries unde
                 {
                     assistant: {
                         // No executable operation or lifecycle declaration.
-                        content: "````READ (worker:///not-a-plurnk-turn",
+                        content: "````READ (workspace:///not-a-plurnk-turn",
                         reasoning: null,
                     },
                 },

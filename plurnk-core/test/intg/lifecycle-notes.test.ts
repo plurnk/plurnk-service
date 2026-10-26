@@ -8,7 +8,7 @@ import Fork from "../../src/core/fork.ts";
 import { resourcePaths } from "./_find.ts";
 import type { FindResult } from "../../src/schemes/_entry-find.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { logEntries } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
@@ -19,9 +19,9 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lifecycle-notes");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the parser and report the result.");
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the parser and report the result.");
+        const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const reasoning = [frame("NOTE", "The network is not the cause."), frame("EDIT (should-not-exist.txt)", "Never execute reasoning edits.")].join("\n\n");
         const provider = new Mock({ contextWindow: 100_000, responses: [
@@ -38,8 +38,8 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         assert.deepEqual(notes.map((row) => row.resource), notes.map((row) => `note://alice/${row.logPath.replace(/^log:\/\/\//u, "").replace(/\/NOTE$/u, "")}`), "each ordinary receipt exposes its recoverable source at its own coordinate");
         assert.ok(notes.every((row) => row.origin === undefined || row.origin === "model"));
         // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
-        const observer = await insertWorker(db, workspaceId, null, "observer");
-        const read = (source: string, reader = observer) => clientRead(engine, db, { workspaceId, workerId: reader, statement: statement(source) });
+        const observer = await insertSession(db, workspaceId, null, "observer");
+        const read = (source: string, reader = observer) => clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(source) });
         const firstSource = await read(frame(`READ (${String(notes[0].resource)}) <1,-1>`, null));
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
@@ -60,7 +60,7 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         });
         assert.equal(found.status, 200);
         assert.deepEqual(resourcePaths(found as FindResult), [`note://alice/${contentNote}`], "source search still works after log curation");
-        const fork = await Fork.fork(db, workerId, "branch");
+        const fork = await Fork.fork(db, sessionId, "branch");
         const inherited = await read(frame(`READ (${String(notes[0].resource).replace("note://alice/", "note://branch/")}) <1,-1>`, null), fork);
         assert.equal(inherited.content, firstSource.content, "FORK preserves source identity and content");
         for (const op of ["EDIT", "KILL"]) {
@@ -78,9 +78,9 @@ test("{§wait-obligation-matrix} empty WAIT falls through and SEND plus a retrie
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lifecycle-fallthrough");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the recorded operations, then answer.");
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the recorded operations, then answer.");
+        const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: frame("WAIT", "Wait for results."), reasoning: null } },
@@ -97,9 +97,9 @@ test("{§reasoning-operations} {§unparsed-tail-boundary}: a lost boundary admit
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lost-boundary-reasoning-note");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
+        const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const reasoning = frame("NOTE", "Kept despite the broken program.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
@@ -121,9 +121,9 @@ test("{§reasoning-operations} {§fabricated-log-entry}: a rejected emission can
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-note");
-        const workerId = await insertWorker(db, workspaceId, null, "alice");
-        const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
-        const context = { workspaceId, workerId, loopId };
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
+        const context = { workspaceId, sessionId, loopId };
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const rejectedReasoning = frame("NOTE", "This belongs to the rejected attempt.");
         const acceptedReasoning = frame("NOTE", "This belongs to the accepted attempt.");
@@ -136,11 +136,11 @@ test("{§reasoning-operations} {§fabricated-log-entry}: a rejected emission can
         assert.equal(result.status, 200);
         const attempts = await db.test_turn_attempts.all<{ accepted: number }>({ turn_id: result.turnId });
         assert.deepEqual(attempts.map(({ accepted }) => accepted), [0, 1]);
-        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ worker_id: workerId });
+        const sources = await db.test_turn_sources.all<{ kind: string; content: string }>({ session_id: sessionId });
         const notes = sources.filter(({ kind }) => kind === "note");
         assert.equal(notes.filter(({ content }) => content === "This belongs to the accepted attempt.").length, 1);
         assert.ok(notes.every(({ content }) => content !== "This belongs to the rejected attempt."));
-        const reasoning = await clientRead(engine, db, { workspaceId, workerId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+        const reasoning = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
         assert.equal(reasoning.content, acceptedReasoning);
     } finally { await db.close(); }
 });

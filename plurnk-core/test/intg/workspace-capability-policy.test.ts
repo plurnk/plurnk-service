@@ -9,11 +9,11 @@ import type { SchemeManifest } from "@plurnk/plurnk-schemes";
 import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
-import WorkerName from "../../src/core/WorkerName.ts";
+import SessionName from "../../src/core/SessionName.ts";
 import { completeStmt, copyStmt, editStmt, killStmt, moveStmt, readStmt, urlPath, noteStmt } from "./_dsl.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
 import { testExecutors } from "./_execs.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
@@ -36,13 +36,13 @@ const runWithPolicy = async (capabilities: CapabilityPolicy, runtime: string) =>
             id: workspaceId,
             settings: JSON.stringify({ capabilities }),
         });
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "policy");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "policy");
         const turnId = await insertTurn(db, loopId, 1, 102);
         return await engine.dispatch({
             statement: execStmt(runtime),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence: 1,
@@ -74,7 +74,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `workspace-policy-render-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
+        const sessionId = await insertSession(db, workspaceId);
         const before = await engine.referenceEntries(workspaceId);
         assert.ok(before.some((doc) => doc.pathname === "/_plurnk/plurnk/js.md"));
 
@@ -86,7 +86,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         assert.ok(!after.some((doc) => doc.pathname === "/_plurnk/plurnk/js.md"));
         assert.ok(after.some((doc) => doc.pathname === "/_plurnk/plurnk/sh.md"));
 
-        const loopId = await insertLoop(db, workerId, 1, "policy teaching");
+        const loopId = await insertLoop(db, sessionId, 1, "policy teaching");
         const provider = new Mock({
             contextWindow: 100_000,
             responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt("No external capabilities used.")] } }],
@@ -94,7 +94,7 @@ test("{§capability-policy-cascade}: one effective workspace policy filters exec
         const { turnId } = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [
                 { role: "system", content: "definition" },
@@ -116,8 +116,8 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         engine.setExecutors(await testExecutors());
         const workspaceId = await insertWorkspace(db, `capability-init-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "finish without external capabilities");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "finish without external capabilities");
         await db.test_set_workspace_settings.run({
             id: workspaceId,
             settings: JSON.stringify({
@@ -138,7 +138,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
         const result = await engine.runTurn({
             provider,
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             messages: [
                 { role: "system", content: "definition" },
@@ -161,7 +161,7 @@ test("{§capability-admission}: harness-authored initialization obeys the same w
 });
 
 
-for (const layer of ["service", "workspace"] as const) test(`{§schemes-directory}: ${layer} read-only policy preserves discoverable, readable worker reference`, async (t) => {
+for (const layer of ["service", "workspace"] as const) test(`{§schemes-directory}: ${layer} read-only policy preserves discoverable, readable session reference`, async (t) => {
     const previousFilesItems = process.env.PLURNK_SERVICE_FILES_ITEMS;
     const previousCapabilities = process.env.PLURNK_SERVICE_CAPABILITIES;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -176,21 +176,21 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, `reference-read-only-${layer}`);
         const capabilities: CapabilityPolicy = { only: [{ access: "observe" }] };
-        const { id: workerId } = await WorkerName.claimAuto(db, { workspaceId });
+        const { id: sessionId } = await SessionName.claimAuto(db, { workspaceId });
         if (layer === "service") process.env.PLURNK_SERVICE_CAPABILITIES = JSON.stringify(capabilities);
         if (layer === "workspace") await db.test_set_workspace_settings.run({
             id: workspaceId, settings: JSON.stringify({ capabilities }),
         });
         await LoopDocs.materialize(engine, db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 2, "Read the worker reference.");
+        const loopId = await insertLoop(db, sessionId, 2, "Read the session reference.");
         const provider = new Mock({ contextWindow: 100_000, responses: [
             { assistant: { content: "", reasoning: null, ops: [
-                readStmt({ ...urlPath("worker", "/_plurnk/plurnk/worker.md"), hostname: null, raw: "worker:///_plurnk/plurnk/worker.md" }, { marks: [1, -1] }),
-                readStmt({ ...urlPath("worker", "/_plurnk/plurnk/delegation.md"), hostname: null, raw: "worker:///_plurnk/plurnk/delegation.md" }, { marks: [1, -1] }),
+                readStmt({ ...urlPath("workspace", "/_plurnk/plurnk/session.md"), hostname: null, raw: "workspace:///_plurnk/plurnk/session.md" }, { marks: [1, -1] }),
+                readStmt({ ...urlPath("workspace", "/_plurnk/plurnk/delegation.md"), hostname: null, raw: "workspace:///_plurnk/plurnk/delegation.md" }, { marks: [1, -1] }),
                 noteStmt("Continue."),
             ] } },
         ] });
-        await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
+        await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         const rows = await db.test_log_entries_by_loop.all<{
             op: string; pathname: string; rx: string; status_rx: number;
         }>({ loop_id: loopId });
@@ -198,25 +198,25 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
         assert.ok(survey, "read-only policy retains the native reference survey");
         const result = JSON.parse(survey.rx) as { content: string };
         const items = JSON.parse(result.content) as Array<Array<{ path: string; aside?: string }>>;
-        const reference = items.flat().find(({ path }) => path.endsWith("/worker.md"));
-        assert.ok(reference?.aside, `worker orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
-        const read = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/worker.md");
+        const reference = items.flat().find(({ path }) => path.endsWith("/session.md"));
+        assert.ok(reference?.aside, `session orientation is not hidden by its mutation examples: ${JSON.stringify(items)}`);
+        const read = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/session.md");
         assert.equal(read?.status_rx, 200, "the model can read the advertised reference through normal dispatch");
-        assert.ok(JSON.parse(read.rx).content.includes("worker:///_plurnk/plurnk/delegation.md"));
+        assert.ok(JSON.parse(read.rx).content.includes("workspace:///_plurnk/plurnk/delegation.md"));
         const delegation = rows.find(({ op, pathname }) => op === "READ" && pathname === "/_plurnk/plurnk/delegation.md");
-        assert.equal(delegation?.status_rx, 200, "the cross-reference follows the same admission as its worker owner");
+        assert.equal(delegation?.status_rx, 200, "the cross-reference follows the same admission as its session owner");
         assert.ok(JSON.parse(delegation.rx).content.includes("## Lifecycle"));
     } finally { await db.close(); }
 });
 
-test("{§worker-generated-subtree}: runtime maintenance preserves external policy and writer boundaries", async () => {
+test("{§session-generated-subtree}: runtime maintenance preserves external policy and writer boundaries", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const workspaceId = await insertWorkspace(db, "generated-state-policy");
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "inspect references");
-        const target = (path: string) => ({ ...urlPath("worker", path), hostname: null, raw: `worker://${path}` });
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "inspect references");
+        const target = (path: string) => ({ ...urlPath("workspace", path), hostname: null, raw: `workspace://${path}` });
         const generated = target("/_plurnk/test.md");
         const external = target("/notes.md");
         let sequence = 0;
@@ -225,7 +225,7 @@ test("{§worker-generated-subtree}: runtime maintenance preserves external polic
             const turnId = origin === "model"
                 ? await insertTurn(db, loopId, turnSequence, 102)
                 : await insertOperationTurn(db, loopId, turnSequence, origin, 102);
-            return engine.dispatch({ statement, workspaceId, workerId, loopId, turnId, sequence: 1, origin });
+            return engine.dispatch({ statement, workspaceId, sessionId, loopId, turnId, sequence: 1, origin });
         };
         const policy = (capabilities: CapabilityPolicy) => db.test_set_workspace_settings.run({
             id: workspaceId, settings: JSON.stringify({ capabilities }),
@@ -278,7 +278,7 @@ test("{§schemes-self-doc-materialization}: read-only reconciliation records cre
         });
         const engine = new Engine({ db, schemes });
         const workspaceId = await insertWorkspace(db, "read-only-reconciliation");
-        await insertWorker(db, workspaceId);
+        await insertSession(db, workspaceId);
         const policy = (deny: CapabilityPolicy["deny"] = []) => db.test_set_workspace_settings.run({
             id: workspaceId, settings: JSON.stringify({ capabilities: { only: [{ access: "observe" }], deny } }),
         });
@@ -294,9 +294,9 @@ test("{§schemes-self-doc-materialization}: read-only reconciliation records cre
         await policy([{ scheme: "readable" }]);
         await LoopDocs.materialize(engine, db, workspaceId);
         assert.equal(await current(), undefined);
-        const rows = await db.test_log_entries_by_worker.all<{
+        const rows = await db.test_log_entries_by_session.all<{
             op: string; pathname: string; origin: string; status_rx: number; turn_id: number;
-        }>({ worker_id: await RuntimeWorker.ensure(db, workspaceId) });
+        }>({ session_id: await RuntimeSession.ensure(db, workspaceId) });
         const changes = rows.filter(({ pathname, op }) => pathname === "/_plurnk/plurnk/readable.md" && ["EDIT", "KILL"].includes(op));
         assert.deepEqual(changes.map(({ op, origin, status_rx }) => [op, origin, status_rx]), [
             ["EDIT", "_plurnk", 201], ["EDIT", "_plurnk", 200], ["KILL", "_plurnk", 200],

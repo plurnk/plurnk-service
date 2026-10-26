@@ -8,7 +8,7 @@ import ChannelWrite from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated, seedEntryWithChannel, sendingOperation } from "./_db.ts";
+import { holdChild, insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, sendingOperation } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 import { statement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
@@ -22,24 +22,24 @@ const correct = (content: string) => PlurnkParser.frame(`SEND (${message}) [200]
 const setup = async (responses: MockResponse[]) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `send-conclusion-${crypto.randomUUID()}`);
-    const parentId = await insertWorker(db, workspaceId, null, "lead");
-    // {§worker-obligations} lead sends alice her messages from its own loop.
+    const parentId = await insertSession(db, workspaceId, null, "lead");
+    // {§session-obligations} lead sends alice her messages from its own loop.
     const leadLoop = await insertLoop(db, parentId, 1, "Lead the work.");
-    const workerId = await insertWorker(db, workspaceId, parentId, "alice");
-    const loopId = await insertLoop(db, workerId, 1);
+    const sessionId = await insertSession(db, workspaceId, parentId, "alice");
+    const loopId = await insertLoop(db, sessionId, 1);
     // Source identity never depends on the reader ({§turn-source-resources}); alice's turns and history are under test.
-    const observer = await insertWorker(db, workspaceId, null, "observer");
+    const observer = await insertSession(db, workspaceId, null, "observer");
     const notices: Notice[] = [];
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES,
         noticeNotify: (_id, payload) => notices.push(payload.notice),
     });
-    await engine.injectIntoLoop(loopId, "What is two plus two?", [], "worker://lead", {}, message, await sendingOperation(db, leadLoop));
+    await engine.injectIntoLoop(loopId, "What is two plus two?", [], "session://lead", {}, message, await sendingOperation(db, leadLoop));
     const provider = new Mock({ contextWindow: 100_000, responses });
-    const ids = { workspaceId, workerId, loopId };
+    const ids = { workspaceId, sessionId, loopId };
     return {
         db, engine, provider, ids, parentId, leadLoop, notices,
         turn: () => engine.runTurn({ provider, ...ids, messages: [] }),
-        answer: () => clientRead(engine, db, { workspaceId, workerId: observer, statement: statement("````READ (ops://alice/1)````") }),
+        answer: () => clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement("````READ (ops://alice/1)````") }),
     };
 };
 
@@ -66,16 +66,16 @@ for (const final of ["Four, precisely.", "", " \n\t"]) {
             const rows = await db.test_log_entries_by_turn.all<{ op: string; rx: string }>({ turn_id: concluded.turnId });
             assert.deepEqual(JSON.parse(rows.find(({ op }) => op === "SEND")!.rx).answers, answers, "completion addresses the original message even without speech");
             const history = await db.message_history.all<{ direction: string; body: string }>({
-                workspace_id: ids.workspaceId, worker_id: ids.workerId, loop_id: ids.loopId,
+                workspace_id: ids.workspaceId, session_id: ids.sessionId, loop_id: ids.loopId,
             });
             assert.deepEqual(history.filter(({ direction }) => direction === "outbound").map(({ body }) => body), ["Four.", ...(final.trim() ? [final] : [])], "an empty completion is evidence, not another spoken message");
 
             const loopId = leadLoop;
-            await engine.runTurn({ workspaceId: ids.workspaceId, workerId: parentId, loopId, messages: [],
+            await engine.runTurn({ workspaceId: ids.workspaceId, sessionId: parentId, loopId, messages: [],
                 provider: new Mock({ contextWindow: 100_000, responses: [said(PlurnkParser.frame("NOTE", "Observed."))] }),
             });
-            const parentRows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ worker_id: parentId });
-            const childRows = parentRows.filter(({ source }) => source === "worker://alice");
+            const parentRows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ session_id: parentId });
+            const childRows = parentRows.filter(({ source }) => source === "session://alice");
             assert.deepEqual(childRows.map(({ op }) => op), ["READ"], "the parent receives one conclusion, not a duplicate child message or activity");
             assert.equal(JSON.parse(childRows[0].rx).content, final.trim() ? final : "Four.", "the parent's actual conclusion READ contains the child's final answer");
         } finally { await db.close(); }
@@ -89,7 +89,7 @@ test("{§slot-order} {§message-completion}: leading completion metadata resolve
         said(PlurnkParser.frame(`SEND [200] (${message})`, "Four.")),
     ]);
     try {
-        await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "worker://lead", {}, followup, await sendingOperation(db, leadLoop));
+        await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "session://lead", {}, followup, await sendingOperation(db, leadLoop));
         const first = await turn();
         assert.equal(first.status, 102, "the original message remains unresolved");
         const second = await turn();
@@ -115,14 +115,14 @@ test("{§message-completion} {§loop-answer}: an empty completion succeeds witho
         assert.equal(outcome.status, 200, "the loop resource retains the successful empty outcome");
         assert.ok("content" in outcome);
         assert.equal(outcome.content, "", "READ represents successful silence as an empty body");
-        const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_worker_id: parentId });
+        const events = await db.test_loop_termination_events.all<{ rx: string }>({ recipient_session_id: parentId });
         assert.deepEqual(events.map(({ rx }) => JSON.parse(rx)), [{ status: 200 }]);
         const loopId = leadLoop;
-        await engine.runTurn({ workspaceId: ids.workspaceId, workerId: parentId, loopId, messages: [],
+        await engine.runTurn({ workspaceId: ids.workspaceId, sessionId: parentId, loopId, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [said(PlurnkParser.frame("NOTE", "Observed."))] }),
         });
-        const rows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ worker_id: parentId });
-        const conclusions = rows.filter(({ source }) => source === "worker://alice");
+        const rows = await db.engine_render_log.all<{ source: string; op: string; rx: string }>({ session_id: parentId });
+        const conclusions = rows.filter(({ source }) => source === "session://alice");
         assert.equal(conclusions.length, 1, "the parent receives one ordinary completion observation");
         assert.equal(conclusions[0].op, "READ");
         const result = JSON.parse(conclusions[0].rx);
@@ -138,7 +138,7 @@ test("{§send-response-receipt}: FIFO targeting cannot acknowledge an unpublishe
     ]);
     const generate = provider.generate.bind(provider);
     t.mock.method(provider, "generate", async (...args: Parameters<Mock["generate"]>) => {
-        if (provider.received.length === 1) await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "worker://lead", {}, undefined, await sendingOperation(db, leadLoop));
+        if (provider.received.length === 1) await engine.injectIntoLoop(ids.loopId, "Also answer this follow-up.", [], "session://lead", {}, undefined, await sendingOperation(db, leadLoop));
         return generate(...args);
     });
     try {
@@ -210,19 +210,19 @@ test("{§message-completion}: a NOTE after progress delivery leaves messages unr
                 const { db, turn, ids } = await setup([
                     said(first),
                     said(PlurnkParser.frame("NOTE", "Check the saved input.")),
-                    said(PlurnkParser.frame("READ (worker:///input.txt)", null)),
+                    said(PlurnkParser.frame("READ (workspace:///input.txt)", null)),
                     said(PlurnkParser.frame(park, null)),
                 ]);
                 try {
-                    await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "worker", pathname: "/input.txt",
+                    await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "workspace", pathname: "/input.txt",
                         channel: "body", content: "input-witness", mimetype: "text/plain", state: "static" });
                     assert.equal((await turn()).status, 102);
                     assert.equal((await db.message_unanswered_count.get({ loop_id: ids.loopId }))?.count, 1);
-                    if (obligation === "child") await holdChild(db, ids.workspaceId, ids.workerId);
+                    if (obligation === "child") await holdChild(db, ids.workspaceId, ids.sessionId);
                     else {
                         const entryId = await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "js", pathname: "/12345678",
                             channel: "stdout", content: "Ready for input.", mimetype: "text/plain", state: "active" });
-                        await ChannelWrite.openSubscription(db, { workerId: ids.workerId, entryId, scheme: "js", handle: "/12345678", publishedChannel: "stdout" });
+                        await ChannelWrite.openSubscription(db, { sessionId: ids.sessionId, entryId, scheme: "js", handle: "/12345678", publishedChannel: "stdout" });
                     }
                     const memory = await turn();
                     assert.equal(memory.status, 102, "an earlier delivery is not an instruction to park a later NOTE");
@@ -250,7 +250,7 @@ for (const response of ["200", "````markdown\nFour.\n````", "````md\nFour.\n````
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: token.turnId });
             assert.equal(rows.some(({ op, origin }) => op === "SEND" && origin === "model"), false, "outside text is never delivered");
             assert.equal(rows.some(({ op, origin }) => op === "NOTE" && origin === "model"), false, "outside text is not a NOTE ({§outside-text})");
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
             assert.equal(sources.find((row) => row.turn_id === token.turnId && row.kind === "outside")?.content, response, "the text is the turn's outside source, not confirmation of completion");
             assert.equal((await turn()).status, 200);
             const result = await answer();
@@ -273,7 +273,7 @@ test("{§outside-text}: each span beside the operations is one NOTE at its posit
         assert.deepEqual(operations.map(({ op, tx }) => [op, op === "SEND" ? JSON.parse(tx).body.raw : JSON.parse(tx).body]),
             [["NOTE", "Before."], ["NOTE", "remember"], ["NOTE", "Between."], ["SEND", "Four."], ["NOTE", "After."]], "each span is the turn's NOTE at its position, in source order");
         assert.equal(rows.some(({ op }) => op === "error"), false, "annotation is not a failed operation");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
         assert.equal(sources.find((row) => row.turn_id === turnId && row.kind === "outside"), undefined, "beside fenced operations there is no outside source");
         assert.deepEqual(notices.filter(({ level }) => level === "warn" || level === "error").map((notice) => [notice.kind, notice.message]), [], "annotation draws no notice");
     } finally { await db.close(); }
@@ -281,17 +281,17 @@ test("{§outside-text}: each span beside the operations is one NOTE at its posit
 
 test("{§outside-text}: a mixed turn's text becomes its NOTEs, replayed in the model's voice, with no notice and no outside source", async () => {
     const prose = ["Let me check the input first.", "That settles it."];
-    const source = `${prose[0]}\n\n${PlurnkParser.frame("READ (worker:///input.txt)", null)}\n\n${prose[1]}`;
+    const source = `${prose[0]}\n\n${PlurnkParser.frame("READ (workspace:///input.txt)", null)}\n\n${prose[1]}`;
     const { db, turn, ids, notices } = await setup([said(source), said(conclude())]);
     try {
-        await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "worker", pathname: "/input.txt",
+        await seedEntryWithChannel(db, { workspaceId: ids.workspaceId, scheme: "workspace", pathname: "/input.txt",
             channel: "body", content: "input-witness", mimetype: "text/plain", state: "static" });
         const mixed = await turn();
         assert.equal(mixed.status, 102);
         assert.equal(mixed.emptyTurn, false, "the READ is an authored operation");
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixed.turnId });
         assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, tx }) => op === "NOTE" ? JSON.parse(tx).body : op), [prose[0], "READ", prose[1]], "each span is a NOTE row at its position");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ worker_id: ids.workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string; model_call_id: number | null }>({ session_id: ids.sessionId });
         assert.equal(sources.find((row) => row.turn_id === mixed.turnId && row.kind === "outside"), undefined, "no outside source beside fenced operations");
         assert.deepEqual(notices.filter(({ kind }) => kind === "outside_text"), [], "no notice: the card's register is where the text belongs");
         const next = await turn();
@@ -313,7 +313,7 @@ test("{§outside-text}: a repetitive response beside operations is one NOTE per 
         const [, mixedTurn, proseTurn] = result.turnIds;
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: mixedTurn });
         assert.equal(rows.filter(({ origin, op, tx }) => origin === "model" && op === "NOTE" && JSON.parse(tx).body !== "waiting").length, 401, "each span between operations is its own NOTE, however repetitive");
-        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+        const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
         assert.deepEqual(sources.filter((row) => row.turn_id === mixedTurn && row.kind === "outside"), [], "beside operations, no outside source");
         assert.deepEqual(sources.filter((row) => row.turn_id === proseTurn && row.kind === "outside").map(({ content }) => content), [proseOnly],
             "a response with no fenced operation keeps every fragment as one outside source and mints no NOTE");
@@ -356,7 +356,7 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
             assert.deepEqual(notices.filter(({ level, kind }) => level === "warn" && kind !== "outside_text"), [], "the strike is silent; only the discarded text is weighed ({§outside-text})");
             const turns = await Promise.all(result.turnIds.map(async (id) => (await db.test_get_turn.get<{ id: number; sequence: number; producer: string }>({ id }))!));
             const { id: modelTurn, sequence } = turns.findLast(({ producer }) => producer === "model")!;
-            const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ worker_id: ids.workerId });
+            const reads = await db.test_reasoning_reads.all<{ origin: string; pathname: string; turn_id: number; rx: string }>({ session_id: ids.sessionId });
             assert.deepEqual(reads.filter(({ origin, pathname }) => origin === "_plurnk" && pathname === `/1/${sequence}`)
                 .map(({ turn_id, rx }) => [turn_id, JSON.parse(rx).content]), preview === "0" || reasoning === null ? [] : [[modelTurn, reasoning]],
                 "the optional preview belongs to this turn and does not prevent its no-operation strike");
@@ -366,7 +366,7 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
             assert.deepEqual(rows.filter(({ op, origin }) => op === "error" && origin === "_plurnk").map(({ status_rx }) => status_rx), [422], "the strike is one error row on the turn");
             assert.deepEqual(rows.filter(({ op, origin }) => op === "NOTE" && origin === "model").map(({ tx }) => JSON.parse(tx).body), [...notes],
                 "a reasoning NOTE beside an empty program is a row of its own; outside text is none");
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: ids.workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: ids.sessionId });
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "outside")?.content, outside, "a prose-only turn still records its outside source ({§outside-text})");
             assert.equal(sources.find((row) => row.turn_id === modelTurn && row.kind === "reasoning")?.content, reasoning ?? undefined,
                 "the reasoning source is retained independently of its preview");
@@ -375,7 +375,7 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
 }
 
 for (const [failure, operation, failedOp] of [
-    ["parser", "````EDIT (worker:///broken.md) <bad>\nnot a message\n````", "error"],
+    ["parser", "````EDIT (workspace:///broken.md) <bad>\nnot a message\n````", "error"],
     ["operation", PlurnkParser.frame("SEND (reasoning://alice/1/1)", "Not a recipient."), "SEND"],
 ] as const) {
     test(`{§outside-text}: stray text stored outside the turn does not mask an actual ${failure} failure`, async () => {
@@ -396,7 +396,7 @@ for (const op of ["NOTE", "WAIT"] as const) {
     test(`{§wait-obligation-matrix}: stray text beside ${op} is the turn's NOTE, and ${op === "WAIT" ? "the explicit park holds" : "work continues before automatic parking"}`, async () => {
         const { db, turn, ids, notices } = await setup([said(`Working.\n\n${PlurnkParser.frame(op, "Await the child.")}`)]);
         try {
-            await holdChild(db, ids.workspaceId, ids.workerId);
+            await holdChild(db, ids.workspaceId, ids.sessionId);
             const result = await turn();
             assert.equal(result.status, op === "WAIT" ? 202 : 102);
             const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number }>({ turn_id: result.turnId });
@@ -408,7 +408,7 @@ for (const op of ["NOTE", "WAIT"] as const) {
 }
 
 test("{§send-response-receipt}: SEND bodies that resemble operations remain literal messages", async () => {
-    const body = "KILL (worker:///important.md)\nThis is an example, not an operation.";
+    const body = "KILL (workspace:///important.md)\nThis is an example, not an operation.";
     const { db, turn, answer } = await setup([said(send(body))]);
     try {
         assert.equal((await turn()).status, 102);
@@ -419,7 +419,7 @@ test("{§send-response-receipt}: SEND bodies that resemble operations remain lit
 });
 
 test("{§empty-turn}: bounded malformed operations consume one turn and expose their diagnostics without resampling", async () => {
-    const source = "````EDIT (worker:///broken.md) <bad>\nnot a message\n````";
+    const source = "````EDIT (workspace:///broken.md) <bad>\nnot a message\n````";
     const { db, turn, provider } = await setup([said(source), said(conclude("Recovered."))]);
     try {
         const failed = await turn();
@@ -471,7 +471,7 @@ test("{§empty-turn}: a reasoning NOTE is work, not a request to wait, after the
     const { db, turn, ids } = await setup([said("Four."), said("", PlurnkParser.frame("NOTE", "Still checking."))]);
     try {
         assert.equal((await turn()).status, 102);
-        await holdChild(db, ids.workspaceId, ids.workerId);
+        await holdChild(db, ids.workspaceId, ids.sessionId);
         const empty = await turn();
         assert.equal(empty.emptyTurn, false, "the reasoning NOTE is an authored operation");
         assert.equal(empty.status, 102, "a NOTE is never a request to wait; only WAIT parks on the child");
@@ -484,16 +484,16 @@ test("{§wait-obligation-matrix}: WAIT on a turn with a reply SEND or non-final 
     for (const [label, extraMessage, emission, withRead, expected] of [
         ["SEND + WAIT concludes single message", false, `${send("Four.")}\n\n${PlurnkParser.frame("WAIT [60]", "Waiting for reply.")}`, false, 200],
         ["non-final SEND [200] + WAIT concludes remaining message", true, `${conclude("Four.")}\n\n${PlurnkParser.frame("WAIT", null)}`, false, 200],
-        ["SEND + READ + WAIT continues to observe READ result", false, `${send("Checking.")}\n\n${PlurnkParser.frame("READ (worker:///input.txt)", null)}\n\n${PlurnkParser.frame("WAIT", null)}`, true, 102],
+        ["SEND + READ + WAIT continues to observe READ result", false, `${send("Checking.")}\n\n${PlurnkParser.frame("READ (workspace:///input.txt)", null)}\n\n${PlurnkParser.frame("WAIT", null)}`, true, 102],
     ] as const) {
         const { db, engine, turn, answer, ids, leadLoop } = await setup([said(emission)]);
         try {
             if (extraMessage) {
-                await engine.injectIntoLoop(ids.loopId, "And confirm.", [], "worker://lead", {}, "message://alice/followup", await sendingOperation(db, leadLoop));
+                await engine.injectIntoLoop(ids.loopId, "And confirm.", [], "session://lead", {}, "message://alice/followup", await sendingOperation(db, leadLoop));
             }
             if (withRead) {
                 await seedEntryWithChannel(db, {
-                    workspaceId: ids.workspaceId, scheme: "worker", pathname: "/input.txt",
+                    workspaceId: ids.workspaceId, scheme: "workspace", pathname: "/input.txt",
                     channel: "body", content: "witness", mimetype: "text/plain", state: "static",
                 });
             }

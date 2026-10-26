@@ -20,7 +20,7 @@ test("{§functionality-state} schedule startup rejects malformed persisted enabl
         namespace_owner: "@plurnk/plurnk-schedule",
         state: JSON.stringify({ version: 1, definitions: { beat: {
             origin: "workspace", enabled: "false",
-            definition: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://recipient", prompt: "Must not fire." },
+            definition: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY;COUNT=2", target: "session://recipient", prompt: "Must not fire." },
         } } }),
     });
     const timers: SchedulerTimers = { set: () => assert.fail("malformed state must not arm a timer"), clear: () => {} };
@@ -38,9 +38,9 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
     const db = await openMigrated();
     const baseline = {
         rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY",
-        target: "worker://recipient", prompt: "Baseline.",
+        target: "session://recipient", prompt: "Baseline.",
     };
-    const replacement = { rule: `${baseline.rule};COUNT=2`, target: "worker://alternate", prompt: "Workspace override." };
+    const replacement = { rule: `${baseline.rule};COUNT=2`, target: "session://alternate", prompt: "Workspace override." };
     const instances: Daemon[] = [];
     const start = async () => {
         const module = Module.init({
@@ -81,7 +81,7 @@ test("{§schedule-residency} restart arms the coordinator's complete definitions
     }
 });
 
-// {§schedule-delivery} — a composed daemon with one hourly rule targeting the recipient worker; the
+// {§schedule-delivery} — a composed daemon with one hourly rule targeting the recipient session; the
 // scheduler's timers are the test's, so an occurrence fires when the test says so.
 test("{§schedule-delivery}: an occurrence after conclusion starts a successor loop", { timeout: 30_000 }, async () => {
     const db = await openMigrated();
@@ -102,14 +102,14 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
     await daemon.start();
     try {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-occurrence", projectRoot: null });
-        const { workerId, workerName } = await daemon.createWorker({ workspaceId, name: "recipient" });
+        const { sessionId, sessionName } = await daemon.createSession({ workspaceId, name: "recipient" });
         const added = await daemon.invokeModuleAction("workspace.schedule.add", {
-            alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=2", target: `worker://${workerName}`, prompt: "scheduled-proof" },
+            alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=2", target: `session://${sessionName}`, prompt: "scheduled-proof" },
         }, { scope: "workspace", workspaceId }) as { status: number };
         assert.equal(added.status, 201);
 
         const lifecycle = new LoopLifecycle(db);
-        const first = await daemon.runLoop({ workspaceId, workerId, prompt: "Reply now; the reminder is scheduled." });
+        const first = await daemon.runLoop({ workspaceId, sessionId, prompt: "Reply now; the reminder is scheduled." });
         await waitForDb(() => lifecycle.status(first.loopId), (status) => status === 200 || status >= 400);
         assert.equal(await lifecycle.status(first.loopId), 200, "a loop with nothing live concludes; the schedule holds nothing");
         assert.deepEqual(module.functionality.scheduler.armed(workspaceId), ["reminder"], "the rule stays armed on its own");
@@ -122,9 +122,9 @@ test("{§schedule-delivery}: an occurrence after conclusion starts a successor l
 
         await waitForDb(async () => provider.received.length, (calls) => calls >= 2);
         assert.match(JSON.stringify(provider.received[1]), /scheduled-proof/u, "the occurrence arrives as a message and runs a loop");
-        const loops = await daemon.listWorkerLoops({ workspaceId, workerId });
-        await waitForDb(async () => (await daemon.listWorkerLoops({ workspaceId, workerId })).filter(({ status }) => status === 200).length, (done) => done === 2);
-        assert.equal(loops.length, 2, "the occurrence started a second loop on the same worker");
+        const loops = await daemon.listSessionLoops({ workspaceId, sessionId });
+        await waitForDb(async () => (await daemon.listSessionLoops({ workspaceId, sessionId })).filter(({ status }) => status === 200).length, (done) => done === 2);
+        assert.equal(loops.length, 2, "the occurrence started a second loop on the same session");
         assert.deepEqual(module.functionality.scheduler.armed(workspaceId), ["reminder"], "the next recurrence armed from the delivery");
     } finally { await daemon.stop(); await db.close(); }
 });
@@ -150,9 +150,9 @@ test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuin
     await daemon.start();
     try {
         const { workspaceId } = await daemon.createWorkspace({ name: "scheduled-parked-arrival", projectRoot: null });
-        const { workerId, workerName } = await daemon.createWorker({ workspaceId, name: "recipient" });
-        await holdChild(db, workspaceId, workerId);
-        const accepted = await daemon.runLoop({ workspaceId, workerId, prompt: "Wait for the child." });
+        const { sessionId, sessionName } = await daemon.createSession({ workspaceId, name: "recipient" });
+        await holdChild(db, workspaceId, sessionId);
+        const accepted = await daemon.runLoop({ workspaceId, sessionId, prompt: "Wait for the child." });
         const lifecycle = new LoopLifecycle(db);
         await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
         assert.equal(provider.received.length, 1, "a real parked loop, not a WAIT receipt that merely says continue");
@@ -163,7 +163,7 @@ test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuin
         const added = await waitForDb(async (): Promise<{ status: number } | null> => {
             try {
                 return await daemon.invokeModuleAction("workspace.schedule.add", {
-                    alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=1", target: `worker://${workerName}`, prompt: "scheduled-proof" },
+                    alias: "reminder", definition: { rule: "FREQ=HOURLY;COUNT=1", target: `session://${sessionName}`, prompt: "scheduled-proof" },
                 }, { scope: "workspace", workspaceId }) as { status: number };
             } catch (cause) {
                 const problem = cause instanceof OperationFailureError ? cause.result.problem : undefined;
@@ -184,7 +184,7 @@ test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuin
         await waitForDb(async () => module.functionality.scheduler.armed(workspaceId), (aliases) => aliases.length === 0);
         assert.equal(provider.received.length, 2, "the occurrence wakes the loop without waiting for its ten-minute deadline");
         assert.match(JSON.stringify(provider.received[1]), /scheduled-proof/u, "the resumed model sees the message");
-        assert.deepEqual((await daemon.listWorkerLoops({ workspaceId, workerId })).map(({ id }) => id), [accepted.loopId],
+        assert.deepEqual((await daemon.listSessionLoops({ workspaceId, sessionId })).map(({ id }) => id), [accepted.loopId],
             "the scheduler joins the existing loop rather than starting a successor");
         const arrivals = (await db.test_messages_by_loop.all<{ source: string; body: string; log_entry_id: number | null }>({ loop_id: accepted.loopId }))
             .filter(({ source }) => source === "schedule://reminder");
@@ -193,6 +193,6 @@ test("{§schedule-delivery} {§loop-wake-identity}: an occurrence wakes a genuin
         const listing = await daemon.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as FunctionalityListResult;
         const reminder = listing.definitions.find(({ alias }) => alias === "reminder");
         assert.ok(reminder !== undefined && reminder.state !== "unavailable", "exhaustion follows a successful delivery");
-        await daemon.cancelWorker({ workspaceId, workerId });
+        await daemon.cancelSession({ workspaceId, sessionId });
     } finally { await daemon.stop(); await db.close(); }
 });

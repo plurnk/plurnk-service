@@ -4,13 +4,13 @@ import assert from "node:assert/strict";
 import type { LineMarker, UrlPath } from "@plurnk/plurnk-contracts";
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type { Db } from "../../src/core/Db.ts";
-import Worker from "../../src/schemes/Worker.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertWorker } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
 const url = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
@@ -29,10 +29,10 @@ test("{§persistent-search-index} persistent-index maintenance indexes body cont
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        await new Worker().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
-        await new Worker().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        await new Workspace().edit(editStmt(url("pay.ts"), "export function processPayment() {}\n"), ctx);
+        await new Workspace().edit(editStmt(url("auth.ts"), "export function authenticate() {}\n"), ctx);
         await SearchIndex.maintain(ctx);
 
         assert.deepEqual(await fts(db, workspaceId, "processPayment"), ["/pay.ts"]);
@@ -41,7 +41,7 @@ test("{§persistent-search-index} persistent-index maintenance indexes body cont
 
         // Change pay.ts: re-index must drop the old term and add the new one;
         // auth.ts is unchanged (gate skips it) and stays indexed.
-        await new Worker().edit(editStmt(url("pay.ts"), "export function refund() {}\n", fullReplace), ctx);
+        await new Workspace().edit(editStmt(url("pay.ts"), "export function refund() {}\n", fullReplace), ctx);
         await SearchIndex.maintain(ctx);
         assert.deepEqual(await fts(db, workspaceId, "processPayment"), [], "old term gone after re-index");
         assert.deepEqual(await fts(db, workspaceId, "refund"), ["/pay.ts"], "new term indexed");
@@ -53,9 +53,9 @@ test("{§persistent-search-index} search artifacts index the exact READ body rat
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fts-readable-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId });
-        await new Worker().edit(
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        await new Workspace().edit(
             editStmt(url("authored.html"), "<main data-rawonlymarker=\"yes\">Visible prose</main>\n"),
             ctx,
         );

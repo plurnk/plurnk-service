@@ -102,8 +102,8 @@ test("{§log-sensitive-request-evidence} ordinary operation evidence redacts cre
     let daemonRunning = false;
     try {
         const workspaceId = await insertWorkspace(db, `log-redaction-${crypto.randomUUID()}`);
-        const worker = await Envelope.createModelWorker(db, workspaceId, "redaction-parent");
-        const loopId = await insertLoop(db, worker.id, 1, "inspect durable evidence");
+        const session = await Envelope.createModelSession(db, workspaceId, "redaction-parent");
+        const loopId = await insertLoop(db, session.id, 1, "inspect durable evidence");
         const turnId = await insertTurn(db, loopId, 1, 200);
         const probe = new CredentialProbe();
         const schemes = new SchemeRegistry();
@@ -115,11 +115,11 @@ test("{§log-sensitive-request-evidence} ordinary operation evidence redacts cre
             "READ",
         );
         const copy = parseOperation(
-            "````COPY (worker:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)````",
+            "````COPY (workspace:///missing-copy) (credential-probe://copy-user:copy-password@copy.test/destination?ticket=copy-query-visible)````",
             "COPY",
         );
         const move = parseOperation(
-            "````MOVE (worker:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)````",
+            "````MOVE (workspace:///missing-move) (credential-probe://move-user:move-password@move.test/destination?ticket=move-query-visible)````",
             "MOVE",
         );
 
@@ -129,7 +129,7 @@ test("{§log-sensitive-request-evidence} ordinary operation evidence redacts cre
             results.push(await engine.dispatch({
                 statement,
                 workspaceId,
-                workerId: worker.id,
+                sessionId: session.id,
                 loopId,
                 turnId,
                 sequence: index + 1,
@@ -159,7 +159,7 @@ test("{§log-sensitive-request-evidence} ordinary operation evidence redacts cre
         const nextTurn = await engine.runTurn({
             provider,
             workspaceId,
-            workerId: worker.id,
+            sessionId: session.id,
             loopId,
             turnNumber: 2,
             messages: [],
@@ -172,7 +172,7 @@ test("{§log-sensitive-request-evidence} ordinary operation evidence redacts cre
         daemon = new Daemon({ db, provider: null });
         await daemon.start();
         daemonRunning = true;
-        const parentLog = await daemon.readLog({ workspaceId, workerId: worker.id, limit: 1000 });
+        const parentLog = await daemon.readLog({ workspaceId, sessionId: session.id, limit: 1000 });
         const readRow = parentLog.find((row) => row.op === "READ");
         if (readRow === undefined) throw new Error("READ operation row was not hydrated");
         assert.equal(readRow.username, REDACTED);
@@ -202,12 +202,12 @@ test("{§log-sensitive-request-evidence} ordinary operation evidence redacts cre
             assertNoStructuralSecrets(row, `${op} error row`);
         }
 
-        const branch = await daemon.forkWorker({
+        const branch = await daemon.forkSession({
             workspaceId,
-            workerId: worker.id,
+            sessionId: session.id,
             name: "redaction-branch",
         });
-        const branchLog = await daemon.readLog({ workspaceId, workerId: branch.workerId, limit: 1000 });
+        const branchLog = await daemon.readLog({ workspaceId, sessionId: branch.sessionId, limit: 1000 });
         assertNoStructuralSecrets(branchLog, "forked log hydration");
         const branchRead = branchLog.find((row) => row.op === "READ");
         assert.equal(branchRead?.username, REDACTED);

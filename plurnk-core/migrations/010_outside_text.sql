@@ -20,7 +20,7 @@ SELECT turn_id, kind, sequence, content, model_call_id, deep_hash FROM turn_sour
 -- The fork process trigger names turn_sources and would be re-resolved by the RENAME while the
 -- table is absent; it is a process, re-declared on the next open ({§db-process-triggers}), so the
 -- rebuild drops it first, as SQLite's table-rebuild procedure prescribes.
-DROP TRIGGER IF EXISTS workers_fork_copies_history;
+DROP TRIGGER IF EXISTS sessions_fork_copies_history;
 DROP TABLE turn_sources;
 ALTER TABLE turn_sources_outside RENAME TO turn_sources;
 

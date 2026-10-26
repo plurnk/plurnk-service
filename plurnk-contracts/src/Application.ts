@@ -20,7 +20,7 @@ export interface ProposalResolution {
 export type ApplicationActionContext =
     | { readonly scope: "daemon" }
     | { readonly scope: "workspace"; readonly workspaceId: number }
-    | { readonly scope: "worker"; readonly workspaceId: number; readonly workerId: number };
+    | { readonly scope: "session"; readonly workspaceId: number; readonly sessionId: number };
 
 export interface ApplicationActionDescriptor {
     readonly name: string;
@@ -30,7 +30,7 @@ export interface ApplicationActionDescriptor {
 }
 
 // The bound workspace. Binding one mints nothing: a client operation journals in the workspace's
-// runtime worker ({§connection-lifecycle}), and the worker a thread binds is resolved separately by the
+// runtime session ({§connection-lifecycle}), and the session a thread binds is resolved separately by the
 // client-interface module.
 export interface ClientEnvelope {
     readonly workspaceId: number;
@@ -40,31 +40,31 @@ export interface ClientEnvelope {
     readonly projectLabel: string | null;
 }
 
-export type ApplicationWorkerOrigin = "model" | "_plurnk";
+export type ApplicationSessionOrigin = "model" | "_plurnk";
 
-// {§application-worker-observation} — `kind` is how the worker was minted (a root worker, a FORK
+// {§application-session-observation} — `kind` is how the session was minted (a root session, a FORK
 // child with a forked log, a WORK child with a fresh log); `lifecycle` projects its representative loop
 // through the shared {§loop-lifecycle-vocabulary}, so a directory row can carry the same glyph the
-// bound worker's own status gauge shows. Neither is inferred by a client.
-export type ApplicationWorkerKind = "root" | "fork" | "work";
-export interface ApplicationWorkerProjection {
+// bound session's own status gauge shows. Neither is inferred by a client.
+export type ApplicationSessionKind = "root" | "fork" | "work";
+export interface ApplicationSessionProjection {
     readonly id: number;
     readonly name: string;
     readonly created_at: string;
-    readonly origin: ApplicationWorkerOrigin;
+    readonly origin: ApplicationSessionOrigin;
     readonly owner: string;
-    readonly parentWorkerId: number | null;
-    readonly kind: ApplicationWorkerKind;
+    readonly parentSessionId: number | null;
+    readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
-    /** {§place-hiding} When the worker was hidden, or null while it is shown. */
+    /** {§place-hiding} When the session was hidden, or null while it is shown. */
     readonly hidden_at: string | null;
 }
 
-/** {§application-worker-overview} A worker's latest finished reply ({§worker-finished-reply}). */
-export interface ApplicationWorkerReply {
+/** {§application-session-overview} A session's latest finished reply ({§session-finished-reply}). */
+export interface ApplicationSessionReply {
     /** The reply's durable log row. */
     readonly id: number;
-    /** Its log coordinate `L/T/S` in its worker's log. */
+    /** Its log coordinate `L/T/S` in its session's log. */
     readonly coordinate: string;
     /** The message completion its receipt records. */
     readonly completion: 200 | 499;
@@ -75,20 +75,20 @@ export interface ApplicationWorkerReply {
     readonly continued: boolean;
 }
 
-/** {§application-worker-overview} One place of the overview and what waits there. */
-export interface ApplicationOverviewWorker {
+/** {§application-session-overview} One place of the overview and what waits there. */
+export interface ApplicationOverviewSession {
     readonly workspaceId: number;
     readonly id: number;
     readonly name: string;
-    readonly parentWorkerId: number | null;
-    readonly kind: ApplicationWorkerKind;
+    readonly parentSessionId: number | null;
+    readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
     /** The proposals and client interactions it waits on. */
     readonly gates: number;
-    readonly reply: ApplicationWorkerReply | null;
+    readonly reply: ApplicationSessionReply | null;
 }
 
-/** {§application-worker-overview} A workspace the overview's places belong to. */
+/** {§application-session-overview} A workspace the overview's places belong to. */
 export interface ApplicationOverviewWorkspace {
     readonly id: number;
     readonly name: string;
@@ -97,9 +97,9 @@ export interface ApplicationOverviewWorkspace {
     readonly projectLabel: string | null;
 }
 
-/** {§application-worker-overview} The places in a scope, most recently finished first, and the workspaces they belong to. */
-export interface ApplicationWorkerOverview {
-    readonly workers: readonly ApplicationOverviewWorker[];
+/** {§application-session-overview} The places in a scope, most recently finished first, and the workspaces they belong to. */
+export interface ApplicationSessionOverview {
+    readonly sessions: readonly ApplicationOverviewSession[];
     readonly workspaces: readonly ApplicationOverviewWorkspace[];
     /** The places in scope the overview leaves out. */
     readonly omitted: number;
@@ -112,38 +112,38 @@ export interface ApplicationWorkspaceHiding {
     readonly hidden_at: string | null;
 }
 
-/** {§place-hiding} A worker's mark after a hide or a show. */
-export interface ApplicationWorkerHiding {
+/** {§place-hiding} A session's mark after a hide or a show. */
+export interface ApplicationSessionHiding {
     readonly id: number;
-    /** When the worker was hidden, or null while it is shown. */
+    /** When the session was hidden, or null while it is shown. */
     readonly hidden_at: string | null;
-    /** The workers whose mark the call changed, in id order: the group it hid or showed, none when nothing changed. */
-    readonly workerIds: readonly number[];
+    /** The sessions whose mark the call changed, in id order: the group it hid or showed, none when nothing changed. */
+    readonly sessionIds: readonly number[];
 }
 
-export interface ApplicationWorkerQuery {
-    readonly origin?: ApplicationWorkerOrigin;
+export interface ApplicationSessionQuery {
+    readonly origin?: ApplicationSessionOrigin;
     /** Omitted means every lineage position; null means roots only. */
-    readonly parentWorkerId?: number | null;
-    /** {§place-hiding} Omitted lists every worker; true only hidden ones, false only shown ones. */
+    readonly parentSessionId?: number | null;
+    /** {§place-hiding} Omitted lists every session; true only hidden ones, false only shown ones. */
     readonly hidden?: boolean;
 }
 
-export type ApplicationWorkerIdentity =
+export type ApplicationSessionIdentity =
     | { readonly id: number; readonly name?: never }
     | { readonly id?: never; readonly name: string };
 
-export type ApplicationWorkerCreation = {
+export type ApplicationSessionCreation = {
     readonly workspaceId: number;
     readonly name?: string;
 } & (
-    | { readonly parentWorkerId: number; readonly owner?: never }
-    | { readonly parentWorkerId?: never; readonly owner?: string }
+    | { readonly parentSessionId: number; readonly owner?: never }
+    | { readonly parentSessionId?: never; readonly owner?: string }
 );
 
 export interface ApplicationLoopProjection {
     readonly id: number;
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly sequence: number;
     readonly status: number;
     readonly prompt: string;
@@ -158,16 +158,16 @@ export interface ApplicationLoopProjection {
     /** Durable observation deadline, Unix milliseconds; null outside bounded parks. */
     readonly waitUntil: number | null;
     /**
-     * {§worker-obligations} The operation that opened the loop, by sending its first message: its worker and its log
-     * address in that worker's log. Null when no worker's operation did, or none was recorded.
+     * {§session-obligations} The operation that opened the loop, by sending its first message: its session and its log
+     * address in that session's log. Null when no session's operation did, or none was recorded.
      */
-    readonly invocation: { readonly workerId: number; readonly address: string } | null;
+    readonly invocation: { readonly sessionId: number; readonly address: string } | null;
 }
 
 export interface ApplicationLoopPacket {
-    readonly workerId: number;
+    readonly sessionId: number;
     readonly loopId: number;
-    /** The loop's number among its worker's loops, the L of its log coordinates. */
+    /** The loop's number among its session's loops, the L of its log coordinates. */
     readonly loopSeq: number;
     readonly packetCount: number;
     /** The loop's client gauge once this packet's turn has its call. */
@@ -188,9 +188,9 @@ export interface ApplicationGauge {
 // consumers (Record<string, unknown>), which TypeScript grants aliases but not interfaces.
 export type LogEntryWire = {
     id: number;
-    worker_id: number;
-    // {§methods-log-entry-wire} The worker whose log holds the row, by its immutable name.
-    worker_name: string;
+    session_id: number;
+    // {§methods-log-entry-wire} The session whose log holds the row, by its immutable name.
+    session_name: string;
     loop_id: number;
     loop_seq: number;
     turn_id: number;
@@ -225,7 +225,7 @@ export type LogEntryWire = {
     reasoning_request_sequence?: number;
     // {§methods-invocation} On a row that discharges an obligation, the log address of the operation that opened it.
     invocation?: string;
-    // {§methods-answering} On a reply to a message this worker's operation sent, the log address of that operation.
+    // {§methods-answering} On a reply to a message this session's operation sent, the log address of that operation.
     answering?: string;
 };
 /** {§methods-loop-run} A prompt's admission: its acknowledgement, the loop it landed on and how it landed. */
@@ -235,7 +235,7 @@ export type ApplicationLoopAdmission = OperationResult & {
     readonly turnSeq?: number;
 };
 
-/** {§acp-provider-routes} A declared alias as the route a worker seeded from it gets, its configured effort included. */
+/** {§acp-provider-routes} A declared alias as the route a session seeded from it gets, its configured effort included. */
 export type ApplicationProviderAlias = ModelRoute & {
     readonly alias: string;
     readonly active: boolean;

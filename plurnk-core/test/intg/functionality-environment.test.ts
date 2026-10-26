@@ -12,7 +12,7 @@ test("{§resource-environment} disabled definitions stay inspectable through wor
     const daemon = new Daemon({ db, provider: null });
     const definitions = {
         mcp: { name: "other", type: "streamable-http", url: "https://mcp.example", headers: { "X-Tenant": "${TENANT}" } },
-        schedule: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY", target: "worker://bot", prompt: "Check in." },
+        schedule: { rule: "DTSTART;TZID=UTC:20260917T120001\nRRULE:FREQ=HOURLY", target: "session://bot", prompt: "Check in." },
     };
     try {
         const workspaceId = await insertWorkspace(db, "resource-definitions");

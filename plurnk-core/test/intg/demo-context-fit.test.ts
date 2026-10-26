@@ -77,9 +77,9 @@ ${fixture.answer}
                      maxTurns: 6,
                 }, { timeoutMs: 20_000 });
                 assert.equal(result.finalStatus, 200);
-                assert.ok(result.modelWorkerId);
+                assert.ok(result.modelSessionId);
                 const evidence = await assertContextFitEvidence({
-                    db, daemon, workspaceId, workerId: result.modelWorkerId,
+                    db, daemon, workspaceId, sessionId: result.modelSessionId,
                     turnIds: result.turnIds ?? [], fixture,
                 });
                 assert.ok(evidence.landed > 0, "the first attachments fit and landed whole");

@@ -115,7 +115,7 @@ display: ClientDisplayCapabilities
 }
 
 export interface Action {
-scope: ("daemon" | "workspace" | "worker")
+scope: ("daemon" | "workspace" | "session")
 inputSchema: JsonSchema
 outputSchema: JsonSchema
 }
@@ -148,7 +148,7 @@ display: CapabilityDisplay
 }
 
 export type ApplicationOperationEvent = {
-workerId: number
+sessionId: number
 loopId: number
 turnId: number
 sequence: number
@@ -642,7 +642,7 @@ url: string
 
 export interface ClientInteractionProjection {
 interactionId: number
-workerId: number
+sessionId: number
 loopId: number
 turnId: number
 recipient: string
@@ -724,9 +724,9 @@ reference?: string
 export type FunctionalityDefinitionState = {
 alias: string
 /**
- * Who owns this definition: the service baseline, the workspace, or one worker. A worker-scoped family (env) owns its definitions per worker, so origin names ownership rather than scope.
+ * Who owns this definition: the service baseline, the workspace, or one session. A session-scoped family (env) owns its definitions per session, so origin names ownership rather than scope.
  */
-origin: ("service" | "workspace" | "worker")
+origin: ("service" | "workspace" | "session")
 /**
  * disabled: available, model-invisible. dormant: enabled without a resident publication. active: enabled and prepared. unavailable: enabled but preparation has an exact Problem. authorization-required: enabled and awaiting a protocol continuation.
  */
@@ -736,7 +736,7 @@ definition?: {
 }
 provenance?: FunctionalityProvenance
 /**
- * The Worker this entry was copied from when this Worker was created (WORK or FORK), preserved across generations until this Worker changes the entry. Absent for an entry this Worker set itself. Worker-scoped families only.
+ * The Session this entry was copied from when this Session was created (WORK or FORK), preserved across generations until this Session changes the entry. Absent for an entry this Session set itself. Session-scoped families only.
  */
 inherited?: string
 /**
@@ -978,7 +978,7 @@ export interface ModelCatalogCapabilities {
 attachment: boolean
 reasoning: boolean
 /**
- * Portable efforts admitted for this exact route by the installed provider adapter and provider-wide operator declarations; not a worker's combined model/spawn policy intersection.
+ * Portable efforts admitted for this exact route by the installed provider adapter and provider-wide operator declarations; not a session's combined model/spawn policy intersection.
  *
  * @minItems 1
  */
@@ -1022,7 +1022,7 @@ provider: string
 model: string
 effort?: Effort
 /**
- * Whether effort was chosen through setWorkerEffort (explicit) or seeded from the alias configuration (default). Present exactly when effort is.
+ * Whether effort was chosen through setSessionEffort (explicit) or seeded from the alias configuration (default). Present exactly when effort is.
  */
 effortSource?: ("default" | "explicit")
 }
@@ -1135,11 +1135,11 @@ export type ProposalPolicy = ("review" | "accept" | "reject")
 
 export interface ProposalProjection {
 logEntryId: number
-workerId: number
+sessionId: number
 /**
- * The requesting worker's name.
+ * The requesting session's name.
  */
-worker: string
+session: string
 loopId: number
 turnId: number
 /**
@@ -1292,6 +1292,15 @@ detail: string
 })
 }
 
+export interface SessionOwner {
+address: string
+tools: string[]
+/**
+ * A person attends this owner: it can be asked, and work parked for a person can wait for it.
+ */
+interactive: boolean
+}
+
 export interface SkillDefinition {
 /**
  * The standard Agent Skills name: Unicode lowercase or uncased letters and numbers joined by single hyphens, equal to the skill's directory name.
@@ -1316,13 +1325,4 @@ startLine: number
 startColumn: number
 endLine: number
 endColumn: number
-}
-
-export interface WorkerOwner {
-address: string
-tools: string[]
-/**
- * A person attends this owner: it can be asked, and work parked for a person can wait for it.
- */
-interactive: boolean
 }

@@ -49,9 +49,9 @@ export default class EventProjection {
 
     static project(workspaceId: number | null, method: string, params: unknown): HookEvent | null {
         if (!EventProjection.sources.has(method)) return null;
-        const workerId = isRecord(params) ? params.workerId : undefined;
+        const sessionId = isRecord(params) ? params.sessionId : undefined;
         const shared = {
-            ...(typeof workerId === "number" ? { session_id: String(workerId) } : {}),
+            ...(typeof sessionId === "number" ? { session_id: String(sessionId) } : {}),
             plurnk: { workspaceId, method, params },
         };
         switch (method) {

@@ -13,7 +13,7 @@ import { openMigrated, seedEnvelope } from "./_db.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-const target = "worker:///ordered.md";
+const target = "workspace:///ordered.md";
 const content = "one\ntwo\nthree\nfour\nfive\nsix";
 const anchors = LineAnchors.tokens(target, content);
 const cases = [
@@ -31,7 +31,7 @@ THREE
     },
     {
         name: "an EDIT can create a resource and a later EDIT can change it in the same turn",
-        ops: ["````EDIT (worker:///new.md)\nalpha\nbeta\n````", "````EDIT (worker:///new.md) <2>\nBETA\n````", "````READ (worker:///new.md) <1,-1>````"],
+        ops: ["````EDIT (workspace:///new.md)\nalpha\nbeta\n````", "````EDIT (workspace:///new.md) <2>\nBETA\n````", "````READ (workspace:///new.md) <1,-1>````"],
         order: ["EDIT", "EDIT", "READ"],
         reads: ["alpha\nBETA"],
         statuses: [201, 200],
@@ -141,7 +141,7 @@ TWO
             assert.deepEqual(rows.filter(({ op }) => op !== null).map(({ op }) => op),
                 failOnOperationError ? ["EDIT", "READ", "EDIT"] : ["EDIT", "READ", "EDIT", "EDIT", ...(hasNote ? ["NOTE"] : [])]);
             assert.equal(JSON.parse(rows.find(({ op }) => op === "READ")!.rx).content, content);
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: env.workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: env.sessionId });
             assert.equal(sources.find(({ turn_id, kind }) => turn_id === env.turnId && kind === "ops")?.content, source,
                 "the submitted program remains durable even when execution stops at an error");
             const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/ordered.md", name: "body" });

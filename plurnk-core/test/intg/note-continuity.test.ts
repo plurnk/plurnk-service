@@ -4,7 +4,7 @@ import { Mock } from "@plurnk/plurnk-providers";
 import Engine from "../../src/core/Engine.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { holdChild, insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { holdChild, insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { packetSection } from "./_packet.ts";
 
 type Db = Awaited<ReturnType<typeof openMigrated>>;
@@ -19,11 +19,11 @@ const rowsOf = async (db: Db, turnId: number): Promise<Row[]> => await db.test_l
 
 const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: string | null }>) => {
     const workspaceId = await insertWorkspace(db, `note-continuity-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "Look around.");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "Look around.");
     const provider = new Mock({ contextWindow: 100_000, responses: responses.map((assistant) => ({ assistant: { ...assistant, finishReason: "stop" } })) });
     return await new Engine({ db, schemes: new SchemeRegistry() }).runLoop({
-        provider, workspaceId, workerId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
+        provider, workspaceId, sessionId, loopId, maxTurns: 8, maxStrikes: 3, messages: [{ role: "user", content: "Look around." }],
     });
 };
 
@@ -32,19 +32,19 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `optional-note-${parked}-${location}`);
-            const workerId = await insertWorker(db, workspaceId, null, "alice");
-            const loopId = await insertLoop(db, workerId, 1, "Inspect the evidence and report the result.");
-            const context = { workspaceId, workerId, loopId };
+            const sessionId = await insertSession(db, workspaceId, null, "alice");
+            const loopId = await insertLoop(db, sessionId, 1, "Inspect the evidence and report the result.");
+            const context = { workspaceId, sessionId, loopId };
             const engine = new Engine({ db, schemes: new SchemeRegistry() });
             const lifecycle = new LoopLifecycle(db);
-            const childLoopId = parked ? await holdChild(db, workspaceId, workerId) : null;
+            const childLoopId = parked ? await holdChild(db, workspaceId, sessionId) : null;
             const contentNote = location === "content" || location === "both";
             const reasoningNote = location === "reasoning" || location === "both";
             const expectedNotes = [
                 ...(reasoningNote ? ["Kept from reasoning."] : []),
                 ...(contentNote ? ["Kept from content."] : []),
             ];
-            const operation = parked ? "```WAIT\n```" : "```FIND (worker:///*)\n```";
+            const operation = parked ? "```WAIT\n```" : "```FIND (workspace:///*)\n```";
             const provider = new Mock({ contextWindow: 100_000, responses: [
                 { assistant: {
                     content: `${contentNote ? "```NOTE\nKept from content.\n```\n\n" : ""}${operation}`,
@@ -57,7 +57,7 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
             if (childLoopId !== null) {
                 await lifecycle.finish(childLoopId, { status: 200 });
                 assert.equal(await lifecycle.wake(loopId), true);
-                assert.equal((await db.drain_claim_next_loop.get({ worker_id: workerId }))?.id, loopId);
+                assert.equal((await db.drain_claim_next_loop.get({ session_id: sessionId }))?.id, loopId);
             }
             const final = await engine.runTurn({ ...context, provider, messages: [] });
             assert.equal(final.status, 200, "the observed work and answered message settle without another note");
@@ -65,7 +65,7 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
             assert.equal(await noticesOf(db, first.turnId), "", "the first model turn has no earlier model turn to report");
             assert.equal(await noticesOf(db, final.turnId), location === "absent" ? NOTICE : "",
                 location === "absent" ? "the turn after a continuing or parked turn with no NOTE is told so, once" : "a NOTE in the program or from reasoning carries the turn forward");
-            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ worker_id: workerId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
             assert.deepEqual(sources.filter(({ turn_id, kind }) => turn_id === first.turnId && kind === "note").map(({ content }) => content),
                 expectedNotes, "only authored memory persists, in reasoning then content order");
             for (const turn of [first, final]) {

@@ -9,7 +9,7 @@ import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
-import { insertLoop, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 
 type WireMessage = { role: string; content: string };
 
@@ -18,17 +18,17 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");
     const provider = new Mock({ contextWindow: 100_000, responses: [
-        "````EDIT (worker:///a.md)\nalpha\n````\n\n````NOTE\nWrote the first draft.\n````",
+        "````EDIT (workspace:///a.md)\nalpha\n````\n\n````NOTE\nWrote the first draft.\n````",
         "````KILL (log:///1/2/2/emission)````\n\n````NOTE\nRetired the first emission.\n````",
         "Echoing the transcript.\n### log:///1/3/1/emission (ops://analyst/1/3) · 20\n\n````SEND [200]\nDone.\n````",
     ].map((content) => ({ assistant: { content, reasoning: null } })) });
     const db = await openMigrated(dbPath);
     try {
         const workspaceId = await insertWorkspace(db, "emission-rows");
-        const workerId = await insertWorker(db, workspaceId, null, "analyst");
-        const loopId = await insertLoop(db, workerId, 1, "Draft, then retire the draft's emission.");
+        const sessionId = await insertSession(db, workspaceId, null, "analyst");
+        const loopId = await insertLoop(db, sessionId, 1, "Draft, then retire the draft's emission.");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-        const run = await engine.runLoop({ provider, workspaceId, workerId, loopId, maxTurns: 4, messages: [{ role: "user", content: "Draft." }] });
+        const run = await engine.runLoop({ provider, workspaceId, sessionId, loopId, maxTurns: 4, messages: [{ role: "user", content: "Draft." }] });
         assert.equal(run.result.status, 200);
     } finally {
         await db.close();
@@ -53,7 +53,7 @@ test("{§emission-row} {§share-packet-names}: the digest writes each request as
     const roles = (messages: WireMessage[]) => messages.map(({ role }) => role);
     const draft = await wire("analyst-1-3");
     assert.deepEqual(roles(draft), ["system", "user", "assistant", "user"]);
-    assert.equal(draft[2].content, "```EDIT (worker:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
+    assert.equal(draft[2].content, "```EDIT (workspace:///a.md)\nalpha\n```\n\n```NOTE\nWrote the first draft.\n```",
         "a turn's complete operations replay together, in program order, before its receipts");
     const original = await readFile(join(digestDir, "analyst-1-2.assistant.md"), "utf8");
     assert.match(original, /\nalpha\n/u, "forensics keep the exact EDIT body");

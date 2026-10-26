@@ -7,7 +7,7 @@ import Engine from "../../src/core/Engine.ts";
 import ExecutorRegistry, { type RegistryEntry } from "../../src/core/ExecutorRegistry.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import type Exec from "../../src/schemes/Exec.ts";
-import { insertLoop, insertTurn, insertWorker, insertWorkspace, openMigrated } from "./_db.ts";
+import { insertLoop, insertTurn, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
 import { makeSchemeCtx } from "./_scheme.ts";
 
 const statement = (body: string): ExecStatement => ({
@@ -114,29 +114,29 @@ test("{§exec-concurrency}: execution admission is FIFO and workspace-scoped", a
     schemes.registerRuntimeSchemes(executors);
     try {
         const workspaceA = await insertWorkspace(db, `exec-cap-a-${crypto.randomUUID()}`);
-        const workerA1 = await insertWorker(db, workspaceA);
-        const workerA2 = await insertWorker(db, workspaceA);
-        const loopA1 = await insertLoop(db, workerA1, 1);
-        const loopA2 = await insertLoop(db, workerA2, 1);
+        const sessionA1 = await insertSession(db, workspaceA);
+        const sessionA2 = await insertSession(db, workspaceA);
+        const loopA1 = await insertLoop(db, sessionA1, 1);
+        const loopA2 = await insertLoop(db, sessionA2, 1);
         const turnA1 = await insertTurn(db, loopA1, 1, 102);
         const turnA2 = await insertTurn(db, loopA2, 1, 102);
 
         const workspaceB = await insertWorkspace(db, `exec-cap-b-${crypto.randomUUID()}`);
-        const workerB = await insertWorker(db, workspaceB);
-        const loopB = await insertLoop(db, workerB, 1);
+        const sessionB = await insertSession(db, workspaceB);
+        const loopB = await insertLoop(db, sessionB, 1);
         const turnB = await insertTurn(db, loopB, 1, 102);
 
         const dispatch = (
             body: string,
             workspaceId: number,
-            workerId: number,
+            sessionId: number,
             loopId: number,
             turnId: number,
             sequence: number,
         ) => engine.dispatch({
             statement: statement(body),
             workspaceId,
-            workerId,
+            sessionId,
             loopId,
             turnId,
             sequence,
@@ -144,25 +144,25 @@ test("{§exec-concurrency}: execution admission is FIFO and workspace-scoped", a
         });
 
         assert.deepEqual(
-            await dispatch("a1", workspaceA, workerA1, loopA1, turnA1, 1),
+            await dispatch("a1", workspaceA, sessionA1, loopA1, turnA1, 1),
             { status: 200, outcome: "started" },
         );
         assert.deepEqual(
-            await dispatch("a2", workspaceA, workerA2, loopA2, turnA2, 1),
+            await dispatch("a2", workspaceA, sessionA2, loopA2, turnA2, 1),
             { status: 200, outcome: "started" },
         );
         assert.deepEqual(
-            await dispatch("a3", workspaceA, workerA1, loopA1, turnA1, 2),
+            await dispatch("a3", workspaceA, sessionA1, loopA1, turnA1, 2),
             { status: 202, outcome: "queued", executionsAhead: 2, concurrency: 2 },
         );
         assert.deepEqual(
-            await dispatch("a4", workspaceA, workerA2, loopA2, turnA2, 2),
+            await dispatch("a4", workspaceA, sessionA2, loopA2, turnA2, 2),
             { status: 202, outcome: "queued", executionsAhead: 3, concurrency: 2 },
         );
         assert.deepEqual(executor.starts, ["a1", "a2"], "siblings share the workspace limit");
 
         assert.deepEqual(
-            await dispatch("b1", workspaceB, workerB, loopB, turnB, 1),
+            await dispatch("b1", workspaceB, sessionB, loopB, turnB, 1),
             { status: 200, outcome: "started" },
             "another workspace has independent capacity",
         );
@@ -176,7 +176,7 @@ test("{§exec-concurrency}: execution admission is FIFO and workspace-scoped", a
         assert.deepEqual(
             executor.starts.filter((body) => body.startsWith("a")),
             ["a1", "a2", "a3", "a4"],
-            "same-workspace admission is FIFO across workers",
+            "same-workspace admission is FIFO across sessions",
         );
     } finally {
         executor.releaseAll();
@@ -200,11 +200,11 @@ test("{§exec-concurrency}: KILL cancels queued work without invoking its execut
     schemes.registerRuntimeSchemes(executors);
     try {
         const workspaceId = await insertWorkspace(db, `exec-cancel-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
         const dispatch = (body: string, sequence: number, onDispatch?: (id: number) => void) => engine.dispatch({
-            statement: statement(body), workspaceId, workerId, loopId, turnId, sequence, origin: "model", onDispatch,
+            statement: statement(body), workspaceId, sessionId, loopId, turnId, sequence, origin: "model", onDispatch,
         });
 
         assert.deepEqual(await dispatch("running", 1), { status: 200, outcome: "started" });
@@ -220,7 +220,7 @@ test("{§exec-concurrency}: KILL cancels queued work without invoking its execut
 
         const killed = await engine.dispatch({
             statement: killStatement("controlled", pathname),
-            workspaceId, workerId, loopId, turnId, sequence: 3, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 3, origin: "model",
         });
         assert.equal(killed.status, 200);
         executor.release("running");
@@ -229,7 +229,7 @@ test("{§exec-concurrency}: KILL cancels queued work without invoking its execut
 
         const terminal = await engine.dispatch({
             statement: killStatement("controlled", pathname),
-            workspaceId, workerId, loopId, turnId, sequence: 4, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 4, origin: "model",
         });
         // #757 — a KILL of an ended stream succeeds and reports how it ended.
         assert.equal(terminal.status, 200);
@@ -255,10 +255,10 @@ test("{§exec-concurrency}: queue residence does not consume the execution timeo
     engine.setExecutors(executors);
     try {
         const workspaceId = await insertWorkspace(db, `exec-timeout-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1);
         const turnId = await insertTurn(db, loopId, 1, 102);
-        const ctx = makeSchemeCtx({ db, workspaceId, workerId, loopId, turnId, executors });
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, loopId, turnId, executors });
         const attrs = (body: string, pathname: string, timeoutSec?: number) => ({
             runtime: "controlled",
             cwd: null,

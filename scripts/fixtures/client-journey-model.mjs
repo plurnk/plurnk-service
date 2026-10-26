@@ -33,10 +33,10 @@ const journeys = Object.freeze({
             reasoning: "I will complete the request through the interactive terminal.",
             content: [
                 "````READ (log:///1/2/1/SEND)````",
-                "````READ (worker:///_plurnk/plurnk/worker.md) <1,-1>````",
-                "````READ (worker:///_plurnk/plurnk/pattern.md) ~quotes````",
-                "````READ (worker:///_plurnk/plurnk/delegation.md) <1,16>````",
-                "````READ (worker:///_plurnk/plurnk/js.md) <1,-1>````",
+                "````READ (workspace:///_plurnk/plurnk/session.md) <1,-1>````",
+                "````READ (workspace:///_plurnk/plurnk/pattern.md) ~quotes````",
+                "````READ (workspace:///_plurnk/plurnk/delegation.md) <1,16>````",
+                "````READ (workspace:///_plurnk/plurnk/js.md) <1,-1>````",
                 "````READ (skill://plurnk/SKILL.md) <1,-1>````",
                 "````READ (skill://plurnk/.env.defaults) <1,16>````",
                 "````NOTE <!-- Confirm the packed interactive terminal path. -->\nThe shared protocol is available.\n````",
@@ -58,7 +58,7 @@ const journeys = Object.freeze({
             reasoning: "The stream will finish before its durable close can commit.",
             content: "````sh\nprintf 'retained-stream-output\\n'\n````\n\n````WAIT\nAwait the command.\n````",
         }, {
-            reasoning: "The additional message reached the parked worker.",
+            reasoning: "The additional message reached the parked session.",
             content: "````NOTE <!-- Follow-up accepted while parked. -->\nThe unresolved stream remains an obligation.\n````\n\n````WAIT\nAwait settlement.\n````",
         }],
     },
@@ -148,7 +148,7 @@ export const startClientJourneyModel = async () => {
             const [journey, definition] = matches[0];
             const index = counts.get(journey) ?? 0;
             const program = definition.programs[index];
-            // {§packet-wire-envelope}: the system and user messages carry the packet; the assistant messages replay the worker's operations.
+            // {§packet-wire-envelope}: the system and user messages carry the packet; the assistant messages replay the session's operations.
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map(textOf).join("\n\n");
             if (journey === "files" && index > 0) {
                 const edits = pairedReceipts(body.messages ?? []).filter((row) => row.op === "EDIT" && row.path === "integrity.txt");
@@ -156,7 +156,7 @@ export const startClientJourneyModel = async () => {
                 assert.ok(edits.every((row) => (row.status ?? 200) === 200), "file publication succeeded through the installed approval path");
             }
             if (journey === "recovery" && index === 1) {
-                assert.ok(text.includes("Please keep observing the unresolved stream."), "new input wakes the parked worker");
+                assert.ok(text.includes("Please keep observing the unresolved stream."), "new input wakes the parked session");
                 // {§subscription-finalization}: the failed close leaves the replayed command's stream open work, its output retained.
                 const command = pairedReceipts(body.messages ?? []).find((row) => row.op === "sh");
                 const work = JSON.parse(/(?:^|\n)## Open Work\n([\s\S]*?)(?=\n\n## |$)/u.exec(text)?.[1] ?? "{}");
@@ -171,7 +171,7 @@ export const startClientJourneyModel = async () => {
                 assert.match(String(messageRead.body ?? ""), /^ *1(?:<@[0-9A-Za-z]{5}>|:)Exercise the installed interactive terminal\./u,
                     "the READ receipt contains the addressed message, not merely a final success claim");
                 // {§read-pattern-evidence} {§teaching-corpus}: packed references and indexed READ compose.
-                const patternRead = reads.find((row) => row.path === "worker:///_plurnk/plurnk/pattern.md");
+                const patternRead = reads.find((row) => row.path === "workspace:///_plurnk/plurnk/pattern.md");
                 assert.ok(patternRead, "the installed runtime exposes the pattern reference");
                 assert.equal(patternRead.status ?? 200, 200);
                 assert.match(patternRead.request, / ~quotes$/u, "the pattern rides the replayed READ");
@@ -180,7 +180,7 @@ export const startClientJourneyModel = async () => {
                 assert.ok(Array.isArray(patternRead.matches) && patternRead.matches.length > 0);
                 assert.ok(patternRead.matches.every(({ region }) => typeof region === "string"),
                     "the installed packet retains precise match locations beside whole source lines");
-                const delegationRead = reads.find((row) => row.path === "worker:///_plurnk/plurnk/delegation.md");
+                const delegationRead = reads.find((row) => row.path === "workspace:///_plurnk/plurnk/delegation.md");
                 assert.ok(delegationRead, "the installed runtime exposes the delegation reference");
                 assert.equal(delegationRead.status ?? 200, 200);
                 assert.match(String(delegationRead.body ?? ""), /WORK starts a fresh log/u);

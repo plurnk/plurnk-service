@@ -1,7 +1,7 @@
 // {§env-scheme} — the environment registry as an address space: the facet of the env family's own
-// namespace. Every name in effect for the dispatching Worker's commands is a resource at
-// env:///NAME whose body is its value; a write is the family's own admission at the Worker's layer,
-// which for the runtime worker is the workspace's ({§actor-boundary-client-operations}).
+// namespace. Every name in effect for the dispatching Session's commands is a resource at
+// env:///NAME whose body is its value; a write is the family's own admission at the Session's layer,
+// which for the runtime session is the workspace's ({§actor-boundary-client-operations}).
 import { isRecord, type FindStatement, type KillStatement, type ParsedPath } from "@plurnk/plurnk-contracts";
 import {
     Results,
@@ -20,14 +20,14 @@ export interface EnvRegistry {
     readonly env: NodeJS.ProcessEnv;
     readonly record: Readonly<Record<string, EnvRecord>>;
 }
-export type EnvResolve = (workspaceId: number, workerId: number) => Promise<EnvRegistry>;
+export type EnvResolve = (workspaceId: number, sessionId: number) => Promise<EnvRegistry>;
 export type EnvWriteVerb = "replace" | "remove" | "disable";
 export type EnvWriteIdentity =
-    | { readonly workspaceId: number; readonly workerId: number; readonly scope: "worker" }
+    | { readonly workspaceId: number; readonly sessionId: number; readonly scope: "session" }
     | { readonly workspaceId: number; readonly scope: "workspace" };
 export type EnvInvoke = (verb: EnvWriteVerb, params: unknown, identity: EnvWriteIdentity) => Promise<unknown>;
-// The layer a dispatching Worker writes: its own, or the workspace's for a Worker with none of its own.
-export type EnvLayer = (workspaceId: number, workerId: number) => Promise<"worker" | "workspace">;
+// The layer a dispatching Session writes: its own, or the workspace's for a Session with none of its own.
+export type EnvLayer = (workspaceId: number, sessionId: number) => Promise<"session" | "workspace">;
 
 const OWNER = "scheme:env";
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -73,7 +73,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     }
 
     static #missing(name: string): SchemeResult {
-        return Results.failure(OWNER, "entry-not-found", 404, `No name ${name} is in effect for this Worker's commands.`, {}, { target: `env:///${name}` });
+        return Results.failure(OWNER, "entry-not-found", 404, `No name ${name} is in effect for this Session's commands.`, {}, { target: `env:///${name}` });
     }
 
     static #whole(name: string, op: "EDIT" | "KILL"): SchemeResult {
@@ -84,10 +84,10 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     }
 
     // The family's refusal is the operation's result.
-    async #write(verb: EnvWriteVerb, params: unknown, ctx: SchemeCtx, layer: "worker" | "workspace"): Promise<SchemeResult | null> {
+    async #write(verb: EnvWriteVerb, params: unknown, ctx: SchemeCtx, layer: "session" | "workspace"): Promise<SchemeResult | null> {
         try {
-            await this.#invoke(verb, params, layer === "worker"
-                ? { workspaceId: ctx.workspaceId, workerId: ctx.workerId, scope: "worker" }
+            await this.#invoke(verb, params, layer === "session"
+                ? { workspaceId: ctx.workspaceId, sessionId: ctx.sessionId, scope: "session" }
                 : { workspaceId: ctx.workspaceId, scope: "workspace" });
             return null;
         } catch (cause) {
@@ -100,12 +100,12 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         return ctx.entries.write(pathname, { channels: { body: { content: value, mimetype: "text/plain" } } });
     }
 
-    // READ projects the value the Worker's commands receive now; a name no longer in effect
+    // READ projects the value the Session's commands receive now; a name no longer in effect
     // withdraws its projection.
     async prepareRepresentation(request: RepresentationPreparationRequest, ctx: SchemeCtx): Promise<RepresentationPreparationResult> {
         const name = request.authority === "" ? nameOf(request.pathname) : null;
         if (name === null) return EnvScheme.#invalid(`env://${request.authority}${request.pathname}`);
-        const value = (await this.#resolve(ctx.workspaceId, ctx.workerId)).env[name];
+        const value = (await this.#resolve(ctx.workspaceId, ctx.sessionId)).env[name];
         if (value === undefined) {
             await ctx.entries.delete(request.pathname);
             return EnvScheme.#missing(name);
@@ -117,7 +117,7 @@ export default class EnvScheme implements RuntimeSchemeFacet {
     // FIND lists exactly what is in effect: stored projections of names no longer in effect are
     // withdrawn and every current name is projected before the host selects among them.
     async prepareFind(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult> {
-        const { env } = await this.#resolve(ctx.workspaceId, ctx.workerId);
+        const { env } = await this.#resolve(ctx.workspaceId, ctx.sessionId);
         const stored = await ctx.entries.operations.find({ ...statement, matcher: null, lineMarker: { marks: [1, -1] } });
         if (stored.status === 200) {
             for (const item of stored.results) {
@@ -145,22 +145,22 @@ export default class EnvScheme implements RuntimeSchemeFacet {
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
         if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "EDIT");
-        const layer = await this.#layer(ctx.workspaceId, ctx.workerId);
+        const layer = await this.#layer(ctx.workspaceId, ctx.sessionId);
         const refused = await this.#write("replace", { alias: named.name, definition: { value: statement.body ?? "" } }, ctx, layer);
         if (refused !== null) return refused;
         await ctx.entries.delete(named.pathname);
         return { status: 200 };
     }
 
-    // KILL retires the name from the Worker's commands: the family's `remove` for an entry the
+    // KILL retires the name from the Session's commands: the family's `remove` for an entry the
     // layer owns, its `disable` for an inherited one, whose definition is kept.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult> {
         const named = EnvScheme.#named(statement.target);
         if ("status" in named) return named;
         if (statement.lineMarker !== null || statement.matcher !== null) return EnvScheme.#whole(named.name, "KILL");
-        const entry = (await this.#resolve(ctx.workspaceId, ctx.workerId)).record[named.name];
+        const entry = (await this.#resolve(ctx.workspaceId, ctx.sessionId)).record[named.name];
         if (entry === undefined || entry.source === "masked" || entry.value === undefined) return EnvScheme.#missing(named.name);
-        const layer = await this.#layer(ctx.workspaceId, ctx.workerId);
+        const layer = await this.#layer(ctx.workspaceId, ctx.sessionId);
         const refused = await this.#write(entry.source === layer ? "remove" : "disable", { alias: named.name }, ctx, layer);
         if (refused !== null) return refused;
         await ctx.entries.delete(named.pathname);

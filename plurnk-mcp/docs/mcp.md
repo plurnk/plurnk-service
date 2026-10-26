@@ -9,14 +9,14 @@ server and the tool, and its body is the tool's JSON arguments.
 ```
 
 One fenced call runs one tool, and the result is that call's output.
-`worker:///_plurnk/tools/<server>.md` lists a server's invocations and their
+`workspace:///_plurnk/tools/<server>.md` lists a server's invocations and their
 required top-level inputs; each invocation links to the complete raw input
 schema. Its sibling `<server>.json` contains `{"tools":[...]}` with complete
 tool definitions, including input/output schemas, descriptions, and annotations.
 Both documents reflect the same enabled tools. JSONPath selects individual
 definitions without reading the whole catalog:
 
-```READ (worker:///_plurnk/tools/files.json) $.tools[?(@.name=="list_directory")]
+```READ (workspace:///_plurnk/tools/files.json) $.tools[?(@.name=="list_directory")]
 ```
 
 The turn-0 catalog lists every enabled server's Markdown document. `list`
@@ -75,8 +75,8 @@ source. A complete workspace override replaces these plugin semantics too.
 
 A local server's inherited environment excludes Plurnk settings and model
 provider keys; explicit definition bindings are separate.
-Workspace variables set with the `env` family (`worker:///_plurnk/tools/plurnk/env.json`) apply on top at
-every server launch; worker-local overrides do not. A running server keeps its
+Workspace variables set with the `env` family (`workspace:///_plurnk/tools/plurnk/env.json`) apply on top at
+every server launch; session-local overrides do not. A running server keeps its
 launch environment; `disable` then `enable` restarts it with the current
 workspace values, without a daemon restart.
 

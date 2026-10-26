@@ -73,7 +73,7 @@ const {
     Problems,
     UNKNOWN_POSITION,
     Validator,
-    WORKER_NAME,
+    SESSION_NAME,
 } = Contracts;
 
 
@@ -96,7 +96,7 @@ if (escapedTarget !== "https://example.test/x?literal=" + String.fromCharCode(92
     throw new Error("PathSyntax target escape failed");
 }
 if (PLURNK_OPS.join(",") !== "FIND,READ,EDIT,COPY,MOVE,SEND,BARE,WORK,FORK,KILL,NOTE,WAIT") throw new Error("PLURNK_OPS is not the anchored op set: " + PLURNK_OPS.join(","));
-if (!WORKER_NAME.test("worker-1")) throw new Error("WORKER_NAME rejects a legal worker name");
+if (!SESSION_NAME.test("session-1")) throw new Error("SESSION_NAME rejects a legal session name");
 if (UNKNOWN_POSITION.line !== 0 || UNKNOWN_POSITION.column !== 0 || !Object.isFrozen(UNKNOWN_POSITION)) {
     throw new Error("unknown position sentinel is not intact");
 }

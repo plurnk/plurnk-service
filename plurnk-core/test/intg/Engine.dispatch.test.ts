@@ -1,5 +1,5 @@
 import test from "node:test";
-import RuntimeWorker from "../../src/core/RuntimeWorker.ts";
+import RuntimeSession from "../../src/core/RuntimeSession.ts";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
 import { Mock } from "@plurnk/plurnk-providers";
 import assert from "node:assert/strict";
@@ -55,21 +55,21 @@ const continuationStmt = (opts: { body?: string | null }): NoteStatement => ({
     position: { line: 1, column: 1 },
 });
 
-test("{§op-invariants} Engine.dispatch: KILL against worker:/// permanently deletes the entry (200, then READ 404)", async () => {
+test("{§op-invariants} Engine.dispatch: KILL against workspace:/// permanently deletes the entry (200, then READ 404)", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/obsolete/note"), body: "stale" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            statement: editStmt({ target: urlPath("workspace", "/obsolete/note"), body: "stale" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const kill = await engine.dispatch({
-            statement: killStmt({ target: urlPath("worker", "/obsolete/note") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+            statement: killStmt({ target: urlPath("workspace", "/obsolete/note") }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200);
         const read = await engine.dispatch({
-            statement: readStmt({ target: urlPath("worker", "/obsolete/note") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
+            statement: readStmt({ target: urlPath("workspace", "/obsolete/note") }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
         });
         assert.equal(read.status, 404);
     } finally { await db.close(); }
@@ -81,14 +81,14 @@ test("{§scheme-address-namespace-fold} namespace fixture://x and fixture:///x a
         // create via the path form: fixture:///config.json => /config.json
         const created = await engine.dispatch({
             statement: editStmt({ target: urlPath("fixture", "/config.json"), body: "host=db.internal" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(created.status, 201, JSON.stringify(created));
         // Namespace authority is folded into its path, unlike a resource authority.
         const authForm: UrlPath = { kind: "url", raw: "fixture://config.json", scheme: "fixture", username: null, password: null, hostname: "config.json", port: null, pathname: "", query: null, fragment: null };
         const read = await engine.dispatch({
             statement: readStmt({ target: authForm }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
         assert.equal(read.status, 200);
     } finally { await db.close(); }
@@ -98,8 +98,8 @@ test("{§edit-result-render} Engine.dispatch: the KILL matcher survives into the
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: killStmt({ target: urlPath("worker", "/gone"), matcher: { dialect: "glob", raw: "superseded — see /final" } }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            statement: killStmt({ target: urlPath("workspace", "/gone"), matcher: { dialect: "glob", raw: "superseded — see /final" } }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("KILL log_entry not found");
@@ -115,11 +115,11 @@ test("{§operation-aside}: the descriptive aside survives durable dispatch uncha
     try {
         await engine.dispatch({
             statement: editStmt({
-                target: urlPath("worker", "/annotated"),
+                target: urlPath("workspace", "/annotated"),
                 body: "content",
                 aside: "Create the shared note",
             }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         const log = await db.test_first_log_entry_for_turn.get<{ tx: string }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("EDIT with an aside: log_entry not found");
@@ -133,7 +133,7 @@ test("{§turn-ops-log-curation} Engine.dispatch: KILL against a non-running exec
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("exec", "/sh/1/1/2") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(kill.status, 404);
     } finally { await db.close(); }
@@ -145,7 +145,7 @@ test("{§turn-ops-log-curation} Engine.dispatch preserves log KILL's missing-coo
     try {
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/0") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "_plurnk",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "_plurnk",
         });
         assert.equal(kill.status, 404, "a missing log coordinate remains not found");
     } finally { await db.close(); }
@@ -157,21 +157,21 @@ test("{§log-history-projection} model-origin log KILL atomically retires its ta
         // A real model-origin row at coordinate /1/1/1 (loop seq 1, turn seq 1, sequence 1).
         const plan = await engine.dispatch({
             statement: continuationStmt({ body: "obsolete goals to curate away" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
         const kill = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 2, origin: "model",
         });
         assert.equal(kill.status, 200, "the model is authorized to retire its log item");
         assert.deepEqual(
-            await db.test_get_log_projection.get({ worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1 }),
+            await db.test_get_log_projection.get({ session_id: env.sessionId, loop_seq: 1, turn_seq: 1, sequence: 1 }),
             { id: 1, active: 0, folded: "[]" },
             "KILL changes projection state rather than deleting the event",
         );
         assert.deepEqual(
-            await db.test_log_curation_effects_by_worker.all({ worker_id: env.workerId }),
+            await db.test_log_curation_effects_by_session.all({ session_id: env.sessionId }),
             [{
                 operation_log_entry_id: 2,
                 target_log_entry_id: 1,
@@ -193,7 +193,7 @@ test("{§log-history-projection} model-origin log KILL atomically retires its ta
         );
         const gone = await engine.dispatch({
             statement: killStmt({ target: urlPath("log", "/1/1/1") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 3, origin: "model",
         });
         assert.equal(gone.status, 404, "a killed exact coordinate is absent from the active address space");
     } finally { await db.close(); }
@@ -204,7 +204,7 @@ test("{§note-value} a NOTE retains its literal text and does not claim a lifecy
     try {
         const plan = await engine.dispatch({
             statement: continuationStmt({ body: "The capital of France remains unverified." }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId, sequence: 1, origin: "model",
         });
         assert.equal(plan.status, 200);
         const log = await db.test_first_log_entry_for_turn.get<{ op: string; tx: string }>({ turn_id: env.turnId });
@@ -254,7 +254,7 @@ test("{§completion-defers-to-results}: retiring a failed receipt does not make 
         const coordinates = await db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: env.loopId, turn_id: turnId });
         assert.ok(coordinates);
         const failed = await engine.dispatch({ ...env, turnId, sequence: 1, origin: "model",
-            statement: readStmt({ target: urlPath("worker", "/missing.md") }),
+            statement: readStmt({ target: urlPath("workspace", "/missing.md") }),
         });
         assert.equal(failed.status, 404);
         const result = await engine.executeAdmittedTurn({ ...env, turnId, fromSequence: 2, origin: "model",
@@ -293,17 +293,17 @@ test("{§body-projection} a KILL line scope trims a NOTE like any other log body
         });
         assert.equal(curated.status, 200);
         const row = await db.test_get_log_folded.get<{ folded: string }>({
-            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
+            session_id: env.sessionId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
         assert.equal(row?.folded, "[[2,2]]", "the completed entry's line is suppressed; lines 1 and 3 stay visible");
     } finally { await db.close(); }
 });
-test("{§edit-status-201-200} Engine.dispatch: EDIT against worker:/// routes to Worker.edit, returns 201, writes entry", async () => {
+test("{§edit-status-201-200} Engine.dispatch: EDIT against workspace:/// routes to Session.edit, returns 201, writes entry", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/france/capital"), body: "Paris" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: editStmt({ target: urlPath("workspace", "/france/capital"), body: "Paris" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201);
@@ -316,8 +316,8 @@ test("{§edit-status-201-200} Engine.dispatch: EDIT against worker:/// routes to
 
 test("{§problems-dispatch} Engine.dispatch: a current READ line anchor lowers to a numeric EDIT precondition", async () => {
     const { db, engine, env } = await setup();
-    const target = urlPath("worker", "/anchored.md");
-    const identity = "worker:///anchored.md";
+    const target = urlPath("workspace", "/anchored.md");
+    const identity = "workspace:///anchored.md";
     try {
         assert.equal((await engine.dispatch({
             statement: editStmt({ target, body: "alpha\nbeta\ngamma" }),
@@ -359,8 +359,8 @@ test("{§anchor-offset} Engine.dispatch: an EDIT anchor offset applies the splic
         const contents: string[] = [];
         let sequence = 0;
         for (const [name, marks] of [["offset", (identity: string) => [`${LineAnchors.token(identity, 2, original)}+1`]], ["numeric", () => [3]]] as const) {
-            const target = urlPath("worker", `/${name}.md`);
-            const identity = `worker:///${name}.md`;
+            const target = urlPath("workspace", `/${name}.md`);
+            const identity = `workspace:///${name}.md`;
             assert.equal((await engine.dispatch({ statement: editStmt({ target, body: original }), ...env, sequence: ++sequence, origin: "model" })).status, 201);
             const edited = await engine.dispatch({ statement: editStmt({ target, marker: { marks: marks(identity) as [number | string] }, body: "GAMMA" }), ...env, sequence: ++sequence, origin: "model" });
             assert.equal(edited.status, 200, name);
@@ -374,7 +374,7 @@ test("{§anchor-offset} Engine.dispatch: an EDIT anchor offset applies the splic
 
 test("{§read-past-end} Engine.dispatch: a READ range starting past the end is an empty page with its extent; a single line past it is still refused (#759)", async () => {
     const { db, engine, env } = await setup();
-    const target = urlPath("worker", "/thirteen.md");
+    const target = urlPath("workspace", "/thirteen.md");
     try {
         const content = Array.from({ length: 13 }, (_, index) => `line ${index + 1}`).join("\n");
         assert.equal((await engine.dispatch({ statement: editStmt({ target, body: content }), ...env, sequence: 1, origin: "model" })).status, 201);
@@ -394,8 +394,8 @@ test("{§read-past-end} Engine.dispatch: a READ range starting past the end is a
 
 test("{§line-anchors} Engine.dispatch: an EDIT anchor in a column slot names the accepted whole-line range", async () => {
     const { db, engine, env } = await setup();
-    const target = urlPath("worker", "/invalid-anchor-region.md");
-    const identity = "worker:///invalid-anchor-region.md";
+    const target = urlPath("workspace", "/invalid-anchor-region.md");
+    const identity = "workspace:///invalid-anchor-region.md";
     try {
         const content = "alpha\nbeta\ngamma";
         assert.equal((await engine.dispatch({
@@ -427,7 +427,7 @@ test("{§line-anchors} Engine.dispatch: an EDIT anchor in a column slot names th
 
 test("{§line-anchors} Engine.dispatch: READ accepts a current line anchor and rejects a stale one as a collision", async () => {
     const { db, engine, env } = await setup();
-    const target = urlPath("worker", "/anchor-read.md");
+    const target = urlPath("workspace", "/anchor-read.md");
     try {
         assert.equal((await engine.dispatch({
             statement: editStmt({ target, body: "alpha\nbeta\ngamma" }),
@@ -456,7 +456,7 @@ test("{§line-anchors} Engine.dispatch: READ accepts a current line anchor and r
             ...env, sequence: 5, origin: "model",
         });
         assert.equal(stale.status, 409);
-        assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/scheme/worker/line-anchor-collision");
+        assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/scheme/workspace/line-anchor-collision");
         assert.equal(stale.problem?.retryable, false, "stale coordinates require a new READ, not automatic replay");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -466,12 +466,12 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
     const { db, engine, env } = await setup();
     const content = "alpha\nbeta\ngamma";
     const target = urlPath("log", "/1/1/1/READ");
-    const publishedAnchors = LineAnchors.tokens("worker:///source.md", content);
+    const publishedAnchors = LineAnchors.tokens("workspace:///source.md", content);
     try {
         await db.engine_insert_log_entry.get({
-            worker_id: env.workerId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
+            session_id: env.sessionId, loop_id: env.loopId, turn_id: env.turnId, sequence: 1,
             origin: "model", source: null, model_call_id: null, op: "READ",
-            scheme: "worker", username: null, password: null, hostname: null, port: null,
+            scheme: "workspace", username: null, password: null, hostname: null, port: null,
             pathname: "/source.md", query: null, fragment: null, lineMarker: null,
             tx: "", mimetype_tx: "text/plain",
             rx: JSON.stringify({
@@ -479,7 +479,7 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
                 content,
                 mimetype: "text/plain",
                 startLine: 17,
-                lineAnchorIdentity: "worker:///source.md",
+                lineAnchorIdentity: "workspace:///source.md",
                 lineAnchors: publishedAnchors,
                 lineNumberWidth: 2,
             }),
@@ -506,7 +506,7 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
         });
         assert.equal(foldedFromLogRead.status, 200);
         const row = await db.test_get_log_folded.get<{ folded: string }>({
-            worker_id: env.workerId, loop_seq: 1, turn_seq: 1, sequence: 1,
+            session_id: env.sessionId, loop_seq: 1, turn_seq: 1, sequence: 1,
         });
         assert.equal(row?.folded, "[[2,3]]");
 
@@ -536,7 +536,7 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
 
 test("{§problems-dispatch} Engine.dispatch: a scoped READ anchor includes nearby lines outside the returned slice", async () => {
     const { db, engine, env } = await setup();
-    const target = urlPath("worker", "/contextual-anchor.md");
+    const target = urlPath("workspace", "/contextual-anchor.md");
     const content = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`).join("\n");
     try {
         assert.equal((await engine.dispatch({
@@ -565,7 +565,7 @@ test("{§problems-dispatch} Engine.dispatch: a scoped READ anchor includes nearb
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
         assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
-        assert.equal(stale.problem?.target, "worker:///contextual-anchor.md");
+        assert.equal(stale.problem?.target, "workspace:///contextual-anchor.md");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
 });
@@ -593,7 +593,7 @@ test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor res
                 const changed = await ctx.entries.write("/unit.md", {
                     channels: {
                         body: {
-                            content: "alpha\nother worker\ngamma",
+                            content: "alpha\nother session\ngamma",
                             mimetype: "text/markdown",
                         },
                     },
@@ -633,7 +633,7 @@ test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor res
             scheme: "racy",
             name: "body",
         });
-        assert.equal(stored?.content, "alpha\nother worker\ngamma");
+        assert.equal(stored?.content, "alpha\nother session\ngamma");
     } finally { await db.close(); }
 });
 
@@ -728,18 +728,18 @@ test("{§edit-result-render} Engine.dispatch: writes log_entry with statement + 
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: editStmt({ target: urlPath("workspace", "/x"), body: "y" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const log = await db.test_first_log_entry_for_turn.get<{
-            worker_id: number; loop_id: number; turn_id: number; sequence: number;
+            session_id: number; loop_id: number; turn_id: number; sequence: number;
             origin: string; op: string; signal: string | null;
             scheme: string | null; pathname: string | null;
             tx: string; mimetype_tx: string; rx: string; mimetype_rx: string; status_rx: number;
         }>({ turn_id: env.turnId });
         if (log === undefined) throw new Error("log_entry not found");
-        assert.equal(log.worker_id, env.workerId);
+        assert.equal(log.session_id, env.sessionId);
         assert.equal(log.loop_id, env.loopId);
         assert.equal(log.turn_id, env.turnId);
         assert.equal(log.sequence, 1);
@@ -747,7 +747,7 @@ test("{§edit-result-render} Engine.dispatch: writes log_entry with statement + 
         assert.equal(log.op, "EDIT");
         assert.equal(Object.hasOwn(log, "delimiter"), false);
         assert.equal(log.signal, null);
-        assert.equal(log.scheme, "worker");
+        assert.equal(log.scheme, "workspace");
         assert.equal(log.pathname, "/x");
         assert.equal(log.mimetype_tx, "application/json");
         assert.equal(log.mimetype_rx, "application/json");
@@ -759,17 +759,17 @@ test("{§edit-result-render} Engine.dispatch: writes log_entry with statement + 
     } finally { await db.close(); }
 });
 
-test("{§universal-read-composition} Engine.dispatch: READ against worker:/// routes to Worker.read", async () => {
+test("{§universal-read-composition} Engine.dispatch: READ against workspace:/// routes to Session.read", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/r"), body: "value" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: editStmt({ target: urlPath("workspace", "/r"), body: "value" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         const result = await engine.dispatch({
-            statement: readStmt({ target: urlPath("worker", "/r") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: readStmt({ target: urlPath("workspace", "/r") }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(result.status, 200);
@@ -782,7 +782,7 @@ test("{§unregistered-scheme-recovery} Engine.dispatch: unknown scheme returns 5
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("wiki", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501);
@@ -802,7 +802,7 @@ test("{§problems-dispatch} Engine.dispatch: null path on path-required op retur
         };
         const result = await engine.dispatch({
             statement: stmt,
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 400);
@@ -817,13 +817,13 @@ test("{§op-execution-order} Engine.dispatch: multiple actions in one turn — l
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/a"), body: "1" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: editStmt({ target: urlPath("workspace", "/a"), body: "1" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/b"), body: "2" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: editStmt({ target: urlPath("workspace", "/b"), body: "2" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         const rows = await db.test_log_entries_by_turn.all<{ sequence: number; pathname: string }>({ turn_id: env.turnId });
@@ -844,8 +844,8 @@ test("{§scheme-surface} Engine.dispatch: origin field captured in log", async (
                 : await insertOperationTurn(db, env.loopId, i + 1, origin);
             turnIds.push(turnId);
             await engine.dispatch({
-                statement: editStmt({ target: urlPath("worker", `/o${i}`), body: "x" }),
-                workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId,
+                statement: editStmt({ target: urlPath("workspace", `/o${i}`), body: "x" }),
+                workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId,
                 sequence: 1, origin,
             });
         }
@@ -867,7 +867,7 @@ test("{§scheme-surface-writableby-403} Engine.dispatch: a writer outside writab
         const turnId = await insertOperationTurn(db, env.loopId, 2, "client");
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("reasoning", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId,
             sequence: 1, origin: "client",
         });
         assert.equal(result.status, 403);
@@ -887,7 +887,7 @@ test("{§reasoning-history}: log EDIT has no mutation surface; reasoning uses an
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 501);
@@ -901,20 +901,20 @@ test("{§reasoning-history} Engine.dispatch: model EDIT of reasoning is rejected
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: { ...urlPath("reasoning", "/1/1"), hostname: "alice", raw: "reasoning://alice/1/1" }, body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403);
     } finally { await db.close(); }
 });
 
-test("{§worker-write-scoping} Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
+test("{§session-write-scoping} Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
     const { db, engine, env } = await setup();
     try {
-        await RuntimeWorker.ensure(db, env.workspaceId);
+        await RuntimeSession.ensure(db, env.workspaceId);
         const result = await engine.dispatch({
-            statement: editStmt({ target: { kind: "url", raw: "worker://_plurnk/private.md", scheme: "worker", username: null, password: null, hostname: "_plurnk", port: null, pathname: "/private.md", query: null, fragment: null }, body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: editStmt({ target: { kind: "url", raw: "session://_plurnk/private.md", scheme: "session", username: null, password: null, hostname: "_plurnk", port: null, pathname: "/private.md", query: null, fragment: null }, body: "y" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 201, "runtime scratch has the same workspace access as any named scratch");
@@ -928,7 +928,7 @@ test("{§scheme-surface-writableby-403} Engine.dispatch: model READ log:/// is N
         // the writableBy gate did NOT intercept (would have returned 403).
         const result = await engine.dispatch({
             statement: readStmt({ target: urlPath("log", "/x") }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.notEqual(result.status, 403);
@@ -941,7 +941,7 @@ test("{§scheme-surface-writableby-403} Engine.dispatch: _plurnk EDIT log:/// is
         // Log has no edit() handler — so this returns 501 (not 403) when allowed.
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("log", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "_plurnk",
         });
         assert.notEqual(result.status, 403);
@@ -975,7 +975,7 @@ test("{§scheme-surface-writableby-403} Engine.dispatch: an instance manifest en
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("dynamic", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 403);
@@ -989,7 +989,7 @@ test("{§scheme-surface-exception-500} Engine.dispatch: a model reply needs no e
         await engine.injectIntoLoop(env.loopId, "Reply.", [], undefined, {}, "message://request/reply");
         const result = await engine.dispatch({
             statement: sendStmt(parsePath("message://request/reply")),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 200);
@@ -1016,7 +1016,7 @@ test("{§problems-dispatch} Engine.dispatch: scheme handler that throws → acti
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("boom", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
@@ -1053,7 +1053,7 @@ test("{§problems-dispatch} Engine.dispatch: non-Error throw becomes the same ge
     try {
         const result = await engine.dispatch({
             statement: editStmt({ target: urlPath("boomstr", "/x"), body: "y" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
@@ -1066,21 +1066,21 @@ test("{§problems-dispatch} Engine.dispatch: non-Error throw becomes the same ge
 test("{§problems-dispatch} Engine.dispatch: COPY rejects a non-entry destination at resource resolution", async () => {
     const { db, engine, env } = await setup();
     try {
-        // Source first: model creates an entry in worker:///.
+        // Source first: model creates an entry in workspace:///.
         await engine.dispatch({
-            statement: editStmt({ target: urlPath("worker", "/src"), body: "v" }),
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            statement: editStmt({ target: urlPath("workspace", "/src"), body: "v" }),
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 1, origin: "model",
         });
-        // Attempt copy worker:///src → log:///dst — destination scheme rejects.
+        // Attempt copy workspace:///src → log:///dst — destination scheme rejects.
         const result = await engine.dispatch({
             statement: {
                 op: "COPY", aside: null,
-                source: { target: urlPath("worker", "/src"), metadata: null, lineMarker: null, matcher: null },
+                source: { target: urlPath("workspace", "/src"), metadata: null, lineMarker: null, matcher: null },
                 destination: { target: urlPath("log", "/dst"), metadata: null, lineMarker: null, matcher: null },
                 position: { line: 1, column: 1 },
             },
-            workspaceId: env.workspaceId, workerId: env.workerId, loopId: env.loopId, turnId: env.turnId,
+            workspaceId: env.workspaceId, sessionId: env.sessionId, loopId: env.loopId, turnId: env.turnId,
             sequence: 2, origin: "model",
         });
         assert.equal(result.status, 400);

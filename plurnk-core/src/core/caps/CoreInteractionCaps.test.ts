@@ -11,7 +11,7 @@ for (const abort of ["owner", "interaction"] as const) {
         let forwarded: AbortSignal | undefined;
         const context: PlurnkSchemeContext = {
             db: {} as Db,
-            workspaceId: 1, workerId: 2, loopId: 3, turnId: 4,
+            workspaceId: 1, sessionId: 2, loopId: 3, turnId: 4,
             writer: "model", signal: owner.signal, weigh: () => 0,
             requestInteraction: async (_request, signal) => {
                 forwarded = signal;

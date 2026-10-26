@@ -26,7 +26,7 @@ export interface StreamCoordinate {
 
 export interface StreamEventPayload {
     entryId: number;
-    workerId: number;                // initiating actor; not resource ownership
+    sessionId: number;                // initiating actor; not resource ownership
     target: string;                // canonical entry URI — {§notifications-stream-event-on-channel-change}
     channel: string;
     state: ChannelState;
@@ -39,12 +39,12 @@ export interface StreamEventPayload {
 
 export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload) => void;
 
-// {§worker-lifecycle-wake-liveness}: subscription closure announces a durable
+// {§session-lifecycle-wake-liveness}: subscription closure announces a durable
 // outcome. The scheduler may resume eligible unfinished loops, never create a
 // task from the stream's summary or resurrect a terminal loop.
-export interface WakeWorkerPayload {
+export interface WakeSessionPayload {
     workspaceId: number;
-    workerId: number;                // lifecycle worker to wake
+    sessionId: number;                // lifecycle session to wake
     entryId: number;
     target: string;                // canonical entry URI — {§notifications-stream-concluded}
     subscriptionId: number;
@@ -56,45 +56,45 @@ export interface WakeWorkerPayload {
     sequence?: number;
 }
 
-export type WakeWorkerNotify = (payload: WakeWorkerPayload) => void;
+export type WakeSessionNotify = (payload: WakeSessionPayload) => void;
 
-// {§worker-obligations} The operation that sent a message, by the row it writes: its turn and its sequence there.
+// {§session-obligations} The operation that sent a message, by the row it writes: its turn and its sequence there.
 export interface MessageOpener {
     readonly turnId: number;
     readonly sequence: number;
 }
 
-// Start/deliver-to a sister worker — the worker:// op family's loop-start primitive
+// Start/deliver-to a sister session — the session:// op family's loop-start primitive
 // (spawn/fork/irc; SPEC {§machine-processes}, {§actor-boundary-two-doors} voice
 // door). The daemon wires this to Daemon.inject: an active sister incorporates the
 // prompt into its next turn; an idle sister enqueues a fresh loop and a drain
-// claims it. spawn/fork create/branch the worker first, then call this to start
+// claims it. spawn/fork create/branch the session first, then call this to start
 // it; irc calls it on an existing sister. Returns the delivery action + the
 // loop the prompt landed on. The daemon supplies provider + system prompt; the
 // caller (a scheme handler) carries neither.
-export type InjectWorkerNotify = (args: {
+export type InjectSessionNotify = (args: {
     workspaceId: number;
-    workerId: number;
-    // {§worker-causal-admission}: one identity supplies both liveness and attribution.
+    sessionId: number;
+    // {§session-causal-admission}: one identity supplies both liveness and attribution.
     sourceLoopId: number;
     prompt: string;
     attachments?: readonly MessageResource[];
-    // A model's WORK/FORK inherit the source loop's spawn model; every other delivery, a worker a person
+    // A model's WORK/FORK inherit the source loop's spawn model; every other delivery, a session a person
     // starts included, runs the recipient's own.
     spawn?: true;
-    // {§worker-obligations} — the worker's own operation that sends the message; absent when a person acts.
+    // {§session-obligations} — the session's own operation that sends the message; absent when a person acts.
     opener?: MessageOpener;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;
 
-// Abort a worker's in-flight work by id — the worker:// op family's KILL primitive
-// (terminate). The daemon wires this to Daemon.cancelDrain: aborts the worker's
+// Abort a session's in-flight work by id — the session:// op family's KILL primitive
+// (terminate). The daemon wires this to Daemon.cancelDrain: aborts the session's
 // signal, so its active loop closes at 499 and any background streams tear down.
 // Sync; returns whether there was work. KILL routes through Dispatcher.#handleKill
 // (not a scheme handler), so this is an Engine field, never a ctx capability.
-export type CancelWorkerNotify = (workerId: number, reason: string) => Promise<void>;
+export type CancelSessionNotify = (sessionId: number, reason: string) => Promise<void>;
 
 interface NoticePayload {
-    workerId: number | null;
+    sessionId: number | null;
     loopId: number;
     notice: Notice;
 }
@@ -113,7 +113,7 @@ interface ChannelMetaRow {
 
 interface SubscriptionChannelMetaRow extends ChannelMetaRow {
     entryId: number;
-    workerId: number;
+    sessionId: number;
     channel: string;
 }
 
@@ -126,7 +126,7 @@ export default class ChannelWrite {
     static #closeSubStmt(db: Db) { return db.close_subscription; }
     static #publishedChannelMetaStmt(db: Db) { return db.subscription_published_channel_meta; }
     static #findActiveStmt(db: Db) { return db.find_active_subscription; }
-    static #openSubsForWorkerStmt(db: Db) { return db.find_open_subscriptions_for_worker; }
+    static #openSubsForSessionStmt(db: Db) { return db.find_open_subscriptions_for_session; }
     static #execTerminalStmt(db: Db) { return db.find_exec_close_status; }
 
     static #targetUri(scheme: string, authority: string, pathname: string): string {
@@ -138,7 +138,7 @@ export default class ChannelWrite {
     // stream's lifecycle, never per-chunk rows ({§no-chunk-rows-log-captures-lifecycle-only}).
     static async appendToChannel(
         db: Db,
-        { entryId, producerWorkerId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; producerWorkerId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
+        { entryId, producerSessionId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; producerSessionId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
     ): Promise<void> {
         const result = await ChannelWrite.#appendStmt(db).all({ chunk, entry_id: entryId, channel });
         if (result.length === 0) return;
@@ -148,21 +148,21 @@ export default class ChannelWrite {
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, workerId: producerWorkerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, sessionId: producerSessionId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // Schemes drive channel state transitions as their connection lifecycle progresses.
     // {§channel-state-schemes-own-state-transitions}
     static async setChannelState(
         db: Db,
-        { entryId, producerWorkerId, channel, state, notify, coordinate }: { entryId: number; producerWorkerId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
+        { entryId, producerSessionId, channel, state, notify, coordinate }: { entryId: number; producerSessionId: number; channel: string; state: ChannelState; notify?: StreamEventNotify; coordinate?: StreamCoordinate },
     ): Promise<void> {
         const result = await ChannelWrite.#stateStmt(db).all({ state, entry_id: entryId, channel });
         if (result.length === 0) return;
         if (notify === undefined) return;
         const meta = await ChannelWrite.#channelMeta(db).get<ChannelMetaRow>({ entry_id: entryId, channel });
         if (meta === undefined) return;
-        notify(meta.workspace_id, { entryId, workerId: producerWorkerId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
+        notify(meta.workspace_id, { entryId, sessionId: producerSessionId, target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname), channel, state: meta.state, contentLength: meta.contentLength, mimetype: meta.mimetype, ...coordinate });
     }
 
     // The durable half of subscription ownership. Its row identifies what is
@@ -171,13 +171,13 @@ export default class ChannelWrite {
     // {§subscriptions-subscription-registry-routes-cancellation}
     static async openSubscription(
         db: Db,
-        { workerId, entryId, scheme, handle, turnScoped, detached, publishedChannel, source }: {
-            workerId: number; entryId: number; scheme: string; handle: string;
+        { sessionId, entryId, scheme, handle, turnScoped, detached, publishedChannel, source }: {
+            sessionId: number; entryId: number; scheme: string; handle: string;
             turnScoped?: boolean; detached?: boolean; publishedChannel?: string | null; source?: string;
         },
     ): Promise<number> {
         const row = await ChannelWrite.#openSubStmt(db).get<{ id: number }>({
-            worker_id: workerId, entry_id: entryId, scheme, handle,
+            session_id: sessionId, entry_id: entryId, scheme, handle,
             turn_scoped: turnScoped ? 1 : 0, detached: detached ? 1 : 0,
             published_channel: publishedChannel ?? null, source: source ?? null });
         if (row === undefined) throw new Error("openSubscription: INSERT ... RETURNING produced no row");
@@ -212,7 +212,7 @@ export default class ChannelWrite {
             if (meta.state === state) continue;
             events.push([meta.workspace_id, {
                 entryId: meta.entryId,
-                workerId: meta.workerId,
+                sessionId: meta.sessionId,
                 target: ChannelWrite.#targetUri(meta.scheme, meta.authority, meta.pathname),
                 channel: meta.channel,
                 state,
@@ -260,19 +260,19 @@ export default class ChannelWrite {
         return row ?? null;
     }
 
-    // The worker's still-open subscriptions — the registry-routed reap
-    // ({§worker-lifecycle-total-reap}). A cancel iterates these durable identities
+    // The session's still-open subscriptions — the registry-routed reap
+    // ({§session-lifecycle-total-reap}). A cancel iterates these durable identities
     // and invokes each exact callable through LiveSubscriptions, so a
     // backgrounded exec is reaped regardless of AbortSignal-listener timing.
-    static async findOpenSubscriptionsForWorker(
+    static async findOpenSubscriptionsForSession(
         db: Db,
-        workerId: number,
+        sessionId: number,
     ): Promise<Array<{ id: number; scheme: string }>> {
-        return ChannelWrite.#openSubsForWorkerStmt(db).all<{ id: number; scheme: string }>({ worker_id: workerId });
+        return ChannelWrite.#openSubsForSessionStmt(db).all<{ id: number; scheme: string }>({ session_id: sessionId });
     }
 
     // {§connection-lifecycle} The executions a client operation's loop started that still run, by the stream
-    // addresses its rows announced; a loop of any other worker has none.
+    // addresses its rows announced; a loop of any other session has none.
     static async findOpenSubscriptionsForClientLoop(
         db: Db,
         { workspaceId, loopId }: { workspaceId: number; loopId: number },
@@ -284,13 +284,13 @@ export default class ChannelWrite {
             .map(({ id }) => id))];
     }
 
-    // The worker's open turn-scoped (`[{"lifetime":"turn"}]`) subscriptions — reaped at the worker's next
+    // The session's open turn-scoped (`[{"lifetime":"turn"}]`) subscriptions — reaped at the session's next
     // pre-turn so such a stream never survives into the subsequent turn ({§exec-lifetime}). Any open one at
     // pre-turn is necessarily from a prior turn (the reap runs before this turn's own spawns).
-    static async findOpenTurnScopedSubscriptionsForWorker(
+    static async findOpenTurnScopedSubscriptionsForSession(
         db: Db,
-        workerId: number,
+        sessionId: number,
     ): Promise<Array<{ id: number; scheme: string }>> {
-        return db.find_open_turn_scoped_subscriptions_for_worker.all<{ id: number; scheme: string }>({ worker_id: workerId });
+        return db.find_open_turn_scoped_subscriptions_for_session.all<{ id: number; scheme: string }>({ session_id: sessionId });
     }
 }

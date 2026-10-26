@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { EditStatement, UrlPath } from "@plurnk/plurnk-contracts";
 import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import { openMigrated, insertWorkspace, insertWorker, insertLoop, insertTurn } from "./_db.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection } from "./_packet.ts";
 import { Mock } from "@plurnk/plurnk-providers";
@@ -15,7 +15,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 // usage and provider-owned hard context-envelope admission are separate quantities.
 
 const urlPath = (pathname: string): UrlPath => ({
-    kind: "url", raw: `worker:///${pathname}`, scheme: "worker",
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
@@ -30,20 +30,20 @@ const editStmt = (pathname: string, body: string): EditStatement => ({
 const setup = async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `tok-${crypto.randomUUID()}`);
-    const workerId = await insertWorker(db, workspaceId);
-    const loopId = await insertLoop(db, workerId, 1, "p");
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "p");
     const turnId = await insertTurn(db, loopId, 1, 200);
     const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
-    return { db, engine, workspaceId, workerId, loopId, turnId };
+    return { db, engine, workspaceId, sessionId, loopId, turnId };
 };
 
 test("{§tokenomics-agnostic-ruler} EDIT stores entry_channels.weight from the model-agnostic ruler", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         const content = "alpha beta gamma delta";
         const result = await engine.dispatch({
             statement: editStmt("/notes", content),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
         }) as { status: number; entryId: number | null };
         assert.equal(result.status, 201);
         assert.ok(result.entryId !== null);
@@ -55,12 +55,12 @@ test("{§tokenomics-agnostic-ruler} EDIT stores entry_channels.weight from the m
 });
 
 test("{§tokenomics} dispatched op stores log_entries.weight from its complete canonical log body", async () => {
-    const { db, engine, workspaceId, workerId, loopId, turnId } = await setup();
+    const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         let logEntryId = 0;
         await engine.dispatch({
             statement: editStmt("/x", "hello world"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id: number) => { logEntryId = id; },
         });
         assert.ok(logEntryId > 0, "a log entry was written");
@@ -76,15 +76,15 @@ test("{§tokenomics} entry_channels.weight honors an injected ruler override (te
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-prov-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "p");
         const turnId = await insertTurn(db, loopId, 1, 200);
         // Inject a distinctive weight (constant 100) — unmistakably not ceil(len/4).
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES, weigh: () => 100 });
         let logEntryId = 0;
         const result = await engine.dispatch({
             statement: editStmt("/notes", "alpha beta gamma"),
-            workspaceId, workerId, loopId, turnId, sequence: 1, origin: "model",
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
             onDispatch: (id: number) => { logEntryId = id; },
         }) as { status: number; entryId: number | null };
         const ch = await db.tok_channel_weight.get<{ weight: number }>({ entry_id: result.entryId, name: "body" });
@@ -98,11 +98,11 @@ test("{§context-gauge} below pressure the gauge carries populated tokens and bu
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-bud-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const row = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         const packet = JSON.parse(row!.packet) as { weight: number };
         const budget = packetSection(packet, "budget");
@@ -121,11 +121,11 @@ test("{§tokenomics} context token budget carries active total and maximum witho
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-pct-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         const budget = packetSection(JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet), "budget");
         const state = JSON.parse(budget) as { tokens: number; budget: number };
         assert.ok(Number.isSafeInteger(state.tokens) && state.tokens > 0, "active total is a populated integer");
@@ -141,8 +141,8 @@ test("{§context-wall} a packet past the window preserves exact evidence in its 
     const previousPartition = partitionKeys.map((key) => process.env[key]);
     try {
         const workspaceId = await insertWorkspace(db, `tok-over-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "p");
         // {§tokenomics-window-partition} — the envelope rides the provider: an
         // 11-token context and a two-token total output budget leave nine input tokens.
         process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "2";
@@ -151,7 +151,7 @@ test("{§context-wall} a packet past the window preserves exact evidence in its 
         // An 11-token provider context − 2 output tokens → input capacity 9; the packet's own
         // scaffolding alone blows past it.
         const provider = new Mock({ contextWindow: 11, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
-        const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
+        const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
         assert.equal(result.status, 413, "past the wall, the loop ends rather than ask the window for what it has not got");
         const turn = await db.test_get_turn.get<{ packet: string | null; producer: string; kind: string }>({ id: result.turnId });
         assert.equal(turn?.packet, null, "an over-ceiling candidate is never stored as a model request");
@@ -191,8 +191,8 @@ test("{§tokenomics-calibrated-readout} the loop's latest reported prompt count 
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `tok-cal-${crypto.randomUUID()}`);
-        const workerId = await insertWorker(db, workspaceId);
-        const loopId = await insertLoop(db, workerId, 1, "p");
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "p");
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const reported = 100;
         const charged = { inputTokens: reported, totalTokens: reported };
@@ -207,7 +207,7 @@ test("{§tokenomics-calibrated-readout} the loop's latest reported prompt count 
         const ceilings: number[] = [];
         const weights: number[] = [];
         for (let turn = 1; turn <= 4; turn += 1) {
-            const result = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages });
+            const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet) as { weight: number };
             const m = packetSection(packet, "budget").match(/"tokens":\s*(\d+)/);
             assert.ok(m, `turn ${turn} carries a readout`);

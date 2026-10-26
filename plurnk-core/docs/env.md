@@ -1,19 +1,19 @@
 # env
 
 Commands receive admitted ambient values, then workspace defaults, then your
-worker's overrides. `list` shows the effective values and their origins.
+session's overrides. `list` shows the effective values and their origins.
 
 ## Workspace defaults
 
 `"scope": "workspace"` on any verb manages the shared layer. These values
-reach every worker's commands and newly started MCP servers, without depending
-on which worker starts them:
+reach every session's commands and newly started MCP servers, without depending
+on which session starts them:
 
 ```plurnk (env)
 {"verb":"add","scope":"workspace","alias":"NODE_ENV","definition":{"value":"production"}}
 ```
 
-Omitting `scope` selects your worker. Its overrides do not configure shared MCPs.
+Omitting `scope` selects your session. Its overrides do not configure shared MCPs.
 Workspace changes affect subsequent launches; running processes keep their
 existing environment.
 
@@ -34,7 +34,7 @@ alone, without the operator changing anything. `remove` forgets your own entry;
 a workspace or ambient name of the same alias reappears with its inherited value
 and enabledness. Use `disable` when you want the name absent from commands.
 
-Your worker overrides are yours: another worker's commands do not see them. A worker
+Your session overrides are yours: another session's commands do not see them. A session
 you spawn starts with a copy of them — `list` shows those as inherited from
 you — and its changes never reach yours. Workspace defaults remain shared, not copied.
 
@@ -62,7 +62,7 @@ not the command's lifetime.
 Plurnk configuration belongs in the environment cascade;
 READ `skill://plurnk/.env.defaults` for its reference. An MCP definition can
 explicitly bind an operator credential without adding it to every command's
-environment; READ `worker:///_plurnk/tools/plurnk/mcp.json` for that setup.
+environment; READ `workspace:///_plurnk/tools/plurnk/mcp.json` for that setup.
 
 ## Finding a name
 

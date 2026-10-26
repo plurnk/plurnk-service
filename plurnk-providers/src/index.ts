@@ -59,7 +59,7 @@ export { default as AiSdkProvider } from "./AiSdkProvider.ts";
 export { default as RequestFields } from "./RequestFields.ts";
 export type { AiSdkProviderConfig, ReasoningStyle, GrammarStyle } from "./AiSdkProvider.ts";
 // {§provider-capacity-pool} Front N interchangeable backends as one Provider -
-// worker-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
+// session-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";
 export type { ProviderFetch } from "./AiSdkProvider.ts";

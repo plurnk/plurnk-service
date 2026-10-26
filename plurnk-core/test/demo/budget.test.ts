@@ -81,7 +81,7 @@ test("budget: attachments beyond the room land as receipts; the model retrieves 
         lifetime.defer(s.cleanup);
         console.error(`[budget:receipts] runDir=${s.runDir} floor=${floor.weight} capacity=${capacity} effective=${s.provider.inputCapacity} outputBudget=${s.provider.outputBudget}`);
         const result = await liveLoop(s, 2, { prompt: fixture.prompt, openPaths: fixture.openPaths, maxTurns: 12 }, { signal: t.signal });
-        const evidence = await assertContextFitEvidence({ db: s.db, daemon: s.daemon, workspaceId: s.workspaceId, workerId: result.modelWorkerId, turnIds: result.turnIds, fixture });
+        const evidence = await assertContextFitEvidence({ db: s.db, daemon: s.daemon, workspaceId: s.workspaceId, sessionId: result.modelSessionId, turnIds: result.turnIds, fixture });
         const discipline = await assertBudgetDiscipline(s.db, result.loopId);
         console.error(`[budget:receipts] landed=${evidence.landed} receipts=${evidence.receipts} modelTurns=${discipline.modelTurns} overTurns=${discipline.overTurns} finalStatus=${result.finalStatus}`);
         assert.ok(evidence.landed > 0 && evidence.receipts > 0, `the room held some attachments whole and the rest as receipts: landed=${evidence.landed} receipts=${evidence.receipts}`);
