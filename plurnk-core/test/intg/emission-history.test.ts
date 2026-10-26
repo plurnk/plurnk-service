@@ -17,7 +17,7 @@ const say = (content: string, reasoning: string | null = null) => ({ assistant: 
 const previousProgram = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "assistant").map(chatMessageText).join("\n\n");
 const observations = (messages: readonly ChatMessage[]): string => messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 const announcementOf = (turn: number): RegExp => new RegExp(
-    `^### log:///1/${turn}/\\d+/emission → ops://writer/1/${turn} · \\d+$`, "u",
+    `^### log:///1/${turn}/\\d+/emission \\(ops://writer/1/${turn}\\) · \\d+$`, "u",
 );
 const withHistory = async (mode: string, fn: () => Promise<void>): Promise<void> => {
     const name = "PLURNK_SERVICE_EMISSION_HISTORY";
@@ -45,7 +45,7 @@ test("{§emission-history} {§packet-cache-monotone}: each turn's operations pre
     assert.deepEqual(afterRead.map(({ role }) => role), ["system", "user", ...Array.from({ length: 2 }, () => ["assistant", "user"]).flat()]);
     assert.deepEqual(afterRead.filter(({ role }) => role === "assistant").map(chatMessageText), [`${note("Memory before writing.")}\n\n${edit}`, `${read}\n\n${note("Checking what landed.")}`]);
     for (const [index, operations] of [[2, ["NOTE", "EDIT"]], [4, ["READ", "NOTE"]]] as const) {
-        assert.match(chatMessageText(afterRead[index + 1]), new RegExp(`^${operations.map((operation) => `### log:///1/\\d+/\\d+/${operation}${operation === "NOTE" ? "" : " → worker:///memo\\.md"} · \\d+`).join("[\\s\\S]*")}`, "u"), "the turn's receipts follow it, in order, each naming its operand");
+        assert.match(chatMessageText(afterRead[index + 1]), new RegExp(`^${operations.map((operation) => `### log:///1/\\d+/\\d+/${operation}${operation === "NOTE" ? "" : " \\(worker:///memo\\.md\\)"} · \\d+`).join("[\\s\\S]*")}`, "u"), "the turn's receipts follow it, in order, each naming its operand");
     }
     const log = observations(afterRead);
     assert.match(log, /Reasoning memory\./u, "a reasoning NOTE is not in the program and keeps its ordinary row");
@@ -204,7 +204,7 @@ test("{§emission-history} {§operator-config-shipped-defaults}: complete operat
     assert.doesNotMatch(previousProgram(provider.received[1]), /Reasoning memory/u, "reasoning operations stay in their channel");
     assert.match(afterEdit, /Reasoning memory\./u, "a reasoning NOTE persists as an ordinary row");
     assert.doesNotMatch(afterEdit, /Content memory\./u, "a paired receipt does not duplicate its authored body");
-    assert.doesNotMatch(afterEdit, /Unretained deliberation\.|\/reasoning → reasoning:\/\//u, "automatic reasoning return is off");
+    assert.doesNotMatch(afterEdit, /Unretained deliberation\.|\/reasoning \(reasoning:\/\//u, "automatic reasoning return is off");
     const record = afterEdit.split("\n\n").find((text) => /^### log:\/\/\/1\/2\/\d+\/emission/u.test(text))!;
     assert.ok(record);
     assert.match(record, announcementOf(2));

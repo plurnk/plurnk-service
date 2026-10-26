@@ -2832,14 +2832,14 @@ Packet display combines both masks; other consumers use only deliberate trimming
 The `## Log` section is a sequence of ordinary Markdown records separated by one blank line:
 
 ```text
-### log:///<loop>/<turn>/<item>/<leaf> → path pattern · <tokens>
+### log:///<loop>/<turn>/<item>/<leaf> (path) pattern · <tokens>
 {"oneLine":"strict JSON facts"}
 <coordinate-prefixed body lines when visible>
 ```
 
 | Line | Content | Rule |
 |---|---|---|
-| H3 | Only the row's complete READ address, addressed resource(s), selection pattern(s), and ` · ` followed by its `tokens` charge ({§packet-token-accounting}). | Always present. Canonical operands follow arrows ({§log-address-metadata}); each pattern follows its operand. No invocation parentheses, scope, aside or metadata block. The operation appears only in the URI leaf. |
+| H3 | Only the row's complete READ address, addressed resource(s), selection pattern(s), and ` · ` followed by its `tokens` charge ({§packet-token-accounting}). | Always present. Canonical operands are parenthesized ({§log-address-metadata}); each pattern follows its operand. No scope, aside or metadata block. The operation appears only in the URI leaf. |
 | facts | One strict JSON object in stable alphabetical order. | Present only when a fact exists. Asides, scopes, opaque invocation metadata and result facts belong here, not on the H3. |
 | body | Coordinate-prefixed lines. | Present when the row is visible. |
 
@@ -2865,8 +2865,8 @@ rollback included, fails by name rather than inventing one.
 
 | Spelling | Meaning | Where |
 |---|---|---|
-| `→ path` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs share this spelling. Pathless operations have no operand. | H3 |
-| `→ from pattern → to` | COPY/MOVE's ordered operands and any operand pattern; neither replaces actor attribution. Scopes remain paired by `scope.from` and `scope.to` in JSON. | H3 |
+| `(path)` | The operation's addressed operand: read resource, mutation subject, message recipient, or executor operand. Explicit and automatic READs share this spelling. Pathless operations have no operand. | H3 |
+| `(from) pattern (to)` | COPY/MOVE's ordered operands and any operand pattern; neither replaces actor attribution. Scopes remain paired by `scope.from` and `scope.to` in JSON. | H3 |
 | `stream` | An executor invocation's separately created output address, never a READ's alternative spelling of its operand. | Facts |
 | `resource` | A distinct returned resource under {§operation-resource-receipt}. | Facts |
 
@@ -2984,7 +2984,7 @@ Eligible programs supply {§emission-history}; every source remains readable reg
 |---|---|
 | When | An inference turn that admitted at least one content statement. Reasoning-only turns, including initialization ({§worker-initialization-entry}), a programmatic batch, an empty turn ({§empty-turn}), a client operation and a rejected attempt ({§rejected-emission-entry}) announce nothing. |
 | Place | After the turn's inputs (arrivals, deltas, open-path READs) and before its reasoning NOTEs and operations, written after the selection snapshot ({§turn-ops-selection-snapshot}): the emission sits between what the worker had seen and what it caused. |
-| Row | A `_plurnk` READ of the turn's own source, `ops://<worker>/L/T`, with `attrs.kind="emission"` and the canonical leaf `/emission`: `### log:///L/T/S/emission → ops://<worker>/L/T · N`. It renders its author, the turn's producer, as `origin`, so a model's row carries none. It is no operation: no receipt, tool call or strike, and outside the op mix. |
+| Row | A `_plurnk` READ of the turn's own source, `ops://<worker>/L/T`, with `attrs.kind="emission"` and the canonical leaf `/emission`: `### log:///L/T/S/emission (ops://<worker>/L/T) · N`. It renders its author, the turn's producer, as `origin`, so a model's row carries none. It is no operation: no receipt, tool call or strike, and outside the op mix. |
 | Body | Frozen at announcement: the canonical rendering ({§statement-rendering}) of the admitted content statements, each whole in a closed fence, text beside them as the NOTEs it became ({§outside-text}). All heading operands, scopes, metadata, patterns and asides remain. Unadmitted forms are absent; a recovered native call ({§native-tool-calls}) appears as the operation it was read as; an operation whose receipt failed stays. Reasoning operations retain their own source and normal receipts, never an assistant-content copy. No body text is inspected for nested operations. |
 | Wire | The record appears in the log; its complete program supplies the readback projection in {§emission-history}. The frozen body and immutable `ops://` source keep every operation and body ({§turn-source-resources}); an explicit READ returns them. |
 | Stability | The projection is fixed from its first appearance, never aged or resized under budget pressure. Already frozen announcements and historical request captures are not rewritten. |
@@ -2998,7 +2998,7 @@ Eligible programs supply {§emission-history}; every source remains readable reg
 
 The model's optional memory of its own reasoning, behind `PLURNK_SERVICE_REASONING_ROWS` (default `0`):
 when it is `1`, every model turn that reasoned lands its reasoning as one row of its
-own, `log:///<loop>/<turn>/<sequence>/reasoning → reasoning://<worker>/<loop>/<turn>`, the harness's
+own, `log:///<loop>/<turn>/<sequence>/reasoning (reasoning://<worker>/<loop>/<turn>)`, the harness's
 READ of the turn's reasoning source, immediately before the turn's emission row (or its first
 operation or diagnostic when there is no content emission), so the transcript
 reads what the model thought and where its content program can be found
@@ -3128,7 +3128,7 @@ per-operation projection on `rx`; the aggregate remains inside dispatch.
 | -------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Full `revision`                        | not projected                                                     | SHA-256 identity of the complete landed channel body, retained for forensics. No operation takes a revision; it is neither a lookup nor a compare-and-swap token. |
 | `unit`, `before`, `after`              | `extent`                                                          | Whole-line batches use line counts. A batch containing any exact four-coordinate edit uses Unicode code-point counts.     |
-| `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before→after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
+| `parseIssues.before`, `parseIssues.after` | `parseIssues` as `before->after`                                 | Parser-recovery counts for complete source and landed revisions; omitted when both are clean or either is unavailable.     |
 | `effect.source`, `result`             | `effect` as `<source> -> <result>`                                | Resolved scopes mapping the source snapshot into the landed body; the admitted marker stays in durable `requested` and `tx`. |
 | `effect.removed`, `inserted`           | `change`                                                          | Removed and inserted counts led by the receipt unit, as `extent` is: `lines -7 +7`. |
 | `effect.removedText`                   | `removed`                                                         | {§edit-receipt-removed-text}: a pure deletion's removed text, its first `PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES` lines; absent when the edit inserted anything.                                                                          |

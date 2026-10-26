@@ -137,7 +137,7 @@ test("{§edit-result-receipt-projection} assembled packet: landed EDIT receipts 
             typeof entry.logPath === "string" && entry.logPath.endsWith("/EDIT"));
         const broken = edits.find((entry) => entry.path === "worker:///broken.go");
         const clean = edits.find((entry) => entry.path === "worker:///clean.go");
-        assert.match(String(broken?.parseIssues), /^0→[1-9]\d*$/);
+        assert.match(String(broken?.parseIssues), /^0->[1-9]\d*$/);
         assert.equal(clean !== undefined && "parseIssues" in clean, false);
     } finally { await db.close(); }
 });
@@ -279,7 +279,7 @@ test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coor
         const second = await engine.runTurn({ provider, workspaceId, workerId, loopId, messages: [] });
         const log = packetSection(await getPacket(db, second.turnId), "log");
 
-        assert.match(log, /^### log:\/\/\/\S+\/FIND → worker:\/\/\/notes\.md \/target\/ · \d+$/m, "the addressed resource and matcher return on the receipt heading");
+        assert.match(log, /^### log:\/\/\/\S+\/FIND \(worker:\/\/\/notes\.md\) \/target\/ · \d+$/m, "the addressed resource and matcher return on the receipt heading");
         assert.match(log, /"range":"2 match locations"/);
         assert.doesNotMatch(log, /"matchLocationCount":2/);
         assert.doesNotMatch(log, /"matchingPathCount":1/);
@@ -429,7 +429,7 @@ test("{§schemes-directory} assembled packet: the skills foist surfaces the Work
 
         // The materialized doc reaches the model through its private FIND, not
         // an inline packet link ({§schemes-directory}).
-        assert.match(log, /^### log:\/\/\/\S+\/FIND → worker:\/\/\/_plurnk\/plurnk\/\*\.md · \d+$/m, "the foist scopes discovery to the Worker's skills tree");
+        assert.match(log, /^### log:\/\/\/\S+\/FIND \(worker:\/\/\/_plurnk\/plurnk\/\*\.md\) · \d+$/m, "the foist scopes discovery to the Worker's skills tree");
         assert.match(log, /worker:\/\/\/_plurnk\/plurnk\/worker\.md/, "the materialized skill surfaces in the foist's rendered result");
         assert.match(log, /"aside":"Manage shared worker entries\."/, "the catalog projects the document's Summary without opening its body");
     } finally {

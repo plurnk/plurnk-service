@@ -58,7 +58,7 @@ test("{§reasoning-row} {§emission-history}: reasoning and NOTE stay in the log
             assert.equal(reasoningRow.sequence, emissionRow.sequence - 1, "the reasoning row is the one sequence before the emission row");
             assert.equal(reasoningRow.op, "READ"); assert.equal(reasoningRow.origin, "_plurnk"); assert.equal(reasoningRow.scheme, "reasoning");
             assert.equal((JSON.parse(reasoningRow.rx!) as { content: string }).content, reasoning, "the body is the model's own reasoning, whole");
-            const heading = log.indexOf(`/${reasoningRow.sequence}/reasoning → reasoning://alice/1/2`);
+            const heading = log.indexOf(`/${reasoningRow.sequence}/reasoning (reasoning://alice/1/2)`);
             const emissionHeading = log.indexOf(`/${emissionRow.sequence}/emission`);
             assert.ok(heading >= 0, `the packet names the row by its own leaf and address: ${log.slice(0, 400)}`);
             assert.ok(emissionHeading > heading, "the reasoning row precedes the emission row in the packet");
@@ -88,7 +88,7 @@ test("{§reasoning-row}: without room for it, no reasoning row lands and the tur
             assert.equal(rows.filter((row) => kindOf(row) === "emission").length, 1, "the emission row lands as always");
             assert.deepEqual(rows.filter((row) => row.op === "error").map((row) => row.sequence), [], "no receipt, no 413, nothing else changes");
             assert.ok(rows.some((row) => row.op === "READ" && row.origin === "model"), "the program ran");
-            assert.doesNotMatch(log, /\/reasoning → reasoning:\/\//u, "the next packet carries no reasoning row");
+            assert.doesNotMatch(log, /\/reasoning \(reasoning:\/\//u, "the next packet carries no reasoning row");
         } finally { await db.close(); }
     });
 });
@@ -98,7 +98,7 @@ test("{§reasoning-row}: with the knob off, no row lands", async () => {
         const { db, rows, log } = await story(100_000, "Some thinking.");
         try {
             assert.equal(rows.filter((row) => kindOf(row) === "reasoning").length, 0);
-            assert.doesNotMatch(log, /\/reasoning → reasoning:\/\//u);
+            assert.doesNotMatch(log, /\/reasoning \(reasoning:\/\//u);
         } finally { await db.close(); }
     });
 });

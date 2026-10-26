@@ -53,7 +53,7 @@ test("{§packet-attachment-parts} audio duration weighs the retained source, wit
     const bytes = new Uint8Array([82, 73, 70, 70]);
     const user = (await PacketWire.wireMessages(packet, async () => bytes)).at(-1)!;
     assert.ok(Array.isArray(user.content));
-    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ → file:///clip.wav (audio/wav, 1.25 s): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
+    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ (file:///clip.wav) (audio/wav, 1.25 s): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
     assert.deepEqual(user.content[2], { type: "file", data: bytes, mediaType: "audio/wav" });
 });
 
@@ -62,7 +62,7 @@ test("{§packet-attachment-parts} a visible READ of an image weighs the picture 
     assert.equal(imageWeight(640, 480), 410);
     assert.deepEqual(rendered.attachments, [{ contentHash, coordinate: "1/1/2", path: "file:///logo.png", scheme: "file", pathname: "/logo.png", mimetype: "image/png", kind: "image", width: 640, height: 480, weight: 410 }]);
     assert.match(rendered.content, /"tokensAttachment":410/);
-    const active = Number(/^### log:\/\/\/1\/1\/2\/READ → file:\/\/\/logo\.png · (\d+)$/m.exec(rendered.content)?.[1]);
+    const active = Number(/^### log:\/\/\/1\/1\/2\/READ \(file:\/\/\/logo\.png\) · (\d+)$/m.exec(rendered.content)?.[1]);
     assert.ok(active > 410, `tokens carries the picture: ${active}`);
 });
 
@@ -134,9 +134,9 @@ test("{§packet-attachment-parts} retained native parts follow the packet text w
     assert.equal(typeof system.content, "string");
     assert.ok(Array.isArray(user.content));
     assert.equal(user.content[0]?.type, "text");
-    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ → logo.png (image/png, 640×480 px): the bytes of that READ row, retained until it is KILLed. Not a new arrival." }, "every native part is captioned as the model's own READ, never an arrival");
+    assert.deepEqual(user.content[1], { type: "text", text: "log:///1/1/2/READ (logo.png) (image/png, 640×480 px): the bytes of that READ row, retained until it is KILLed. Not a new arrival." }, "every native part is captioned as the model's own READ, never an arrival");
     assert.deepEqual(user.content[2], { type: "file", data: png, mediaType: "image/png" });
-    assert.deepEqual(user.content[3], { type: "text", text: "log:///1/1/3/READ → contract.pdf (application/pdf, 3 pages): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
+    assert.deepEqual(user.content[3], { type: "text", text: "log:///1/1/3/READ (contract.pdf) (application/pdf, 3 pages): the bytes of that READ row, retained until it is KILLed. Not a new arrival." });
     assert.deepEqual(user.content[4], { type: "file", data: pdf, mediaType: "application/pdf" });
     assert.equal(user.content.length, 5);
     const imageOnly = (await PacketWire.wireMessages(packet, bytesOf, (kind) => kind === "image")).at(-1)!;
@@ -193,7 +193,7 @@ test("{§packet-wire-envelope}: historical unbound native attachments retain the
 test("{§packet-attachment-parts} native-only observations are weighed and reclaimable", () => {
     const row = readRow({ id: 42, rx: { content: "", mimetype: "text/markdown", image: { mimetype: "image/png", width: 640, height: 480, bytes: 12345 } } });
     const rendered = PacketWire.renderLogWithAccounting([row], weigh);
-    const charge = Number(/^### log:\/\/\/1\/1\/2\/READ → file:\/\/\/logo\.png · (\d+)$/mu.exec(rendered.content)?.[1]);
+    const charge = Number(/^### log:\/\/\/1\/1\/2\/READ \(file:\/\/\/logo\.png\) · (\d+)$/mu.exec(rendered.content)?.[1]);
     assert.equal(charge, weigh(rendered.content) + 410);
     assert.deepEqual(rendered.curationTargets, [{ path: "log:///1/1/2/READ", tokens: charge }]);
     assert.equal(rendered.attachments.length, 1);
@@ -227,7 +227,7 @@ test("{§packet-wire-envelope} historical native requests retain their recorded 
 
 test("{§packet-attachment-parts} interpolated native parts remain at their READ boundary as history grows", async () => {
     const attachment = { ...PacketWire.renderLogWithAccounting([readRow()], weigh).attachments[0], section: "log/1/1/2" };
-    const record = "### log:///1/1/2/READ → logo.png · 410";
+    const record = "### log:///1/1/2/READ (logo.png) · 410";
     const packet: RequestPacket = {
         weight: 500, attributions: [], attachments: [attachment],
         sections: [

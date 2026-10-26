@@ -35,7 +35,7 @@ test("{§emission-history} {§paired-receipt}: a turn's content operations prece
     for (const record of records) {
         const op = /\/(EDIT|READ|NOTE) /u.exec(record)![1] as keyof typeof operations;
         assert.doesNotMatch(record, /"aside"/u, "the aside stays with the replayed operation");
-        if (op !== "NOTE") assert.match(record.split("\n")[0], / → worker:\/\/\/memo\.txt · \d+$/u, "the receipt names its operand");
+        if (op !== "NOTE") assert.match(record.split("\n")[0], / \(worker:\/\/\/memo\.txt\) · \d+$/u, "the receipt names its operand");
         if (op === "NOTE") assert.doesNotMatch(record, /An authored memory/u);
         else assert.match(record, /Unique replacement\./u, "landed edit windows and READ output are returned evidence, not suppressed request bodies");
         const head = record.split("\n\n")[0];
@@ -90,5 +90,5 @@ test("{§emission-history} {§bulk-resource-targeting}: one glob replay owns con
     const receipts = chatMessageText(request[index + 1]);
     assert.match(receipts, /case-a\.txt[\s\S]*First\.[\s\S]*case-b\.txt[\s\S]*Second\./u, "the glob owns its concrete receipts");
     assert.match(receipts, /"status":404/u, "the failed READ's receipt follows with the turn's others");
-    assert.match(receipts, /^### log:\/\/\/1\/3\/\d+\/COPY → worker:\/\/\/case-a\.txt → worker:\/\/\/copy\.txt/mu, "resolved transfer operands are new result facts");
+    assert.match(receipts, /^### log:\/\/\/1\/3\/\d+\/COPY \(worker:\/\/\/case-a\.txt\) \(worker:\/\/\/copy\.txt\)/mu, "resolved transfer operands are new result facts");
 });

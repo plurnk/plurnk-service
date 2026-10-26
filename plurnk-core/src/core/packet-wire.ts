@@ -413,7 +413,7 @@ export default class PacketWire {
             extent: `${receipt.unit} ${receipt.before}->${receipt.after}`,
             ...(receipt.parseIssues === undefined
                 ? {}
-                : { parseIssues: `${receipt.parseIssues.before}→${receipt.parseIssues.after}` }),
+                : { parseIssues: `${receipt.parseIssues.before}->${receipt.parseIssues.after}` }),
         };
         if ("effect" in receipt) {
             return {
@@ -726,13 +726,13 @@ export default class PacketWire {
             const matcher = selection?.matcher;
             const pattern = isRecord(matcher) ? matcher.raw : undefined;
             return [
-                ...(paths[index] === null ? [] : [`→ ${paths[index]}`]),
+                ...(paths[index] === null ? [] : [`(${paths[index]})`]),
                 ...(typeof pattern !== "string" || pattern.length === 0 ? []
                     : [/[\r\n]/u.test(pattern) ? JSON.stringify(pattern) : pattern]),
             ];
         });
         // {§paired-receipt}: every receipt names its operand; a paired one leaves its pattern to the replayed operation.
-        const operands = paths.filter((candidate) => candidate !== null).map((candidate) => `→ ${candidate}`).join(" ");
+        const operands = paths.filter((candidate) => candidate !== null).map((candidate) => `(${candidate})`).join(" ");
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
             : !paired ? parts.join(" ") : operands.length > 0 ? operands : null;
         // {§worker-auto-name} The created identity is an outcome, not an authored target.
@@ -1168,7 +1168,7 @@ export default class PacketWire {
         if (attachment.width !== undefined && attachment.height !== undefined) facts.push(`${attachment.width}×${attachment.height} px`);
         if (attachment.pages !== undefined) facts.push(`${attachment.pages} pages`);
         if (attachment.duration !== undefined) facts.push(`${attachment.duration} s`);
-        return `log:///${attachment.coordinate}/READ → ${attachment.path} (${facts.join(", ")}): the bytes of that READ row, retained until it is KILLed. Not a new arrival.`;
+        return `log:///${attachment.coordinate}/READ (${attachment.path}) (${facts.join(", ")}): the bytes of that READ row, retained until it is KILLed. Not a new arrival.`;
     }
 
     static #projectRelativeCwd(cwd: string, projectRoot: string | null): string | null {

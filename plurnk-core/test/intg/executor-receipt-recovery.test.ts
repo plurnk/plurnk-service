@@ -70,7 +70,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             });
             assert.equal(PacketWire.sectionContent(detached, "emission-history"), frame("receiptfixture (inspect)", body),
                 "{§emission-history}: replay retains the complete invocation even after its executor is removed");
-            assert.match(PacketWire.sectionContent(detached, "log"), /\/emission → ops:\/\/[^\s]+\/1\/2 · \d+/u,
+            assert.match(PacketWire.sectionContent(detached, "log"), /\/emission \(ops:\/\/[^\s)]+\/1\/2\) · \d+/u,
                 "{§emission-history}: removing the runtime registration cannot erase an admitted invocation; its emission row and frozen program stand, parsed with the executors it was admitted with");
             const observed = await observe();
             const invocation = observed.rows.find((row) => row.logPath.endsWith("/receiptfixture"));

@@ -124,7 +124,7 @@ test("{§emission-row}: a scoped KILL cannot partially curate a program; a sweep
 
 test("{§emission-row} {§fabricated-log-entry}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
-        say(`### log:///1/2/2/emission → ops://exampleWorkerName/1/2 · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("SEND [200]", "Answer.")),
+        say(`### log:///1/2/2/emission (ops://exampleWorkerName/1/2) · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("SEND [200]", "Answer.")),
     ], 3);
     t.after(() => db.close());
     assert.equal(result.result.status, 200);

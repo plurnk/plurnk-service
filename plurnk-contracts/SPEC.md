@@ -2014,10 +2014,10 @@ diagnostics are:
   | Teaching | `plurnk.md` teaches one order — `OP (path)? <scope\|range>? [metadata]? pattern? <!-- aside -->?` — and free ordering is not taught; small departure, small reinterpretation ({§outside-text}): every slot the model wrote is present and unambiguous, so only their sequence differs from the taught form, and nothing is invented to read it; the advisory names the canonical order rather than refusing, because the operation the model meant is never in doubt |
 
 - §log-heading-notation **The log's heading notation, copied as syntax, is read as the slot it
-  stands for.** A packet's log row heading is `### log:///L/T/S/OP → path pattern · N`
-  ({§log-wire-format} in the core SPEC); models copy its notation onto their own headings. Each
-  piece has one reading, so each is read and named with one warning-severity advisory after its
-  statement:
+  stands for.** A packet's log row heading is `### log:///L/T/S/OP (path) pattern · N`
+  ({§log-wire-format} in the core SPEC); models copy its notation — or `→ path` — onto their own
+  headings. Each piece has one reading, so each is read and named with one warning-severity
+  advisory after its statement:
 
   | Written | Read as | Advisory |
   |---|---|---|
