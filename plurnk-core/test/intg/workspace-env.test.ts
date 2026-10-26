@@ -49,7 +49,7 @@ test("{§workspace-env} workspace defaults, worker overrides and masks share the
             assert.ok(cause instanceof OperationFailureError);
             assert.equal(cause.result.status, 400);
             assert.equal(cause.result.problem.type, "https://problems.plurnk.xyz/env/functionality/name-reserved");
-            assert.equal(cause.result.problem.detail, "'PLURNK_BAD' is reserved in env entries and invocation overrides.");
+            assert.equal(cause.result.problem.detail, "'PLURNK_BAD' is reserved in env entries.");
             assert.equal(cause.result.problem.recovery, "READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths.");
             return true;
         });

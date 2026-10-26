@@ -11,7 +11,7 @@ Contract for `@plurnk/plurnk-schemes-*` sibling packages. Audience: implementer 
 | {§manifest-metadata-modifier} | `metadataModifier?` — `true` declares `[metadata]` on resource operations. |
 | {§manifest-capability-traits} | `traits?` — Unique lowercase capability facts (for example `web` or `interaction`). |
 | {§manifest-client-display} | `glyph?` — Non-empty opaque client presentation glyph. |
-| {§service-metadata-keys} | Two keys are the service's, withheld from every owner. |
+| {§service-metadata-keys} | The service's reserved keys are withheld from every owner. |
 | {§manifest-self-doc} | Discoverable scheme references. |
 <!-- /map -->
 
@@ -77,11 +77,10 @@ The invoked handler owns this admission, not an address it consumes internally.
 An execution delegates its blocks to the selected executor under {§executor-metadata};
 its source acquisition is a separate READ without inherited execution metadata.
 
-§service-metadata-keys **Two keys are the service's, withheld from every owner.**
-`MetadataOptions.SERVICE_KEYS` names `env` and `lifetime`: the reader strips them from
-every owner's `options` and surfaces them raw beside it, so no scheme or executor
-interprets or refuses them and the service alone owns their shapes — the environment a
-scope opens, and how long its live work may run.
+§service-metadata-keys **The service's reserved keys are withheld from every owner.**
+`MetadataOptions.SERVICE_KEYS` names `lifetime`: the reader strips it from
+every owner's `options` and surfaces it raw beside it, so no scheme or executor
+interprets or refuses it and the service alone owns its shape — how long live work may run.
 
 {§manifest-capability-traits} `traits` are closed manifest data, not a policy
 channel. Names match `^[a-z][a-z0-9-]*$`, are unique, and carry through a

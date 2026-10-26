@@ -31,7 +31,7 @@ export default class ExecEnv {
         return out;
     }
 
-    // {§env-functionality} {§env-option} Ordinary entries and modifiers reserve these
+    // {§env-functionality} Ordinary entries reserve these
     // names even when supplying literal values rather than inheriting host values.
     static ownSecretTest(env: NodeJS.ProcessEnv = process.env): (name: string) => boolean {
         const names = ExecEnv.#ownSecretNames(env);

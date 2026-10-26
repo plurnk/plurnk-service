@@ -11,7 +11,6 @@ import type {
     FunctionalityDiscoverInput,
     FunctionalityDiscoverQuery,
     FunctionalityFamilyHandle,
-    FunctionalityOptions,
     FunctionalityPreparation,
     FunctionalityPrepared,
     FunctionalityServiceDefinition,
@@ -106,9 +105,9 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // Current partial-source diagnostics; independent valid definitions remain available.
     configurationNotices?(identity: WorkspaceCapabilityIdentity): readonly Notice[];
     // Receives only a query the family's declared discovery admits.
-    discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]>;
+    discover?(query: FunctionalityDiscoverQuery, identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityCandidate[]>;
     // One admission, or, for an addressing family's `add`, one per definition the input names.
-    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller, options?: FunctionalityOptions): Promise<FunctionalityAdmission<Definition> | readonly FunctionalityAdmission<Definition>[]>;
+    admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller?: FunctionalityCaller): Promise<FunctionalityAdmission<Definition> | readonly FunctionalityAdmission<Definition>[]>;
     prepare(preparation: FunctionalityPreparation<Definition, Snapshot>): Promise<FunctionalityPrepared<Runtime, Snapshot>>;
     teardown(snapshot: Snapshot, identity: WorkspaceCapabilityIdentity): Promise<void>;
     // Release what the workspace definition installed or provisioned, before the coordinator

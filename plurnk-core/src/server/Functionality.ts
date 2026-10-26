@@ -23,7 +23,6 @@ import type {
     FunctionalityCaller,
     FunctionalityFamilyHandle,
     FunctionalityIdentity,
-    FunctionalityOptions,
     FunctionalityOutcome,
     FunctionalityPreparation,
     FunctionalityPrepared,
@@ -78,7 +77,7 @@ export interface FunctionalityInvocation {
     readonly body: unknown;
 }
 
-export interface FunctionalityInvocationOptions extends FunctionalityOptions {
+export interface FunctionalityInvocationOptions {
     readonly onAuthorizationRequired?: (aliases: readonly string[]) => void;
 }
 
@@ -508,7 +507,7 @@ export default class Functionality {
         identity = { ...identity, scope };
         if (verb === "discover") {
             const { scope: _scope, ...query } = input;
-            return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#discover(adapter, query, identity, options)) };
+            return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#discover(adapter, query, identity)) };
         }
         // {§functionality-scope} — a worker-scoped family's list and mutations act for the invoking
         // Worker. The state is that Worker's and nothing resident changes, so they serialize on the
@@ -518,11 +517,11 @@ export default class Functionality {
             const workerId = Functionality.#workerOf(adapter, identity);
             return this.#trackAdmission(
                 identity.workspaceId,
-                this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, options, signal)),
+                this.#serialize(`${this.#key(identity.workspaceId, family)}:${workerId}`, () => this.#invokeForWorker(adapter, verb, input, identity, workerId, caller, signal)),
             );
         }
         if (verb === "list") return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#list(adapter, identity)) };
-        const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, options, signal));
+        const mutate = () => this.#serialize(this.#key(identity.workspaceId, family), () => this.#mutate(adapter, verb, input, identity, caller, signal));
         // A context family (one that declares the worker scope) is read where it is used, so its workspace
         // defaults change nothing resident either: they serialize on the family's lane, as a Worker's own do,
         // and an operation inside its own held turn never waits on itself.
@@ -706,9 +705,9 @@ export default class Functionality {
         });
     }
 
-    async #discover(adapter: HostFunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity, options: FunctionalityOptions): Promise<FunctionalityDiscoverResult> {
+    async #discover(adapter: HostFunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDiscoverResult> {
         // Registration pairs a declared discovery with its implementation ({§functionality-discovery-inputs}).
-        const candidates = await adapter.discover!(query, identity, options);
+        const candidates = await adapter.discover!(query, identity);
         return Validator.assertFunctionalityDiscoverResult({ family: adapter.family, candidates: [...candidates] });
     }
 
@@ -730,7 +729,6 @@ export default class Functionality {
         caller: FunctionalityCaller,
         state: FamilyState,
         effective: ReadonlyMap<string, EffectiveDefinition>,
-        options: FunctionalityOptions,
     ): Promise<Transition> {
         const local = Functionality.#localOrigin(identity);
         const here = local === "worker" ? "this worker" : "this workspace";
@@ -742,7 +740,7 @@ export default class Functionality {
         switch (verb) {
             case "add":
             case "replace": {
-                const admitted = await adapter.admit(input, identity, caller, options);
+                const admitted = await adapter.admit(input, identity, caller);
                 const listed: FunctionalityAdmission[] = [];
                 admissions = listed.concat(admitted);
                 // {§functionality-addressing} — an alias family admits exactly one definition; an addressing
@@ -830,7 +828,6 @@ export default class Functionality {
         input: Record<string, unknown>,
         identity: FunctionalityIdentity,
         caller: FunctionalityCaller,
-        options: FunctionalityInvocationOptions,
         signal: AbortSignal,
     ): Promise<
         | { invocation: FunctionalityInvocation; settled?: undefined }
@@ -841,7 +838,7 @@ export default class Functionality {
         const family = this.#families.get(key);
         if (family === undefined) throw failure(adapter.family, "workspace-not-resident", 409, `Workspace ${identity.workspaceId} has no resident ${adapter.family} Functionality.`, { recovery: "Retry through a workspace operation, then retry.", retryable: false });
         const effective = await this.#effective(adapter, identity, family.state);
-        const transition = await this.#transition(adapter, verb, input, identity, caller, family.state, effective, options);
+        const transition = await this.#transition(adapter, verb, input, identity, caller, family.state, effective);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         // Re-enabling an alias that is not active retries its preparation; an
         // already-active alias keeps its live attachment.
@@ -927,7 +924,6 @@ export default class Functionality {
         identity: FunctionalityIdentity,
         workerId: number,
         caller: FunctionalityCaller,
-        options: FunctionalityOptions,
         signal: AbortSignal,
     ): Promise<FunctionalityInvocation> {
         signal.throwIfAborted();
@@ -944,7 +940,7 @@ export default class Functionality {
                 definitions: [...effective.values()].map((definition) => this.#projection(definition, prepared.outcomes.get(definition.alias))),
             }) };
         }
-        const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective, options);
+        const transition = await this.#transition(adapter, verb, input, identity, caller, state, effective);
         const nextState: FamilyState = { version: STATE_VERSION, definitions: transition.definitions };
         const effectiveAfter = await this.#effective(adapter, identity, nextState);
         const prepared = await this.#prepareForWorker(adapter, identity, effectiveAfter, caller === "action" || verb === "replace" ? "reject" : "publish-unavailable", transition.admissions, signal);

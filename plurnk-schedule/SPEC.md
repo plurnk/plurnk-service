@@ -48,7 +48,7 @@ status, not a failure or a claim of delivery; no dates or wake conditions change
 
 | Fact | Rule |
 | --- | --- |
-| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§workspace-env}), and a Worker's own `env` override wins for the verbs that Worker invokes ({§functionality-scope}); a call carrying `env` metadata with `TZ` is read in that zone for that call |
+| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§workspace-env}), and a Worker's own `env` override wins for the verbs that Worker invokes ({§functionality-scope}) |
 | A rule's zone | the zone stamped at its `add`; a later `env` change moves no existing rule |
 | Without a `DTSTART` | a rule starts when it is read, at the next whole second in the effective zone, so its first occurrence is still ahead: a workspace rule is read at `add`, a service rule once, when the daemon starts, in the service's zone |
 | A `DTSTART` | a floating one is read in the effective zone; one with a `TZID` or a UTC `Z` keeps its own zone |

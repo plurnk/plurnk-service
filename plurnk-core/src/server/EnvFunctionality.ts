@@ -12,7 +12,7 @@ import type {
     WorkspaceCapabilityIdentity,
 } from "@plurnk/plurnk-contracts";
 import type { FunctionalityAdapter, FunctionalityDiscovery } from "@plurnk/plurnk-modules";
-import { MetadataOptions, type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
+import { type RuntimeSchemeFacet } from "@plurnk/plurnk-schemes";
 import EnvCatalog from "../core/env-catalog.ts";
 import EnvDefaults, { type EnvDefaultsFile } from "../core/env-defaults.ts";
 import type HostPaths from "../core/HostPaths.ts";
@@ -32,9 +32,9 @@ const actionError = (code: string, status: number, detail: string, extensions: R
         Results.failure("env:functionality", code, status, detail, {}, { family: ENV_FAMILY, retryable: false, ...extensions }),
     );
 
-// {§exec-env-scoped} The family and invocation modifier share the same reservation.
+// {§exec-env-scoped} The family reserves Plurnk configuration and provider credentials.
 const reservedNameError = (alias: string): OperationFailureError => actionError("name-reserved", 400,
-    `'${alias}' is reserved in env entries and invocation overrides.`, {
+    `'${alias}' is reserved in env entries.`, {
         alias,
         recovery: "READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths.",
     });
@@ -77,7 +77,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
             + "comment that documents it; `source` selects one owning package; an empty body is the "
             + "whole catalog, which is short — start there. It is how you learn which names have a "
             + "consumer, and how you learn the name of a value only the operator can supply. "
-            + "READ a dotenv file; set its variables with `add` or `EDIT (env:///NAME)`.",
+            + "READ a dotenv file; set its variables with `add`.",
     };
 
     readonly #defaults: () => Promise<readonly EnvDefaultsFile[]>;
@@ -114,7 +114,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         if (query.source !== undefined && !files.some(({ owner }) => owner === query.source)) {
             throw actionError("source-unknown", 400, `'${query.source}' is not a package in the configuration catalog.`, {
                 source: query.source,
-                recovery: "Omit source to list the catalog. READ files; set variables with add or EDIT (env:///NAME).",
+                recovery: "Omit source to list the catalog. READ files; set variables with add.",
             });
         }
         return EnvCatalog.candidates(files, {
@@ -169,7 +169,6 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     static compose(
         ambient: NodeJS.ProcessEnv,
         state: unknown,
-        modifier: Readonly<Record<string, string>> = {},
         scope: "worker" | "workspace" = "worker",
     ): { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> } {
         if (!isRecord(state) || state.version !== 1 || !isRecord(state.definitions)) throw new Error("env state is not a version 1 record");
@@ -195,13 +194,6 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
             env[name] = entry.definition.value;
             record[name] = { source: scope, ...from, value: entry.definition.value };
         }
-        // {§env-option} — the op's own environment, nearest the spawn; admitted by name already.
-        for (const [name, value] of Object.entries(modifier)) {
-            reserved ??= ExecEnv.ownSecretTest();
-            if (reserved(name)) throw new Error(`env modifier names plurnk's own '${name}' past admission`);
-            env[name] = value;
-            record[name] = { source: "modifier", value };
-        }
         for (const [name, value] of Object.entries(env)) {
             if (record[name] === undefined && value !== undefined) record[name] = { source: "host", value };
         }
@@ -212,57 +204,29 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     static async workspace(db: Db, workspaceId: number, hostPaths?: HostPaths): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const row = await db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: ENV_OWNER });
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
-        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => this.compose(ambient, state, {}, "workspace");
+        return (ambient = ExecEnv.scoped(process.env, hostPaths)) => this.compose(ambient, state, "workspace");
     }
 
     static async resolve(
         db: Db,
         workspaceId: number,
         workerId?: number,
-        modifier: Readonly<Record<string, string>> = {},
         ambient?: NodeJS.ProcessEnv,
         hostPaths?: HostPaths,
     ): Promise<{ env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const empty = { version: 1, definitions: {} };
         const shared = (await this.workspace(db, workspaceId, hostPaths))(ambient ?? ExecEnv.scoped(process.env, hostPaths));
         const worker = workerId === undefined ? undefined : await db.worker_module_state_get.get<{ state: string }>({ worker_id: workerId, namespace_owner: ENV_OWNER });
-        const result = this.compose(shared.env, worker === undefined ? empty : JSON.parse(worker.state), modifier);
+        const result = this.compose(shared.env, worker === undefined ? empty : JSON.parse(worker.state));
         return { env: result.env, record: { ...shared.record, ...Object.fromEntries(Object.entries(result.record).filter(([, item]) => item.source !== "host")) } };
-    }
-
-    // {§env-option} — the heading's `env` option, read through the one metadata reader and admitted
-    // by the family's own rules: an object of string values under names a shell can export, never
-    // plurnk's own. A refusal names the key and the reason, so the model learns why, exactly as `add`
-    // refuses. A block that is not the array shape carries no `env` for the service to read: it is
-    // the invoked executor's to accept or refuse ({§scheme-metadata-modifier}), as `pattern` is
-    // lifted only from a block that parses.
-    static modifier(metadata: readonly string[] | null | undefined, source = "env:functionality"): Readonly<Record<string, string>> {
-        const read = MetadataOptions.parse(metadata, source);
-        if ("failure" in read) return Object.freeze({});
-        return EnvFunctionality.environment(read.env);
-    }
-
-    static environment(raw: unknown): Readonly<Record<string, string>> {
-        if (raw === undefined) return Object.freeze({});
-        if (!isRecord(raw)) throw actionError("env-invalid", 400, "`env` must be an object of string values.", { retryable: false });
-        const reserved = ExecEnv.ownSecretTest();
-        const out: Record<string, string> = {};
-        for (const [name, value] of Object.entries(raw)) {
-            if (!NAME.test(name)) throw actionError("name-invalid", 400, `'${name}' is not a name a shell can export.`, { alias: name, retryable: false });
-            if (reserved(name)) throw reservedNameError(name);
-            if (typeof value !== "string") throw actionError("value-invalid", 400, `'${name}' needs a string value.`, { alias: name, retryable: false });
-            out[name] = value;
-        }
-        return Object.freeze(out);
     }
 }
 
 // One name's provenance in a spawn's environment ({§exec-env-scoped}): the host through the
-// ceiling, this Worker's own value (`from` names an ancestor when it was inherited), the op's own
-// modifier ({§env-option}), or a name withheld — by this Worker, by the ancestor named, or by the
-// invariant.
+// ceiling, this Worker's own value (`from` names an ancestor when it was inherited), or a name
+// withheld — by this Worker, by the ancestor named, or by the invariant.
 export interface EnvRecord {
-    readonly source: "host" | "workspace" | "worker" | "modifier" | "masked";
+    readonly source: "host" | "workspace" | "worker" | "masked";
     readonly from?: string;
     readonly value?: string;
 }

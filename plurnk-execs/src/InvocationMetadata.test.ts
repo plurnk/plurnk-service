@@ -96,6 +96,6 @@ test("{§executor-metadata} an unsupported field's refusal names the run's field
         const refused = await executor.prepare(input([JSON.stringify({ [field]: 60 })]));
         assert.equal(refused.status, 400);
         assert.equal(refused.problem?.detail, `Executable tool '${input(null).runtime}' does not accept metadata field '${field}'.`);
-        assert.equal(refused.problem?.recovery, "Its fields are `cwd`, `args`, `stdin`, `env` and `lifetime`.");
+        assert.equal(refused.problem?.recovery, "Its fields are `cwd`, `args`, `stdin` and `lifetime`.");
     }
 });

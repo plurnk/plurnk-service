@@ -234,7 +234,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#functionality.register(new EnvFunctionality(
             EnvFunctionality.defaultsReader(Paths.packageRoot, this.#nodeModulesPath, this.#hostPaths),
             new EnvScheme(
-                (workspaceId, workerId) => EnvFunctionality.resolve(this.#db, workspaceId, workerId, {}, undefined, this.#hostPaths),
+                (workspaceId, workerId) => EnvFunctionality.resolve(this.#db, workspaceId, workerId, undefined, this.#hostPaths),
                 (verb, params, identity) => this.#functionality.invoke("env", verb, params, identity, "operation"),
                 async (workspaceId, workerId) => (await this.#db.runtime_worker_get.get<{ id: number }>({ workspace_id: workspaceId }))?.id === workerId
                     ? "workspace" : "worker",
@@ -321,7 +321,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             workerCurationOverflow: (workerId, selectedProvider) => this.#engine.workerCurationOverflow(workerId, selectedProvider),
         });
         this.#delivery = new MessageDelivery({
-            db, workerModels: this.#workerModels, functionality: this.#functionality, mimetypes: this.#mimetypes,
+            db, workerModels: this.#workerModels, mimetypes: this.#mimetypes,
             inject: (args) => this.inject(args),
         });
         this.#reads = new ClientReads({ db: this.#db, engine: this.#engine, workspaceGate: this.#workspaceGate, residency: this.#residency });

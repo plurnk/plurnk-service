@@ -15,10 +15,6 @@ export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
     readonly scope?: "workspace" | "worker";
 }
 
-export interface FunctionalityOptions {
-    readonly env?: Readonly<Record<string, string>>;
-}
-
 // {§functionality-discovery-inputs} — one input of the shared discovery query a family may serve.
 export type FunctionalityDiscoverInput = keyof FunctionalityDiscoverQuery;
 

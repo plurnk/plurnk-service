@@ -23,10 +23,8 @@ every interpreter.
 
 The command receives a scoped environment: provider keys and every `PLURNK_*`
 setting are stripped before the child starts, so `printenv` cannot read
-plurnk's credentials, and the project's environment passes through.
-`[{"env": {"LC_ALL": "C"}}]` on the fence line sets variables for this run
-alone, over the entries in the `env` registry (`env.md`); plurnk's own names
-are refused by name.
+plurnk's credentials, and the project's environment passes through, overlaid
+with the `env` registry (`worker:///_plurnk/tools/plurnk/env.json`).
 
 ## Working directory
 

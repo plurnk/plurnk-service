@@ -14,13 +14,9 @@ an existing worker, even after it finishes. Names match
 `[A-Za-z0-9][A-Za-z0-9_-]{0,62}` and are case-sensitive. SEND to an existing
 worker gives it a follow-up task.
 
-```WORK (worker://child) [{"env":{"LANG":"C.UTF-8"}}] <!-- fresh log -->
+```WORK (worker://child) <!-- fresh log -->
 The child's complete task goes here.
 ```
-
-`env` occupies the header's `[metadata]` slot after the worker address; the
-body is the child's task, not a JSON options object. On WORK and FORK these
-values override the child's inherited environment (`worker:///_plurnk/tools/plurnk/env.json`).
 
 ```FORK (worker://exampleWorkerName) <!-- a child that begins with your history -->
 The child's task, continuing from what you already know.

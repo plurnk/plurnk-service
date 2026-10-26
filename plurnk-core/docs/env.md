@@ -38,22 +38,9 @@ Your worker overrides are yours: another worker's commands do not see them. A wo
 you spawn starts with a copy of them — `list` shows those as inherited from
 you — and its changes never reach yours. Workspace defaults remain shared, not copied.
 
-## For one command, or for one child
-
-The heading's `[metadata]` takes `env`. On a command fence it is that run's
-environment, over your entries, and it is gone when the run ends:
-
-```sh [{"env": {"RUST_LOG": "debug"}}]
-cargo test
-```
-
-On `WORK` and `FORK` the same metadata is the child's starting environment: a
-copy of your entries first, then each name here becomes its own. The complete
-header-and-task examples are in `delegation.md`.
-
 ## `lifetime`: how long a command runs
 
-The other field the heading's `[metadata]` takes on a command fence. Absent, the
+The heading's `[metadata]` takes `lifetime` on a command fence. Absent, the
 run ends with the loop.
 
 ```sh [{"lifetime": "30m"}]
@@ -71,8 +58,8 @@ not the command's lifetime.
 
 ## Names managed elsewhere
 
-`PLURNK_*` and provider credential names are reserved in `env` entries and
-invocation overrides. Plurnk configuration belongs in the environment cascade;
+`PLURNK_*` and provider credential names are reserved in `env` entries.
+Plurnk configuration belongs in the environment cascade;
 READ `skill://plurnk/.env.defaults` for its reference. An MCP definition can
 explicitly bind an operator credential without adding it to every command's
 environment; READ `worker:///_plurnk/tools/plurnk/mcp.json` for that setup.
@@ -84,25 +71,3 @@ the declaring package as provenance and its comment as the summary. Undeclared,
 non-reserved names are also allowed. Plurnk's own configuration and provider
 credential names are excluded; READ `skill://plurnk/.env.defaults` for the full
 configuration reference. Discovery shows declarations, not effective values.
-
-## The registry as an address space
-
-Every effective name is a resource at `env:///NAME`: ambient names the operator admitted,
-workspace defaults, and your own overrides, exactly the set `list` shows. The body is the
-value, verbatim. The ordinary verbs reach it:
-
-```READ (env:///PROD_VERSION)
-```
-
-```FIND (env:///NODE_*) <!-- names by glob; a pattern matches values -->
-```
-
-```COPY (env:///PROD_VERSION) (product.md) <42,24,42,24> <!-- the value, inserted at a point -->
-```
-
-A write is your own layer, never the workspace's or the operator's. `EDIT` sets the value
-(the body, whole: a value has no lines to scope) as `replace` does for your worker; `KILL`
-retires the name from your commands as `remove` does for an entry you own and as
-`disable` does for one you inherited, so the inherited definition is kept and can be
-enabled again. Names plurnk reserves — its own configuration and provider credentials —
-are not resources and are refused as they are at `add` and `replace`.

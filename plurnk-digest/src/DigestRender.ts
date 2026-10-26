@@ -146,7 +146,6 @@ export default class DigestRender {
             const from = typeof record.from === "string" ? record.from : null;
             if (record.source === "host") host.push(name);
             else if (record.source === "masked") rest.push(`${name} (masked${from === null ? "" : ` by ${from}`})`);
-            else if (record.source === "modifier") rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (modifier)`);
             else if (record.source === "workspace") rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (workspace)`);
             else rest.push(`${name}=${DigestRender.#summarize(record.value, 60)} (${from === null ? "worker" : `from ${from}`})`);
         }

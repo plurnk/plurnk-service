@@ -8,12 +8,12 @@ import Results, { type SchemeResult } from "./Results.ts";
 export type MetadataOptionsParsed =
     // The service's reserved keys ({§service-metadata-keys}): withheld from `options` so no owner
     // interprets them, surfaced raw for the service, which owns their shapes.
-    | { readonly options: Readonly<Record<string, unknown>>; readonly env?: unknown; readonly lifetime?: unknown }
+    | { readonly options: Readonly<Record<string, unknown>>; readonly lifetime?: unknown }
     | { readonly failure: SchemeResult };
 
 export default class MetadataOptions {
     // {§service-metadata-keys} — the keys every owner's `options` is stripped of.
-    static readonly SERVICE_KEYS = Object.freeze(["env", "lifetime"] as const);
+    static readonly SERVICE_KEYS = Object.freeze(["lifetime"] as const);
 
     // `source` names the owner in the Problem (`executor:metadata`, `http`, …).
     static read(blocks: readonly string[] | null | undefined, source: string, extra: Record<string, unknown> = {}): { elements: unknown[] } | { failure: SchemeResult } {
@@ -46,7 +46,7 @@ export default class MetadataOptions {
             }
             Object.assign(options, element);
         }
-        const reserved: { env?: unknown; lifetime?: unknown } = {};
+        const reserved: { lifetime?: unknown } = {};
         for (const key of MetadataOptions.SERVICE_KEYS) {
             if (!(key in options)) continue;
             reserved[key] = options[key];

@@ -29,7 +29,7 @@ import type ExecutorRegistry from "../core/ExecutorRegistry.ts";
 import type { RegistryEntry } from "../core/ExecutorRegistry.ts";
 import type { CoreSchemeCallContext } from "../core/CoreSchemeServices.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
-import Results, { OperationFailureError, type SchemeResult, type SchemeResultBase } from "../core/results.ts";
+import Results, { type SchemeResult, type SchemeResultBase } from "../core/results.ts";
 import ToolResources from "../core/ToolResources.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import ExecScheduler, { readExecConcurrency } from "./ExecScheduler.ts";
@@ -547,23 +547,15 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return { defaultCwd, target, resourceSource };
     }
 
-    // {§exec-lifetime} {§env-option} The service's reserved keys, read before the executor sees its options.
+    // {§exec-lifetime} The service's reserved keys, read before the executor sees its options.
     static #readReservedMetadata(statement: ExecStatement, runtime: string): ExecLifetime | ExecResult {
         // {§exec-lifetime} — the scope slot is text coordinates, and an execution has none.
         if (statement.lineMarker !== null) return Exec.#refuse(runtime, "scope-unsupported", "An execution takes no scope.", undefined);
 
-        // {§env-option} — the fence's own environment is the service's key: refused here by name,
-        // so the model learns why, never dropped at the spawn. The executor never sees it.
-        try {
-            EnvFunctionality.modifier(statement.metadata);
-        } catch (cause) {
-            if (!(cause instanceof OperationFailureError)) throw cause;
-            return cause.result;
-        }
-        // {§exec-lifetime} — the service's other reserved key, read before the executor's options so
+        // {§exec-lifetime} — the service's reserved key, read before the executor's options so
         // an unreadable lifetime is refused by name rather than spawning under a wrong bound. A block
         // that is not the option-array shape carries no lifetime for the service to read: it is the
-        // invoked executor's to accept or refuse ({§executor-metadata}), exactly as `env` is.
+        // invoked executor's to accept or refuse ({§executor-metadata}).
         const read = MetadataOptions.parse(statement.metadata, "scheme:exec", { runtime });
         const lifetime = parseExecLifetime("failure" in read ? undefined : read.lifetime);
         if ("invalid" in lifetime) {
@@ -1084,7 +1076,6 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                     db,
                     ctx.workspaceId,
                     ctx.workerId,
-                    EnvFunctionality.modifier(metadata),
                     undefined,
                     ctx.hostPaths,
                 );

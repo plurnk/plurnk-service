@@ -277,12 +277,12 @@ test("{§schedule-clock} discovery tells the time beside the rule it reads, in t
         definition: { rule: "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2" },
         provenance: { kind: "rule", source: "FREQ=HOURLY;COUNT=2" },
     }]);
-    const [tokyo] = await adapter.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }, { env: { TZ: "Asia/Tokyo" } });
+    const [tokyo] = await family(new FakeTime(), { TZ: "Asia/Tokyo" }).discover({ source: "FREQ=DAILY" }, { workspaceId: 1 });
     assert.equal(
         tokyo.summary,
         "now 2026-09-16T21:30:15+09:00[Asia/Tokyo]; every day at 9:30:16 PM; next 2026-09-16T21:30:16+09:00[Asia/Tokyo], 2026-09-17T21:30:16+09:00[Asia/Tokyo], 2026-09-18T21:30:16+09:00[Asia/Tokyo]; unbounded: add needs COUNT or UNTIL",
     );
-    assert.equal((await problemOf(() => adapter.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }, { env: { TZ: "Mars/Olympus" } }))).type, "https://problems.plurnk.xyz/schedule/functionality/zone-unknown");
+    assert.equal((await problemOf(() => family(new FakeTime(), { TZ: "Mars/Olympus" }).discover({ source: "FREQ=DAILY" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/zone-unknown");
     assert.equal((await problemOf(() => adapter.discover({ source: "FREQ=DAILY;BOGUS=1" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-invalid");
 });
 
@@ -294,9 +294,7 @@ test("{§schedule-bound} admission canonicalizes the rule in the workspace's zon
         definition: { rule: "DTSTART;TZID=Europe/Paris:20260916T143016\nRRULE:FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." },
         preparation: NOW,
     });
-    const called = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1 }, "operation", { env: { TZ: "UTC" } });
-    assert.equal((called.definition as { rule: string }).rule, "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", "a call's own TZ wins for that call");
-    const byWorker = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1, workerId: 7 }, "operation");
+    const byWorker = await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "worker://bot", prompt: "Beat." } }, { workspaceId: 1, workerId: 7 });
     assert.equal((byWorker.definition as { rule: string }).rule, "DTSTART;TZID=Asia/Tokyo:20260916T213016\nRRULE:FREQ=HOURLY;COUNT=2", "the invoking Worker's own TZ override wins over the workspace layer");
     const [preview] = await adapter.discover({ source: "FREQ=DAILY;COUNT=1" }, { workspaceId: 1, workerId: 7 });
     assert.match(preview.summary ?? "", /^now 2026-09-16T21:30:15\+09:00\[Asia\/Tokyo\]/u, "the Worker reads the time in its own zone");

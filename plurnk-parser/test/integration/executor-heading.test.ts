@@ -9,9 +9,9 @@ const body = '{"query":"unchanged"}';
 
 for (const tier of ["parse", "parseStatements"] as const) {
     for (const heading of [
-        "fresh (lookup)", "FrEsH(lookup)", 'fresh [{"env":{"X":"Y"}}] (lookup)',
-        'fresh (lookup) [{"env":{"X":"Y"}}]', "fresh <1> (lookup)", "fresh (lookup) <1>",
-        'fresh [{"env":{"X":"Y"}}]', "fresh <1>", "fresh (lookup) <!-- query -->",
+        "fresh (lookup)", "FrEsH(lookup)", 'fresh [{"lifetime":"30s"}] (lookup)',
+        'fresh (lookup) [{"lifetime":"30s"}]', "fresh <1> (lookup)", "fresh (lookup) <1>",
+        'fresh [{"lifetime":"30s"}]', "fresh <1>", "fresh (lookup) <!-- query -->",
     ]) test(`{§executor-heading}: ${tier} reads ${heading} independently of registration`, () => {
         for (const width of [3, 4, 6]) {
             const fence = "`".repeat(width);

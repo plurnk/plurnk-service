@@ -82,9 +82,6 @@ export type InjectWorkerNotify = (args: {
     // A model's WORK/FORK inherit the source loop's spawn model; every other delivery, a worker a person
     // starts included, runs the recipient's own.
     spawn?: true;
-    // {§env-option} — a created worker's starting environment from the heading: each name becomes the
-    // worker's own entry through the family's add, after the copy it inherited at creation.
-    environment?: Readonly<Record<string, string>>;
     // {§worker-obligations} — the worker's own operation that sends the message; absent when a person acts.
     opener?: MessageOpener;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;

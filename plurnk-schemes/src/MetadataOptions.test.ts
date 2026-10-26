@@ -31,13 +31,8 @@ test("{§pinned-wording-schemes} MetadataOptions.parse fails malformed blocks as
 });
 
 test("{§service-metadata-keys}: exactly the declared service keys are withheld from an owner, each surfaced raw", () => {
-    assert.deepEqual([...MetadataOptions.SERVICE_KEYS], ["env", "lifetime"]);
-    const read = MetadataOptions.parse(['{"cwd": "src", "env": {"CI": "1"}, "lifetime": "30m", "other": 1}'], "scheme:test");
-    assert.deepEqual(read, { options: { cwd: "src", other: 1 }, env: { CI: "1" }, lifetime: "30m" });
-});
-
-test("{§scheme-metadata-modifier} MetadataOptions.parse withholds the service's `env` key from an owner and surfaces it raw", () => {
-    const read = MetadataOptions.parse(['{"cwd": "src", "env": {"CI": "1"}}'], "scheme:test");
-    assert.deepEqual(read, { options: { cwd: "src" }, env: { CI: "1" } });
+    assert.deepEqual([...MetadataOptions.SERVICE_KEYS], ["lifetime"]);
+    const read = MetadataOptions.parse(['{"cwd": "src", "lifetime": "30m", "other": 1}'], "scheme:test");
+    assert.deepEqual(read, { options: { cwd: "src", other: 1 }, lifetime: "30m" });
     assert.deepEqual(MetadataOptions.parse(['{"cwd": "src"}'], "scheme:test"), { options: { cwd: "src" } }, "absent stays absent");
 });

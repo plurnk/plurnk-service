@@ -3620,11 +3620,9 @@ accounting and model-visible failure evidence remain separately owned by
   | Performed authored operations | carries no `unconcluded`: an absent member is not an empty one |
 
 - §metadata-ignored **Metadata a scheme does not take is ignored, not refused.** A READ, FIND,
-  EDIT or KILL carrying `[metadata]` for a scheme whose manifest takes none runs without it,
+  EDIT, KILL, WORK or FORK carrying `[metadata]` for a scheme whose manifest takes none runs without it,
   and the packet carries one `metadata_ignored` notice naming the scheme (a warning,
-  never a refusal). SEND recipients,
-  executions, WORK and FORK own their input and receive it whole ({§send-resource-attachments},
-  {§env-option}); a key they do not take is their own 400.
+  never a refusal). SEND recipients and executions own their input and receive it whole ({§send-resource-attachments}); a key they do not take is their own 400.
 - §send-idle-turn **An idle turn: NOTE is memory, not a yield.** NOTE does not imply parking.
   A NOTE-only response does not resolve a message or create an observation obligation.
   The ordinary obligation check still runs ({§loop-completion}).
@@ -3707,7 +3705,6 @@ control capabilities, not exceptions granting write access to stdout/resources.
 | {§exec-stream-page} | An unrequested delivery never exceeds the retrieval page. |
 | {§workspace-env} | Workspace environment. |
 | {§exec-env-scoped} | Command environment admission. |
-| {§env-option} | The op's environment. |
 | {§exec-hold-until-concluded} | The turn-hold exception: an in-flight stream of a held runtime pauses the cycle. |
 | {§exec-entry-sink} | The entry() sink |
 <!-- /map -->
@@ -4039,25 +4036,17 @@ environment; the executor spawns with the environment it is handed ({§workspace
 | Ambient host values | `PLURNK_SERVICE_EXEC_ENV_INHERIT` admits exact names or one trailing-`*` prefix glob; `_EXCLUDE` removes names with the same syntax. An empty inherit list admits nothing. Before filtering, the daemon projects its resolved `HOME` and XDG roots ({§host-path-layout}, {§state-root}) onto the ambient environment so admitted paths match the daemon's own layout. |
 | Reserved names | `PLURNK_*` and provider credential names from the model catalog or `PLURNK_PROVIDERS_PROVIDER_<ID>_API_KEY_ENV` are excluded from the ambient base regardless of those selectors. |
 | Workspace and worker entries | Explicit non-reserved values and masks compose at spawn under {§env-functionality}. Reserved names are refused at admission. |
-| Invocation `env` | Explicit non-reserved values override the composed environment under {§env-option}; the same reserved-name refusal applies. |
 
 Explicit values do not widen ambient inheritance. The allowlist is declared under
 {§operator-config-env-defaults}; it limits other host credentials too, not only provider keys.
 Each spawn records admitted values and their provenance (host, workspace, worker, inherited
-worker, modifier, or masked); the digest renders that record beside the operation.
+worker, or masked); the digest renders that record beside the operation.
 
 This is environment admission, not process containment or a prohibition on an approved
 program setting its own variables. Module-owned launches use the owning module's contract:
 the host supplies a filtered ambient base through {§module-seam-slices}, while explicit
 MCP bindings resolve under {§mcp-launch-environment}. The env family's reservation does not
 filter those explicit bindings or create a second approval path.
-
-- §env-option **The op's environment.** `env` is the service's key in the heading's `[metadata]` ({§scheme-metadata-modifier}): `[{"env": {"NAME": "value"}}]`, an object of string values. Names follow the family's admission — a name a shell can export, never plurnk's own — and a refusal names the key and the reason at the operation, before anything runs or is created; a key WORK or FORK does not take is refused the same way. The durable row redacts the block wholesale ({§log-sensitive-request-evidence}); the spawn's record names each such value's provenance as the modifier's.
-
-  | On | `env` is |
-  | --- | --- |
-  | An executor fence | that process's environment over the Worker's own ({§env-functionality}) — the layer nearest the spawn, never entering the registry; a runtime that runs in-process has no process environment to change; a capability manager may retain explicit launch overrides when adding a process-backed definition, but never persists the composed ambient environment |
-  | WORK and FORK | the child's starting environment: after the copy the child inherits ({§functionality-scope}), each supplied name replaces its copied definition as an enabled child-owned entry through the family's `replace` and `enable`, so a parent hands down its registry and overrides specific names for one child in one heading |
 
 - §exec-hold-until-concluded **The turn-hold exception: an in-flight stream of a held runtime pauses the cycle.** For runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env), the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. It extends selected runtimes beyond the ordinary {§worker-optimistic-settlement} cap before the next packet assembles, with zero grammar or teaching surface: the model emits an executor fence, optionally followed by WAIT, and the wake-shaped world simply arrives one packet sooner.
 
@@ -5415,7 +5404,7 @@ Worker runs — withholding it here would be theatre and would make `list` lie a
 environment its commands receive. A name the invariant reserves (`PLURNK_*`, provider credential
 names) is refused at **admission**, not dropped at the spawn, so the model learns why.
 
-`discover` is this installation's configuration catalog: every name an installed package declares under {§operator-config-env-defaults} that a Worker may set, projected as candidates whose summary is the declaration's own comment and whose provenance is the declaring package. Files are read with READ; variables are set with `add` or `EDIT (env:///NAME)`.
+`discover` is this installation's configuration catalog: every name an installed package declares under {§operator-config-env-defaults} that a Worker may set, projected as candidates whose summary is the declaration's own comment and whose provenance is the declaring package. Files are read with READ; variables are set with `add`.
 
 | Fact | Rule |
 | --- | --- |
@@ -5463,8 +5452,7 @@ worker-scoped state, taken at creation. The child owns its copy: neither side's 
 reach the other, and depth is transitive with no further rule. Each copied entry carries
 `inherited`, the Worker that set it, preserved across generations until the child changes that
 entry, so `list` never claims the child set what it inherited; a parent's masking of an
-ambient name travels the same way. WORK and FORK may hand the child more: the heading's `env`
-option replaces and enables the child's own entries after the copy ({§env-option}).
+ambient name travels the same way.
 
 §functionality-state **Functionality state is one durable value per workspace and family.**
 `{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`
@@ -7269,7 +7257,6 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `resource-scheme-required` | 400 | Resource selection requires an address. |
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
-| `metadata-unsupported` | 400 | *OP* takes only the env option; '*key*' is not one. A WORK to a held name with env: WORK to the existing worker '*name*' carries env; a message takes none. |
 | `fork-unaddressed` | 404 | This client operation acts for no worker, so FORK has no log to branch ({§actor-boundary-client-operations}). |
 | `worker-name-conflict` | 409 | Worker '*name*' already exists in this workspace. Recovery: WORK or SEND (worker://*name*) delivers a message to the live worker; FORK with a name no worker holds. ({§worker-scheme-spawn}) |
 | `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
@@ -7353,6 +7340,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this worker. |
 | `runtime-unavailable` | 501 | Executable tool '*runtime*' is unavailable; detail includes the availability diagnostic. |
 | `lifetime-invalid` | 400 | The execution lifetime directive is invalid; detail identifies the invalid form. |
+| `metadata-unsupported` | 400 | Executable tool '*runtime*' does not accept metadata, or stored execution output does not accept READ or FIND metadata. |
 | `target-classification-failed` | 500 | The execution target could not be inspected; detail includes a bounded cause. |
 | `source-content-unavailable` | 422 | The source scheme did not supply execution content. |
 | `stream-entry-write-failed` | 500 | The execution's stream entry could not be created. |
@@ -7413,10 +7401,9 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `request-target-invalid` | 400 | The request target is not a URL the listener can route. |
 | `route-failed` | 500 | The mounted route failed while answering the request. |
 | `configuration-invalid` | 503 | The owning configuration reader's diagnostic, naming the invalid key. Recovery: Correct the named configuration input. Other capabilities remain available. |
-| `name-reserved` | 400 | '*alias*' is reserved in env entries and invocation overrides. Recovery: READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths. |
+| `name-reserved` | 400 | '*alias*' is reserved in env entries. Recovery: READ worker:///_plurnk/tools/plurnk/env.json for supported configuration paths. |
 | `value-invalid` | 400 | '*alias*' needs a string value. |
-| `env-invalid` | 400 | `env` must be an object of string values; '*name*' is not a name a shell can export. |
-| `source-unknown` | 400 | '*source*' is not a package in the configuration catalog. Recovery: Omit source to list the catalog. READ files; set variables with add or EDIT (env:///NAME). |
+| `source-unknown` | 400 | '*source*' is not a package in the configuration catalog. Recovery: Omit source to list the catalog. READ files; set variables with add. |
 | `query-invalid` | 400 | '*query*' names no path or pattern. Recovery: Supply a path such as `docs/guide.md` or a pattern such as `docs/**`. |
 | `headless` | 409 | The workspace has no project root, so there are no file members. Recovery: Open the workspace on a project root. |
 | `definition-invalid` | 400 | A members definition is { glob }: a shell-path pattern, `!glob` to exclude. |

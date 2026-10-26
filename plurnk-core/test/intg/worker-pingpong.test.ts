@@ -60,7 +60,7 @@ test("{§worker-scheme-spawn} ping/pong: WORK spawns a worker once, then WORK to
     });
 });
 
-test("{§worker-scheme-spawn} a held name: FORK is 409 naming the working forms, WORK with env is refused by name, WORK with no body is the empty-prompt refusal", async (approvalContext) => {
+test("{§worker-scheme-spawn} a held name: FORK is 409 naming the working forms, WORK with no body is the empty-prompt refusal", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````WORK (worker://pong)\nping\n````\n\n````WAIT\nawaiting pong\n````", 10),
@@ -84,10 +84,6 @@ test("{§worker-scheme-spawn} a held name: FORK is 409 naming the working forms,
             assert.match(problemOf(fork).type ?? "", /worker-name-conflict$/u);
             assert.equal(problemOf(fork).worker, "pong");
             assert.match(problemOf(fork).recovery ?? "", /WORK or SEND \(worker:\/\/pong\)/u, "the receipt names the working forms");
-
-            const env = await dispatch("````WORK (worker://pong) [{\"env\": {\"ENV_WITNESS\": \"x\"}}]\nmore work\n````");
-            assert.equal(env.status, 400, "a message takes no env");
-            assert.match(problemOf(env).type ?? "", /metadata-unsupported$/u);
 
             const empty = await dispatch("````WORK (worker://pong)\n\n````");
             assert.equal(empty.status, 422, "no body, no message");

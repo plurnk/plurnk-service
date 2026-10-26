@@ -23,8 +23,8 @@ import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS } from "./turn-signals.ts";
 import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
 
-// SEND recipients and delegation own their input; resource operations use the manifest.
-const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND", "WORK", "FORK"]);
+// SEND recipients own their input; resource operations use the manifest.
+const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND"]);
 
 // The exec scheme's turn settlement: its own hook, read where a turn settles.
 const settlesTurnSpawns = (handler: object | undefined): handler is {
@@ -233,11 +233,13 @@ export default class AdmittedTurnExecutor {
             }
             // {§metadata-ignored} — an unsupported resource option is dropped,
             // and the model gets one notice, never a refusal. SEND recipients and invocation owners
-            // receive their own input whole ({§send-resource-attachments}, {§env-option}).
+            // receive their own input whole ({§send-resource-attachments}).
             let statement = scheduledStatement;
             if ("metadata" in statement && statement.metadata !== null && !(isExecution(statement) || OWNS_METADATA.has(statement.op))) {
                 const target = (statement as { target?: { kind: string; scheme?: string } | null }).target;
-                const schemeName = target === null || target === undefined ? null : target.kind === "url" ? target.scheme ?? null : "file";
+                const schemeName = target === null || target === undefined
+                    ? (statement.op === "WORK" || statement.op === "FORK" ? "worker" : null)
+                    : target.kind === "url" ? target.scheme ?? null : "file";
                 const manifest = schemeName === null ? undefined : this.#schemes.manifestFor(schemeName, workspaceId);
                 if (manifest !== undefined && manifest.metadataModifier !== true) {
                     this.#notices.push(workspaceId, workerId, loopId, {

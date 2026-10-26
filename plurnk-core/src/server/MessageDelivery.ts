@@ -17,7 +17,6 @@ import type { SchemeResult } from "../core/results.ts";
 import WorkerControlAddress from "../core/WorkerControlAddress.ts";
 import ClientInput from "./client-input.ts";
 import type { DrainInjectionArgs, DrainInjectionResult, TurnCeilingSelection } from "./DrainSupervisor.ts";
-import type Functionality from "./Functionality.ts";
 import { routeForSpec } from "./model-route.ts";
 import { type default as WorkerModels, providerNotConfigured } from "./WorkerModels.ts";
 
@@ -29,21 +28,18 @@ type InjectWorkerResult = Awaited<ReturnType<InjectWorker>>;
 export default class MessageDelivery {
     readonly #db: Db;
     readonly #workerModels: WorkerModels;
-    readonly #functionality: Functionality;
     readonly #mimetypes: Mimetypes;
     // The drain's unified inject: active sister → fold; idle → enqueue + drain ({§machine-processes}).
     readonly #inject: (args: DrainInjectionArgs) => Promise<DrainInjectionResult>;
 
-    constructor({ db, workerModels, functionality, mimetypes, inject }: {
+    constructor({ db, workerModels, mimetypes, inject }: {
         db: Db;
         workerModels: WorkerModels;
-        functionality: Functionality;
         mimetypes: Mimetypes;
         inject: (args: DrainInjectionArgs) => Promise<DrainInjectionResult>;
     }) {
         this.#db = db;
         this.#workerModels = workerModels;
-        this.#functionality = functionality;
         this.#mimetypes = mimetypes;
         this.#inject = inject;
     }
@@ -109,7 +105,7 @@ export default class MessageDelivery {
     // enqueue + drain). The daemon owns provider + the law-file system prompt; the worker scheme handler carries
     // neither. Fire-and-forget: the returned drain runs independently (the sister is its own worker).
     // {§machine-processes}
-    async injectWorker({ workspaceId, workerId, sourceLoopId, prompt, spawn, environment, attachments, opener }: InjectWorkerArgs): Promise<InjectWorkerResult> {
+    async injectWorker({ workspaceId, workerId, sourceLoopId, prompt, spawn, attachments, opener }: InjectWorkerArgs): Promise<InjectWorkerResult> {
         await this.#workerModels.assertModelWorker(workspaceId, workerId);
         const sender = await this.#db.drain_message_source.get<{ worker_id: number; workspace_id: number }>({ loop_id: sourceLoopId });
         if (sender === undefined || sender.workspace_id !== workspaceId) {
@@ -146,12 +142,6 @@ export default class MessageDelivery {
                 spawn_model_route_id: null,
                 effort: effort,
                 effort_source: "default" }, { spawn: true });
-        }
-        // {§env-option} — a created worker's explicit overrides replace copied values and enable them.
-        // Names were admitted at the operation; a refusal here is a defect and throws.
-        for (const [alias, value] of Object.entries(environment ?? {})) {
-            await this.#functionality.invoke("env", "replace", { alias, definition: { value } }, { workspaceId, workerId }, "operation");
-            await this.#functionality.invoke("env", "enable", { alias }, { workspaceId, workerId }, "operation");
         }
         const { action, loopId, messageId } = await ContentUse.read(this.#db, async () => {
             const delivered = await this.#prepareMessage(workspaceId, workerId, prompt, attachments);

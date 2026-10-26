@@ -9,9 +9,6 @@ import WorkerCap from "./worker-cap.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type { MessageOpener } from "./ChannelWrite.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
-import { MetadataOptions } from "@plurnk/plurnk-schemes";
-import EnvFunctionality from "../server/EnvFunctionality.ts";
-import { OperationFailureError } from "./results.ts";
 
 export default class WorkerControlHandler {
     readonly #db: Db;
@@ -62,28 +59,12 @@ export default class WorkerControlHandler {
                 retryable: false,
             });
         }
-        // {§env-option} — the child's starting environment rides the heading. WORK and FORK own their
-        // slot: a key they do not take is their own refusal, a bad name the family's, both by name and
-        // before anything is created.
-        const read = MetadataOptions.parse(statement.metadata, "scheme:worker", { operation: statement.op });
-        if ("failure" in read) return read.failure;
-        const foreign = Object.keys(read.options);
-        if (foreign.length > 0) {
-            return this.#failure("metadata-unsupported", 400, `${statement.op} takes only the env option; '${foreign[0]}' is not one.`, {}, { operation: statement.op, field: foreign[0], retryable: false });
-        }
-        let environment: Readonly<Record<string, string>>;
-        try {
-            environment = EnvFunctionality.environment(read.env);
-        } catch (cause) {
-            if (!(cause instanceof OperationFailureError)) throw cause;
-            return cause.result;
-        }
 
         // {§worker-scheme-spawn} — WORK to a name a worker holds is the voice door ({§worker-scheme-irc}):
         // the body is that worker's message and nothing is created.
         if (statement.op === "WORK" && name !== undefined) {
             const held = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
-            if (held !== undefined) return this.#message(ctx, name, held.id, prompt, environment);
+            if (held !== undefined) return this.#message(ctx, name, held.id, prompt);
         }
 
         let workerId: number;
@@ -96,7 +77,7 @@ export default class WorkerControlHandler {
             if (statement.op === "WORK") {
                 // The name was claimed between the lookup and the claim: it is held now, so the body is its message.
                 const held = await this.#db.worker_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: error.workerName });
-                if (held !== undefined) return this.#message(ctx, error.workerName, held.id, prompt, environment);
+                if (held !== undefined) return this.#message(ctx, error.workerName, held.id, prompt);
             }
             // {§worker-scheme-spawn}: a branch needs a name no worker holds; the live worker is addressed, not re-spawned.
             return this.#failure(
@@ -122,7 +103,6 @@ export default class WorkerControlHandler {
             prompt,
             // {§worker-model-selection} A model's child inherits its loop's model; a worker a person starts runs its own.
             ...(ctx.client === undefined ? { spawn: true } as const : {}),
-            ...(Object.keys(environment).length === 0 ? {} : { environment }),
             ...(opener === undefined ? {} : { opener }),
         });
         return { status: 200, body: worker.name, attrs: { worker: WorkerControlAddress.render(worker.name), ...(opener === undefined ? {} : { message }) } };
@@ -134,20 +114,13 @@ export default class WorkerControlHandler {
         return ctx.client === undefined && ctx.sequence !== undefined ? { turnId: ctx.turnId, sequence: ctx.sequence } : undefined;
     }
 
-    // {§worker-scheme-irc} — the message takes the receiver as it is: its environment is its own, so the
-    // env slot, a spawn's, is refused by name before anything is delivered.
+    // {§worker-scheme-irc} — the message takes the receiver as it is.
     async #message(
         ctx: PlurnkSchemeContext,
         name: string,
         workerId: number,
         prompt: string,
-        environment: Readonly<Record<string, string>>,
     ): Promise<DispatchResult> {
-        if (Object.keys(environment).length > 0) {
-            return this.#failure("metadata-unsupported", 400, `WORK to the existing worker '${name}' carries env; a message takes none.`, {}, {
-                operation: "WORK", worker: name, field: "env", retryable: false,
-            });
-        }
         if (ctx.injectWorker === undefined) throw new Error("worker control: injectWorker capability absent");
         const opener = WorkerControlHandler.opener(ctx);
         const { message } = await ctx.injectWorker({

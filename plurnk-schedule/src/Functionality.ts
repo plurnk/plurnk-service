@@ -10,7 +10,6 @@ import { Problems,
     type FunctionalityDiscoverQuery,
     type FunctionalityFamilyHandle,
     type FunctionalityIdentity,
-    type FunctionalityOptions,
     type FunctionalityOutcome,
     type FunctionalityPreparation,
     type FunctionalityPrepared,
@@ -127,9 +126,9 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     }
 
     // {§schedule-clock} — the one place the time is told: on demand, beside the rule it reads.
-    async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity, options?: FunctionalityOptions): Promise<readonly FunctionalityCandidate[]> {
+    async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<readonly FunctionalityCandidate[]> {
         const source = query.source!;
-        const zone = await this.#zone(identity, options);
+        const zone = await this.#zone(identity);
         const now = this.#scheduler.now();
         const parsed = this.#read(source, zone, now);
         const preview = upcoming(parsed, now, previewOccurrences(this.#env)).map(isoString);
@@ -146,7 +145,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         }];
     }
 
-    async admit(input: unknown, identity: FunctionalityIdentity, _caller?: unknown, options?: FunctionalityOptions): Promise<FunctionalityAdmission<ScheduleDefinition>> {
+    async admit(input: unknown, identity: FunctionalityIdentity): Promise<FunctionalityAdmission<ScheduleDefinition>> {
         const params = isRecord(input) ? input : {};
         if (typeof params.alias !== "string") throw failure("alias-required", 400, "schedule definition needs an alias.", { retryable: false });
         let definition: ScheduleDefinition;
@@ -157,7 +156,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
             throw failure("definition-invalid", 400, "The schedule definition is invalid.", { errors: cause.errors, retryable: false }, cause);
         }
         const now = this.#scheduler.now();
-        const parsed = this.#read(definition.rule, await this.#zone(identity, options), now);
+        const parsed = this.#read(definition.rule, await this.#zone(identity), now);
         // {§schedule-bound}
         if (!parsed.bounded) throw failure("rule-unbounded", 400, "A workspace rule ends: give the RRULE a COUNT or an UNTIL.", { retryable: false });
         // {§schedule-first-arming} — the rule was read now; its first arming is judged from now.
@@ -231,12 +230,9 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     // leaves its timers armed.
     async teardown(_snapshot: Snapshot, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
 
-    // {§schedule-zone} — the zone a rule is read in: the call's own env when it carries one (a
-    // worker's `env` metadata), else the invoking Worker's environment (its overrides over the
-    // workspace layer over the service's), else the workspace's.
-    async #zone(identity: FunctionalityIdentity, options?: FunctionalityOptions): Promise<string> {
-        const called = options?.env?.TZ;
-        if (called !== undefined && called.length > 0) return called;
+    // {§schedule-zone} — the zone a rule is read in: the invoking Worker's environment (its
+    // overrides over the workspace layer over the service's), else the workspace's.
+    async #zone(identity: FunctionalityIdentity): Promise<string> {
         const environment = this.#environment === null
             ? this.#env
             : identity.workerId === undefined

@@ -10,7 +10,6 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
 import QuestionTool, { questionRegisteredTool } from "../schemes/QuestionTool.ts";
-import EnvFunctionality from "./EnvFunctionality.ts";
 import type Functionality from "./Functionality.ts";
 import type { FunctionalityConfigurationFailure } from "./Functionality.ts";
 
@@ -340,7 +339,6 @@ export default class FunctionalityManager extends BaseExecutor {
                 identity,
                 "operation",
                 {
-                    env: EnvFunctionality.modifier(args.metadata),
                     onAuthorizationRequired: (aliases) => {
                         for (const alias of aliases) {
                             args.emit({
