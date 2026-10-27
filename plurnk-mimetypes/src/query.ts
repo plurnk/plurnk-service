@@ -381,14 +381,6 @@ function defaultRegions(
     return enclosingRegions === undefined ? {} : { enclosingRegions };
 }
 
-export function regionsForLineSpans(
-    text: string,
-    spans: ReadonlyArray<LineSpan>,
-): TextRegion[] | undefined {
-    const coordinates = new TextCoordinates(text);
-    return regionsForSpans(coordinates, spans);
-}
-
 function regionsForSpans(
     coordinates: TextCoordinates,
     spans: ReadonlyArray<LineSpan>,

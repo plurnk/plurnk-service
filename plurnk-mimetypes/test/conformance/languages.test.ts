@@ -1,9 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { runConformance } from "./harness.ts";
-import TreeSitterLanguageHandler from "../../src/treesitter/handler.ts";
-import { lookupTreeSitterLanguage } from "../../src/treesitter/registry.ts";
 
+describe("{§mimetype-references} tree-sitter language conformance", { concurrency: true }, () => {
 // ─── typescript.test.ts ───
 {
 const SOURCE = `import { Helper, type Shape } from "./helper";
@@ -1760,7 +1759,7 @@ function Icon() {
 
 describe("{§mimetype-references} conformance: text/x-tsx refs", () => {
     it("{§mimetype-references} typescript refs + JSX component edges; host elements filtered", async () => {
-        await runConformance({
+        const { references } = await runConformance({
             mimetype: "text/x-tsx",
             source: SOURCE,
             decoyNames: ["dashboard", "label"],
@@ -1774,17 +1773,7 @@ describe("{§mimetype-references} conformance: text/x-tsx refs", () => {
                 { name: "useState", kind: "call" },
             ],
         });
-    });
-
-    it("{§mimetype-references} lowercase host elements (div, svg) are not refs (capitalization filter)", async () => {
-        const entry = lookupTreeSitterLanguage("text/x-tsx")!;
-        const h = new TreeSitterLanguageHandler(
-            { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions },
-            entry,
-        );
-        const refs = await h.references(SOURCE);
-        assert.ok(!refs.some((r) => r.name === "div" || r.name === "svg"), "host elements must be filtered");
-        assert.ok(refs.some((r) => r.name === "Icon" && r.kind === "instantiate"));
+        assert.ok(!references.some((r) => r.name === "div" || r.name === "svg"), "host elements must be filtered");
     });
 });
 }
@@ -1882,3 +1871,4 @@ describe("{§mimetype-references} conformance: text/x-zig defs + refs", () => {
     });
 });
 }
+});

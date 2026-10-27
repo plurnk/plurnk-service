@@ -18,9 +18,8 @@ CSV's structural signal is the header row's column names — that's what surface
 
 ## why no parser dependency
 
-The shared tokenizer (`parseAll`) is exported for reuse. It accepts LF and CR
-record separators as well as RFC 4180's CRLF; validation checks balanced quotes
-and uniform columns, not the entire RFC grammar.
+The tokenizer accepts LF and CR record separators as well as RFC 4180's CRLF;
+validation checks balanced quotes and uniform columns, not the entire RFC grammar.
 
 Tests carry the complete [csv-spectrum 2.0.0 corpus](https://github.com/max-mapper/csv-spectrum/tree/d30e80f8b99d2eecb3778f1d7b9ed1cb425502ec).
 All 11 consistent pairs agree. The remaining `location_coordinates` pair has

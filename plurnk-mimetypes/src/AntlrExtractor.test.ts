@@ -494,6 +494,55 @@ describe("{§mimetype-symbol} withExtractor mixin", () => {
         snapshot.pop();
         assert.equal(v.symbols.length, 1, "internal state should be unaffected by mutating the snapshot");
     });
+
+    it("{§mimetype-channel-selection} addSymbol stamps 1-indexed columns from the 0-indexed antlr positions", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        v.addSymbol("function", "f", {
+            start: { line: 3, column: 4 },
+            stop: { line: 5, column: 0, text: "end" },
+        } as never);
+        const [sym] = v.symbols;
+        assert.equal(sym.line, 3);
+        assert.equal(sym.column, 5, "antlr column 4 → 1-indexed 5");
+        assert.equal(sym.endLine, 5);
+        assert.equal(sym.endColumn, 4, "stop col 0 + len('end') + 1");
+    });
+
+    it("{§mimetype-channel-selection} gateContainer scopes nest, apply to addSymbol, and unwind", () => {
+        class RecursiveBase extends StubVisitorBase {
+            override visitChildren(node: unknown): unknown {
+                (node as { onChildren?: () => void }).onChildren?.();
+                return null;
+            }
+        }
+        const V = withExtractor(RecursiveBase);
+        const v = new V();
+        const span = (line: number, column: number, stopLine: number, stopColumn: number, text: string) => ({
+            start: { line, column },
+            stop: { line: stopLine, column: stopColumn, text },
+        });
+        v.addSymbol("class", "Outer", span(1, 0, 9, 0, "}") as never);
+        v.gateContainer("Outer", {
+            ...span(1, 0, 9, 0, "}"),
+            onChildren: () => {
+                v.addSymbol("method", "shallow", span(2, 4, 3, 4, "}") as never);
+                v.gateContainer("Inner", {
+                    ...span(4, 4, 8, 4, "}"),
+                    onChildren: () => {
+                        v.addSymbol("method", "deep", span(5, 8, 6, 8, "}") as never);
+                    },
+                } as never);
+            },
+        } as never);
+        v.addSymbol("function", "after", span(10, 0, 11, 0, "}") as never);
+
+        const byName = new Map(v.symbols.map((s) => [s.name, s]));
+        assert.equal(byName.get("Outer")!.container, undefined);
+        assert.equal(byName.get("shallow")!.container, "Outer");
+        assert.equal(byName.get("deep")!.container, "Outer.Inner");
+        assert.equal(byName.get("after")!.container, undefined, "container unwinds after gate");
+    });
 });
 
 describe("{§mimetype-references} withExtractor addRef", () => {

@@ -17,7 +17,7 @@ import { type WebFetch } from "../../src/schemes/Exec.ts";
 import { executionAddress, testExecutors, quiesceExecs } from "./_execs.ts";
 import { fixtureExecutors } from "./_mock.ts";
 import { parseLogRecords } from "../LogRecords.ts";
-import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
+import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/test/buildPdf.ts";
 import { BaseHandler, Mimetypes, ParserCoordinateError } from "@plurnk/plurnk-mimetypes";
 import { Mock } from "@plurnk/plurnk-providers";
 import { type ResolvedEditStatement } from "@plurnk/plurnk-schemes";

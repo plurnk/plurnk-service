@@ -45,7 +45,7 @@ export default class Dotenv extends BaseHandler {
     }
 }
 
-export interface DotenvVar {
+interface DotenvVar {
     key: string;
     value: string;
     line: number;
@@ -58,7 +58,7 @@ function ptr(s: string): string {
     return s.replace(/~/g, "~0").replace(/\//g, "~1");
 }
 
-export function parseDotenv(text: string): DotenvVar[] {
+function parseDotenv(text: string): DotenvVar[] {
     const out: DotenvVar[] = [];
     const lines = TextCoordinates.logicalLines(text);
     const coordinates = new TextCoordinates(text);

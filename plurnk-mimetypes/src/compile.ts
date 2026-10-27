@@ -71,9 +71,8 @@ async function runChild(cmd: string, args: string[], cwd: string): Promise<void>
 // whose top-level class extends a `*Base` superclass that isn't already
 // imported. antlr-ng emits the `extends FooBase` clause from the grammar's
 // `superClass = FooBase` option but doesn't write the import — without this
-// step the generated parser/lexer fail to compile. Exposed as an importable
-// utility for handlers integrating the post-process into a custom pipeline.
-export async function injectBaseImports(dir: string): Promise<void> {
+// step the generated parser/lexer fail to compile.
+async function injectBaseImports(dir: string): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
@@ -113,11 +112,8 @@ function findLastImportEnd(content: string): number {
     return endByte;
 }
 
-// Rewrite .js import extensions to .ts in every .ts file under `dir`. Exposed
-// as an importable utility for handler repos that want to integrate the
-// import-fixup step into their own build pipeline rather than calling the
-// compile bin (e.g., a custom scriptify/fix-imports.ts script).
-export async function rewriteImports(dir: string): Promise<void> {
+// Rewrite .js import extensions to .ts in every .ts file under `dir`.
+async function rewriteImports(dir: string): Promise<void> {
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
@@ -134,19 +130,4 @@ export async function rewriteImports(dir: string): Promise<void> {
             }
         }
     }
-}
-
-export async function cli(argv: string[]): Promise<void> {
-    if (argv.includes("-h") || argv.includes("--help")) {
-        console.log(`Usage: plurnk-mimetypes-compile
-
-Compile ANTLR4 grammars in ./grammar/ to ./src/generated/ via antlr-ng,
-targeting TypeScript output. Rewrites .js import extensions to .ts so
-Node's native TS resolution works without a build step.
-
-Run from a handler repo's root directory.`);
-        return;
-    }
-    await runCompile();
-    console.log("Compile complete.");
 }

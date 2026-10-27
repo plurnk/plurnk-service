@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import ApplicationPdf from "./ApplicationPdf.ts";
-import { buildPdf } from "./buildPdf.ts";
+import { buildPdf } from "../test/buildPdf.ts";
 
 const handler = new ApplicationPdf({ mimetype: "application/pdf", glyph: "📕", extensions: [".pdf"] });
 

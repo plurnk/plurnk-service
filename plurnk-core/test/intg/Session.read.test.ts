@@ -37,7 +37,7 @@ import { connect, rpcCall, waitForDb, withDaemon, runLoopToTerminal } from "./_r
 import { pathToFileURL } from "node:url";
 import { type Db } from "../../src/core/Db.ts";
 import { RESULT_EXCEEDS_BUDGET } from "../../src/core/ContextFit.ts";
-import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
+import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/test/buildPdf.ts";
 import { McpServer, createMcpHandler, fromJsonSchema, type ContentBlock } from "@modelcontextprotocol/server";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";

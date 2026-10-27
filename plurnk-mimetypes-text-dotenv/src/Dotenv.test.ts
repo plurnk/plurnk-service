@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import Dotenv, { parseDotenv } from "./Dotenv.ts";
+import Dotenv from "./Dotenv.ts";
 import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 
 // ─── Dotenv.test.ts ───
@@ -39,7 +39,7 @@ describe("{§dotenv-values}: Node's complete dotenv fixture set", () => {
             const text = fixture.text.replaceAll("\n", eol);
             const expected = { ...parseEnv(text) };
             assert.deepEqual(h().deepJson(text), expected);
-            assert.deepEqual(Object.fromEntries(parseDotenv(text).map(({ key, value }) => [key, value])), expected);
+            assert.deepEqual(new Set(h().extractRaw(text).map(({ name }) => name)), new Set(Object.keys(expected)));
         });
     }
     it("{§dotenv-values} uses the same alias and JSON-string values as the configuration cascade, without expansion", () => {

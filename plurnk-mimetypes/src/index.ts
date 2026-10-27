@@ -8,7 +8,6 @@ export { default as TextCoordinates } from "./TextCoordinates.ts";
 export type { TextLine, TextPosition } from "./TextCoordinates.ts";
 export {
     default as ParserCoordinates,
-    isParserCoordinateError,
     materializeTreeSitterSymbols,
     ParserCoordinateError,
     treeSitterSpan,
@@ -60,9 +59,6 @@ export { discover } from "./discover.ts";
 export {
     buildTree,
     format,
-    maxDepth,
-    pruneToMaxDepth,
-    renderTree,
 } from "./format.ts";
 export type { TreeNode } from "./format.ts";
 
@@ -79,7 +75,6 @@ export {
     queryJsonpathObject,
     queryRegex,
     queryXpathString,
-    regionsForLineSpans,
     serializeXpathNode,
 } from "./query.ts";
 export { projectJsonToXml } from "./projectJsonToXml.ts";
@@ -107,8 +102,8 @@ export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
 
 
-// Grammar compilation utilities (for handler authors building their own pipeline)
-export { injectBaseImports, rewriteImports, runCompile } from "./compile.ts";
+// Grammar compilation utilities
+export { runCompile } from "./compile.ts";
 export type { CompileOptions } from "./compile.ts";
 
 // Public types

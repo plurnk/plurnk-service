@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import Ipynb, { project } from "./Ipynb.ts";
+import Ipynb from "./Ipynb.ts";
 import { notebook } from "../test/notebook.ts";
 import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 
@@ -79,7 +79,8 @@ describe("{§ipynb-reading} symbols index into the reading projection", () => {
     });
 
     it("{§ipynb-reading} symbol line ranges land on the projection — heading text is on its line", () => {
-        const { markdown, symbols } = project(JSON.parse(NB));
+        const markdown = h().content(NB)!;
+        const symbols = h().extractRaw(NB);
         const lines = markdown.split("\n");
         const analysis = symbols.find((s) => s.name === "Analysis")!;
         assert.match(lines[analysis.line - 1], /# Analysis/);

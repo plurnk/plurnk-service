@@ -191,8 +191,8 @@ before importing handler code.
 | Detection/discovery | `detect`, `discover`, `emptyRegistry`, `MimetypeExtensionError`.                                                              |
 | Query/projection    | Matcher and dialect primitives, JSON/XML projection, text coordinates, and typed query/coordinate failures.                |
 | Classification      | `classifyMimetype`.                                                                                                        |
-| Formatting          | `format`, `buildTree`, `renderTree`, `maxDepth`, `pruneToMaxDepth`.                                                        |
-| Grammar build       | `runCompile`, `rewriteImports`, `injectBaseImports`.                                                                       |
+| Formatting          | `format`, `buildTree`.                                                                                                     |
+| Grammar build       | `runCompile`.                                                                                                              |
 | Types               | Public handler, discovery, projection, reference, coordinate, and Notice types.                                 |
 
 The `@plurnk/plurnk-mimetypes/conformance` subpath exports the handler and

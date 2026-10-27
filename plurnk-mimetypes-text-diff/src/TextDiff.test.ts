@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import TextDiff, { scanDiff } from "./TextDiff.ts";
+import TextDiff from "./TextDiff.ts";
 import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 
 // ─── TextDiff.test.ts ───
@@ -122,7 +122,7 @@ describe("{§diff-line-budget} file sections are modules and hunks are their fie
 
 describe("{§diff-line-budget} git sections recover their paths with or without hunks", () => {
     it("{§diff-line-budget} recovers binary section paths from the diff --git line", () => {
-        const { files } = scanDiff(MULTI);
+        const { files } = deep(MULTI);
         const bin = files.find((f) => f.binary);
         assert.ok(bin);
         assert.equal(bin.newPath, "logo.png");
@@ -130,7 +130,7 @@ describe("{§diff-line-budget} git sections recover their paths with or without 
     });
 
     it("{§diff-line-budget} recovers mode-only section paths with no hunk", () => {
-        const { files } = scanDiff(MULTI);
+        const { files } = deep(MULTI);
         const mode = files.find((f) => f.newPath === "script.sh");
         assert.ok(mode);
         assert.equal(mode.hunks.length, 0);
@@ -176,14 +176,14 @@ describe("{§diff-line-budget} a bare ---/+++ pair opens a section without a dif
     ].join("\n");
 
     it("{§diff-line-budget} opens a file section from the bare ---/+++ pair, timestamp tails stripped", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files.length, 1);
         assert.equal(files[0].oldPath, "original.txt");
         assert.equal(files[0].newPath, "modified.txt");
     });
 
     it("{§diff-line-budget} counts the single hunk's add/del", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files[0].additions, 1);
         assert.equal(files[0].deletions, 1);
         assert.equal(files[0].hunks.length, 1);
@@ -209,7 +209,7 @@ describe("{§diff-line-budget} a combined diff reads N prefix columns against on
     ].join("\n");
 
     it("{§diff-line-budget} does not crash and bounds the hunk correctly", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files.length, 1);
         assert.equal(files[0].hunks.length, 1);
         const hunk = files[0].hunks[0];
@@ -220,7 +220,7 @@ describe("{§diff-line-budget} a combined diff reads N prefix columns against on
     });
 
     it("{§diff-line-budget} counts conflict-marker lines as additions", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         // 5 lines carry a `+` in some column → 5 additions.
         assert.equal(files[0].additions, 5);
     });
@@ -277,7 +277,7 @@ describe("{§diff-line-budget} an unsatisfied budget closes at the end of the do
     ].join("\n");
 
     it("{§diff-line-budget} closes the unsatisfied hunk at the last seen line, no throw", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files.length, 1);
         const hunk = files[0].hunks[0];
         assert.equal(hunk.line, 3);
@@ -303,7 +303,7 @@ describe("{§diff-line-budget} lines outside any section are skipped", () => {
     ].join("\n");
 
     it("{§diff-line-budget} skips non-header lines and parses only the real section", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files.length, 1);
         assert.equal(files[0].newPath, "f.txt");
         assert.equal(files[0].additions, 1);
@@ -327,20 +327,20 @@ describe("{§diff-line-budget} a deleted line beginning `---` is content inside 
     ].join("\n");
 
     it("{§diff-line-budget} reads `--- old config` as a deletion, not a new file section", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         // ONE file section — the trap line did NOT open a second.
         assert.equal(files.length, 1);
         assert.equal(files[0].newPath, "config.txt");
     });
 
     it("{§diff-line-budget} counts the trap lines as one deletion and one addition", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files[0].deletions, 1); // `--- old config`
         assert.equal(files[0].additions, 1); // `+++ new config`
     });
 
     it("{§diff-line-budget} keeps both trap lines inside the single hunk span", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files[0].hunks.length, 1);
         assert.equal(files[0].hunks[0].endLine, 8); // ` [end]` line
     });
@@ -358,7 +358,7 @@ describe("{§diff-line-budget} the no-newline annotation spends no budget", () =
     ].join("\n");
 
     it("{§diff-line-budget} does not consume budget or count as add/del", () => {
-        const { files } = scanDiff(src);
+        const { files } = deep(src);
         assert.equal(files[0].additions, 1);
         assert.equal(files[0].deletions, 1);
     });

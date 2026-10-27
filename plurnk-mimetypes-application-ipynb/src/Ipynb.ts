@@ -100,7 +100,7 @@ interface NbCell {
     execution_count?: number | null;
 }
 
-export interface Notebook {
+interface Notebook {
     cells?: NbCell[];
     metadata?: {
         kernelspec?: { language?: string };
@@ -109,7 +109,7 @@ export interface Notebook {
     nbformat?: number;
 }
 
-export interface Projection {
+interface Projection {
     markdown: string;
     symbols: MimeSymbol[];
 }
@@ -139,7 +139,7 @@ function safeParse(content: HandlerContent): Notebook | null {
 // One pass builds the markdown line buffer and records each code cell's span
 // and each markdown heading's position; heading end-lines (for outline
 // nesting) are resolved in a second pass over the collected headings.
-export function project(nb: Notebook): Projection {
+function project(nb: Notebook): Projection {
     const lang = nb.metadata?.kernelspec?.language ?? nb.metadata?.language_info?.name ?? "";
     const cells = Array.isArray(nb.cells) ? nb.cells : [];
     const lines: string[] = [];

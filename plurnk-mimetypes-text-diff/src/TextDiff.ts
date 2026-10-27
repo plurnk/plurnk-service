@@ -98,7 +98,7 @@ interface DiffFile {
     endLine: number;
 }
 
-export interface DiffScan {
+interface DiffScan {
     files: DiffFile[];
 }
 
@@ -170,7 +170,7 @@ function parseHunkHeader(line: string): {
 // whose leading `fenceWidth` columns are `+`/`-`/space are authoritative hunk
 // content — consumed verbatim. That authority is what resolves the
 // `--`-content ambiguity a grammar can't.
-export function scanDiff(text: string): DiffScan {
+function scanDiff(text: string): DiffScan {
     const lines = TextCoordinates.logicalLines(text).map(({ start, contentEnd }) => text.slice(start, contentEnd));
 
     const files: DiffFile[] = [];

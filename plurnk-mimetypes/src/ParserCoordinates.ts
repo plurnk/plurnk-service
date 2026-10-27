@@ -41,13 +41,6 @@ export class ParserCoordinateError extends Error {
     }
 }
 
-export function isParserCoordinateError(error: unknown): error is ParserCoordinateError {
-    return error instanceof ParserCoordinateError
-        || (typeof error === "object"
-            && error !== null
-            && (error as { name?: unknown }).name === "ParserCoordinateError");
-}
-
 export function treeSitterSpan(
     startNode: TreeSitterSourceNode,
     endNode: TreeSitterSourceNode = startNode,

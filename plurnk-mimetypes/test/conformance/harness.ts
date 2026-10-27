@@ -22,5 +22,9 @@ export async function runConformance(fixture: RegistryConformanceFixture): Promi
         { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions },
         entry,
     );
-    return assertHandlerConformance(handler, fixture);
+    try {
+        return await assertHandlerConformance(handler, fixture);
+    } finally {
+        await handler.dispose();
+    }
 }

@@ -70,7 +70,7 @@ export { RESULT_EXCEEDS_BUDGET } from "../src/core/ContextFit.ts";
 export { hermeticGitEnv } from "../src/core/git-env.ts";
 export type { Db } from "../src/core/Db.ts";
 
-export { buildPdf } from "../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
+export { buildPdf } from "../../plurnk-mimetypes-application-pdf/test/buildPdf.ts";
 export { wav } from "../../plurnk-mimetypes-audio/test/wav.ts";
 export { serveMcpHttp } from "../../plurnk-mcp/test/http-fixture.ts";
 export { serveOAuthMcp } from "../../plurnk-mcp/test/oauth-fixture.ts";

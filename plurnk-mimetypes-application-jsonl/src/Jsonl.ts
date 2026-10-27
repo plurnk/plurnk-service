@@ -66,12 +66,12 @@ interface SchemaEntry {
     firstLine: number;
 }
 
-export interface JsonlScan {
+interface JsonlScan {
     records: unknown[];
     schema: SchemaEntry[];
 }
 
-export function scan(text: string): JsonlScan {
+function scan(text: string): JsonlScan {
     const records: unknown[] = [];
     const schema: SchemaEntry[] = [];
     const seen = new Set<string>();

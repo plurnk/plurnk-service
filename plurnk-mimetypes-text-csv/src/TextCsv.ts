@@ -15,13 +15,13 @@ import type {
 // {§csv-records}: the tokenizer owns both field values and physical record boundaries.
 export default class TextCsv extends BaseHandler {
     override validate(content: string): void {
-        const records = parseAll(content);
+        const records = parseRecords(content);
         if (records.length === 0) return;
-        const expected = records[0].length;
+        const expected = records[0].fields.length;
         for (let i = 1; i < records.length; i += 1) {
-            if (records[i].length !== expected) {
+            if (records[i].fields.length !== expected) {
                 throw new SyntaxError(
-                    `CSV row ${i + 1} has ${records[i].length} columns; header has ${expected}`,
+                    `CSV row ${i + 1} has ${records[i].fields.length} columns; header has ${expected}`,
                 );
             }
         }
@@ -109,10 +109,6 @@ interface CsvRecord {
     spans: Array<{ start: number; end: number }>;
     start: number;
     end: number;
-}
-
-export function parseAll(content: string): string[][] {
-    return parseRecords(content).map(({ fields }) => fields);
 }
 
 // RFC 4180 tokenizer. Walks character by character, tracking quoted state,

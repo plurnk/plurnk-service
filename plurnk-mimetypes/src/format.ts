@@ -39,26 +39,7 @@ export function buildTree(symbols: MimeSymbol[]): TreeNode[] {
     return roots;
 }
 
-export function maxDepth(nodes: TreeNode[]): number {
-    let max = 0;
-    const walk = (ns: TreeNode[], depth: number): void => {
-        if (ns.length === 0) return;
-        if (depth > max) max = depth;
-        for (const node of ns) walk(node.children, depth + 1);
-    };
-    walk(nodes, 0);
-    return max;
-}
-
-export function pruneToMaxDepth(nodes: TreeNode[], limit: number): TreeNode[] {
-    if (limit < 0) return [];
-    return nodes.map((node) => ({
-        symbol: node.symbol,
-        children: limit === 0 ? [] : pruneToMaxDepth(node.children, limit - 1),
-    }));
-}
-
-export function renderTree(nodes: TreeNode[]): string {
+function renderTree(nodes: TreeNode[]): string {
     const lines: string[] = [];
     const walk = (ns: TreeNode[], depth: number): void => {
         for (const node of ns) {

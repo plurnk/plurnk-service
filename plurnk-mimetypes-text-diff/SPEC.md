@@ -10,7 +10,7 @@
 |---|---|
 | `validate` | Framework default no-op ({§mimetype-channel-selection}). |
 | `extractRaw` | One `module` per file section (named by new path, old path for pure deletion, or `old → new` for rename) and one `field` per hunk contained by its section ({§mimetype-symbol}), named by hunk heading text when present, else `@@ +c,d`. Coordinates span the diff document, not the target file. |
-| `deepJson` | `{ type: "diff", files: [{ type: "file", oldPath, newPath, additions, deletions, binary, hunks: [{ type: "hunk", oldStart, oldCount, newStart, newCount, heading }] }] }` from `scanDiff(text)`, with complete source regions on document, file, and hunk nodes. |
+| `deepJson` | `{ type: "diff", files: [{ type: "file", oldPath, newPath, additions, deletions, binary, hunks: [{ type: "hunk", oldStart, oldCount, newStart, newCount, heading }] }] }`, with complete source regions on document, file, and hunk nodes. |
 | JSONPath / XPath | Default dispatch over `deepJson` ({§mimetype-query}): file and hunk nodes have exact regions; scalar fields have their node's enclosing region. |
 
 `content` and `references` use framework defaults. Raw source remains unchanged; bytes decode as UTF-8.

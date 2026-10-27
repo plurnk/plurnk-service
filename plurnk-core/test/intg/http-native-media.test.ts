@@ -15,7 +15,7 @@ import { syncAmbientHttp } from "@plurnk/plurnk-meta";
 import { ModelProvider, Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { Http, WebFetcher, Ws } from "@plurnk/plurnk-schemes-http";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
-import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
+import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/test/buildPdf.ts";
 import { wav } from "../../../plurnk-mimetypes-audio/test/wav.ts";
 import ServerConnection from "../../../plurnk-mcp/src/client.ts";
 import Engine from "../../src/core/Engine.ts";

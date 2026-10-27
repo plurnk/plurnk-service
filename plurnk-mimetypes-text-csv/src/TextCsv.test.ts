@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import TextCsv, { parseAll } from "./TextCsv.ts";
+import TextCsv from "./TextCsv.ts";
 import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 import { readFile } from "node:fs/promises";
 
@@ -86,10 +86,10 @@ describe("{§mimetype-channel-selection} TextCsv validate", () => {
     });
 });
 
-describe("{§csv-records} parseAll (RFC 4180 tokenizer)", () => {
+describe("{§csv-records} RFC 4180 record projections", () => {
     it("{§csv-records} retains an empty quoted field at EOF as a record", () => {
-        assert.deepEqual(parseAll('""'), [[""]]);
-        assert.deepEqual(parseAll('name\n""'), [["name"], [""]]);
+        assert.deepEqual(h.extractRaw('""').map((s) => s.name), [""]);
+        assert.deepEqual(h.deepJson('name\n""'), [{ name: "" }]);
     });
 
     it("{§csv-records} keeps __proto__ as a data column", () => {
@@ -98,30 +98,29 @@ describe("{§csv-records} parseAll (RFC 4180 tokenizer)", () => {
     });
 
     it("{§csv-records} parses a multi-row CSV", () => {
-        const rows = parseAll("a,b\n1,2\n3,4\n");
+        const rows = h.deepJson("a,b\n1,2\n3,4\n");
         assert.deepEqual(rows, [
-            ["a", "b"],
-            ["1", "2"],
-            ["3", "4"],
+            { a: "1", b: "2" },
+            { a: "3", b: "4" },
         ]);
     });
 
     it("{§csv-records} handles newlines inside quoted fields", () => {
-        const rows = parseAll('"line1\nline2","plain"\nrow,2\n');
+        const rows = h.deepJson('c1,c2\n"line1\nline2","plain"\nrow,2\n');
         assert.deepEqual(rows, [
-            ["line1\nline2", "plain"],
-            ["row", "2"],
+            { c1: "line1\nline2", c2: "plain" },
+            { c1: "row", c2: "2" },
         ]);
     });
 
     it("{§csv-records} preserves leading/trailing whitespace in unquoted fields", () => {
         // RFC 4180 doesn't mandate trimming; we preserve verbatim.
-        const rows = parseAll(" a , b \n");
-        assert.deepEqual(rows, [[" a ", " b "]]);
+        const rows = h.deepJson("a,b\n x , y \n");
+        assert.deepEqual(rows, [{ a: " x ", b: " y " }]);
     });
 
     it("{§csv-records} throws on unbalanced quote", () => {
-        assert.throws(() => parseAll('"unterminated,2\n'));
+        assert.throws(() => h.extractRaw('"unterminated,2\n'));
     });
 });
 
@@ -269,14 +268,14 @@ describe("{§csv-records} csv-spectrum 2.0.0", () => {
                 assert.equal(Array.isArray(expected), false, "the other corpus expectations are arrays");
                 assert.equal(expected["Contact Phone Number"], "1234567890");
                 assert.equal(csv.split("\n")[1].split(",")[0], "2095257564");
-                assert.notEqual(parseAll(csv)[1][0], expected["Contact Phone Number"]);
+                const rows = handler.deepJson(csv) as Array<Record<string, string>>;
+                assert.notEqual(rows[0]["Contact Phone Number"], expected["Contact Phone Number"]);
             });
             continue;
         }
         it(name, () => {
             assert.doesNotThrow(() => handler.validate(csv));
             assert.deepEqual(handler.deepJson(csv), expected);
-            assert.deepEqual(parseAll(csv).slice(1), expected.map((row: Record<string, string>) => Object.values(row)));
         });
     }
 });

@@ -75,21 +75,21 @@ export default class Ini extends BaseHandler {
     }
 }
 
-export interface IniKey {
+interface IniKey {
     key: string;
     value: string;
     line: number;
     valueRegion: TextRegion;
 }
 
-export interface IniSection {
+interface IniSection {
     name: string | null; // null = the implicit global section before any header
     line: number;
     endLine: number;
     keys: IniKey[];
 }
 
-export function parseIni(text: string): IniSection[] {
+function parseIni(text: string): IniSection[] {
     const coordinates = new TextCoordinates(text);
     const lines = TextCoordinates.logicalLines(text)
         .map(({ start, contentEnd }) => text.slice(start, contentEnd));
