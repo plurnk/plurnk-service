@@ -1072,7 +1072,7 @@ Eligibility and paired-receipt rules:
 
 - **Admitted content turn**: A turn is eligible for emission-history replay only when its model response parsed with zero syntax errors, produced an admitted content program, and has an active emission row (`ops://<session>/<loop>/<turn>`). Each dispatched content operation records its `op_seq` ordinal in the turn's frozen canonical program; fan-out receipts retain that same ordinal.
 - **Paired receipt (`→ path`)**: In a replayed turn, the `assistant` message carries the authored operation (including its request body for `EDIT`, `NOTE`, `SEND`, `WORK`, `FORK`, or exec). Its paired receipt in the following `user` section (`emission-history/<first-surviving-receipt-coordinate>`) renders an `### <VERB> ... → <path>` H3 heading and retains retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body so it is never duplicated on the wire.
-- **No synthetic turns**: Unexecuted operations after a stop boundary ({§op-execution-order}) or rejected syntax turns produce no emission-history pair.
+- **No synthetic turns**: Unexecuted operations after a stop boundary ({§op-contracts}) or rejected syntax turns produce no emission-history pair.
 
 ### §tokenomics Tokenomics: one room, one gauge, one rule
 

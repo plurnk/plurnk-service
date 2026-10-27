@@ -56,7 +56,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 - Prompt cache affinity (`PLURNK_PROVIDERS_CACHE_AFFINITY=1`) projects each provider's documented session key (`promptCacheKey` on OpenAI, `prompt_cache_key` on DeepInfra, `x-session-id` header on OpenRouter, `x-session-affinity` header on Fireworks and Cloudflare Workers AI).
 - Stable-system cache write policy (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=stable-system`) attaches ephemeral cache breakpoints on system messages only for providers that support them (Anthropic and Anthropic routes on OpenRouter).
-- SDK warnings surface as `provider_warning` notices (`{§notice}`).
+- SDK warnings surface as `provider_warning` notices (`{§operation-results}`).
 
 ## §provider-effort Reasoning effort and readable trace
 
@@ -92,7 +92,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 ## §provider-failure-normalization Failure normalization and evidence
 
-All transport and response failures normalize into `ProviderError` carrying an RFC 9457 Problem Details payload (`{§problem-details}`):
+All transport and response failures normalize into `ProviderError` carrying an RFC 9457 Problem Details payload (`{§operation-results}`):
 
 | `ProviderErrorKind` | HTTP / trigger | `retryable` |
 |---|---|---|
