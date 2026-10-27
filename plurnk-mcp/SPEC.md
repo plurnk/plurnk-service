@@ -265,11 +265,11 @@ originating distinction in its canonical Problem/result path.
 
 MCP servers are complete connection definitions ({§mcp-server-definition}). Standalone files, plugin components, and environment declarations
 supply the service baseline; live additions belong to the workspace. All use the common resolution
-and lifecycle ({§configuration-definition-resolution}, {§functionality-coordinator}). Disabled definitions remain
+and lifecycle ({§configuration-repair-path}, {§functionality-coordinator}). Disabled definitions remain
 client-visible but contribute no connection, Registry, documentation, or resource authority.
 
 §mcp-file-configuration **Standalone `mcp.json` files are read-only configuration inputs, not plugins.**
-The module reads `mcp.json` in the directories supplied by {§agent-roots}. Definitions resolve
+The module reads `mcp.json` in the directories supplied by {§functionality-inspection}. Definitions resolve
 by alias, highest precedence first:
 
 | Source | Location |
@@ -301,7 +301,7 @@ by alias, highest precedence first:
 The discovery locations are Plurnk's supported cross-client convention, not an MCP wire requirement.
 
 §mcp-plugin-configuration **Plugin MCP components use their format's interpretation, not the native file dialect.**
-The validated components supplied by {§agent-plugins-hosting} become ordinary configured MCP
+The validated components supplied by {§functionality-inspection} become ordinary configured MCP
 definitions. The adapter carries the canonical plugin root and persistent data directory as
 interpretation context under {§functionality-adapter}; inspection preserves symbolic definitions.
 
@@ -357,7 +357,7 @@ Aliases and controls follow {§resource-environment}. Malformed definitions or c
 configuration by variable name, even when disabled or not yet associated with a resource.
 Authentication belongs in the definition, never in separate bearer/OAuth environment companions.
 The package's offline validator composes these same readers
-({§operator-config-offline-validation}); it performs no connection or secret resolution.
+({§operator-config-precedence}); it performs no connection or secret resolution.
 Runtime configuration errors leave the manager inspectable without publishing MCP
 capabilities or preventing unrelated model work ({§configuration-repair-path}).
 
@@ -413,12 +413,12 @@ attachment, never a stored credential.
 ### §mcp-module The MCP family beneath the coordinator
 
 The package declares itself a daemon module in `package.json#plurnk`, so the host discovers it
-({§module-discovery}). It is setup-only: `setup` registers the family adapter and there is no
+({§module-lifecycle}). It is setup-only: `setup` registers the family adapter and there is no
 start seam. Its factory only reads the environment: the registry settings, because they decide
 whether the family serves discovery ({§mcp-registry-discovery}). An invalid one is contained
 ({§module-contained-configuration}): the family serves no discovery and the rest works. Every
 other configuration error surfaces in the family's diagnostics at runtime, and all of them in the
-offline check ({§operator-config-offline-validation}). It claims no HTTP mounts.
+offline check ({§operator-config-precedence}). It claims no HTTP mounts.
 
 §mcp-launch-environment **Ambient inheritance and explicit bindings are distinct.** A stdio
 server receives these layers in order; it never receives the invoking session's overrides.
@@ -454,7 +454,7 @@ same workspace-composed operator environment.
 | `commit` | closes connections the new set no longer uses |
 | `abort` | closes only what the attempt opened |
 
-§mcp-registry-discovery **`discover` searches the MCP Registry.** The family serves discovery while `PLURNK_MCP_REGISTRY_URL`, read when the module is constructed, names a registry; empty, the family has no `discover` ({§functionality-discover-advertisement}). Its one input, `query`, asks that registry (API v0.1) for one page of at most `PLURNK_MCP_REGISTRY_LIMIT` servers, each at its latest version, whose names match.
+§mcp-registry-discovery **`discover` searches the MCP Registry.** The family serves discovery while `PLURNK_MCP_REGISTRY_URL`, read when the module is constructed, names a registry; empty, the family has no `discover` ({§functionality-replacement}). Its one input, `query`, asks that registry (API v0.1) for one page of at most `PLURNK_MCP_REGISTRY_LIMIT` servers, each at its latest version, whose names match.
 
 | Discovery, admission, or installation condition | Problem | Status |
 |---|---|---|
@@ -481,7 +481,7 @@ common grammar:
 Expected preparation failures cross the boundary as MCP-management Problems
 rather than generic failures; an explicit client action rejects them and a
 Session's own accepted mutation publishes them as unavailable
-({§functionality-model-mutation}):
+({§functionality-model-projection}):
 
 | Endpoint condition | Problem |
 |---|---|
@@ -555,7 +555,7 @@ sequenceDiagram
 | `oauth.begin` returns | `202` with an `authorization.url` when consent is required, `202` without that field when an accepted connection awaits publication, or `200` when tools are already active; these results name the alias, not a capability snapshot |
 | The pending candidate | the adapter retains one per `(workspace, alias)` holding the connection and one workspace residency lease; an unchanged publication preserves that independent attempt, and a new challenge supersedes it ({§oauth-lifetime}) |
 | Concurrent begins | concurrent begin requests for one alias are refused; a later begun attempt supersedes the prior one unless its grant is already accepted and awaiting publication; an in-flight begin cannot attach after disable, remove or definition replacement |
-| Grant acceptance | returns without waiting for workspace quiescence; it is not a configuration mutation and cannot re-enable an alias; the existing catalog-refresh path prepares and publishes the current enabled definitions, then consumes the candidate and releases its lease; the accepted result does not claim tool readiness: `list` and a call to the alias report the current published snapshot, including any subsequent preparation failure, so a turn holding the workspace when the sign-in is accepted still sees the alias awaiting it, and the next turn sees its publication ({§module-workspace-quiescence}) |
+| Grant acceptance | returns without waiting for workspace quiescence; it is not a configuration mutation and cannot re-enable an alias; the existing catalog-refresh path prepares and publishes the current enabled definitions, then consumes the candidate and releases its lease; the accepted result does not claim tool readiness: `list` and a call to the alias report the current published snapshot, including any subsequent preparation failure, so a turn holding the workspace when the sign-in is accepted still sees the alias awaiting it, and the next turn sees its publication ({§module-workspace-residency}) |
 | A bad callback | one for a superseded attempt fails as invalid; a committed attachment that no longer matches the pending definition fails with a conflict instead of replaying a stale snapshot; a missing, expired, mismatched, or replayed callback fails without exposing attacker-owned OAuth error text |
 
 | Callback boundary | Result |
@@ -684,14 +684,14 @@ workspace state, opens and discovers only enabled connections, all at once so th
 waits for its slowest server rather than their sum,
 lists the negotiated catalogs, applies enabled/effect policy, builds each exact
 tool Registry and resource facet, and submits one complete owner snapshot to
-{§module-workspace-capabilities}. A configured tool absent from the server, a
+{§module-lifecycle}. A configured tool absent from the server, a
 duplicate remote name, an enabled name not representable as a Plurnk target,
 or a `read` name outside the enabled set fails that workspace activation. No
 partial namespace is published and every acquired candidate closes.
 
 §mcp-catalog-refresh-in-place **A catalog change refreshes in place.** An unchanged
 definition re-lists over its existing connection and atomically republishes its
-executor, documents, and resource facet through {§functionality-publication}.
+executor, documents, and resource facet through {§functionality-coordinator}.
 SDK cache invalidation and the host's publication acknowledgement are separate
 boundaries; neither closes or replaces the committed connection.
 
@@ -706,7 +706,7 @@ boundaries; neither closes or replaces the committed connection.
 MCP participates in core Functionality residency
 ({§module-workspace-residency}). Preparation reports the current server alias
 through the coordinator's activity contract
-({§functionality-preparation-visibility}); inspection never starts a connection
+({§functionality-inspection}); inspection never starts a connection
 ({§functionality-inspection}). Every tool call and Task retains the workspace
 from executor entry through its terminal result; an interactive OAuth candidate
 retains it until completion, replacement, cancellation, or module shutdown.
@@ -719,7 +719,7 @@ while preserving durable MCP state and generated reference entries for
 transparent reactivation.
 
 Add and enable prepare the candidate while the old snapshot remains
-authoritative, then publish only at {§module-workspace-quiescence}. Disable and
+authoritative, then publish only at {§module-workspace-residency}. Disable and
 remove publish the complete reduced snapshot at the same boundary. The
 old connection rejects replacement with `409 server-busy` while it owns an active protocol request,
 MRTR exchange, or Task. Cache/list-change watches are infrastructure and close
@@ -744,7 +744,7 @@ Candidates still negotiating and standalone OAuth transports close immediately.
 Infrastructure watches retire without a redundant per-listen cancellation;
 active mutations settle, process-local snapshots are discarded, and close
 failures are reported. Core's shutdown deadline remains the outer bound
-({§crash-only-stop}).
+({§module-shutdown-order}).
 
 ## §mcp-host-composition Protocol-to-Plurnk composition
 

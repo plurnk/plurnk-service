@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
 
-// {§operator-config-real-model-profile}: retain definitions, override only their enabledness.
+// {§operator-config-precedence}: retain definitions, override only their enabledness.
 // Explicit shell/benchmark controls remain above the gate profile.
 export const gateResourceEnvironment = async (configFile, environment = process.env) => {
     let source;

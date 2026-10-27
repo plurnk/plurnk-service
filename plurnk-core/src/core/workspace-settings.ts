@@ -8,10 +8,10 @@ import { Validator, type CapabilityPolicy } from "@plurnk/plurnk-contracts";
 import FileCreationPolicy, { type FileCreateScope } from "./file-creation-policy.ts";
 
 export type WorkspaceOpenContext = {
-    filesItems: number | null; // {§operator-config-workspace-files-items} — replace env; null = unset
-    maxCommands: number | null; // {§operator-config-workspace-max-commands} — min() with env; null = unset
-    git: boolean | null;       // {§operator-config-workspace-git} — env AND workspace; null = unset
-    fileCreateScope: FileCreateScope | null; // {§operator-config-workspace-file-create-scope}
+    filesItems: number | null; // {§operator-config-workspace-settings} — replace env; null = unset
+    maxCommands: number | null; // {§operator-config-workspace-settings} — min() with env; null = unset
+    git: boolean | null;       // {§operator-config-workspace-settings} — env AND workspace; null = unset
+    fileCreateScope: FileCreateScope | null; // {§operator-config-workspace-settings}
     membersModelScope: FileCreateScope | null; // {§members-model-scope}
     client: string | null;     // {§emission-admission} — workspace-stable frontend id; null = unset
     capabilities: CapabilityPolicy;

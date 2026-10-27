@@ -62,7 +62,7 @@ export default class BareBatchRunner {
             inputs.push({ statement, ...await preparePrompt(statement) });
         }
         signal?.throwIfAborted();
-        // {§turn-cap-counts-the-tree} — every isolated call spends the session tree's budget; a
+        // {§operator-config-workspace-settings} — every isolated call spends the session tree's budget; a
         // batch stops opening calls at the ceiling instead of spending past it in one turn.
         const budget = await this.#db.lifecycle_tree_budget.get<{ root_loop_id: number | null; max_turns: number | null; count: number }>({ loop_id: loopId });
         if (budget === undefined || budget.max_turns === null) throw new Error(`loop ${loopId} has no root loop to own its turn ceiling`);

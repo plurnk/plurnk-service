@@ -57,7 +57,7 @@ const DEFINITION: JsonSchema = {
 };
 
 export default class EnvFunctionality implements FunctionalityAdapter<never, RuntimeSchemeFacet, EnvDefinition, null> {
-    // {§env-scheme} — the registry as this family's own address space, env:///NAME.
+    // {§env-functionality} — the registry as this family's own address space, env:///NAME.
     readonly scheme: RuntimeSchemeFacet | undefined;
     readonly family = ENV_FAMILY;
     readonly namespaceOwner = ENV_OWNER;

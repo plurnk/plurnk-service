@@ -256,7 +256,7 @@ Existing signed tags and published release records are verified and preserved
 - A protocol face or dependency retirement.
 - The migration-chain re-founding ({§db-migrations}).
 - Wire contracts visible to clients or models: envelopes, receipts, events.
-- Configuration key removals or renames ({§operator-config-env-defaults}).
+- Configuration key removals or renames ({§operator-config-precedence}).
 - Teaching or materialized-address removals the model can observe.
 
 **The per-major sweep** — the release-window checklist, executed in order:

@@ -19,7 +19,7 @@ import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
 import { httpEntry, mcpFixture, stdioEntry } from "./_mcp-config.ts";
 
-test("{§functionality-preparation-visibility} a stalled MCP catalog is visible over ACP before inference and inspectable on another connection", { timeout: 15_000 }, async (t) => {
+test("{§functionality-inspection} a stalled MCP catalog is visible over ACP before inference and inspectable on another connection", { timeout: 15_000 }, async (t) => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const visible = Promise.withResolvers<void>();

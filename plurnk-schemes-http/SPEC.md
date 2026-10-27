@@ -341,7 +341,7 @@ handler does not sniff or guess unknown bytes.
 
 | Concern               | Contract                                                                                                 |
 | --------------------- | -------------------------------------------------------------------------------------------------------- |
-| Canonical registry    | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-env-defaults} |
+| Canonical registry    | Shipped `.env.defaults`; the daemon assembles it as a set-if-unset floor {§operator-config-precedence} |
 | Required values       | Missing or invalid required values fail at readiness/owning read; code carries no hidden fallback        |
 | Materializer selection | `PLURNK_SCHEMES_HTTP_MATERIALIZER=` names a discovered materializer id; unset = local projection only |
 

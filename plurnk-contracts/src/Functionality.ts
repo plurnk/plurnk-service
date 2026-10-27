@@ -7,7 +7,7 @@ export interface WorkspaceCapabilityIdentity {
     readonly workspaceId: number;
 }
 
-// {§functionality-scope} — the identity a verb acts under. Every invocation names the workspace; one
+// {§functionality-coordinator} — the identity a verb acts under. Every invocation names the workspace; one
 // that arrives through a Session (a session-scoped client action, or any execution) also names
 // that Session, which a session-scoped family acts for. Adapters keep seeing the workspace identity.
 export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
@@ -69,7 +69,7 @@ export interface FunctionalityPreparation<Definition extends object = object, Sn
     // The adapter's previous snapshot for this workspace, when one exists.
     readonly previous: Snapshot | null;
     // The current add or replace's admissions: one, or every definition an addressing family's add
-    // names ({§functionality-addressing}); empty on refresh, activation and other verbs.
+    // names ({§functionality-replacement}); empty on refresh, activation and other verbs.
     readonly admissions: readonly FunctionalityAdmission<Definition>[];
     // Whether failures publish as unavailable outcomes (activation, model
     // mutations except replacement) or reject it (explicit client mutations and replacement).
@@ -77,7 +77,7 @@ export interface FunctionalityPreparation<Definition extends object = object, Sn
     // An alias whose preparation must be retried even when its definition is
     // unchanged (re-enabling an unavailable definition).
     readonly force?: string;
-    // {§functionality-preparation-visibility} Report the enabled aliases being prepared now: each stays
+    // {§functionality-inspection} Report the enabled aliases being prepared now: each stays
     // listed, with the time it began, until a later report omits it. A family that prepares one alias at
     // a time reports one. This never publishes a capability or changes its outcome.
     progress(aliases: readonly string[]): void;
@@ -98,7 +98,7 @@ export interface FunctionalityPrepared<Runtime = never, Snapshot = unknown> {
     readonly documents: readonly FunctionalityDocument[];
     readonly outcomes: ReadonlyMap<string, FunctionalityOutcome>;
     readonly snapshot: Snapshot;
-    // {§functionality-publication} — candidate state goes live here, synchronously and without
+    // {§functionality-coordinator} — candidate state goes live here, synchronously and without
     // I/O, inside the coordinator's registry commit; the returned undo restores the preceding
     // live state if that commit rolls back.
     publish(): (() => void) | undefined;
@@ -125,7 +125,7 @@ export interface FunctionalityFamilyHandle {
         identity: FunctionalityIdentity,
     ): Promise<{ readonly status: number; readonly body: unknown }>;
     // Republish the resident family; `ifChanged` only when its enabled definitions differ from the ones
-    // the resident publication prepared ({§functionality-hotload}).
+    // the resident publication prepared ({§functionality-inspection}).
     refresh(
         identity: WorkspaceCapabilityIdentity,
         options?: { readonly gate?: WorkspaceCapabilityGate; readonly ifChanged?: boolean },

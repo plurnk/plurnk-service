@@ -1,5 +1,5 @@
 // The metaproject layer's membership slice — the mechanics every discovery
-// surface shares ({§extension-discovery} / {§operator-config-env-defaults}):
+// surface shares ({§extension-discovery} / {§operator-config-precedence}):
 //   - declaresKind:      the ONE package → kind representation.
 //   - readManifest:       the ONE extension declaration read: a kind's manifest, or null for
 //                         anything that is not a package of that kind. Field
@@ -189,7 +189,7 @@ export default class Meta {
         return isObject(pkg) ? pkg : null;
     }
 
-    // {§operator-config-only-home} — the trust gate is asked while the floor is still being
+    // {§operator-config-precedence} — the trust gate is asked while the floor is still being
     // assembled (it decides whose panel joins it), so an unset key cannot mean "the panel said
     // nothing". This package owns the key, so it reads its own panel: the operator's environment
     // first, then the shipped declaration. A value in code would outrank both.

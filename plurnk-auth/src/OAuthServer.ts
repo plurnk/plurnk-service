@@ -10,7 +10,7 @@ import type { CredentialAuthority, CredentialClaims } from "@plurnk/plurnk-contr
 import { AuthorizationDocuments, renderAuthorizationDocument, type AuthorizationDocument, type AuthorizationRequest } from "./AuthorizationDocuments.ts";
 import { OPERATOR_CLIENT, SCOPES, type ResolvedModuleOptions } from "./config.ts";
 
-// Mechanism, not choices ({§operator-config-only-home}); each is registered in the root's mechanism list.
+// Mechanism, not choices ({§operator-config-precedence}); each is registered in the root's mechanism list.
 const CODE_TTL_MS = 60_000;
 const MAX_BODY_BYTES = 65_536;
 const MAX_REGISTERED_CLIENTS = 1_000;

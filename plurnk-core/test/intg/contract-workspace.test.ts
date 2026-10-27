@@ -495,7 +495,7 @@ test("{§membership} PLURNK_SERVICE_GIT_AUTO=0 leaves definitions as the only gr
     });
 });
 
-test("{§operator-config-git-ceiling} PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
+test("{§operator-config-workspace-settings} PLURNK_SERVICE_GIT_ALLOWED=0 denies all git membership, un-re-enableable", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         const prev = process.env.PLURNK_SERVICE_GIT_ALLOWED;
         process.env.PLURNK_SERVICE_GIT_ALLOWED = "0";
@@ -1493,7 +1493,7 @@ test("{§membership} with no git binary on PATH there is no status and no automa
     }
 });
 
-test("{§operator-config-git-ceiling} GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED", async () => {
+test("{§operator-config-workspace-settings} GitState.status reads the working tree, gated by PLURNK_SERVICE_GIT_ALLOWED", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-gitstate-"));
     const db = await openMigrated();
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;

@@ -1,8 +1,11 @@
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import HostPaths from "../core/HostPaths.ts";
 import ExecEnv from "./exec-env.ts";
+import EntryGraph from "./_entry-graph.ts";
+import ExecAbort from "./exec-abort.ts";
 
+describe("exec-env", () => {
 // The shipped ceiling, as declared in plurnk-core/.env.defaults. Held here as a literal so a
 // change to the default is a change to a witness, not a silent widening of what a model's
 // commands can read.
@@ -70,7 +73,7 @@ test("{§execution-output-identity} ExecEnv.scoped: an empty policy admits nothi
 });
 
 // {§execution-output-identity} Module-owned launches have a broader ambient base, not implicit provider credentials.
-test("{§operator-config-env-defaults} ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurnk's own", () => {
+test("{§operator-config-precedence} ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurnk's own", () => {
     const kept = ExecEnv.withoutOwnSecrets({
         PATH: "/usr/bin", npm_config_registry: "https://registry.npmjs.org/",
         HTTPS_PROXY: "http://proxy:3128",
@@ -85,7 +88,7 @@ test("{§operator-config-env-defaults} ExecEnv.withoutOwnSecrets keeps the opera
     assert.equal(kept.PLURNK_SERVICE_DB_PATH, undefined, "nor plurnk's own configuration");
 });
 
-// {§operator-config-env-defaults} — the subprocess-common floors are declared by
+// {§operator-config-precedence} — the subprocess-common floors are declared by
 // @plurnk/plurnk-execs and reach a spawn through the ceiling, which names them.
 test("{§execution-output-identity} ExecEnv.scoped passes the declared subprocess floors through the ceiling", () => {
     const scoped = ExecEnv.scoped({
@@ -119,4 +122,61 @@ test("{§execution-output-identity} {§host-path-layout} ExecEnv.scoped and Exec
     assert.equal(moduleBase.XDG_CONFIG_HOME, "/tmp/isolated-home/.config");
     assert.equal(moduleBase.XDG_RUNTIME_DIR, "/tmp/isolated-state/runtime");
     assert.equal(moduleBase.OPENAI_API_KEY, undefined);
+});
+});
+
+describe("_entry-graph", () => {
+test("{§operator-config-precedence} EntryGraph.storeBatch reads and validates the service-owned persistence knob", () => {
+    const prior = process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH;
+    try {
+        process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH = "37";
+        assert.equal(EntryGraph.storeBatch(), 37);
+        process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH = "0";
+        assert.throws(() => EntryGraph.storeBatch(), /safe integer of at least 1/);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH;
+        else process.env.PLURNK_SERVICE_DERIVE_STORE_BATCH = prior;
+    }
+});
+});
+
+describe("exec-abort", () => {
+// These shapes ARE the wire contract with @plurnk/plurnk-execs' SubprocessExecutor:
+// it reads `reason.signal` (overrideSignal) and `reason.housekeeping`/`reason.graceMs`
+// (housekeepingGrace). A drift here silently defaults the executor to its SIGHUP polite-ask.
+
+test("{§executor-cancellation} killReason: a numeric override delivers exactly that signal (the executor wire contract)", () => {
+    assert.deepEqual(ExecAbort.killReason(9), { signal: 9 });   // SIGKILL
+    assert.deepEqual(ExecAbort.killReason(15), { signal: 15 }); // SIGTERM
+});
+
+test("{§executor-cancellation} killReason: KILL without a signal override (null) carries no override — the executor's SIGHUP polite default", () => {
+    assert.deepEqual(ExecAbort.killReason(null), { signal: null });
+});
+
+test("{§operator-config-precedence} teardownReason: a bounded housekeeping reap carrying the consumer's grace", () => {
+    const r = ExecAbort.teardownReason();
+    assert.equal(r.housekeeping, true);
+    assert.equal(typeof r.graceMs, "number");
+});
+
+// {§operator-config-precedence} — the panel owns the value. An unset key is a broken floor and
+// crashes by name.
+test("{§operator-config-precedence} graceMs: the panel's value, read live; an unset or invalid key crashes by name", () => {
+    const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+    try {
+        assert.equal(prior, "2000", "the suite runs on the package's own panel");
+        assert.equal(ExecAbort.graceMs, 2000);
+        process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "150";
+        assert.equal(ExecAbort.graceMs, 150);
+        assert.equal(ExecAbort.teardownReason().graceMs, 150);
+        delete process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+        assert.throws(() => ExecAbort.graceMs, /PLURNK_SERVICE_EXEC_KILL_GRACE_MS is missing from the assembled environment floor/);
+        process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "soon";
+        assert.throws(() => ExecAbort.graceMs, /must be a safe integer of at least 0; got "soon"/);
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+        else process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = prior;
+    }
+});
 });

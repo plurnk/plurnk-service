@@ -38,7 +38,7 @@ every `<root>/<name>/SKILL.md` directory under the project, plurnk, then global
 root is one service-origin definition, a nearer root shadowing a farther one and
 all of them shadowing host-provided trees by name. Each filesystem definition
 names its actual source directory. The workspace's durable state owns
-enablement ({§functionality-state}); a disabled skill stays client-visible and
+enablement ({§functionality-coordinator}); a disabled skill stays client-visible and
 leaves no model-facing trace.
 
 §skills-configuration **Skills use the shared definition cascade.**
@@ -46,7 +46,7 @@ leaves no model-facing trace.
 | Layer, low to high | Definition source |
 |---|---|
 | Service | Host-provided trees |
-| Standard locations | Global, plurnk, then project roots selected by {§agent-roots} |
+| Standard locations | Global, plurnk, then project roots selected by {§functionality-inspection} |
 | Cascading environment | `PLURNK_SKILLS_<name>={"name":"<name>","source":"…","ref"?:"…"}` replaces the complete definition |
 | Live workspace | `plurnk (skills)` `add` creates a workspace definition; `replace` assigns a complete named definition through {§functionality-replacement} |
 
@@ -58,7 +58,7 @@ validation checks shape, names, remote URL rules, and Git-only `ref` without
 fetching or opening a source; `commit` is service-recorded, not an input.
 
 *Discovery is inert.* `source` is the family's one discovery input
-({§functionality-discover-advertisement}): `discover {source}` lists the standard
+({§functionality-replacement}): `discover {source}` lists the standard
 skills one source carries, each a candidate with `source` provenance and the exact
 definition to add; it never installs, persists, or enables.
 
@@ -84,7 +84,7 @@ operator-configured symbolic Git ref is not an implicit update subscription.
 Each admitted skill requires standard `name` and `description` frontmatter
 with `name` matching its directory. A missing, uninstallable, or invalid skill
 is `unavailable` with its exact Problem ({§problems-skills}) under the
-coordinator's failure policy ({§functionality-model-mutation}); one bad skill
+coordinator's failure policy ({§functionality-model-projection}); one bad skill
 never fails the family.
 
 Removal follows {§skills-remove}.
@@ -146,7 +146,7 @@ materializations remain workspace-owned operational state, reusable only for the
 same complete definition; they confer no availability without a definition.
 Inherited definitions cannot be removed here; their enabledness can be overridden.
 
-§skills-hotload **Skills placed out of band are admitted at the next turn** ({§functionality-hotload}). The
+§skills-hotload **Skills placed out of band are admitted at the next turn** ({§functionality-inspection}). The
 family keeps one signature of the discovered roots, configured definitions, source locations, and `SKILL.md` sources
 per resident workspace, read before a publication loads the skills it describes. Turn admission
 recomputes it under the workspace gate before packet assembly: a changed signature republishes the

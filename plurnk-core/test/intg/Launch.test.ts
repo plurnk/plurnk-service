@@ -83,7 +83,7 @@ const freePort = async (): Promise<number> => {
     return address.port;
 };
 
-test("{§startup-admission} {§state-root}: a private daemon publishes its address, roots its database under the state root, and stops on request", { timeout: 120_000 }, async () => {
+test("{§startup-admission} {§host-path-layout}: a private daemon publishes its address, roots its database under the state root, and stops on request", { timeout: 120_000 }, async () => {
     const home = await mkdtemp(join(tmpdir(), "plurnk-launch-"));
     // A root with a space: the readiness line carries the path as a JSON string, so it parses exact.
     const root = join(home, "private workspace");
@@ -104,7 +104,7 @@ test("{§startup-admission} {§state-root}: a private daemon publishes its addre
         assert.deepEqual(await first.stop(), stopped, "stop is idempotent");
         assert.ok(await exists(first.dbPath), "stopping keeps the state root: retention is the launcher's decision");
 
-        // {§state-root}: the same root re-enters the same workspace.
+        // {§host-path-layout}: the same root re-enters the same workspace.
         const second = await Launch.start({ command: COMMAND, env: daemonEnv(home), stateRoot: root, host: "127.0.0.1", port: 0, readyTimeoutMs: 60_000, stopGraceMs: 5_000 });
         try {
             assert.equal(second.dbPath, first.dbPath);

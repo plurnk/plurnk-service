@@ -209,7 +209,7 @@ export const liveLoop = async (
             ...(params.openPaths !== undefined ? { openPaths: params.openPaths } : {}),
         }, { timeoutMs, signal: opts?.signal });
     } catch (error) {
-        // {§methods-loop-cancel}/{§crash-only-stop} — a harness timeout explicitly cancels before the
+        // {§methods-loop-cancel}/{§module-shutdown-order} — a harness timeout explicitly cancels before the
         // rejection propagates, so cleanup (daemon.stop) never doubles as the
         // only cancellation path and a wedged child can't wedge the teardown.
         return await failAfterCleanup(error, async () => {

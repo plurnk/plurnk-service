@@ -1065,7 +1065,7 @@ test("{§actor-boundary} PLURNK_SERVICE_FILES_ITEMS foists shallow catalogs; the
 
 // The catalog is FIND-served — there is no materialized manifest entry. With the preview
 // off, the session opens with no foisted catalog; the model FINDs each scheme on demand.
-test("{§operator-config-workspace-files-items} no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
+test("{§operator-config-workspace-settings} no manifest.json entry — the catalog is FIND-served; preview-off foists no FIND", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "0"; // preview OFF
     try {
@@ -1087,9 +1087,9 @@ test("{§operator-config-workspace-files-items} no manifest.json entry — the c
     }
 });
 
-// {§operator-config-workspace-files-items} — workspace filesItems replaces the env default outright,
+// {§operator-config-workspace-settings} — workspace filesItems replaces the env default outright,
 // both directions: it can switch the preview off when env says on, and on when off.
-test("{§operator-config-workspace-files-items} workspace.create settings.filesItems replaces the env default at turn 0", async () => {
+test("{§operator-config-workspace-settings} workspace.create settings.filesItems replaces the env default at turn 0", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         // env ON (full) but the client's workspace asks for OFF (0) → no preview foisted.
@@ -1122,7 +1122,7 @@ test("{§operator-config-workspace-files-items} workspace.create settings.filesI
     }
 });
 
-// {§operator-config-workspace-files-items} — the client surface is narrow and validated.
+// {§operator-config-workspace-settings} — the client surface is narrow and validated.
 test("{§session-initialization-entry} workspace.create rejects malformed settings — fail hard, no silent accept", async () => {
     await withDaemon(mock(), async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -1782,7 +1782,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     serverProposals(t, "accept");
     const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Use the current tool." });
     const lifecycle = new LoopLifecycle(db);
-    // {§module-workspace-quiescence}: the stored result precedes turn-gate release.
+    // {§module-workspace-residency}: the stored result precedes turn-gate release.
     await terminated.promise;
     assert.equal(await lifecycle.status(loop.loopId), 200);
     assert.equal(provider.received.length, 2);

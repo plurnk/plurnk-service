@@ -171,7 +171,7 @@ test("{§emission-history}: mixed KILL targets execute normally; a retired NOTE 
     }
 });
 
-test("{§emission-history} {§operator-config-shipped-defaults}: complete operations replay without parsing nested examples or replaying reasoning", async (t) => {
+test("{§emission-history} {§operator-config-precedence}: complete operations replay without parsing nested examples or replaying reasoning", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "previous-whole");

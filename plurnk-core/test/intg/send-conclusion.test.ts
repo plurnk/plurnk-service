@@ -2486,7 +2486,7 @@ test("{§loop-completion} a parent that strikes out with the child's message una
     serverProposals(approvalContext, "accept");
     let db!: Db;
     let workspaceId = 0;
-    // A turn ceiling would end the child too ({§turn-cap-counts-the-tree}); strikes are the parent's alone. The
+    // A turn ceiling would end the child too ({§operator-config-workspace-settings}); strikes are the parent's alone. The
     // parent wakes on the question and answers with prose carrying no operation, turn after turn, until its
     // strike threshold ends its loop with the question unanswered.
     const provider = new Scripted(() => db, {

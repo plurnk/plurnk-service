@@ -43,7 +43,7 @@ export default class WorkspaceGate {
         this.#isDescendant = isDescendant;
     }
 
-    // {§functionality-model-mutation} The lease belongs to this awaited turn, not
+    // {§functionality-model-projection} The lease belongs to this awaited turn, not
     // callbacks or background producers that happen to originate inside it.
     async withTurn<T>(workspaceId: number, sessionId: number, run: () => Promise<T>, signal?: AbortSignal): Promise<T> {
         const scope: TurnScope = { workspaceId, sessionId, signal, release: await this.acquireTurn(workspaceId, sessionId, signal), closed: false };
@@ -153,7 +153,7 @@ export default class WorkspaceGate {
     // Capability snapshots cannot wait behind a proposal that may require the
     // very client issuing the mutation. Acquire synchronously only at a fully
     // quiescent boundary; otherwise the caller returns 409 and retries after
-    // settling current work. {§module-workspace-quiescence}
+    // settling current work. {§module-workspace-residency}
     tryExclusive(workspaceId: number): WorkspaceExclusive | null {
         const state = this.#state(workspaceId);
         if (

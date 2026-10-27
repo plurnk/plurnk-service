@@ -1,4 +1,4 @@
-// {§env-scheme} — the environment registry as an address space: the facet of the env family's own
+// {§env-functionality} — the environment registry as an address space: the facet of the env family's own
 // namespace. Every name in effect for the dispatching Session's commands is a resource at
 // env:///NAME whose body is its value; a write is the family's own admission at the Session's layer,
 // which for the runtime session is the workspace's ({§actor-boundary-client-operations}).

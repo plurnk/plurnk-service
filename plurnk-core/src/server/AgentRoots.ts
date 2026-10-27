@@ -1,4 +1,4 @@
-// {§agent-roots} — configuration roots this daemon reads, nearest first.
+// {§functionality-inspection} — configuration roots this daemon reads, nearest first.
 import { ConfigurationError, Knob } from "@plurnk/plurnk-meta";
 import type { WorkspacePaths } from "@plurnk/plurnk-modules";
 import type HostPaths from "../core/HostPaths.ts";

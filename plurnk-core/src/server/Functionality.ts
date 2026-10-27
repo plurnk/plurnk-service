@@ -55,7 +55,7 @@ export interface FunctionalityHost {
         replacement: WorkspaceCapabilityReplacement,
         options?: WorkspaceCapabilityPublication,
     ): Promise<void>;
-    // {§functionality-scope} — a session-scoped family's durable value: the same shape, keyed by the
+    // {§functionality-coordinator} — a session-scoped family's durable value: the same shape, keyed by the
     // Session, replaced without runtimes and without workspace exclusivity.
     readSessionModuleState(sessionId: number, namespaceOwner: string): Promise<unknown>;
     replaceSessionModuleState(sessionId: number, namespaceOwner: string, state: unknown): Promise<void>;
@@ -82,7 +82,7 @@ export interface FunctionalityInvocationOptions {
 }
 
 // Who OWNS a definition, not where it is scoped. A family declares the scope its definitions
-// belong to ({§functionality-scope}); the locally-owned origin follows from it, so a session-scoped
+// belong to ({§functionality-coordinator}); the locally-owned origin follows from it, so a session-scoped
 // family's own entries say "session" rather than claiming the workspace set them.
 type Origin = "service" | "workspace" | "session";
 
@@ -90,14 +90,14 @@ interface DefinitionRecord {
     readonly origin: Origin;
     readonly definition?: object;
     readonly enabled: boolean;
-    // {§functionality-scope} — the Session a copied entry came from at this Session's creation. Written
+    // {§functionality-coordinator} — the Session a copied entry came from at this Session's creation. Written
     // by the copy, never by a verb: a mutation makes the entry the Session's own and drops it.
     readonly inherited?: string;
 }
 
-// {§functionality-state} — one durable value per (workspace, family) in
+// {§functionality-coordinator} — one durable value per (workspace, family) in
 // `workspace_module_state` under the adapter's namespace owner, or per (session, family) in
-// `session_module_state` for a session-scoped family ({§functionality-scope}). Service-origin
+// `session_module_state` for a session-scoped family ({§functionality-coordinator}). Service-origin
 // aliases persist only enabledness; locally-owned aliases persist the exact definition.
 // Sessions reference workspace state without copying it.
 interface FamilyState {
@@ -142,7 +142,7 @@ export interface FunctionalityConfigurationFailure {
 interface WorkspaceFamily {
     state: FamilyState;
     prepared: FunctionalityPrepared<RuntimeRegistration> | null;
-    // The enabled definitions that publication prepared ({§functionality-hotload}).
+    // The enabled definitions that publication prepared ({§functionality-inspection}).
     enabled: ReadonlyMap<string, FunctionalityPreparedDefinition>;
     configurationFailure: FunctionalityConfigurationFailure | null;
     documentBody: string;
@@ -167,7 +167,7 @@ const ALIAS_INPUT: JsonSchema = Object.freeze({
     properties: { alias: { type: "string", minLength: 1 } },
 });
 const EMPTY_INPUT: JsonSchema = Object.freeze({ type: "object", additionalProperties: false, properties: {} });
-// {§functionality-discover-advertisement} — the shared definition of every input a family may serve.
+// {§functionality-replacement} — the shared definition of every input a family may serve.
 const DISCOVER_INPUTS: Readonly<Record<FunctionalityDiscoverInput, JsonSchema>> = discoverySchema.properties;
 const discoverInput = ({ inputs, emptyListsAll }: FunctionalityDiscovery): JsonSchema => ({
     type: "object",
@@ -235,7 +235,7 @@ export default class Functionality {
             if (!isRecord(source.properties)) throw new Error(`Functionality ${family} input has no property map.`);
             return { ...source, properties: { ...source.properties, ...scopeProperties } };
         };
-        // {§functionality-addressing} — a family that names definitions by their content supplies the
+        // {§functionality-replacement} — a family that names definitions by their content supplies the
         // inputs of add and of the select verbs itself, and serves no replace.
         const { addressing } = adapter;
         if (addressing !== undefined && [addressing.add, addressing.select].some((schema) => !isRecord(schema) || !isRecord(schema.properties))) {
@@ -254,7 +254,7 @@ export default class Functionality {
             })
             : scopedInput(addressing.add);
         const selectInput = scopedInput(addressing?.select ?? ALIAS_INPUT);
-        // {§functionality-discover-advertisement} A family without discovery has no discover verb.
+        // {§functionality-replacement} A family without discovery has no discover verb.
         const schemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>> = Object.freeze({
             list: scopedInput(EMPTY_INPUT),
             ...(discovery === undefined ? {} : { discover: scopedInput(discoverInput(discovery)) }),
@@ -279,7 +279,7 @@ export default class Functionality {
             activate: (context) => this.#activate(adapter, context),
             deactivate: (identity) => this.#deactivate(adapter, identity),
         });
-        // {§functionality-scope} The action context binds one of the family's supported scopes.
+        // {§functionality-coordinator} The action context binds one of the family's supported scopes.
         for (const scope of scopes) {
             for (const verb of FUNCTIONALITY_VERBS) {
                 const inputSchema = schemas[verb];
@@ -312,7 +312,7 @@ export default class Functionality {
     // refreshing a family before packet assembly) instead of contending for
     // workspace exclusivity it could never win.
     // `ifChanged` republishes only when the enabled definitions differ from the ones the resident
-    // publication prepared ({§functionality-hotload}).
+    // publication prepared ({§functionality-inspection}).
     async refresh(
         family: string,
         identity: WorkspaceCapabilityIdentity,
@@ -364,7 +364,7 @@ export default class Functionality {
         });
     }
 
-    // {§functionality-hotload} — every family that reads out-of-band state republishes it if it changed.
+    // {§functionality-inspection} — every family that reads out-of-band state republishes it if it changed.
     async refreshChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         for (const adapter of this.#adapters.values()) {
             if (this.#families.get(this.#key(identity.workspaceId, adapter.family))?.configurationFailure != null) {
@@ -403,9 +403,9 @@ export default class Functionality {
         ]);
     }
 
-    // {§functionality-documents} — the family-generated documents of every
+    // {§functionality-model-projection} — the family-generated documents of every
     // published family for one workspace, projected under each reader's generated subtree.
-    // {§functionality-document-body} — read once per family from the adapter's package, the same
+    // {§functionality-model-projection} — read once per family from the adapter's package, the same
     // `docs/<tag>.md` rule runtimes use. A family that ships no file has a header-only document.
     #documentBodies = new Map<string, Promise<string>>();
     #resolvedDocumentBodies = new Map<string, string>();
@@ -439,7 +439,7 @@ export default class Functionality {
         return out;
     }
 
-    // The one lifecycle entry for both projections ({§functionality-model-mutation}).
+    // The one lifecycle entry for both projections ({§functionality-model-projection}).
     async invoke(
         family: string,
         verb: FunctionalityVerb,
@@ -488,7 +488,7 @@ export default class Functionality {
     ): Promise<FunctionalityInvocation> {
         const adapter = this.#adapter(family);
         const schema = this.#schemas.get(family)![verb];
-        // Neither projection offers a verb the family does not serve ({§functionality-discover-advertisement}).
+        // Neither projection offers a verb the family does not serve ({§functionality-replacement}).
         if (schema === undefined) throw new Error(`Functionality family '${family}' serves no ${verb}.`);
         const validation = Validator.validateJsonSchemaInstance(schema, params);
         if (!validation.valid) {
@@ -509,7 +509,7 @@ export default class Functionality {
             const { scope: _scope, ...query } = input;
             return { status: 200, body: await this.#trackAdmission(identity.workspaceId, this.#discover(adapter, query, identity)) };
         }
-        // {§functionality-scope} — a session-scoped family's list and mutations act for the invoking
+        // {§functionality-coordinator} — a session-scoped family's list and mutations act for the invoking
         // Session. The state is that Session's and nothing resident changes, so they serialize on the
         // Session's own lane and take no workspace exclusivity: a Session shapes its environment while
         // its siblings run.
@@ -712,14 +712,14 @@ export default class Functionality {
     }
 
     // The alias a select verb names: the input's `alias`, or what an addressing family reads from its
-    // own select input ({§functionality-addressing}).
+    // own select input ({§functionality-replacement}).
     static #selected(adapter: HostFunctionalityAdapter, input: Record<string, unknown>): string {
         if (adapter.addressing !== undefined) return adapter.addressing.alias(input);
         if (typeof input.alias !== "string") throw new TypeError(`A ${adapter.family} select names its alias.`);
         return input.alias;
     }
 
-    // The verb semantics, one implementation for every family ({§functionality-scope}): the next
+    // The verb semantics, one implementation for every family ({§functionality-coordinator}): the next
     // state, the aliases it concerns, and how the mutation reports. Only publication differs by scope.
     async #transition(
         adapter: HostFunctionalityAdapter,
@@ -743,7 +743,7 @@ export default class Functionality {
                 const admitted = await adapter.admit(input, identity, caller);
                 const listed: FunctionalityAdmission[] = [];
                 admissions = listed.concat(admitted);
-                // {§functionality-addressing} — an alias family admits exactly one definition; an addressing
+                // {§functionality-replacement} — an alias family admits exactly one definition; an addressing
                 // family's add admits each the body names, and all of them or none.
                 if (adapter.addressing === undefined ? admissions.length !== 1 : admissions.length === 0) {
                     throw new Error(`${adapter.family} admitted ${admissions.length} definitions for one ${verb}.`);
@@ -794,8 +794,8 @@ export default class Functionality {
         return { definitions, aliases, status, removed, admissions };
     }
 
-    // {§functionality-mutation-status} — the receipt: the one alias a mutation concerned, or every
-    // definition an addressing family's add admitted ({§functionality-addressing}).
+    // {§functionality-replacement} — the receipt: the one alias a mutation concerned, or every
+    // definition an addressing family's add admitted ({§functionality-replacement}).
     #mutationResult(
         adapter: HostFunctionalityAdapter,
         verb: FunctionalityVerb,
@@ -914,7 +914,7 @@ export default class Functionality {
         }
     }
 
-    // {§functionality-scope} — the Session's own lane. State is read at each verb rather than held: the
+    // {§functionality-coordinator} — the Session's own lane. State is read at each verb rather than held: the
     // spawn reads the same row, and a Session's row is written at its creation, so nothing in memory
     // could be more current than the table.
     async #invokeForSession(
@@ -985,7 +985,7 @@ export default class Functionality {
 
     // The enabled definitions a workspace publication of `state` prepares. A session-scoped family's
     // workspace publication carries only its manager: what is enabled is decided per Session, at each
-    // verb and each spawn ({§functionality-scope}).
+    // verb and each spawn ({§functionality-coordinator}).
     async #publishable(adapter: HostFunctionalityAdapter, identity: WorkspaceCapabilityIdentity, state: FamilyState): Promise<Map<string, FunctionalityPreparedDefinition>> {
         if (!scopesOf(adapter).includes("workspace")) return new Map();
         return Functionality.#enabled(await this.#effective(adapter, { ...identity, scope: "workspace" }, state));
@@ -1017,7 +1017,7 @@ export default class Functionality {
         }
     }
 
-    // {§functionality-publication} — prepare, publish runtimes and state in one
+    // {§functionality-coordinator} — prepare, publish runtimes and state in one
     // host replacement, then commit; on any failure abort and keep the previous
     // snapshot authoritative. An execution stream stays pending until its
     // workspace publication completes; it never acknowledges a future commit.
@@ -1045,7 +1045,7 @@ export default class Functionality {
         const forget = (): void => {
             for (const [key, activity] of current) if (activity.family === adapter.family) current.delete(key);
         };
-        // {§functionality-preparation-visibility} — one activity for the family, or one per alias it reports
+        // {§functionality-inspection} — one activity for the family, or one per alias it reports
         // preparing, each keeping the time its alias began.
         const report = (aliases: readonly string[], phase: FunctionalityPreparationActivity["phase"]): void => {
             const now = new Date().toISOString();
@@ -1146,7 +1146,7 @@ export default class Functionality {
                     ...(schemes.length === 0 ? {} : { schemes }),
                 }, {
                     gate: "none",
-                    // {§functionality-publication} — the view and the adapter's candidate go live in one instant.
+                    // {§functionality-coordinator} — the view and the adapter's candidate go live in one instant.
                     publish: () => {
                         this.#families.set(key, { state: nextState, prepared, enabled, configurationFailure, documentBody });
                         const undo = prepared?.publish();

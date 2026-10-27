@@ -182,7 +182,7 @@ FROM loops l JOIN sessions w ON w.id = l.session_id WHERE l.id = $loop_id;
 SELECT streams, sessions, messages FROM loop_obligations WHERE loop_id = $loop_id;
 
 -- PREP: lifecycle_tree_budget
--- {§turn-cap-counts-the-tree} — the budget of the session tree a loop belongs to. The owner is
+-- {§operator-config-workspace-settings} — the budget of the session tree a loop belongs to. The owner is
 -- the current loop (id at or below this loop's) of the topmost non-runtime ancestor-or-self session
 -- that has one: for a tree a client started, the root session's loop current when this loop began; a loop
 -- with no such ancestor owns its own budget. Every model call on the owner's loop and on any

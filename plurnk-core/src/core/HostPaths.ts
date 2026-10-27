@@ -15,7 +15,7 @@ const APP_DIRECTORY = "plurnk";
 // remain owned by ../Paths.ts; this class owns only user and runtime locations.
 export default class HostPaths {
     readonly home: string;
-    // {§state-root} — a private daemon's root for everything it writes; null is the XDG layout.
+    // {§host-path-layout} — a private daemon's root for everything it writes; null is the XDG layout.
     readonly stateRoot: string | null;
     readonly configHome: string;
     readonly dataHome: string;
@@ -104,7 +104,7 @@ export default class HostPaths {
         this.plurnkSkillsDir = join(this.configDir, "skills");
         this.globalAgentsDir = join(this.home, ".agents");
         this.globalSkillsDir = join(this.globalAgentsDir, "skills");
-        // {§agent-plugins-hosting} — plugins are configuration, found like skills; their data is data.
+        // {§functionality-inspection} — plugins are configuration, found like skills; their data is data.
         this.plurnkPluginsDir = join(this.configDir, "plugins");
         this.globalPluginsDir = join(this.globalAgentsDir, "plugins");
     }
@@ -137,7 +137,7 @@ export default class HostPaths {
         return join(resolve(projectRoot), ".agents");
     }
 
-    // {§agent-plugins-hosting} — one plugin's PLUGIN_DATA, kept across its updates.
+    // {§functionality-inspection} — one plugin's PLUGIN_DATA, kept across its updates.
     pluginDataDir(pluginName: string, canonicalRoot: string): string {
         return join(this.dataDir, "plugins", pluginName, createHash("sha256").update(canonicalRoot).digest("hex"));
     }

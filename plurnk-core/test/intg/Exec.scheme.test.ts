@@ -2801,7 +2801,7 @@ test(
 );
 
 // {§execution-output-identity} layer four — the Session's own state over the ambient ceiling, read at the spawn.
-// The row is what the env verbs persist ({§functionality-scope}); here it is written directly so the
+// The row is what the env verbs persist ({§functionality-coordinator}); here it is written directly so the
 // spawn is witnessed alone: an enabled session entry sets its value, a disabled entry masks an ambient
 // name for this Session only, a sibling with no row sees the ceiling untouched, and the invariant strips
 // a reserved name even when the state names it.
@@ -3517,7 +3517,7 @@ const withOperatorEnvironment = (t: TestContext, values: Readonly<Record<string,
     });
 };
 
-test("{§functionality-model-mutation} MCP replacement precedes a tool invocation in the same raw model program", { timeout: 30_000 }, async (t) => {
+test("{§functionality-model-projection} MCP replacement precedes a tool invocation in the same raw model program", { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
     const { hostPaths, env } = await mcpFixture(t, { fixture: environmentEntry({ ENV_WITNESS: "original" }) });
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
@@ -3923,7 +3923,7 @@ const fixture = async (t: TestContext, responses: string[] = []) => {
     );
     const cool = () => waitForDb(async () => !schemes.has("shared", workspaceId) && !schemes.has("other", workspaceId), Boolean);
     await cool();
-    // {§functionality-hotload}
+    // {§functionality-inspection}
     const reinstall = async (entries: Readonly<Record<string, object>>) => {
         for (const key of Object.keys(environment)) {
             if (/^PLURNK_MCP_[a-z]/u.test(key)) delete environment[key];

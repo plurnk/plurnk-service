@@ -19,8 +19,8 @@ import { observed } from "../observe/spans.ts";
 import type { Provider } from "@plurnk/plurnk-providers";
 import type { WithWorkspaceTurn, WorkspaceTurnStarting } from "./Engine.ts";
 
-// {§operator-config-only-home} — the rails' values live on the panel.
-// {§operator-config-loop-timeout}
+// {§operator-config-precedence} — the rails' values live on the panel.
+// {§operator-config-workspace-settings}
 const readLoopTimeoutMs = (): number => Knob.integer("PLURNK_SERVICE_LOOP_TIMEOUT", 1);
 
 type TerminalReason = "max_turns" | "strike_threshold" | "token_budget" | "provider_capacity" | "loop_timeout" | "provider_unavailable";
@@ -183,7 +183,7 @@ export default class LoopDriver {
                 if (timedOut()) return await ruleTimeout();
                 executionSignal.throwIfAborted();
 
-                // {§turn-cap-counts-the-tree} — the ceiling is the session tree's budget of model
+                // {§operator-config-workspace-settings} — the ceiling is the session tree's budget of model
                 // calls: this loop's turns, its descendants' turns and every BARE spend it.
                 // The root loop's ceiling is this driver's own argument (the daemon passes the durable
                 // row's value; a direct Engine caller passes its own); a descendant binds the root row's.

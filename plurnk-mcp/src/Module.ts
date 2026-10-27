@@ -451,7 +451,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         });
     }
 
-    // {§functionality-hotload} — a server's definition is complete, so the coordinator's
+    // {§functionality-inspection} — a server's definition is complete, so the coordinator's
     // comparison of what it would prepare with what it published is the change test.
     async #refreshIfChanged(identity: WorkspaceCapabilityIdentity): Promise<void> {
         await this.#handleOrThrow().refresh(identity, { gate: "none", ifChanged: true });
@@ -785,7 +785,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             documents: [],
             outcomes,
             snapshot: next,
-            // {§functionality-publication} The connected set and the pending register go live together,
+            // {§functionality-coordinator} The connected set and the pending register go live together,
             // synchronously; the undo restores both if the registry rolls back.
             publish: () => {
                 const before = this.#attachments.get(workspaceId);

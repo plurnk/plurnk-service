@@ -245,7 +245,7 @@ metadata; it never changes within the invocation. After acceptance, an external 
 uses the same background stream path: output is not returned in the dispatching
 turn. Core owns that composed behavior in {§exec-lifetime},
 {§exec-lifetime}, and {§exec-stream}; its ordered subsystem commands use
-{§functionality-model-mutation}.
+{§functionality-model-projection}.
 
 ### §executor-probe Availability is per runtime tag
 
@@ -366,7 +366,7 @@ Configuration cannot enable a package that is absent from the consumer-visible
 module graph. An exec extension must be installed under the `node_modules` found
 from the running service before discovery can inspect its declaration. The
 service assembles every installed member's package-owned `.env.defaults` under
-operator configuration {§operator-config-env-defaults}; an extension may therefore
+operator configuration {§operator-config-precedence}; an extension may therefore
 ship default-disabled without transferring ownership of its key to the host.
 
 | Package state | Effective policy and probe             | Runtime result                                                      |

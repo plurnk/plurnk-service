@@ -200,7 +200,7 @@ test("{§mcp-configuration} timeouts are required positive integers owned by .en
     );
 });
 
-test("{§operator-config-offline-validation} MCP validation checks every independent control without starting a connection", () => {
+test("{§operator-config-precedence} MCP validation checks every independent control without starting a connection", () => {
     const env = { ...floor, PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "10", PLURNK_MCP_future_TOOLS: '["search"]' };
     assert.doesNotThrow(() => validateConfiguration(env));
     for (const [key, value] of Object.entries({

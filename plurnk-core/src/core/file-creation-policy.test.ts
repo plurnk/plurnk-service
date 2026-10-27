@@ -13,7 +13,7 @@ test("{§fs-write-surface}: the ordered scope composes by the most restrictive v
     assert.equal(FileCreationPolicy.admits("namespace", true), true);
 });
 
-test("{§operator-config-file-create-scope}: service configuration is a closed enum", () => {
+test("{§operator-config-workspace-settings}: service configuration is a closed enum", () => {
     assert.equal(FileCreationPolicy.serviceScope({ PLURNK_SERVICE_FILE_CREATE_SCOPE: "root" }), "root");
     assert.throws(
         () => FileCreationPolicy.serviceScope({ PLURNK_SERVICE_FILE_CREATE_SCOPE: "yes" }),

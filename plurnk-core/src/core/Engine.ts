@@ -360,7 +360,7 @@ export default class Engine {
         this.#executors = executors;
     }
 
-    // {§functionality-documents} — the coordinator's per-Session generated
+    // {§functionality-model-projection} — the coordinator's per-Session generated
     // documents join the Session's reference entries.
     setFunctionalityDocuments(documents: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }>): void {
         this.#packets.setFunctionalityDocuments(documents);

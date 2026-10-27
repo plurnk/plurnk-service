@@ -30,7 +30,7 @@ export default class ConfigurationDiagnostics {
         this.#notices.set(JSON.stringify(notice), notice);
     }
 
-    // {§operator-config-undeclared-key} — information about the operator's file: never a refusal, and
+    // {§operator-config-precedence} — information about the operator's file: never a refusal, and
     // never in a model's packet.
     undeclared(key: string, file: string): void {
         const notice: Notice = {

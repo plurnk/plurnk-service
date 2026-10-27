@@ -1753,7 +1753,7 @@ It is a closed union of the two supported transports, `stdio`
 `headers` and `authorization`). Source provenance, workspace scope, connection
 state, catalog and resolved credentials are not definition fields. Adding or
 removing a definition does not install or remove a plugin. Transport and
-authentication fields replace together ({§configuration-definition-resolution}).
+authentication fields replace together ({§configuration-repair-path}).
 
 §mcp-oauth `McpOAuth` is the client-managed OAuth plurnk holds for one Streamable
 HTTP server, included in that server's `authorization`. Interactive OAuth always requires a callback URL, and

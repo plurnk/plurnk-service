@@ -99,7 +99,7 @@ test("{§host-path-layout} empty XDG homes use the same defaults as unset homes"
     } }), new HostPaths({ home: "/home/ada", env: {} }));
 });
 
-test("{§state-root} an absolute state root moves data, state, cache and runtime — never configuration or the shared skills", () => {
+test("{§host-path-layout} an absolute state root moves data, state, cache and runtime — never configuration or the shared skills", () => {
     const paths = new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "/tmp/private-daemon", XDG_CONFIG_HOME: "/cfg", XDG_DATA_HOME: "/ignored-data" }, home: "/home/example" });
     assert.equal(paths.stateRoot, "/tmp/private-daemon");
     assert.equal(paths.dataDir, "/tmp/private-daemon/data/plurnk");
@@ -115,7 +115,7 @@ test("{§state-root} an absolute state root moves data, state, cache and runtime
     assert.deepEqual(paths.invalidXdg, [], "XDG homes the root replaces are not consulted");
 });
 
-test("{§state-root} a leading ~/ expands and a relative root fails hard by name", () => {
+test("{§host-path-layout} a leading ~/ expands and a relative root fails hard by name", () => {
     assert.equal(new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "~/runs/one" }, home: "/home/example" }).stateRoot, "/home/example/runs/one");
     assert.throws(() => new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "runs/one" }, home: "/home/example" }), /PLURNK_SERVICE_STATE_ROOT must be an absolute path/u);
     assert.equal(new HostPaths({ env: { PLURNK_SERVICE_STATE_ROOT: "" }, home: "/home/example" }).stateRoot, null, "empty is the XDG layout");

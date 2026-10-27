@@ -2,7 +2,7 @@
 // client, and the operator learn one surface ({§functionality-coordinator})
 // for what the model may see, exactly as they do for skills and MCP servers. A definition is one
 // shell-path glob, `!glob` excludes, and the glob is the definition's identity
-// ({§functionality-addressing}): `add` names globs; enable, disable and remove name one. Definitions
+// ({§functionality-replacement}): `add` names globs; enable, disable and remove name one. Definitions
 // are workspace desired state and the membership overlay is their projection ({§members-projection})
 // — the one truth every session sees ({§membership}). A model's `add` is admitted against
 // the service ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the
@@ -29,7 +29,7 @@ const PREFIX = "PLURNK_MEMBERS_";
 const SCOPE_KEY = "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE";
 // The operator's environment alias ({§members-configuration}); a definition's own name is its glob.
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
-// {§functionality-addressing} — the glob is the alias: one line, no surrounding whitespace.
+// {§functionality-replacement} — the glob is the alias: one line, no surrounding whitespace.
 const GLOB = /^\S(?:[^\n]*\S)?$/u;
 const sampleSize = (): number => Knob.integer("PLURNK_SERVICE_MEMBERS_SAMPLE", 0);
 
@@ -58,7 +58,7 @@ type MembersResolution = {
 
 const GLOB_DESCRIPTION = "A shell-path glob relative to the project root (`docs/**`, `*.md`, `../shared/*.json`). A leading `!` excludes matching members; an exclusion wins over every inclusion.";
 
-// {§functionality-addressing} — what `add` takes: the globs, each one definition.
+// {§functionality-replacement} — what `add` takes: the globs, each one definition.
 const ADD: JsonSchema = Object.freeze({
     type: "object",
     additionalProperties: false,
@@ -316,7 +316,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         return { ...candidate, provenance: { kind: "candidate", source: key }, summary: "not a member — untracked; add this definition to include it" };
     }
 
-    // {§functionality-addressing} — every glob the body names is admitted, or none is: a bare `!`
+    // {§functionality-replacement} — every glob the body names is admitted, or none is: a bare `!`
     // or a glob past the model's scope refuses the whole add. The same glob twice is one definition.
     async admit(input: unknown, identity: WorkspaceCapabilityIdentity, caller: FunctionalityCaller = "action"): Promise<readonly FunctionalityAdmission<MembersDefinition>[]> {
         if (!isRecord(input) || !Array.isArray(input.files) || !input.files.every((file): file is string => typeof file === "string")) {

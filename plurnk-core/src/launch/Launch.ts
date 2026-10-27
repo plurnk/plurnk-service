@@ -15,7 +15,7 @@ export interface LaunchOptions {
     readonly command: readonly string[];
     readonly env: NodeJS.ProcessEnv;
     readonly cwd?: string;
-    // {§state-root} — roots everything the daemon writes; absent means the daemon's own layout.
+    // {§host-path-layout} — roots everything the daemon writes; absent means the daemon's own layout.
     readonly stateRoot?: string;
     readonly host?: string;
     readonly port?: number;

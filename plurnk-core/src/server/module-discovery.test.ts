@@ -1,4 +1,4 @@
-// {§module-discovery} — the third-party daemon-module composition surface:
+// {§module-lifecycle} — the third-party daemon-module composition surface:
 // trusted packages declaring `plurnk.kind: "module"` load as DaemonModules;
 // the service's explicit composition is never duplicated, untrusted
 // declarations are skipped, and a bad export fails loudly.
@@ -24,7 +24,7 @@ const packageOf = async (root: string, name: string, manifest: Record<string, un
     return { dir, name };
 };
 
-test("{§module-discovery}: trusted object and factory exports load in package-name order", async () => {
+test("{§module-lifecycle}: trusted object and factory exports load in package-name order", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     const priorTrust = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
     try {
@@ -57,7 +57,7 @@ test("{§module-discovery}: trusted object and factory exports load in package-n
     }
 });
 
-test("{§module-discovery}: the trust gate skips a non-allowlisted declaration", async () => {
+test("{§module-lifecycle}: the trust gate skips a non-allowlisted declaration", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     const priorTrust = process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY;
     try {
@@ -77,7 +77,7 @@ test("{§module-discovery}: the trust gate skips a non-allowlisted declaration",
     }
 });
 
-test("{§module-discovery}: a package registered explicitly is never also discovered, nor imported", async () => {
+test("{§module-lifecycle}: a package registered explicitly is never also discovered, nor imported", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         await packageOf(root, "@plurnk/plurnk-acp", {
@@ -94,7 +94,7 @@ test("{§module-discovery}: a package registered explicitly is never also discov
     }
 });
 
-test("{§module-discovery}: a declaration without a module export fails loudly", async () => {
+test("{§module-lifecycle}: a declaration without a module export fails loudly", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         await packageOf(root, "@acme/broken-module", {
@@ -111,7 +111,7 @@ test("{§module-discovery}: a declaration without a module export fails loudly",
     }
 });
 
-test("{§module-discovery}: primitive exports and primitive factory results fail loudly", async () => {
+test("{§module-lifecycle}: primitive exports and primitive factory results fail loudly", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         const direct = await packageOf(root, "@acme/primitive-module", {
@@ -134,7 +134,7 @@ test("{§module-discovery}: primitive exports and primitive factory results fail
     }
 });
 
-test("{§module-discovery}: malformed lifecycle members fail at discovery", async () => {
+test("{§module-lifecycle}: malformed lifecycle members fail at discovery", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-disc-"));
     try {
         for (const member of ["setup", "start", "stop", "close"]) {
@@ -151,7 +151,7 @@ test("{§module-discovery}: malformed lifecycle members fail at discovery", asyn
     }
 });
 
-test("{§module-discovery}: user plugins shadow npm by standard name; project native code never loads", async (t) => {
+test("{§module-lifecycle}: user plugins shadow npm by standard name; project native code never loads", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-extension-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const hostPaths = new HostPaths({ home: root, env: {} });
@@ -176,7 +176,7 @@ test("{§module-discovery}: user plugins shadow npm by standard name; project na
     assert.deepEqual(found.reports.map(({ outcome }) => outcome), ["shadowed"]);
 });
 
-test("{§module-discovery}: bad native configuration is diagnosed without excluding a healthy sibling", async (t) => {
+test("{§module-lifecycle}: bad native configuration is diagnosed without excluding a healthy sibling", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-extension-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const broken = await packageOf(root, "bad-plugin", {}, "export default {};");
@@ -192,7 +192,7 @@ test("{§module-discovery}: bad native configuration is diagnosed without exclud
     assert.match(found.configurationErrors[0].cause.message, /native module must be beneath ai.plurnk/);
 });
 
-test("{§module-discovery}: a package names its entry as an export subpath, resolved through its own exports", async (t) => {
+test("{§module-lifecycle}: a package names its entry as an export subpath, resolved through its own exports", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-entry-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const filePath = await packageOf(root, "@acme/file-path", { plurnk: { kind: "module", module: "module.mjs" } }, "export default {};");

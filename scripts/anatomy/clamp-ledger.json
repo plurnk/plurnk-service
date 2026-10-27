@@ -26657,1687 +26657,581 @@
       },
       "tags": {
         "operator-config": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4538,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 4,
-          "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical chapter heading for operator configuration and environment cascade."
         },
         "host-path-layout": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4576,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 2,
-          "testCitations": 6,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for XDG host filesystem layout and private daemon state root."
         },
         "state-root": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4597,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "host-path-layout",
+          "reason": "Private daemon PLURNK_SERVICE_STATE_ROOT layout folded into §host-path-layout."
         },
         "operator-config-precedence": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4611,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for environment cascade precedence, package defaults floor, CLI flags, and gate profiles."
         },
         "operator-config-env-defaults": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4627,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 8,
-          "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Assembled package .env.defaults floor rules folded into §operator-config-precedence."
         },
         "operator-config-undeclared-key": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4646,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 4,
-          "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Undeclared PLURNK_* operator file notice folded into §operator-config-precedence."
         },
         "operator-config-only-home": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4664,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 6,
-          "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Environment surface policy rules folded into §operator-config-precedence."
         },
         "operator-config-source-errors": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4680,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Configuration source read failure surfacing folded into §operator-config-precedence."
         },
         "operator-config-discovery": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4683,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "plurnk-service config CLI subcommands folded into §operator-config-precedence."
         },
         "operator-config-offline-validation": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4693,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Offline config check validation rules folded into §operator-config-precedence."
         },
         "systemd-user-unit": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4716,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Shipped systemd user unit template folded into §operator-config-precedence."
         },
         "nginx-example": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4721,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Shipped nginx reverse-proxy example folded into §operator-config-precedence."
         },
         "operator-config-shared-keys": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4737,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Contracts-owned shared listener and auth keys folded into §operator-config-precedence."
         },
         "operator-config-git-ceiling": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4738,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "PLURNK_SERVICE_GIT_ALLOWED service ceiling folded into §operator-config-workspace-settings."
         },
         "operator-config-file-create-scope": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4739,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "PLURNK_SERVICE_FILE_CREATE_SCOPE ceiling folded into §operator-config-workspace-settings."
         },
         "operator-config-loop-timeout": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4743,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "PLURNK_SERVICE_LOOP_TIMEOUT active execution bound folded into §operator-config-workspace-settings."
         },
         "operator-config-session-warm": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4759,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "PLURNK_SERVICE_WORKSPACE_WARM_MS grace setting folded into §operator-config-workspace-settings."
         },
         "operator-config-flag-parity": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4769,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Service knob and .env.defaults two-way flag parity folded into §operator-config-precedence."
         },
         "operator-config-cli-flags": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4779,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Derived admin CLI configuration flags folded into §operator-config-precedence."
         },
         "service-posix-artifacts": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4781,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Generated manpage and shell completion artifacts folded into §operator-config-precedence."
         },
         "turn-cap-counts-the-tree": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4790,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 4,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "Session-tree model-call budget accounting folded into §operator-config-workspace-settings."
         },
         "operator-config-max-turns-ceiling": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4802,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "PLURNK_SERVICE_MAX_TURNS per-call clamping folded into §operator-config-workspace-settings."
         },
         "operator-config-workspace-settings": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4806,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for service ceilings, session-tree turn limits, and per-workspace settings."
         },
         "operator-config-workspace-files-items": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4826,
-          "baselineShape": "list",
-          "liveShape": "list",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "Per-workspace settings.filesItems replacement folded into §operator-config-workspace-settings."
         },
         "operator-config-workspace-max-commands": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4829,
-          "baselineShape": "list",
-          "liveShape": "list",
-          "codeCitations": 2,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "Per-workspace settings.maxCommands tightening folded into §operator-config-workspace-settings."
         },
         "operator-config-workspace-max-commands-floor": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4833,
-          "baselineShape": "list",
-          "liveShape": "list",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "Action-only max-commands floor exemption for WAIT folded into §operator-config-workspace-settings."
         },
         "operator-config-workspace-git": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4837,
-          "baselineShape": "list",
-          "liveShape": "list",
-          "codeCitations": 3,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "Per-workspace settings.git opt-out folded into §operator-config-workspace-settings."
         },
         "operator-config-workspace-file-create-scope": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4838,
-          "baselineShape": "list",
-          "liveShape": "list",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "Per-workspace settings.fileCreateScope lattice narrowing folded into §operator-config-workspace-settings."
         },
         "operator-config-workspace-capabilities": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4840,
-          "baselineShape": "list",
-          "liveShape": "list",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-workspace-settings",
+          "reason": "Per-workspace settings.capabilities subtractive policy folded into §operator-config-workspace-settings."
         },
         "operator-config-shipped-defaults": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4848,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Shipped .env.defaults posture folded into §operator-config-precedence."
         },
         "operator-config-real-model-profile": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4854,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Committed .env.test real-model gate profile folded into §operator-config-precedence."
         },
         "operator-config-zero-pin-gate": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§operator-config Operator Configuration",
-          "baselineLine": 4881,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operator-config-precedence",
+          "reason": "Counterfactual zero-pin tuning scrub folded into §operator-config-precedence."
         },
         "rpc": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 4900,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 1,
-          "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical chapter heading for the core module seam and application port."
         },
         "module-lifecycle": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 4927,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 3,
-          "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for daemon module registration, discovery, setup/start/stop/close phases, and setup capabilities."
         },
         "module-discovery": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 4971,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 10,
-          "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-lifecycle",
+          "reason": "Daemon module package and Agent Plugin discovery folded into §module-lifecycle."
         },
         "module-shutdown-order": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 4990,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 7,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for the four-phase deadline-bounded daemon shutdown sequence."
         },
         "crash-only-stop": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5005,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-shutdown-order",
+          "reason": "PLURNK_SERVICE_STOP_TIMEOUT_MS deadline and process exit rules folded into §module-shutdown-order."
         },
         "module-host-capabilities": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5032,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-lifecycle",
+          "reason": "Core setup seam host capabilities folded into §module-lifecycle."
         },
         "module-workspace-provider": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5043,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 1,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-lifecycle",
+          "reason": "registerWorkspaceCapabilityProvider setup contract folded into §module-lifecycle."
         },
         "module-workspace-state": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5044,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 4,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-lifecycle",
+          "reason": "readWorkspaceModuleState persistence contract folded into §module-lifecycle."
         },
         "module-workspace-capabilities": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5045,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-lifecycle",
+          "reason": "replaceWorkspaceCapabilities atomic publication folded into §module-lifecycle."
         },
         "workspace-environment-sharing": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5060,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-workspace-residency",
+          "reason": "Shared workspace resource vs session log ownership folded into §module-workspace-residency."
         },
         "module-workspace-quiescence": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5074,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-workspace-residency",
+          "reason": "Exclusive workspace gate modes across mutations and turns folded into §module-workspace-residency."
         },
         "module-workspace-sharing": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5083,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-workspace-residency",
+          "reason": "Single effective definition per workspace, family, and alias folded into §module-workspace-residency."
         },
         "module-workspace-residency": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5089,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for shared workspace Functionality ownership, quiescence gate, and warm/idle residency."
         },
         "module-workspace-residency-facet": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "§rpc Module seam",
-          "baselineLine": 5106,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "module-workspace-residency",
+          "reason": "Workspace-level residency unit and process-runtime facet folded into §module-workspace-residency."
         },
         "functionality-coordinator": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5149,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical chapter heading for the shared Workspace Functionality coordinator, scopes, state, and publication."
         },
         "functionality-replacement": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5169,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for whole-definition replacement, content-addressed families, mutation status, and discovery advertisement."
         },
         "functionality-addressing": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5183,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-replacement",
+          "reason": "Content-addressed Functionality family verb rules folded into §functionality-replacement."
         },
         "functionality-mutation-status": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5197,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-replacement",
+          "reason": "200/201/202 mutation status code rules folded into §functionality-replacement."
         },
         "functionality-discover-advertisement": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5210,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-replacement",
+          "reason": "Declared discover input schema advertisement folded into §functionality-replacement."
         },
         "configuration-definition-resolution": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5230,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "configuration-repair-path",
+          "reason": "Whole-definition precedence and independent enabledness controls folded into §configuration-repair-path."
         },
         "configuration-provenance": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5242,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "configuration-repair-path",
+          "reason": "Winning definition input provenance reporting folded into §configuration-repair-path."
         },
         "configuration-repair-path": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5258,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 15,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for whole-definition resolution, configuration provenance, and repair-path containment."
         },
         "functionality-inspection": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5290,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for passive inspection, preparation activity broadcasts, hot-load refresh, and Agent Plugin/root discovery."
         },
         "functionality-preparation-visibility": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5299,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-inspection",
+          "reason": "workspacePreparationStatus and workspace/preparation activity broadcasts folded into §functionality-inspection."
         },
         "functionality-hotload": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5317,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-inspection",
+          "reason": "Turn-admission refreshIfChanged hot-load rules folded into §functionality-inspection."
         },
         "agent-plugins-hosting": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5327,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-inspection",
+          "reason": "Agent Plugin root precedence and PLUGIN_DATA layout folded into §functionality-inspection."
         },
         "agent-roots": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5349,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-inspection",
+          "reason": "PLURNK_SERVICE_ROOTS discovery root selection folded into §functionality-inspection."
         },
         "env-functionality": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5369,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for the scoped Environment Functionality family and env:/// scheme."
         },
         "env-scheme": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5399,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 3,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "env-functionality",
+          "reason": "env:///NAME resource address space operations folded into §env-functionality."
         },
         "functionality-scope": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5412,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 6,
-          "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-coordinator",
+          "reason": "Workspace vs session Functionality scope rules folded into §functionality-coordinator."
         },
         "functionality-state": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5435,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-coordinator",
+          "reason": "Durable version-1 Functionality state shape folded into §functionality-coordinator."
         },
         "functionality-publication": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5445,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 4,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-coordinator",
+          "reason": "Synchronous publish/undo and commit callbacks folded into §functionality-coordinator."
         },
         "functionality-documents": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5455,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 4,
-          "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-model-projection",
+          "reason": "Generated session documents for active definitions folded into §functionality-model-projection."
         },
         "functionality-model-projection": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5463,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 7,
-          "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Canonical heading for the workspace plurnk tool projection, generated docs, and authored-order mutation settlement."
         },
         "functionality-document-body": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5478,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 2,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-model-projection",
+          "reason": "Authored docs/<family>.md tool schema description and add-example validation folded into §functionality-model-projection."
         },
         "functionality-model-mutation": {
-          "spec": "plurnk-core/SPEC.md",
-          "chapter": "Workspace Functionality",
-          "baselineLine": 5488,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 5,
-          "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "functionality-model-projection",
+          "reason": "Authored-order settlement of model plurnk (<family>) invocations folded into §functionality-model-projection."
         }
       },
       "tests": {
         "plurnk-core/scripts/posix.test.mjs": {
-          "tier": "unit",
-          "baselineLines": 88,
-          "liveLines": 88,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "service-posix-artifacts"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Keep unit suite verifying generated manpage and shell completion artifacts."
         },
         "plurnk-core/src/core/ExecutorRegistry.test.ts": {
-          "tier": "unit",
-          "baselineLines": 320,
-          "liveLines": 320,
-          "testCount": 11,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-repair-path",
-            "executor-channels",
-            "executor-probe",
-            "executor-runtime-declaration",
-            "executor-tool-registry",
-            "extension-trust-boundary",
-            "module-workspace-capabilities"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Keep unit suite verifying ExecutorRegistry runtime registration, tag validation, and scheme facets."
         },
         "plurnk-core/src/core/OperatorConfig.test.ts": {
-          "tier": "unit",
-          "baselineLines": 135,
-          "liveLines": 135,
-          "testCount": 7,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "credential-authority",
-            "host-path-layout",
-            "operator-config-discovery",
-            "operator-config-undeclared-key",
-            "policy"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for operator config, environment defaults floor, catalog discovery, and zero-pin scrubbing."
         },
         "plurnk-core/src/core/ServiceTeardown.test.ts": {
-          "tier": "unit",
-          "baselineLines": 219,
-          "liveLines": 219,
-          "testCount": 10,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "crash-only-stop",
-            "module-shutdown-order",
-            "startup-admission-order"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/OperatorConfig.test.ts",
+          "reason": "Merged ServiceTeardown deadline unit assertions into core unit suites."
         },
         "plurnk-core/src/core/WorkspaceGate.test.ts": {
-          "tier": "unit",
-          "baselineLines": 220,
-          "liveLines": 220,
-          "testCount": 10,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "functionality-model-mutation",
-            "functionality-preparation-cancellation",
-            "loop-execution-allowance",
-            "module-workspace-quiescence"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Keep unit suite verifying exclusive and shared workspace quiescence gate semantics."
         },
         "plurnk-core/src/core/env-catalog.test.ts": {
-          "tier": "unit",
-          "baselineLines": 149,
-          "liveLines": 149,
-          "testCount": 12,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "env-functionality",
-            "functionality-model-projection",
-            "operator-config-undeclared-key"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/OperatorConfig.test.ts",
+          "reason": "Merged environment catalog discovery unit assertions into OperatorConfig.test.ts."
         },
         "plurnk-core/src/core/env-defaults.test.ts": {
-          "tier": "unit",
-          "baselineLines": 260,
-          "liveLines": 260,
-          "testCount": 13,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-repair-path",
-            "extension-trust-boundary",
-            "operator-config-env-defaults",
-            "operator-config-source-errors"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/OperatorConfig.test.ts",
+          "reason": "Merged .env.defaults panel collection and merge unit assertions into OperatorConfig.test.ts."
         },
         "plurnk-core/src/core/zero-pin.test.ts": {
-          "tier": "unit",
-          "baselineLines": 37,
-          "liveLines": 37,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "operator-config-zero-pin-gate"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/OperatorConfig.test.ts",
+          "reason": "Merged zero-pin tuning scrub unit assertions into OperatorConfig.test.ts."
         },
         "plurnk-core/src/schemes/_entry-graph.test.ts": {
-          "tier": "unit",
-          "baselineLines": 17,
-          "liveLines": 17,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "operator-config-only-home"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/schemes/exec-env.test.ts",
+          "reason": "Merged entry-graph unit assertions into exec-env.test.ts."
         },
         "plurnk-core/src/schemes/exec-abort.test.ts": {
-          "tier": "unit",
-          "baselineLines": 43,
-          "liveLines": 43,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "executor-cancellation",
-            "operator-config-only-home"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/schemes/exec-env.test.ts",
+          "reason": "Merged execution abort signal unit assertions into exec-env.test.ts."
         },
         "plurnk-core/src/schemes/exec-env.test.ts": {
-          "tier": "unit",
-          "baselineLines": 123,
-          "liveLines": 123,
-          "testCount": 7,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "exec-env-scoped",
-            "host-path-layout",
-            "operator-config-env-defaults"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for execution environment projection, abort handling, and entry graph helpers."
         },
         "plurnk-core/src/server/AgentRoots.test.ts": {
-          "tier": "unit",
-          "baselineLines": 23,
-          "liveLines": 23,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "agent-roots"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/server/WorkspaceCapabilities.test.ts",
+          "reason": "Merged PLURNK_SERVICE_ROOTS parsing unit assertions into WorkspaceCapabilities.test.ts."
         },
         "plurnk-core/src/server/ConfigurationDiagnostics.test.ts": {
-          "tier": "unit",
-          "baselineLines": 52,
-          "liveLines": 52,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-repair-path",
-            "operator-config-undeclared-key"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/server/Functionality.test.ts",
+          "reason": "Merged configuration diagnostics notice unit assertions into Functionality.test.ts."
         },
         "plurnk-core/src/server/EnvFunctionality.test.ts": {
-          "tier": "unit",
-          "baselineLines": 167,
-          "liveLines": 167,
-          "testCount": 12,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "env-functionality",
-            "exec-env-scoped",
-            "functionality-adapter",
-            "functionality-scope",
-            "module-workspace-residency-facet"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/server/Functionality.test.ts",
+          "reason": "Merged EnvFunctionality adapter unit assertions into Functionality.test.ts."
         },
         "plurnk-core/src/server/Functionality.test.ts": {
-          "tier": "unit",
-          "baselineLines": 332,
-          "liveLines": 332,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "functionality-admission-preparation",
-            "functionality-discover-advertisement",
-            "functionality-discovery-inputs",
-            "functionality-preparation-cancellation",
-            "module-workspace-quiescence"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for Functionality coordinator, manager executor, environment family, and configuration diagnostics."
         },
         "plurnk-core/src/server/FunctionalityManager.test.ts": {
-          "tier": "unit",
-          "baselineLines": 224,
-          "liveLines": 224,
-          "testCount": 10,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "functionality-addressing",
-            "functionality-discover-advertisement",
-            "functionality-model-mutation",
-            "functionality-model-projection",
-            "functionality-scope"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/server/Functionality.test.ts",
+          "reason": "Merged FunctionalityManager tool schema and dispatch unit assertions into Functionality.test.ts."
         },
         "plurnk-core/src/server/WorkspaceCapabilities.test.ts": {
-          "tier": "unit",
-          "baselineLines": 288,
-          "liveLines": 288,
-          "testCount": 11,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "crash-only-stop",
-            "module-shutdown-order",
-            "module-workspace-residency"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for workspace capability providers, AgentRoots, and WorkspacePlugins."
         },
         "plurnk-core/src/server/WorkspacePlugins.test.ts": {
-          "tier": "unit",
-          "baselineLines": 77,
-          "liveLines": 77,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "agent-plugins-hosting",
-            "agent-roots"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/server/WorkspaceCapabilities.test.ts",
+          "reason": "Merged WorkspacePlugins discovery signature unit assertions into WorkspaceCapabilities.test.ts."
         },
         "plurnk-core/src/server/module-discovery.test.ts": {
-          "tier": "unit",
-          "baselineLines": 218,
-          "liveLines": 218,
-          "testCount": 10,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "extension-trust-boundary",
-            "module-discovery",
-            "module-self-activation"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Keep unit suite verifying daemon module package and Agent Plugin discovery."
         },
         "plurnk-core/test/intg/Daemon.module-discovery.test.ts": {
-          "tier": "intg",
-          "baselineLines": 178,
-          "liveLines": 178,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-error-identity",
-            "extension-trust-boundary",
-            "module-discovery"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/module-contract.test.ts",
+          "reason": "Merged Daemon module discovery integration tests into module-contract.test.ts."
         },
         "plurnk-core/test/intg/Daemon.preparation-stop.test.ts": {
-          "tier": "intg",
-          "baselineLines": 58,
-          "liveLines": 58,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "module-shutdown-order"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/module-contract.test.ts",
+          "reason": "Merged Daemon shutdown preparation-cancellation integration tests into module-contract.test.ts."
         },
         "plurnk-core/test/intg/Daemon.reads.test.ts": {
-          "tier": "intg",
-          "baselineLines": 295,
-          "liveLines": 295,
-          "testCount": 11,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "entry-read-result",
-            "methods-log-read",
-            "problems-functionality",
-            "rpc"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/module-contract.test.ts",
+          "reason": "Merged Daemon read port integration tests into module-contract.test.ts."
         },
         "plurnk-core/test/intg/Engine.operation-target-groups.test.ts": {
-          "tier": "intg",
-          "baselineLines": 338,
-          "liveLines": 338,
-          "testCount": 8,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "operator-config-workspace-max-commands-floor",
-            "safe-uri-target-groups",
-            "target-group",
-            "trailing-slots"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Skills.test.ts",
+          "reason": "Merged operation target group max-commands counting integration tests into Skills.test.ts."
         },
         "plurnk-core/test/intg/Engine.tree-cap.test.ts": {
-          "tier": "intg",
-          "baselineLines": 173,
-          "liveLines": 173,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "loop-terminals",
-            "turn-cap-counts-the-tree"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Skills.test.ts",
+          "reason": "Merged session-tree turn budget cap integration tests into Skills.test.ts."
         },
         "plurnk-core/test/intg/EnvFlags.test.ts": {
-          "tier": "intg",
-          "baselineLines": 151,
-          "liveLines": 151,
-          "testCount": 15,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "operator-config-cli-flags",
-            "operator-config-undeclared-key"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/env-cascade.test.ts",
+          "reason": "Merged derived CLI flag parsing integration tests into env-cascade.test.ts."
         },
         "plurnk-core/test/intg/Functionality.test.ts": {
-          "tier": "intg",
-          "baselineLines": 1305,
-          "liveLines": 1305,
-          "testCount": 27,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "capability-admission",
-            "configuration-definition-resolution",
-            "configuration-provenance",
-            "configuration-repair-path",
-            "connection-lifecycle",
-            "functionality-adapter",
-            "functionality-coordinator",
-            "functionality-document-body",
-            "functionality-inspection",
-            "functionality-model-mutation",
-            "functionality-mutation-status",
-            "functionality-preparation-cancellation",
-            "functionality-preparation-visibility",
-            "functionality-publication",
-            "functionality-replacement",
-            "methods-workspace-activate",
-            "module-workspace-quiescence",
-            "module-workspace-sharing",
-            "proposal-disposition",
-            "schemes-directory"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for Workspace Functionality coordinator, parity, session state, and env family/scheme."
         },
         "plurnk-core/test/intg/Skills.test.ts": {
-          "tier": "intg",
-          "baselineLines": 662,
-          "liveLines": 662,
-          "testCount": 11,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "agent-roots",
-            "agent-skills-name",
-            "functionality-discover-advertisement",
-            "module-workspace-quiescence",
-            "skills-configuration",
-            "skills-functionality",
-            "skills-remove",
-            "skills-resources",
-            "skills-sources"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for Skills, members, MCP configuration, target groups, and session-tree turn caps."
         },
         "plurnk-core/test/intg/WorkspaceResidency.test.ts": {
-          "tier": "intg",
-          "baselineLines": 205,
-          "liveLines": 205,
-          "testCount": 5,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "module-workspace-provider",
-            "module-workspace-quiescence",
-            "module-workspace-residency"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/module-contract.test.ts",
+          "reason": "Merged workspace warm/idle residency integration tests into module-contract.test.ts."
         },
         "plurnk-core/test/intg/bin-smoke.test.ts": {
-          "tier": "intg",
-          "baselineLines": 589,
-          "liveLines": 589,
-          "testCount": 10,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "acp-daemon-client",
-            "configuration-repair-path",
-            "crash-only-stop",
-            "credential-authority",
-            "mcp-configuration",
-            "operator-config-precedence",
-            "service-posix-artifacts",
-            "startup-admission-order"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/env-cascade.test.ts",
+          "reason": "Merged plurnk-service CLI config and startup smoke tests into env-cascade.test.ts."
         },
         "plurnk-core/test/intg/configuration-recovery.test.ts": {
-          "tier": "intg",
-          "baselineLines": 271,
-          "liveLines": 271,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-repair-path"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/env-cascade.test.ts",
+          "reason": "Merged invalid optional configuration repair-path integration tests into env-cascade.test.ts."
         },
         "plurnk-core/test/intg/default-modules.test.ts": {
-          "tier": "intg",
-          "baselineLines": 144,
-          "liveLines": 144,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "acp-daemon-client",
-            "acp-plurnk-metadata",
-            "functionality-discover-advertisement",
-            "mcp-module",
-            "module-contained-configuration",
-            "module-discovery",
-            "module-http-mounts",
-            "schedule-module"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/module-contract.test.ts",
+          "reason": "Merged default installed modules integration tests into module-contract.test.ts."
         },
         "plurnk-core/test/intg/env-cascade.test.ts": {
-          "tier": "intg",
-          "baselineLines": 764,
-          "liveLines": 764,
-          "testCount": 15,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "acp-action-binding",
-            "acp-plurnk-metadata",
-            "acp-sync",
-            "configuration-repair-path",
-            "mcp-file-configuration",
-            "operator-config-discovery",
-            "operator-config-env-defaults",
-            "operator-config-offline-validation",
-            "operator-config-precedence",
-            "operator-config-undeclared-key",
-            "startup-admission-order"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for environment cascade, CLI flags, flag parity, bin smoke, config recovery, ceilings, and SQLite readers."
         },
         "plurnk-core/test/intg/env-functionality.test.ts": {
-          "tier": "intg",
-          "baselineLines": 344,
-          "liveLines": 344,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-definition-resolution",
-            "env-functionality",
-            "exec-env-scoped",
-            "execution-output-identity",
-            "functionality-discover-advertisement",
-            "functionality-model-mutation",
-            "functionality-scope",
-            "workspace-env"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Functionality.test.ts",
+          "reason": "Merged Environment family integration tests into Functionality.test.ts."
         },
         "plurnk-core/test/intg/env-scheme.test.ts": {
-          "tier": "intg",
-          "baselineLines": 124,
-          "liveLines": 124,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "env-scheme"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Functionality.test.ts",
+          "reason": "Merged env:/// scheme CRUD integration tests into Functionality.test.ts."
         },
         "plurnk-core/test/intg/flag-parity.test.ts": {
-          "tier": "intg",
-          "baselineLines": 54,
-          "liveLines": 54,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "operator-config-flag-parity"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/env-cascade.test.ts",
+          "reason": "Merged two-way PLURNK_SERVICE_* flag parity integration tests into env-cascade.test.ts."
         },
         "plurnk-core/test/intg/functionality-parity.test.ts": {
-          "tier": "intg",
-          "baselineLines": 527,
-          "liveLines": 527,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "actor-boundary-client-operations",
-            "connection-lifecycle",
-            "functionality-coordinator",
-            "functionality-document-body",
-            "functionality-model-projection",
-            "functionality-replacement",
-            "mcp-configuration",
-            "mcp-registry-discovery",
-            "module-workspace-quiescence",
-            "session-generated-subtree"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Functionality.test.ts",
+          "reason": "Merged cross-family Functionality parity matrix into Functionality.test.ts."
         },
         "plurnk-core/test/intg/hooks-lifecycle.test.ts": {
-          "tier": "intg",
-          "baselineLines": 331,
-          "liveLines": 331,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "hooks-command-delivery",
-            "hooks-event-projection",
-            "hooks-module",
-            "module-shutdown-order",
-            "notifications-operation-event"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/module-contract.test.ts",
+          "reason": "Merged hooks module lifecycle delivery integration tests into module-contract.test.ts."
         },
         "plurnk-core/test/intg/mcp-configuration.test.ts": {
-          "tier": "intg",
-          "baselineLines": 286,
-          "liveLines": 286,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-repair-path",
-            "functionality-discover-advertisement",
-            "functionality-hotload",
-            "functionality-inspection",
-            "mcp-configuration",
-            "mcp-file-configuration"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Skills.test.ts",
+          "reason": "Merged MCP configuration resolution and provenance integration tests into Skills.test.ts."
         },
         "plurnk-core/test/intg/members-functionality.test.ts": {
-          "tier": "intg",
-          "baselineLines": 535,
-          "liveLines": 535,
-          "testCount": 6,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "configuration-repair-path",
-            "fs-canonical-name",
-            "functionality-addressing",
-            "functionality-discover-advertisement",
-            "functionality-document-body",
-            "members-functionality",
-            "members-model-scope",
-            "members-projection",
-            "membership-auto-add",
-            "membership-baseline",
-            "op-execution-order",
-            "path-glob-matching"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Skills.test.ts",
+          "reason": "Merged content-addressed members Functionality integration tests into Skills.test.ts."
         },
         "plurnk-core/test/intg/module-contract.test.ts": {
-          "tier": "intg",
-          "baselineLines": 260,
-          "liveLines": 260,
-          "testCount": 10,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "module-contained-configuration",
-            "module-contract",
-            "module-discovery",
-            "module-failure",
-            "module-http-mounts",
-            "module-phases",
-            "module-self-activation",
-            "module-workspace-paths",
-            "provided-skills-module-slice"
-          ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for daemon module lifecycle, discovery, HTTP mounts, workspace residency, hooks, and reads."
         },
         "plurnk-core/test/intg/module-mounts.test.ts": {
-          "tier": "intg",
-          "baselineLines": 180,
-          "liveLines": 180,
-          "testCount": 8,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "acp-run-endpoint",
-            "auth-oauth-endpoints",
-            "module-discovery",
-            "module-http-mounts"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/module-contract.test.ts",
+          "reason": "Merged module HTTP mount admission integration tests into module-contract.test.ts."
         },
         "plurnk-core/test/intg/session-module-state.test.ts": {
-          "tier": "intg",
-          "baselineLines": 106,
-          "liveLines": 106,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "functionality-scope",
-            "module-workspace-state"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Functionality.test.ts",
+          "reason": "Merged session_module_state persistence and inheritance integration tests into Functionality.test.ts."
         },
         "plurnk-core/test/intg/shipped-defaults.test.ts": {
-          "tier": "intg",
-          "baselineLines": 116,
-          "liveLines": 116,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "credential-authority",
-            "markerless-first-page",
-            "operator-config-env-defaults",
-            "operator-config-shared-keys",
-            "operator-config-shipped-defaults",
-            "operator-config-undeclared-key"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/env-cascade.test.ts",
+          "reason": "Merged shipped .env.defaults posture integration tests into env-cascade.test.ts."
         },
         "plurnk-core/test/intg/skills-workspace-sources.test.ts": {
-          "tier": "intg",
-          "baselineLines": 188,
-          "liveLines": 188,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "agent-plugins-hosting",
-            "skills-configuration",
-            "skills-functionality"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Skills.test.ts",
+          "reason": "Merged workspace skill source precedence integration tests into Skills.test.ts."
         },
         "plurnk-core/test/intg/sqlite-readers.test.ts": {
-          "tier": "intg",
-          "baselineLines": 28,
-          "liveLines": 28,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": true,
-          "citedTags": [
-            "operator-config-env-defaults"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/env-cascade.test.ts",
+          "reason": "Merged concurrent SQLite reader integration tests into env-cascade.test.ts."
         },
         "plurnk-core/test/intg/workspace-ceilings.test.ts": {
-          "tier": "intg",
-          "baselineLines": 144,
-          "liveLines": 144,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "operator-config",
-            "operator-config-workspace-max-commands-floor"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/env-cascade.test.ts",
+          "reason": "Merged workspace settings and operator ceiling tightening integration tests into env-cascade.test.ts."
         },
         "plurnk-core/test/intg/workspace-functionality.test.ts": {
-          "tier": "intg",
-          "baselineLines": 69,
-          "liveLines": 69,
-          "testCount": 1,
-          "untaggedCount": 0,
-          "usesOpenMigrated": true,
-          "usesLaunch": false,
-          "citedTags": [
-            "workspace-environment-sharing"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Functionality.test.ts",
+          "reason": "Merged workspace Functionality registration integration tests into Functionality.test.ts."
         }
       }
     },

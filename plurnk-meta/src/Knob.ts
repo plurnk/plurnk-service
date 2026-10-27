@@ -1,5 +1,5 @@
 // {§env-knob} — a knob is read from the assembled environment, and its value lives on the panel and
-// nowhere else ({§operator-config-only-home}). The floor guarantees every declared key, so an unset
+// nowhere else ({§operator-config-precedence}). The floor guarantees every declared key, so an unset
 // key is a broken deployment; an invalid one is typed operator input for the owning boundary.
 // No reader here accepts a value, because a signature that could carry one is a second home
 // for a choice. This is the one reader; a package that spells its own has a second home for the rule.
@@ -55,7 +55,7 @@ export default class Knob {
         return percent / 100;
     }
 
-    // An optional knob ({§operator-config-env-defaults}): a commented declaration ships no value, so unset or empty
+    // An optional knob ({§operator-config-precedence}): a commented declaration ships no value, so unset or empty
     // is `null` and the panel's other value or the dependency's own default applies — never a literal here.
     // A present value is validated exactly as `integer`.
     static optionalInteger(name: string, floor: number, environment: Environment = process.env): number | null {

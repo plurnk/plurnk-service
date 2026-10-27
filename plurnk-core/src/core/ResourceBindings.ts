@@ -12,7 +12,7 @@ export interface ResourceScheme {
     readonly manifest: SchemeManifest;
 }
 
-// {§workspace-environment-sharing} The caller's identity never selects a private tool instance.
+// {§module-workspace-residency} The caller's identity never selects a private tool instance.
 export default class ResourceBindings {
     readonly #schemes: SchemeRegistry;
     readonly #ctx: PlurnkSchemeContext;

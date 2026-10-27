@@ -76,7 +76,7 @@ this adapter is not a process-tree supervisor.
 ## §hooks-module Daemon module
 
 The package declares itself a daemon module in `package.json#plurnk`, so the host discovers it
-({§module-discovery}). Its factory reads this package's configuration and the module is inert
+({§module-lifecycle}). Its factory reads this package's configuration and the module is inert
 while `PLURNK_HOOKS_COMMAND` is absent ({§module-self-activation}). It claims no HTTP mounts.
 
 ## §hooks-failure-isolation Failure isolation

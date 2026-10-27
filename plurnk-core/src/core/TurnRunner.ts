@@ -104,7 +104,7 @@ const assertOpenPaths = (value: unknown, source: string): string[] => {
 // every generated op dispatches. Runaway degeneration is a sampler concern (repetition penalty),
 // not grounds to drop already-generated work. A positive value is an operator ceiling a
 // workspace's maxCommands may tighten (min wins), never widen
-// ({§operator-config-workspace-max-commands}).
+// ({§operator-config-workspace-settings}).
 const readMaxCommands = (): number => {
     const raw = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     if (raw === undefined || raw.length === 0) return Number.POSITIVE_INFINITY;
@@ -849,7 +849,7 @@ export default class TurnRunner {
         const { workspaceId, sessionId, loopId, onDispatch, onSettled } = args;
         const { initializationStatements, initializationPolicies } = container;
         // {§session-initialization-entry}: `init` lets the model curate the opening surveys as one set.
-        // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
+        // {§operator-config-workspace-settings} — workspace filesItems replaces the env default.
         const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
         const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
         if (filesItems !== null) { // {§session-initialization-entry} — once per session
@@ -1754,7 +1754,7 @@ export default class TurnRunner {
         const { provider, childProvider, workspaceId, sessionId, loopId, onDispatch, onSettled } = args;
         const { split } = emission;
         const coordinates = { sessionName: request.sessionName, loopSeq: request.loopSeq, turnSeq: request.seq };
-        // {§operator-config-workspace-max-commands} — workspace maxCommands
+        // {§operator-config-workspace-settings} — workspace maxCommands
         // narrows the operator ceiling before the admitted program reaches the
         // shared executor.
         const maxCommands = Math.min(readMaxCommands(), (await WorkspaceSettings.read(this.#db, workspaceId)).maxCommands ?? Number.POSITIVE_INFINITY);

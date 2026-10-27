@@ -1,4 +1,4 @@
-// {§operator-config-env-defaults} — the cascading environment is the only home for a choice (#771).
+// {§operator-config-precedence} — the cascading environment is the only home for a choice (#771).
 //
 // The platform is defined by three surfaces: `plurnk.md` (the language), turn 0 (the orientation)
 // and the packages' `.env.defaults` (every choice). Code holds mechanism only. This gate counts
@@ -13,7 +13,7 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: node scripts/env-surface-policy.mjs   (a step of npm run root:lint)
-Counts every number and choice in the sources against the packages' .env.defaults: the cascading environment is the only home for a choice ({§operator-config-env-defaults}).
+Counts every number and choice in the sources against the packages' .env.defaults: the cascading environment is the only home for a choice ({§operator-config-precedence}).
 Reads: plurnk-*/src, every .env.defaults, scripts/env-surface-allowance.json.
 Writes: violations to stdout; exit 1 on any.
 `);

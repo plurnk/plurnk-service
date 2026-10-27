@@ -79,7 +79,7 @@ test("{§workspace-capability-inspection}: client actions inspect and replace po
     });
 });
 
-test("{§operator-config-workspace-capabilities} {§capability-policy-projection}: service ceilings remain effective and workspace replacement preserves other settings", async () => {
+test("{§operator-config-workspace-settings} {§capability-policy-projection}: service ceilings remain effective and workspace replacement preserves other settings", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const previous = process.env.PLURNK_SERVICE_CAPABILITIES;

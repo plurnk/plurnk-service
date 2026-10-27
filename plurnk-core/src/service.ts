@@ -257,7 +257,7 @@ export default class Service {
             // {§observability-boundary} — the SDK is the plurnk-otel module's, discovered and set up with every
             // other module ({§otel-module}); the service loads none.
             daemon = new Daemon({ db, dbPath, nodeModulesPath: Service.#installedNodeModules(), hostPaths: Service.#hostPaths, http: listener, configuration });
-            // {§module-discovery} — the service composes no module: the daemon discovers every one,
+            // {§module-lifecycle} — the service composes no module: the daemon discovers every one,
             // and the socket never closes or rebinds between admission and readiness.
             await daemon.start();
             const acpAddr = listener.httpAddress();
@@ -289,7 +289,7 @@ export default class Service {
                             () => process.exit(1),
                         );
                     },
-                    // {§crash-only-stop} — a clean teardown ends the process itself: a handle an
+                    // {§module-shutdown-order} — a clean teardown ends the process itself: a handle an
                     // abandoned wait left alive must never keep a stopped daemon running (#823).
                     () => process.exit(process.exitCode ?? 0),
                 );
@@ -302,7 +302,7 @@ export default class Service {
     }
 
     // {§startup-admission} SIGTERM to the process that holds the configured database, then wait for it to
-    // exit: its own shutdown is bounded by PLURNK_SERVICE_STOP_TIMEOUT_MS ({§crash-only-stop}).
+    // exit: its own shutdown is bounded by PLURNK_SERVICE_STOP_TIMEOUT_MS ({§module-shutdown-order}).
     static async #stop(): Promise<void> {
         const dbPath = Service.#hostPaths.configuredDatabasePath();
         const pid = await DaemonLock.owner(dbPath);
@@ -402,7 +402,7 @@ export default class Service {
         if (configFile !== null) Service.#loadEnv(configFile, true);
         Service.#loadEnv(Service.#hostPaths.configFile, false);
         // A flag is a knob's spelling for one invocation: the service's own panel, and the keys it
-        // shares with every client ({§operator-config-shared-keys}), which contracts declares.
+        // shares with every client ({§operator-config-precedence}), which contracts declares.
         const flagDescriptors = await ServiceHelp.flags();
         const flagOptions: Record<string, { type: "string" }> = {};
         for (const f of flagDescriptors) {
@@ -446,7 +446,7 @@ export default class Service {
         EnvDefaults.apply(EnvDefaults.merge(defaultsFiles));
         // {§model-catalog-cache} — load cached models.dev snapshot if present.
         try { loadCatalogCache(Service.#hostPaths.modelsCacheFile); } catch { /* ignore unreadable cache on boot */ }
-        // {§operator-config-undeclared-key} — the operator's files, never the process environment.
+        // {§operator-config-precedence} — the operator's files, never the process environment.
         const declares = EnvCatalog.declares(defaultsFiles);
         for (const file of new Set([...(configFile === null ? [] : [resolve(configFile)]), Service.#hostPaths.configFile])) {
             if (!existsSync(file)) continue;

@@ -525,7 +525,7 @@ try {
         throw new Error(`persisted membership did not activate on explicit demand: ${JSON.stringify(activatedMembers)}`);
     }
     process.stdout.write("client composition GREEN: one packed platform, CLI and TUI, success and failure journeys, shared durable state\n");
-    // {§crash-only-stop}: an admitted but incomplete body remains outside the module's run set.
+    // {§module-shutdown-order}: an admitted but incomplete body remains outside the module's run set.
     await daemon.stop();
     daemon = await boot({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "250" });
     const unfinished = request({

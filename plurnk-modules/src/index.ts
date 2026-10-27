@@ -50,7 +50,7 @@ export interface FunctionalityDiscovery {
     readonly details?: string;
 }
 
-// {§functionality-addressing} — a family whose definitions are named by their own content rather than
+// {§functionality-replacement} — a family whose definitions are named by their own content rather than
 // by a caller-chosen alias. The coordinator still keys state by alias, under the family's own alias
 // grammar; the family's verbs name it: `add` takes this input and `admit` returns one admission per
 // definition it names, and enable, disable and remove take the select input. Such a family serves
@@ -77,14 +77,14 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // The action segment (`workspace.<family>.<verb>`, or `session.<family>.<verb>` for a
     // session-scoped family) and the name of the family's runtime.
     readonly family: string;
-    // {§functionality-scope} Supported owners; the first is the model default.
+    // {§functionality-coordinator} Supported owners; the first is the model default.
     // Absent means workspace. A session layer inherits workspace defaults by reference.
     readonly scopes?: readonly ("workspace" | "session")[];
     // The alias grammar the coordinator enforces for this family. Absent means the shared default
     // (`[a-z][a-z0-9-]*`); a family whose alias is case-sensitive, or whose alias is the definition's
-    // own content ({§functionality-addressing}), declares its own.
+    // own content ({§functionality-replacement}), declares its own.
     readonly aliasPattern?: RegExp;
-    // {§functionality-addressing} Absent: a caller-chosen alias names a definition, `add` and `replace`
+    // {§functionality-replacement} Absent: a caller-chosen alias names a definition, `add` and `replace`
     // take `{ alias?, definition }`, and the other mutations take `{ alias }`.
     readonly addressing?: FunctionalityAddressing;
     // The one publication owner for this family's runtimes and state.
@@ -98,7 +98,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     readonly example?: object;
     // Absent: the family serves no discovery, and implements no `discover`.
     readonly discovery?: FunctionalityDiscovery;
-    // {§functionality-document-body} — the adapter's package directory; its `docs/<family>.md` is the
+    // {§functionality-model-projection} — the adapter's package directory; its `docs/<family>.md` is the
     // authored teaching beneath the runtime document's generated header.
     readonly docsDir?: string;
     available(identity: WorkspaceCapabilityIdentity): Promise<readonly FunctionalityServiceDefinition<Definition>[]>;
@@ -113,7 +113,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     // Release what the workspace definition installed or provisioned, before the coordinator
     // forgets it on `remove`; a failure rejects the removal.
     forget?(definition: FunctionalityDefinitionSource<Definition>, identity: WorkspaceCapabilityIdentity): Promise<void>;
-    // {§functionality-hotload} — republish when what `available` reads changed out of band; called
+    // {§functionality-inspection} — republish when what `available` reads changed out of band; called
     // under the workspace turn gate before packet assembly.
     refreshIfChanged?(identity: WorkspaceCapabilityIdentity): Promise<void>;
 }
@@ -138,7 +138,7 @@ export interface ModuleSetupSeam {
     // {§execution-output-identity} The workspace layer over admitted ambient values, or over a supplied
     // reference-resolution environment. Never includes session overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    // {§execution-output-identity} The same layers with the Session's own overrides on top ({§functionality-scope}).
+    // {§execution-output-identity} The same layers with the Session's own overrides on top ({§functionality-coordinator}).
     readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§module-workspace-directory} The host owns placement; the module owns the contents.
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;

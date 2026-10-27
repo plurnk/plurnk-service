@@ -85,7 +85,7 @@ plugins in root precedence order, each an `InstalledPlugin` with the `PLUGIN_DAT
 subprocesses receive, the reports ({§agent-plugins-reports}), a signature that changes exactly when
 a plugin, its manifest, its MCP configuration or its skills change, and each root the host reads,
 null where it reads none. A root scope is opaque to this package, as it is to discovery; the host
-names its scopes ({§agent-plugins-hosting}). These types complete the module contract's slices
+names its scopes ({§functionality-inspection}). These types complete the module contract's slices
 ({§module-seam-slices}).
 
 ## §agent-plugins-conformance Conformance corpus

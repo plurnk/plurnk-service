@@ -1,5 +1,5 @@
-// {§agent-plugins-hosting} — a workspace's installed Agent Plugins: the project, plurnk and global
-// roots this daemon reads ({§agent-roots}) in precedence order, each plugin with the PLUGIN_DATA
+// {§functionality-inspection} — a workspace's installed Agent Plugins: the project, plurnk and global
+// roots this daemon reads ({§functionality-inspection}) in precedence order, each plugin with the PLUGIN_DATA
 // directory its subprocesses receive.
 import { createHash } from "node:crypto";
 import type { InstalledPlugin, WorkspacePluginSet } from "@plurnk/plurnk-agent-plugins";

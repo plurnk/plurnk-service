@@ -15,7 +15,7 @@ runtime document's authored body is `docs/schedule.md`
 ## §schedule-module Daemon module
 
 The package declares itself a daemon module in `package.json#plurnk`, so the host discovers it
-({§module-discovery}). Its factory reads this package's configuration ({§module-self-activation});
+({§module-lifecycle}). Its factory reads this package's configuration ({§module-self-activation});
 `setup` registers the family adapter before durable lifecycle recovery, and `start` arms the
 coordinator's persisted rules ({§schedule-residency}). It claims no HTTP mounts.
 
@@ -48,7 +48,7 @@ status, not a failure or a claim of delivery; no dates or wake conditions change
 
 | Fact | Rule |
 | --- | --- |
-| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§execution-output-identity}), and a Session's own `env` override wins for the verbs that Session invokes ({§functionality-scope}) |
+| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§execution-output-identity}), and a Session's own `env` override wins for the verbs that Session invokes ({§functionality-coordinator}) |
 | A rule's zone | the zone stamped at its `add`; a later `env` change moves no existing rule |
 | Without a `DTSTART` | a rule starts when it is read, at the next whole second in the effective zone, so its first occurrence is still ahead: a workspace rule is read at `add`, a service rule once, when the daemon starts, in the service's zone |
 | A `DTSTART` | a floating one is read in the effective zone; one with a `TZID` or a UTC `Z` keeps its own zone |
@@ -61,7 +61,7 @@ current time in the effective zone (RFC 9557, to the second), states the rule
 in words, and previews its next `PLURNK_SCHEDULE_PREVIEW_OCCURRENCES`
 occurrences ({§schedule-discovery-preview}); the candidate's definition
 carries the canonical rule text. Discovery persists nothing; rule text in
-`source` is its one input ({§functionality-discover-advertisement}).
+`source` is its one input ({§functionality-replacement}).
 
 §schedule-discovery-preview `PLURNK_SCHEDULE_PREVIEW_OCCURRENCES` is a family control
 like `PLURNK_SCHEDULE_ENABLED`: a positive integer, never read as a rule alias.
@@ -93,7 +93,7 @@ timers armed; `disable` and `remove` disarm through the published rule set. At
 daemon start the module obtains each workspace's effective definitions through
 the coordinator's passive `list` ({§functionality-inspection}) and arms the
 enabled rules, resident or not. Only the coordinator resolves and validates
-stored configuration ({§functionality-state}, {§configuration-definition-resolution});
+stored configuration ({§functionality-coordinator}, {§configuration-repair-path});
 malformed state fails there. An unreadable recurrence is reported and stays disarmed.
 
 ## §schedule-environment Environment
@@ -103,9 +103,9 @@ malformed state fails there. An unreadable recurrence is reported and stays disa
 by default; `<alias>_ENABLED=0` retains a rule without arming it. The family
 validates every definition, including disabled rules, at construction. A service
 definition cannot be removed in a workspace ({§functionality-coordinator}); live
-definitions and state compose through {§configuration-definition-resolution}.
+definitions and state compose through {§configuration-repair-path}.
 Offline validation uses the same rule normalization as construction, without arming
-or persisting a rule ({§operator-config-offline-validation}).
+or persisting a rule ({§operator-config-precedence}).
 
 §problems-schedule **Schedule Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
 

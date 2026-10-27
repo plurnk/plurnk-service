@@ -236,7 +236,7 @@ BEGIN
     SELECT RAISE(ABORT, 'ambient event audience must be in the producer workspace; non-reply recipients must be its direct parent');
 END;
 
--- {§module-workspace-state}: the same provider-validated snapshot, owned by a SESSION rather
+-- {§module-lifecycle}: the same provider-validated snapshot, owned by a SESSION rather
 -- than a workspace. A family declares which scope its definitions belong to; `env` is the first
 -- session-scoped one, because an environment is context (how this session works) rather than
 -- capability (what exists in this workspace). A sibling table rather than a nullable column on

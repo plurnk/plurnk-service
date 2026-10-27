@@ -32,13 +32,13 @@ test("{§teaching-corpus} teaching corpus: the meta owner publishes one exact im
     assert.ok(Object.values(TEACHING_CORPUS.docs).every(Object.isFrozen));
 });
 
-test("{§operator-config-only-home} isTrusted: gate off ('' / '0') trusts everything", () => {
+test("{§operator-config-precedence} isTrusted: gate off ('' / '0') trusts everything", () => {
     for (const v of ["", "0"]) {
         assert.equal(Meta.isTrusted("@acme/rogue", { PLURNK_EXTENSIONS_TRUSTED_ONLY: v }), true, `gate ${JSON.stringify(v)}`);
     }
 });
 
-// {§operator-config-only-home} — the gate is asked while the floor is still being assembled, so an
+// {§operator-config-precedence} — the gate is asked while the floor is still being assembled, so an
 // unset key defers to the panel that owns it, never to a value in code: change the panel and the
 // unset answer changes with it.
 test("{§extension-trust-boundary} isTrusted: an unset key is answered by this package's own panel", () => {

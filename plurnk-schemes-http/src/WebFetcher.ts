@@ -23,7 +23,7 @@ import { requirePositiveIntegerEnv, requireTextEnv } from "./Config.ts";
 import ErrorDetail from "./ErrorDetail.ts";
 import HostPolicy from "./HostPolicy.ts";
 
-// {§operator-config-only-home} — which identity a request presents is the operator's choice, and a
+// {§operator-config-precedence} — which identity a request presents is the operator's choice, and a
 // browser impersonation least of all belongs buried in code.
 export const webUserAgent = (): string => requireTextEnv("PLURNK_SCHEMES_HTTP_USER_AGENT");
 export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";

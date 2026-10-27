@@ -1,7 +1,7 @@
 // Off-hot-path e2e: install the built package into a clean sandbox as a consumer would, then
 // prove it works out of the box — the bin boots the DB from installed dist,
 // the daemon serves indexed search without inference, and a
-// fresh install has no active model ({§operator-config-shipped-defaults}): the pointer surfaces instead.
+// fresh install has no active model ({§operator-config-precedence}): the pointer surfaces instead.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -19,7 +19,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run test:installation   (from plurnk-core)
-Installs the built package into a clean sandbox as a consumer would and proves it works out of the box: the bin boots its database from the installed dist, serves indexed search without inference, and a fresh install has no active model ({§operator-config-shipped-defaults}).
+Installs the built package into a clean sandbox as a consumer would and proves it works out of the box: the bin boots its database from the installed dist, serves indexed search without inference, and a fresh install has no active model ({§operator-config-precedence}).
 Reads: the built workspaces.
 Writes: the sandbox under the OS temporary directory; exit 1 on a failed probe.
 `);
@@ -779,7 +779,7 @@ const boot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "start.db"),
 });
 ok(boot.listening === true, "{§acp-daemon-client}: `start` boots the daemon with its ACP v2 listener");
-// {§operator-config-shipped-defaults}: a fresh install resolves no model and names
+// {§operator-config-precedence}: a fresh install resolves no model and names
 // the available configuration paths instead.
 ok(/ no model\n?$/m.test(boot.stdout) || /no model/.test(boot.stdout), "startup line reports 'no model' on an untouched install (no hosted default)");
 ok(

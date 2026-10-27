@@ -275,7 +275,7 @@ test("{§module-action-registration} Daemon: module actions register once during
     }, "test-module");
     try {
         await daemon.start();
-        // {§functionality-scope} Core families and the discovered default modules register beside the
+        // {§functionality-coordinator} Core families and the discovered default modules register beside the
         // module's own action.
         const families = ["workspace.skills.", "workspace.members.", "session.env.", "workspace.env.", "workspace.schedule.", "workspace.mcp."];
         assert.deepEqual(daemon.listModuleActions().filter(({ name }) => !families.some((prefix) => name.startsWith(prefix))), [{
@@ -461,7 +461,7 @@ test("{§actor-boundary-client-operations} Daemon: workspace Functionality is sh
     }
 });
 
-test("{§module-workspace-provider} Daemon: concurrent session demands share one Functionality activation", async () => {
+test("{§module-lifecycle} Daemon: concurrent session demands share one Functionality activation", async () => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `workspace-cap-concurrent-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
@@ -537,7 +537,7 @@ test("{§module-workspace-provider} Daemon: concurrent session demands share one
     }
 });
 
-test("{§module-workspace-provider} Daemon cools idle capabilities, retained provider work postpones cooling, and later demand reactivates", async (t) => {
+test("{§module-lifecycle} Daemon cools idle capabilities, retained provider work postpones cooling, and later demand reactivates", async (t) => {
     const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
     const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
     process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
@@ -630,7 +630,7 @@ test("{§module-workspace-provider} Daemon cools idle capabilities, retained pro
     }
 });
 
-test("{§module-workspace-residency-facet} failed session Functionality deactivation remains resident for the retry owner", async (t) => {
+test("{§module-workspace-residency} failed session Functionality deactivation remains resident for the retry owner", async (t) => {
     const priorWarmMs = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS;
     const priorWarmMax = process.env.PLURNK_SERVICE_WORKSPACE_WARM_MAX;
     process.env.PLURNK_SERVICE_WORKSPACE_WARM_MS = "0";
@@ -2042,7 +2042,7 @@ test("{§module-shutdown-order} daemon shutdown preserves module and scheme life
     }
 });
 
-test("{§crash-only-stop}: every shutdown owner shares the absolute stop deadline", async (t) => {
+test("{§module-shutdown-order}: every shutdown owner shares the absolute stop deadline", async (t) => {
     const prior = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
     process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "50";
     t.after(() => {

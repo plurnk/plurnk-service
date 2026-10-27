@@ -29,7 +29,7 @@ import Validator, {
 import Problems from "./Problems.ts";
 import type { CapabilityPolicy, ClientDisplayCapabilities, McpOAuth, McpServerDefinition, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
 
-test("{§configuration-provenance} lifecycle and discovery share source identifiers independently of ownership and readiness", () => {
+test("{§configuration-repair-path} lifecycle and discovery share source identifiers independently of ownership and readiness", () => {
     const provenance = { kind: "environment", source: "PLURNK_MCP_code_search" };
     for (const state of ["active", "dormant", "disabled", "unavailable", "authorization-required"]) {
         const definition = {

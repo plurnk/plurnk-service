@@ -49,7 +49,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
     },
 });
 
-// {§functionality-discover-advertisement} The family's verbs are exactly those with an input schema.
+// {§functionality-replacement} The family's verbs are exactly those with an input schema.
 export type FunctionalityTeaching = {
     readonly summary?: string;
     readonly traits?: readonly string[];
@@ -116,7 +116,7 @@ export default class FunctionalityManager extends BaseExecutor {
     }
 
     // {§functionality-model-projection} — the published manager closes over the coordinator; Core binds
-    // the invoking workspace and Session at the operation ({§functionality-scope}), so a session-scoped family's
+    // the invoking workspace and Session at the operation ({§functionality-coordinator}), so a session-scoped family's
     // verbs act for that Session. A bound instance is per operation, never retained on the published one.
     forSession(sessionId: number): FunctionalityManager {
         return this.forContext(this.#workspaceId, sessionId);
@@ -144,7 +144,7 @@ export default class FunctionalityManager extends BaseExecutor {
         return target === "question" ? "read" : "host";
     }
 
-    // {§functionality-model-mutation} — `list`, `discover`, and `question` are `read`;
+    // {§functionality-model-projection} — `list`, `discover`, and `question` are `read`;
     // lifecycle mutations (`add`, `replace`, `enable`, `disable`, `remove`) are `host`.
     effectForInvocation(target: string | null, body: string, workspaceId?: number): Effect {
         if (target === "question") return "read";
@@ -365,7 +365,7 @@ export default class FunctionalityManager extends BaseExecutor {
         }
         args.setState(CHANNEL, "active");
         args.write(CHANNEL, JSON.stringify(result.body, null, 2), "application/json");
-        // {§functionality-model-mutation} Resource readiness is the body; this invocation has settled.
+        // {§functionality-model-projection} Resource readiness is the body; this invocation has settled.
         args.setState(CHANNEL, result.status >= 400 ? "errored" : "closed");
         return refusal ?? { status: result.status };
     }

@@ -1,7 +1,7 @@
 -- Session generated-document reconciliation: the whole {§session-scheme}
 -- — scheme and tool references, AGENTS.md, and every Functionality family's
 -- documents ({§schemes-self-doc-materialization}, {§tools-resource-materialization},
--- {§functionality-documents}).
+-- {§functionality-model-projection}).
 
 -- PREP: loop_docs_materialized
 -- An outer join cannot flatten the entry_channels view, so this one reads its tables ({§content-store}).

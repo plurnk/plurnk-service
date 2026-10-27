@@ -1,4 +1,4 @@
-// SPEC {§execution-output-identity} {§operator-config-env-defaults} — the configuration catalog the
+// SPEC {§execution-output-identity} {§operator-config-precedence} — the configuration catalog the
 // `env` family's `discover` projects: every knob the installed packages declare, owner-labelled,
 // with each declaration's comment as its documentation.
 //
@@ -12,7 +12,7 @@
 import EnvDefaults, { type EnvDefaultsFile } from "./env-defaults.ts";
 
 // A declaration line: `KEY=value` is live, `# KEY=value` optional. A `<placeholder>` segment in the
-// name declares a family of keys ({§operator-config-undeclared-key}), only ever written commented.
+// name declares a family of keys ({§operator-config-precedence}), only ever written commented.
 const DECLARATION = /^#?\s*([A-Za-z_][A-Za-z0-9_]*(?:<[^<>\s=]+>[A-Za-z0-9_]*)*)=/u;
 const PLACEHOLDER = /<[^<>\s=]+>/gu;
 // What a placeholder, or the scope after a declared name's `_`, stands for: an alias, a name, a tag.
@@ -60,7 +60,7 @@ export default class EnvCatalog {
         return name.includes("<");
     }
 
-    // {§operator-config-undeclared-key} Whether an installed package declares a key: by name, as a
+    // {§operator-config-precedence} Whether an installed package declares a key: by name, as a
     // declared name's `_` scope (a per-alias knob, `PLURNK_MODEL_<alias>`), or as a family member.
     static declares(files: readonly EnvDefaultsFile[]): (key: string) => boolean {
         const names = new Set<string>();

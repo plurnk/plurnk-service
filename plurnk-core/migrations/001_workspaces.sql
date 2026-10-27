@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
 
 CREATE INDEX IF NOT EXISTS workspaces_created_at ON workspaces (created_at);
 
--- {§module-workspace-state}: one provider-validated snapshot per workspace.
+-- {§module-lifecycle}: one provider-validated snapshot per workspace.
 CREATE TABLE IF NOT EXISTS workspace_module_state (
     workspace_id      INTEGER NOT NULL,
     namespace_owner  TEXT    NOT NULL CHECK (length(namespace_owner) > 0),

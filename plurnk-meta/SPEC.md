@@ -105,7 +105,7 @@ kind-owned collection.
 | `"provider"`      | singular `name`                                          |
 | `"scheme"`        | `schemes[]`; singular `name` is the one-scheme shorthand |
 | `"http-materializer"` | `materializers[]` ({§http-materializer-extensions})     |
-| `"module"`        | singular `module` export subpath ({§module-discovery})   |
+| `"module"`        | singular `module` export subpath ({§module-lifecycle})   |
 
 Coordinated capabilities spanning kinds use explicit daemon-module
 composition ({§module-lifecycle}).
@@ -191,7 +191,7 @@ claim no Plurnk extension.
 
 | Kind | Installation boundary |
 |---|---|
-| `module` | npm or selected user plugin roots; never project roots ({§module-discovery}) |
+| `module` | npm or selected user plugin roots; never project roots ({§module-lifecycle}) |
 | `exec`, `mimetype`, `provider`, `scheme`, `http-materializer` | Existing npm discovery and each kind's import conventions |
 
 `Meta.moduleFile(manifest, relative)` resolves a kind-owned file entry. A standard
@@ -239,7 +239,7 @@ objects without reopening a manifest or tracing tags through produced values.
 - an **unset** key is answered by this package's own `.env.defaults`, because the
   gate decides whose panel joins the floor and so is asked before the floor
   exists. A value in code would outrank the panel, so there is none
-  ({§operator-config-only-home}).
+  ({§operator-config-precedence}).
 
 Every kind's scanner applies that predicate after reading the inert package
 manifest and before importing or registering extension code. An untrusted package

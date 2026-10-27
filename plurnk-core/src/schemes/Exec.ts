@@ -695,7 +695,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             timeoutSec: typeof attrs.timeoutSec === "number" ? attrs.timeoutSec : null,
         });
 
-        // {§functionality-model-mutation} Configuration is an ordered core operation,
+        // {§functionality-model-projection} Configuration is an ordered core operation,
         // not a background job competing for an external-execution slot.
         if (resolved.executor instanceof FunctionalityManager && target !== "question") {
             const tail = run();

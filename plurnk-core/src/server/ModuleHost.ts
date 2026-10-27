@@ -19,7 +19,7 @@ interface WorkspaceCapabilityContext extends WorkspaceCapabilityIdentity {
     readonly retain: () => () => void;
 }
 
-// {§module-workspace-provider}
+// {§module-lifecycle}
 export interface WorkspaceCapabilityProvider {
     activate(context: WorkspaceCapabilityContext): void | Promise<void>;
     deactivate(identity: WorkspaceCapabilityIdentity): void | Promise<void>;
@@ -31,7 +31,7 @@ export interface WorkspaceSchemeRegistration {
     readonly traits?: readonly string[];
 }
 
-// {§module-workspace-capabilities}
+// {§module-lifecycle}
 export interface WorkspaceCapabilityReplacement extends WorkspaceCapabilityIdentity {
     readonly namespaceOwner: string;
     readonly state: unknown;
@@ -46,7 +46,7 @@ export interface WorkspaceCapabilityPublication {
     readonly publish?: () => () => void;
 }
 
-// {§module-host-capabilities} — the coordinator's host interface.
+// {§module-lifecycle} — the coordinator's host interface.
 export interface CapabilityProviderSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void;

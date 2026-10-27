@@ -33,7 +33,7 @@ type NormalizedRuntime = {
     scheme: RuntimeRegistration["scheme"];
 };
 
-// {§module-workspace-residency} {§module-workspace-quiescence}
+// {§module-workspace-residency} {§module-workspace-residency}
 export default class WorkspaceResidency {
     readonly #db: Db;
     readonly #engine: () => Engine;
@@ -153,7 +153,7 @@ export default class WorkspaceResidency {
         return row === undefined ? null : JSON.parse(row.state) as unknown;
     }
 
-    // {§module-workspace-state} — the same snapshot, owned by a session. A family declares the
+    // {§module-lifecycle} — the same snapshot, owned by a session. A family declares the
     // scope its definitions belong to; the coordinator keys state by it, so origin, enabledness
     // and the service-baseline rules remain one implementation rather than one per family.
     async readSessionModuleState(sessionId: number, namespaceOwner: string): Promise<unknown> {
@@ -165,7 +165,7 @@ export default class WorkspaceResidency {
     }
 
     // The session-scoped counterpart of `replace`: state alone, no runtimes, no workspace exclusivity.
-    // A Session's context changes nothing resident; the next spawn reads it ({§functionality-scope}).
+    // A Session's context changes nothing resident; the next spawn reads it ({§functionality-coordinator}).
     // The real foreign key refuses a Session that does not exist.
     async replaceSessionModuleState(sessionId: number, namespaceOwner: string, state: unknown): Promise<void> {
         if (namespaceOwner.trim().length === 0) throw new Error("session module state requires a non-empty namespace owner");

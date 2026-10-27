@@ -271,7 +271,7 @@ a second home for a choice, and it will eventually disagree with the first.
   key's prefix names its owner; one package owns a key. The daemon assembles
   every installed package's file into one floor, set-if-unset beneath every
   operator source, so a declared key is always present
-  ({§operator-config-env-defaults}). A package's own tests run on its own panel,
+  ({§operator-config-precedence}). A package's own tests run on its own panel,
   or that guarantee is a fiction where the code is exercised.
 - **A read never carries a value.** Because the floor is guaranteed, a fallback
   beside a read can only disagree with the panel. An unset key is a broken
@@ -309,7 +309,7 @@ a second home for a choice, and it will eventually disagree with the first.
   invocation and nothing more; the service's flags are generated from its panel.
 - **A definition is not a knob.** A schedule's rule or an MCP server's address
   is data with its own lifecycle, not a choice of behaviour. Resolution selects
-  a whole definition, not field patches ({§configuration-definition-resolution}).
+  a whole definition, not field patches ({§configuration-repair-path}).
 - **A source is not a scope.** A standard file supplies definitions; its format
   does not choose where live changes persist. Workspace management must not
   silently rewrite project or user-global installations. Subsystem commands,
@@ -331,7 +331,7 @@ a second home for a choice, and it will eventually disagree with the first.
   consent and audit, and never claims containment.
 
 `scripts/env-surface-policy.mjs` enforces this in `root:lint`
-({§operator-config-only-home}). A number whose own name says duration, size or
+({§operator-config-precedence}). A number whose own name says duration, size or
 limit is either on the panel or in `scripts/env-surface-mechanism.json`, the
 reviewed register of deliberate non-knobs, each with its reason; a bare number
 handed to a timer has no register at all. Before adding a constant, a flag, a
@@ -356,7 +356,7 @@ flowchart LR
 packages, modules included, run inside it; a package boundary is not a security boundary.
 ACP owns client transport, while clients own presentation and explicit user
 decisions. MCP is an optional in-process host/client under core's
-`{§module-lifecycle}` and `{§module-workspace-capabilities}` seams. MCP server
+`{§module-lifecycle}` and `{§module-lifecycle}` seams. MCP server
 attachments are workspace Functionality; their tools and resources join
 the ordinary executor, scheme, proposal, entry, and client-action paths.
 
@@ -419,7 +419,7 @@ POST, PUT or DELETE leaves the machine exactly as a subprocess does
 Subsystem management is ordered configuration, not background work. Its commands
 retain those proposal and output paths, but settle before the next operation;
 resident publication hands off the turn's shared workspace lease for exclusive
-publication and reacquires it before continuing ({§functionality-model-mutation}).
+publication and reacquires it before continuing ({§functionality-model-projection}).
 
 Executors are Session-agnostic by contract: `ExecArgs` carries no Session
 identity. MCP servers and Functionality managers are published per workspace
@@ -435,11 +435,11 @@ the submitter the owner of the shared runtime.
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
 | Active session drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§session-loop-lifecycle}`. |
 | A session's model, effort and spawn model | `SessionModels` owns the durable selection and the loop's immutable route snapshot ({§session-model-selection}). |
-| Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-discovery}, {§module-http-mounts}). |
+| Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-lifecycle}, {§module-http-mounts}). |
 | A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§session-causal-admission}). |
 | A message's delivery to a session | `MessageDelivery` resolves the session's model and effort, prepares the message and its source, and injects it into the drain that starts or continues the loop ({§methods-loop-run}, {§machine-processes}). |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
-| Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-quiescence}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
+| Workspace Functionality residency            | `WorkspaceResidency` owns demand-driven residency, provider activation/cooling, capability replacement under the workspace gate ({§module-workspace-residency}), and the generated-document reconciliation those transitions trigger; `Daemon` composes and delegates. |
 | External conversation identity | The adapter interprets its protocol identifiers; core retains opaque session references with referential integrity ({§session-external-reference}). Connections and presentation remain client-interface state. |
 | A choice of behaviour                   | The owning package's `.env.defaults`, read through the system environment; see Configuration authority. |
 
@@ -459,7 +459,7 @@ of the surrounding filesystem or external services.
 | Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |
 | Native attachment snapshots | READ, message and packet references retain bytes independently of curation or source deletion. Publication protects in-flight captures; only unreferenced snapshots are collected ({§content-store}). |
 | Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§file-snapshot-revision}, {§file-snapshot-revision}). Internal commit serialization is not a session reservation or exclusion of external writers ({§file-snapshot-revision}, {§file-snapshot-revision}). SQLite commits and backups do not include project files. |
-| Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-state}, {§schedule-residency}, {§schedule-first-arming}, {§oauth-lifetime}). |
+| Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-coordinator}, {§schedule-residency}, {§schedule-first-arming}, {§oauth-lifetime}). |
 | Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§session-causal-admission}, {§notice-drain-on-read}). |
 | Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share-scope}, {§share-snapshot}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |
 

@@ -161,7 +161,7 @@ const workspaceEntry = (tag: string, owner: string) => {
     };
 };
 
-test("{§module-workspace-capabilities} workspace runtime snapshots isolate equal names and replace atomically", () => {
+test("{§module-lifecycle} workspace runtime snapshots isolate equal names and replace atomically", () => {
     const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
     const commitOne = registry.prepareWorkspaceRegistrations(1, "mcp", [{
         tag: "gitea",
@@ -190,7 +190,7 @@ test("{§module-workspace-capabilities} workspace runtime snapshots isolate equa
     assert.equal(registry.entry("gitea", 1), undefined);
 });
 
-test("{§module-workspace-capabilities} workspace overlays cannot shadow base or peer owners", () => {
+test("{§module-lifecycle} workspace overlays cannot shadow base or peer owners", () => {
     const registry = new ExecutorRegistry(new Map([["sh", workspaceEntry("sh", "base")]]));
     assert.throws(
         () => registry.prepareWorkspaceRegistrations(1, "mcp", [{ tag: "sh", entry: workspaceEntry("sh", "mcp") }]),

@@ -50,7 +50,7 @@ const safeInteger = (
     return value;
 };
 
-// {§operator-config-only-home} — an absent key is a broken floor; only the panel's own value speaks.
+// {§operator-config-precedence} — an absent key is a broken floor; only the panel's own value speaks.
 const floorString = (options: ModuleOptions, env: NodeJS.ProcessEnv, option: keyof ModuleOptions, key: string): string => {
     const explicit = options[option];
     const value = explicit === undefined ? env[key] : explicit;

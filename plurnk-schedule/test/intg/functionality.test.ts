@@ -167,7 +167,7 @@ test("{§functionality-replacement} a new schedule target cannot inherit the old
     assert.deepEqual(port.deliveries, [{ workspaceId: 1, sessionId: 8, prompt: "Beat.", source: "schedule://beat" }]);
 });
 
-test("{§functionality-publication} aborting an enable retry preserves the schedule's delivery failure", async (t) => {
+test("{§functionality-coordinator} aborting an enable retry preserves the schedule's delivery failure", async (t) => {
     const time = new FakeTime();
     const adapter = family(time);
     const port = new FakePort();

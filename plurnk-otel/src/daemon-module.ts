@@ -1,4 +1,4 @@
-// {§otel-module} {§module-self-activation} — this package's daemon module entry ({§module-discovery}): the module reads
+// {§otel-module} {§module-self-activation} — this package's daemon module entry ({§module-lifecycle}): the module reads
 // `OTEL_*` itself, before any SDK or exporter loads.
 import Module from "./Module.ts";
 

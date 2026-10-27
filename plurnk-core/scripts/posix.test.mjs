@@ -12,7 +12,7 @@ const help = ServiceHelp.format(flags);
 const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 const date = "2026-10-09";
 
-test("{§service-posix-artifacts} manual and completions derive their commands and options from service help", () => {
+test("{§operator-config-precedence} manual and completions derive their commands and options from service help", () => {
     const artifacts = renderPosix(help, version, date);
     assert.equal(artifacts.size, 4);
     const manual = artifacts.get("man/plurnk-service.1");
@@ -36,7 +36,7 @@ test("{§service-posix-artifacts} manual and completions derive their commands a
     assert.deepEqual(renderPosix(help, version, date), artifacts);
 });
 
-test("{§service-posix-artifacts} native parsers accept the generated files", async (t) => {
+test("{§operator-config-precedence} native parsers accept the generated files", async (t) => {
     const folder = await mkdtemp(join(tmpdir(), "plurnk-service-posix-"));
     t.after(() => rm(folder, { recursive: true, force: true }));
     for (const [path, content] of renderPosix(help, version, date)) {
@@ -58,7 +58,7 @@ test("{§service-posix-artifacts} native parsers accept the generated files", as
     }
 });
 
-test("{§service-posix-artifacts} bash completes locally and preserves literal filenames", async (t) => {
+test("{§operator-config-precedence} bash completes locally and preserves literal filenames", async (t) => {
     const folder = await mkdtemp(join(tmpdir(), "plurnk-service-completion-"));
     t.after(() => rm(folder, { recursive: true, force: true }));
     const script = join(folder, "completion.bash");

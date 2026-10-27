@@ -4,7 +4,7 @@ import { previewOccurrences, serviceDefinitions, validateConfiguration } from ".
 
 const HEARTBEAT = '{"rule":"FREQ=HOURLY","target":"session://bot","prompt":"Check in."}';
 
-test("{§operator-config-offline-validation} schedule validation normalizes rules at the supplied instant without arming them", () => {
+test("{§operator-config-precedence} schedule validation normalizes rules at the supplied instant without arming them", () => {
     const env = { TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1", PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "3", PLURNK_SCHEDULE_heartbeat: HEARTBEAT };
     const checked = validateConfiguration(env, Date.UTC(2026, 0, 1));
     assert.equal(checked.get("heartbeat")?.definition.rule, "DTSTART;TZID=UTC:20260101T000001\nRRULE:FREQ=HOURLY");

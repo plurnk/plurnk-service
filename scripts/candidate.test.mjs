@@ -32,7 +32,7 @@ const stage = async (t, defined) => {
     return { root: dir, operatorFile };
 };
 
-test("{§operator-config-env-defaults} a pinned runtime retains the installed native configuration catalog", { timeout: 30_000 }, (t) => {
+test("{§operator-config-precedence} a pinned runtime retains the installed native configuration catalog", { timeout: 30_000 }, (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-defaults-"));
     t.after(() => rmSync(fixture, { recursive: true, force: true }));
     const pinned = pinRuntime(root, resolve(fixture, "runtime"));
@@ -486,7 +486,7 @@ test("{§environment-layers} orientation verdict rejects a report that omits cur
     assert.ok(verdict.failed.includes("coverage"));
 });
 
-test("{§operator-config-real-model-profile} personal resources stay inspectable but do not activate in disposable runs", async (t) => {
+test("{§operator-config-precedence} personal resources stay inspectable but do not activate in disposable runs", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-gate-environment-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const envPath = join(directory, ".env");

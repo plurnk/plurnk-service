@@ -22,7 +22,7 @@ introduces no parallel lifecycle dialect or custom `sessionUpdate` variants.
 
 - §acp-daemon-client **The module is a discovered module of the daemon.** The package declares
   `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it
-  ({§module-discovery}); nothing composes it by hand. It claims only `/acp` on the daemon's single
+  ({§module-lifecycle}); nothing composes it by hand. It claims only `/acp` on the daemon's single
   HTTP/WebSocket listener ({§http-host}, {§module-http-mounts}) and owns no separate socket or
   `stdio` transport. Its `setup` registers the `acp` `MessageScheme`, and its `start` seam is
   {§application-port}. A daemon without a listener leaves it out.

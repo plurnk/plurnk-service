@@ -17,7 +17,7 @@ import { discoverDaemonModules } from "./module-discovery.ts";
 import type { WorkspaceCapabilityRelease } from "./WorkspaceCapabilities.ts";
 import type WorkspaceResidency from "./WorkspaceResidency.ts";
 
-// {§module-discovery} — a registered module and its owner, the package it came from.
+// {§module-lifecycle} — a registered module and its owner, the package it came from.
 interface RegisteredModule {
     readonly module: DaemonModule<HostSetupSeam>;
     readonly owner: string;
@@ -50,16 +50,16 @@ export default class DaemonModules {
         this.#workspaceGate = workspaceGate;
     }
 
-    // {§module-discovery} — `owner` is the module's package name; diagnostics name it.
+    // {§module-lifecycle} — `owner` is the module's package name; diagnostics name it.
     register(module: DaemonModule<HostSetupSeam>, owner: string): void {
         this.#modules.push({ module, owner });
     }
 
-    // {§module-discovery} {§module-lifecycle} Discovery composes beside the explicit modules; a daemon without a
+    // {§module-lifecycle} {§module-lifecycle} Discovery composes beside the explicit modules; a daemon without a
     // listener leaves out every module that mounts and says so; what a module contained is its diagnostic; every
     // prefix is claimed; then each module sets up against the seam.
     async setup(seam: HostSetupSeam, discovery: { cwd: string; hostPaths: HostPaths }): Promise<void> {
-        // {§module-discovery} — third-party daemon-module composition: trusted
+        // {§module-lifecycle} — third-party daemon-module composition: trusted
         // packages declaring `plurnk.kind: "module"` register beside the
         // service's explicit composition before any module setup runs.
         const discoveredModules = await discoverDaemonModules({

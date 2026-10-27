@@ -236,7 +236,7 @@ test("{§edit-result-receipt-projection} editReceipt reports mixed line and exac
     );
 });
 
-test("{§operator-config-only-home} editReceipt fails hard when its context tuning is missing or malformed", () => {
+test("{§operator-config-precedence} editReceipt fails hard when its context tuning is missing or malformed", () => {
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     try {
         delete process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;

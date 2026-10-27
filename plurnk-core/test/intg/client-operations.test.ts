@@ -382,7 +382,7 @@ test("{§actor-boundary-client-operations} {§machine-processes} a person's oper
     assert.equal((await daemon.listSessions(workspaceId)).filter(({ origin }) => origin === "_plurnk").length, 1, "the workspace keeps one runtime session");
 });
 
-test("{§actor-boundary-client-operations} {§env-scheme} a person's env:/// is the workspace's: a model's commands receive it, and the runtime session keeps no layer", async (t) => {
+test("{§actor-boundary-client-operations} {§env-functionality} a person's env:/// is the workspace's: a model's commands receive it, and the runtime session keeps no layer", async (t) => {
     const { db, daemon } = await boot(t);
     const { workspaceId } = await daemon.createWorkspace({ name: `client-env-${crypto.randomUUID()}` });
     const sessionId = await namedModelSession(daemon, workspaceId, "main");

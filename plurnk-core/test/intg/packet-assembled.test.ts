@@ -460,7 +460,7 @@ test("{§session-initialization-entry} assembled packet: a reference catalog wit
     }
 });
 
-test("{§operator-config-real-model-profile}: the provider packet excludes personal XDG policy", async (t) => {
+test("{§operator-config-precedence}: the provider packet excludes personal XDG policy", async (t) => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const priorConfig = process.env.XDG_CONFIG_HOME;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-gate-policy-"));

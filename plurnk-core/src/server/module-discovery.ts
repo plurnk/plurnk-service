@@ -10,7 +10,7 @@ import type HostPaths from "../core/HostPaths.ts";
 import PluginSources from "./PluginSources.ts";
 import EnvDefaults from "../core/env-defaults.ts";
 
-// {§module-discovery} Standard plugin bundles and extension packages
+// {§module-lifecycle} Standard plugin bundles and extension packages
 // meet the same daemon lifecycle; project roots never supply native code.
 
 interface ModuleManifest {
@@ -41,7 +41,7 @@ const assertDaemonModule = (
     return value;
 };
 
-// {§module-discovery} — a package names its entry as an export subpath, resolved through its own
+// {§module-lifecycle} — a package names its entry as an export subpath, resolved through its own
 // export map as {§executor-dynamic-runtimes} does, so conditions select source or build; a bundle
 // names a file beneath ai.plurnk/.
 const moduleEntry = async (manifest: NonNullable<Awaited<ReturnType<typeof Meta.readManifest>>>, packageName: string, entry: string): Promise<string> => {
@@ -69,7 +69,7 @@ const readManifest = async (dir: string): Promise<ModuleManifest | null> => {
 export const discoverDaemonModules = async (
     options: { cwd?: string; hostPaths?: HostPaths; packageDirs?: Array<{ dir: string; name: string }>; registered?: ReadonlySet<string> } = {},
 ): Promise<{
-    // Each module with its owner, the package it came from ({§module-discovery}).
+    // Each module with its owner, the package it came from ({§module-lifecycle}).
     readonly modules: ReadonlyArray<{ readonly module: DaemonModule<HostSetupSeam>; readonly owner: string }>;
     readonly skipped: readonly string[];
     readonly reports: readonly PluginReport[];

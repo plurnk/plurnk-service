@@ -31,7 +31,7 @@ export default class ServiceTeardown {
     }
 
     // The settlement is reported once, to exactly one of the two callbacks: the process ends
-    // itself either way ({§crash-only-stop}, #823).
+    // itself either way ({§module-shutdown-order}, #823).
     request(reportFailure: (cause: unknown) => void, onClosed: () => void = () => {}): void {
         if (this.#requested) return;
         this.#requested = true;

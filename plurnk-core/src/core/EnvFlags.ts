@@ -1,8 +1,8 @@
 // Auto-derives admin-CLI flags from the service's .env.defaults. Per the "speak in DSL,
 // not plumbing" / single-source-of-truth ethos: .env.defaults is the
-// canonical config doc ({§operator-config-env-defaults}); the CLI's --flag surface mirrors it.
+// canonical config doc ({§operator-config-precedence}); the CLI's --flag surface mirrors it.
 //
-// Rules ({§operator-config-cli-flags}):
+// Rules ({§operator-config-precedence}):
 //   - Each PLURNK_* env var becomes a --kebab-cased flag (prefix stripped).
 //   - Comment line(s) immediately above (no blank line between) become the
 //     -h description. Section headers (# --- xxx ---) are delimiters,

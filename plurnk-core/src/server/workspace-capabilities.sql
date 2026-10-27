@@ -1,4 +1,4 @@
--- Durable workspace module state. {§module-workspace-state}
+-- Durable workspace module state. {§module-lifecycle}
 
 -- PREP: workspace_module_state_get
 SELECT state
@@ -18,7 +18,7 @@ DELETE FROM workspace_module_state
 WHERE workspace_id = $workspace_id
   AND namespace_owner = $namespace_owner;
 
--- Session-scoped module state ({§module-workspace-state}). Same snapshot, different owner: a
+-- Session-scoped module state ({§module-lifecycle}). Same snapshot, different owner: a
 -- family declares its scope and the coordinator keys state by it, so origin, enabledness and the
 -- service-baseline rules stay one implementation across every family.
 
@@ -41,7 +41,7 @@ WHERE session_id = $session_id
   AND namespace_owner = $namespace_owner;
 
 -- INIT: sessions_inherit_module_state
--- {§functionality-scope} — a Session created with a parent (WORK and FORK alike) starts with a copy
+-- {§functionality-coordinator} — a Session created with a parent (WORK and FORK alike) starts with a copy
 -- of the parent's session-scoped state, taken at creation: the child owns its copy, and neither
 -- side's later edits reach the other. Each copied entry names its source Session (`inherited`),
 -- preserved across generations, so `list` renders provenance rather than claiming the child set it.

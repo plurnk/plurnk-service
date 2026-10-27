@@ -15,7 +15,7 @@ const exists = async (path: string): Promise<boolean> => access(path, constants.
         throw cause;
     });
 
-// {§operator-config-discovery} — the user owns this one ordinary dotenv file.
+// {§operator-config-precedence} — the user owns this one ordinary dotenv file.
 // Package defaults remain package-owned and are projected on demand.
 export default class OperatorConfig {
     // {§credential-authority} — the seed teaches the posture and mints nothing: the daemon mints its
@@ -71,7 +71,7 @@ export default class OperatorConfig {
         ].join("\n");
     }
 
-    // {§operator-config-undeclared-key} The daemon's keys an operator file sets that no installed
+    // {§operator-config-precedence} The daemon's keys an operator file sets that no installed
     // package declares, in file order.
     static undeclared(text: string, declares: (key: string) => boolean): readonly string[] {
         return Object.keys(parseEnv(text)).filter((key) => key.startsWith("PLURNK_") && !FOREIGN.test(key) && !declares(key));
@@ -84,7 +84,7 @@ export default class OperatorConfig {
         await using stage = await mkdtempDisposable(join(dirname(paths.configDir), `.${basename(paths.configDir)}-`));
         await writeFile(join(stage.path, basename(paths.configFile)), OperatorConfig.renderSeed(), { encoding: "utf8", flag: "wx", mode: 0o600 });
         await writeFile(join(stage.path, basename(paths.policyFile)), policy, { encoding: "utf8", flag: "wx", mode: 0o600 });
-        // {§operator-config-discovery}: only a complete seed becomes visible.
+        // {§operator-config-precedence}: only a complete seed becomes visible.
         try {
             await rename(stage.path, paths.configDir);
         } catch (cause) {

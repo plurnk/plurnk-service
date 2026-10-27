@@ -1,4 +1,4 @@
-// {§operator-config-file-create-scope}: one ordered service/workspace ceiling for
+// {§operator-config-workspace-settings}: one ordered service/workspace ceiling for
 // filesystem creation. Admission itself remains owned by file membership; this module
 // only parses and composes the configuration contract.
 

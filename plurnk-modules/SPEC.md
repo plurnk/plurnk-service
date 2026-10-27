@@ -3,7 +3,7 @@
 `@plurnk/plurnk-modules` is the API a daemon module codes against: the lifecycle it implements
 and the base setup seam it receives. It depends on `@plurnk/plurnk-contracts` alone and holds
 only abstractions, so it is the most stable package of the module kind (ARCHITECTURE.md §
-Package principles). The service hosts modules: it discovers them ({§module-discovery}),
+Package principles). The service hosts modules: it discovers them ({§module-lifecycle}),
 drives their lifecycle ({§module-lifecycle}, {§module-shutdown-order}) and implements every
 seam slice.
 
@@ -57,7 +57,7 @@ returned ({§module-shutdown-order}). `close` therefore joins that work rather t
 nothing a module admitted reaches the host after its `close`.
 
 §module-self-activation **A module configures itself.** A discovered module's export is an object
-or a factory taking no arguments ({§module-discovery}), so it reads its own knobs from the
+or a factory taking no arguments ({§module-lifecycle}), so it reads its own knobs from the
 environment its package documents. An unconfigured module is inert: it claims no mounts and
 registers nothing. The host decides nothing on a discovered module's behalf beyond leaving out
 what it cannot host ({§module-http-mounts}).
@@ -69,7 +69,7 @@ list when the module registers and reports each entry as a configuration Notice 
 `module:<package>` ({§configuration-repair-path}), and the offline check fails on it. The report
 is declared, like `mounts`, because the host passes every module one seam object and cannot
 attribute a call to a module. A module that cannot work at all throws from its factory instead
-({§module-discovery}).
+({§module-lifecycle}).
 
 §module-failure **A `setup` or `start` failure fails boot, and stopping releases exactly what was
 acquired.** The host tracks a module that has `stop` or `close` before its `setup`, and a distinct
@@ -117,10 +117,10 @@ contract is the one package that depends on it directly. There is no manifest ve
 
 | Function | Contract |
 | --- | --- |
-| §module-workspace-paths `workspacePaths(workspaceId)` | Returns the host's absolute `home`, the bound `projectRoot` (null for a folderless workspace), and selected read-only `configurationRoots` in highest-precedence-first order ({§agent-roots}). Each root has a `directory` and an opaque `scope` shared with plugin discovery. Modules append their own format's paths and can interleave sources within the same scope; they never reconstruct the host's root selection or order. Configuration inputs do not move with operational state. |
+| §module-workspace-paths `workspacePaths(workspaceId)` | Returns the host's absolute `home`, the bound `projectRoot` (null for a folderless workspace), and selected read-only `configurationRoots` in highest-precedence-first order ({§functionality-inspection}). Each root has a `directory` and an opaque `scope` shared with plugin discovery. Modules append their own format's paths and can interleave sources within the same scope; they never reconstruct the host's root selection or order. Configuration inputs do not move with operational state. |
 | `operatorEnvironment()` | Returns the ambient launch base: the operator's environment without Plurnk configuration or provider credentials ({§execution-output-identity}), not the model's command ceiling. Explicit bindings belong to the consuming module ({§mcp-launch-environment}). |
 | `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§execution-output-identity}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without session overrides. |
-| `readSessionEnvironment(workspaceId, sessionId)` | The same layers with the session's own overrides on top ({§functionality-scope}): what a command of that session runs under. |
+| `readSessionEnvironment(workspaceId, sessionId)` | The same layers with the session's own overrides on top ({§functionality-coordinator}): what a command of that session runs under. |
 | §module-workspace-directory `workspaceStateDirectory(workspaceId, namespaceOwner)` | Returns and creates the module's absolute operational-state directory under the daemon's XDG state home. The host owns placement: the directory survives workspace renames and daemon restarts, and independently created workspaces, including in other databases, receive different directories. The module owns its contents and child-directory lifetimes. |
 | §module-action-registration `registerModuleAction({ name, scope, residency, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `daemon`, `workspace`, or `session`; the handler receives schema-validated params and a separate matching context. `residency` is explicitly `required` or `none`: only the former acquires workspace capabilities and reconciles session documents. Daemon actions require `none`. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
 | §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the host's shared coordinator ({§functionality-coordinator}) and returns its family handle. |
@@ -141,7 +141,7 @@ contract is the one package that depends on it directly. There is no manifest ve
 | Declaration | Rule |
 | --- | --- |
 | The alias grammar | the coordinator enforces whichever grammar the family declares, at admission, in the service projection, and on persisted state, so an environment variable's name is an alias exactly as a skill name is |
-| Addressing ({§functionality-addressing}) | a family whose definitions are named by their own content declares the inputs of `add` and of the select verbs, and how a select input names its alias; its `admit` then returns one admission per definition an `add` names |
+| Addressing ({§functionality-replacement}) | a family whose definitions are named by their own content declares the inputs of `add` and of the select verbs, and how a select input names its alias; its `admit` then returns one admission per definition an `add` names |
 | Admission | distinguishes explicit client actions from model operations where the family contract requires it ({§members-model-scope}) |
 | Preparation | receives each complete definition with optional adapter-owned interpretation context, and returns runtimes, documents, per-alias outcomes, and a snapshot with `publish`/`commit`/`abort`; successful publication publishes, then commits; failure aborts; cooling tears down; protocol continuations remain ordinary module actions |
 | Context | source semantics, not policy or provenance; it participates in runtime identity and hot-load comparisons, is never projected as configuration or persisted into a workspace override, and cannot survive replacement by a local definition; removing that override restores the current inherited definition and context together; descriptive provenance alone does not change runtime identity |
@@ -166,11 +166,11 @@ The host never abandons a preparation promise merely because its signal was abor
 
 Module producer stop may run concurrently with cancelled preparation. Resource and database
 disposal follows joined preparation and cooling under {§module-shutdown-order}; the existing
-absolute deadline ({§crash-only-stop}) bounds non-cooperative work.
+absolute deadline ({§module-shutdown-order}) bounds non-cooperative work.
 
 §functionality-admission-preparation **Admission data belongs to one attempt.**
 `admit` returns `{ alias, definition, preparation? }`, or one such admission per definition an
-addressing family's `add` names ({§functionality-addressing}); the coordinator passes them to
+addressing family's `add` names ({§functionality-replacement}); the coordinator passes them to
 that mutation's `prepare` as `admissions`. The optional `preparation`
 payload is adapter-owned, not configuration: it is never persisted, projected,
 used as definition identity, or carried into later refreshes. Admission and
@@ -179,7 +179,7 @@ state becomes live at `publish`: synchronous, without I/O, inside the coordinato
 registry commit, returning the undo that restores the preceding live state if that
 commit rolls back. `commit` settles what the published state entails, after
 publication; `abort` discards only an unpublished candidate
-({§functionality-publication}).
+({§functionality-coordinator}).
 
 §functionality-discovery-inputs **An adapter declares the discovery inputs it serves.**
 `discovery` names `inputs`, keys of the shared discovery query (`FunctionalityDiscoverInput`:
@@ -188,4 +188,4 @@ everything; and optional `details`, the family's own `discover` teaching. An ada
 `discovery` exactly when it implements `discover`, which receives only a query that declaration
 admits. Registration refuses an empty, repeated or unknown input, and either half without the
 other. Without `discovery` a family serves no discovery and has no `discover` verb
-({§functionality-discover-advertisement}).
+({§functionality-replacement}).

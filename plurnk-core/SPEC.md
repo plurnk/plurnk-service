@@ -32,7 +32,7 @@ Canonical contracts plurnk-service exposes, architecture it implements, promises
 - [Grammar Dependency](#grammar-dependency)
 - [Operator Configuration](#operator-config-operator-configuration)
 - [Module seam](#rpc-module-seam)
-- [Workspace Functionality](#workspace-functionality)
+- [Workspace Functionality](#functionality-coordinator-workspace-functionality)
 - [Application interface](#methods-application-interface)
 - [Packet assembly](#packet-assembly-packet-assembly)
 - [Packet shape](#packet-packet-shape)
@@ -61,7 +61,7 @@ flowchart LR
 | **agent** | PLURNK | The plurnk runtime acting in-workspace as the `_plurnk` session ({§actor-boundary}), never a privileged singleton owning entries ({§execution-output-identity}, {§machine-processes}). |
 | **workspace** | Core | Durable shared resources, configuration, and optional `project_root`. Identity: `workspaces.id`; mutable label: unique `workspaces.name`. |
 | **session** | Core | Durable actor and history over one workspace (`parent_session_id` optional, one process-local cancellation scope while active). |
-| **loop** | Core | Queued-to-terminal unit of work within a session (`100` pending · `102` running · `200` done · `202` waiting, {§send} · `413` input-capacity · `429` turn ceiling · `499` cancelled · `500` failed · `504` timeout, {§operator-config-loop-timeout} · `508` runaway). |
+| **loop** | Core | Queued-to-terminal unit of work within a session (`100` pending · `102` running · `200` done · `202` waiting, {§send} · `413` input-capacity · `429` turn ceiling · `499` cancelled · `500` failed · `504` timeout, {§operator-config-workspace-settings} · `508` runaway). |
 | **turn** | Core | One durable, producer-neutral batch of ordered operations (`(loop_id, sequence)`) authored by `model`, `client`, or `_plurnk`; only a model turn assembles a packet and owns an emission call. |
 | **model call** | Core/provider | One logical `provider.generate` invocation (`(turn_id, sequence)`); emission attempts and BARE inferences share this owner while retries are physical requests beneath it. |
 | **op / statement / action / dispatch** | Core | An op is one submitted DSL operation ({§turn-record}), parsed into a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
@@ -87,7 +87,7 @@ OpenTelemetry may observe PLURNK; it never becomes product state, failure transp
 |---|---|
 | HTTP & general spans | HTTP spans carry only an ACP-owned bounded route class (never pathname/query); other spans carry high-cardinality IDs while metric labels stay low-cardinality; prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads are never recorded by default. |
 | GenAI convention projection | Provider request spans follow the GenAI registry (`c88d504` on core v1.44.0): a `CLIENT` `chat {model}` span with `gen_ai.operation.name="chat"`, `gen_ai.provider.name` (constructed route provider ID, or `other`), `gen_ai.request.model`, settled `gen_ai.usage.input_tokens`/`output_tokens` ({§tokenomics-provider-usage}), `gen_ai.response.finish_reasons`, and failure `error.type` alongside Plurnk attempt/kind/status/loop/turn attributes. |
-| Service session composition | Both the service launcher and live/demo workspace helper discover ACP, MCP, Schedule, and command hooks ({§module-discovery}); management families and reference docs exist even with no enabled definitions, governed by workspace capability policy and {§operator-config-real-model-profile}. The launcher binds the one listener ({§http-host}); the helper binds none ({§module-http-mounts}). |
+| Service session composition | Both the service launcher and live/demo workspace helper discover ACP, MCP, Schedule, and command hooks ({§module-lifecycle}); management families and reference docs exist even with no enabled definitions, governed by workspace capability policy and {§operator-config-precedence}. The launcher binds the one listener ({§http-host}); the helper binds none ({§module-http-mounts}). |
 | Package export surface | `@plurnk/plurnk-service` exports only `./launch` ({§startup-admission}), `./evidence` ({§digest-evidence-reader}), and `./package.json`. |
 
 ### §startup-admission Startup, listener admission, and service commands
@@ -108,13 +108,13 @@ flowchart LR
 - **Runtime floor**: Before any other module of `plurnk-service` evaluates, it checks `process.versions.node` against `engines.node`; below the floor it writes one stderr line naming both versions and exits `1` before binding a listener or touching durable state.
 - **Listener and admission order**: The production service binds its listener ({§http-host}) before creating, opening, migrating, or mutating anything in the durable data directory; losing the bind race leaves storage byte-identical. Core answers `503 service-starting` until database admission and all module starts complete ({§module-http-mounts}). Startup validates model selectors without provider I/O; provider construction and endpoint verification happen on session selection or first use. Any startup failure closes started resources in reverse order (`daemon`, `observability`, `database`, `listener`).
 - **Readiness line**: Once admitted, the service prints one stdout line `plurnk-service acp=<url> db=<json string> route=<json string>` (with IPv6 hosts bracketed and `db`/`route` JSON-encoded). After readiness, `discover` distinguishes this daemon from any other listener.
-- **Daemon launcher (`@plurnk/plurnk-service/launch`)**: Spawns a daemon argv with caller-supplied `readyTimeoutMs` and `stopGraceMs` ({§state-root}), resolving on the readiness line with `{ acpUrl, dbPath, route, logFile, stop }`. Failed starts stop and await the child before throwing with both output streams. `"private"` lifetime pipes streams to the parent and terminates with it; `"shared"` runs in its own process group, appends streams to `logFile` (default `<state dir>/service.log`), reads readiness from that file, and unrefs the child.
-- **`plurnk-service stop`**: Reads the owning PID from the database lock, sends `SIGTERM`, and returns `0` once the process exits ({§crash-only-stop}); an unlocked database reports not running and exits `0`.
+- **Daemon launcher (`@plurnk/plurnk-service/launch`)**: Spawns a daemon argv with caller-supplied `readyTimeoutMs` and `stopGraceMs` ({§host-path-layout}), resolving on the readiness line with `{ acpUrl, dbPath, route, logFile, stop }`. Failed starts stop and await the child before throwing with both output streams. `"private"` lifetime pipes streams to the parent and terminates with it; `"shared"` runs in its own process group, appends streams to `logFile` (default `<state dir>/service.log`), reads readiness from that file, and unrefs the child.
+- **`plurnk-service stop`**: Reads the owning PID from the database lock, sends `SIGTERM`, and returns `0` once the process exits ({§module-shutdown-order}); an unlocked database reports not running and exits `0`.
 - **Explicit update (`PLURNK_SERVICE_UPDATEABLE`)**: Nothing phones a third party or installs packages automatically. Startup loads `$XDG_CACHE_HOME/plurnk/models.json` if present ({§model-catalog-cache}). When `PLURNK_SERVICE_UPDATEABLE=1` (default), `plurnk-service update`, `updateService()`, `service.update`, or `/update` atomically refreshes `models.json`, hot-swaps the active catalog, and updates installed `@plurnk/plurnk-service` (and co-installed `@plurnk/plurnk`) via `npm` (or reports `status: "source"` in a checkout). When `0`, update requests fail with `403 update-disabled`.
 
 ### §http-host Shared HTTP host and request origin
 
-Core binds one HTTP listener on `PLURNK_HOST:PLURNK_PORT` and exposes `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)`, and `httpAddress()` on the application port ({§application-port}, {§module-host-capabilities}).
+Core binds one HTTP listener on `PLURNK_HOST:PLURNK_PORT` and exposes `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)`, and `httpAddress()` on the application port ({§application-port}, {§module-lifecycle}).
 
 | Aspect | Rule |
 |---|---|
@@ -128,7 +128,7 @@ Every credential presented to the listener is an opaque in-memory token (`access
 
 | Surface | Rule |
 |---|---|
-| `PLURNK_AUTH` posture | When `1`, holds `PLURNK_SECRET` or mints a `0600` `secret` file beside the database before admitting mounts and requires a published auth face; when `0`, no secret file or face exists and mounts admit anonymously ({§operator-config-shared-keys}). |
+| `PLURNK_AUTH` posture | When `1`, holds `PLURNK_SECRET` or mints a `0600` `secret` file beside the database before admitting mounts and requires a published auth face; when `0`, no secret file or face exists and mounts admit anonymously ({§operator-config-precedence}). |
 | Confidential module clients | At setup a module calls `registerClient({ id, redirectPaths, scopes, stylesheetPath })` (`id` matching `[A-Za-z0-9._-]+` except `operator`; pathnames under its own mounts without query/fragment, {§auth-oauth-documents}, {§auth-oauth-endpoints}). The authority mints an in-memory secret for the registrant and verifies it in constant time (`authenticateClient`, {§auth-oauth-clients}); duplicate or malformed registrations throw. |
 | Credential sessions | `sessions(subject)` lists families holding a live `session` credential ({§auth-oauth-session}), oldest first (family handle, subject, created timestamp, expiry, client IDs); `client_credentials` and code grants without a browser session are omitted. |
 
@@ -145,7 +145,7 @@ flowchart LR
     client["User / client"] -->|"loop.inject<br/>voice door"| log
 ```
 
-- **Session isolation & attribution**: A packet renders only the assembling session's log alongside shared workspace state ({§packet}, {§membership}). `origin` (`model \| client \| _plurnk`, {§scheme-surface}) records provenance ({§env-delta}) and never filters rows. Client management commands mutate workspace Functionality ({§module-workspace-capabilities}) while client ops journal in `_plurnk` ({§connection-lifecycle}).
+- **Session isolation & attribution**: A packet renders only the assembling session's log alongside shared workspace state ({§packet}, {§membership}). `origin` (`model \| client \| _plurnk`, {§scheme-surface}) records provenance ({§env-delta}) and never filters rows. Client management commands mutate workspace Functionality ({§module-lifecycle}) while client ops journal in `_plurnk` ({§connection-lifecycle}).
 - **Two cross-session doors**:
   1. *Environment door*: Direct child durable activity ({§env-delta-child-activity}) enters only the direct parent's log (never republished to grandparents), and successful mutations of `workspace:///` emit one broadcast occurrence to every existing session (unioned with parent lineage so a parent never gets duplicate rows). Intermediate child activity and commons broadcasts never wake; only a child's terminal disposition wakes a parked parent ({§session-loop-lifecycle}, {§env-delta}).
   2. *Voice door*: Directed `loop.inject`, `SEND (session://name)`, or exact-message replies ({§message-reply-delivery}) enter the addressed session's log and wake idle or waiting work.
@@ -224,7 +224,7 @@ flowchart LR
 | Concern | Rule |
 | --- | --- |
 | Baseline and exceptions | To a workspace a project file is **invisible**, **added**, or **tracked by git**; ambient admission of untracked files is prohibited ({§fs-write-surface}). Exceptions enter only by exact creation records (`source: "create"`, origin `constraint` from accepted EDIT or COPY/MOVE destinations), standard instruction projection (`AGENTS.md` / `AGENTS.local.md` into `workspace:///_plurnk/…` unless ignored or excluded, {§session-initialization-entry}), or model `members` proposals under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}) and `PLURNK_MEMBERS_AUTO_ADD` ({§membership-auto-add}). |
-| Native Git and hermetic execution | Core Git reads (`git ls-files`, `git status`, `git check-ignore -v`) execute the installed Git binary with ambient `GIT_*` and global/system config scrubbed, `core.fsmonitor=false`, `core.hooksPath=/dev/null`, and only the daemon user's `core.excludesFile` preserved. Repositories declaring `filter.<name>.clean` or `filter.<name>.process` are skipped with a `git_inspection_refused` notice. `PLURNK_SERVICE_GIT_ALLOWED` gates `PLURNK_SERVICE_GIT_AUTO` ({§operator-config-git-ceiling}). |
+| Native Git and hermetic execution | Core Git reads (`git ls-files`, `git status`, `git check-ignore -v`) execute the installed Git binary with ambient `GIT_*` and global/system config scrubbed, `core.fsmonitor=false`, `core.hooksPath=/dev/null`, and only the daemon user's `core.excludesFile` preserved. Repositories declaring `filter.<name>.clean` or `filter.<name>.process` are skipped with a `git_inspection_refused` notice. `PLURNK_SERVICE_GIT_ALLOWED` gates `PLURNK_SERVICE_GIT_AUTO` ({§operator-config-workspace-settings}). |
 | Ignore attribution and edit gate | An ignore refusal or `discover` verdict names its rule (`<file>:<line>`) from `git check-ignore -v`; negated patterns re-include paths. EDIT is bounded by membership: existing non-members refuse 403 before reading or writing bytes; accepted creations recursively create missing parent directories. |
 | Web discovery and retrieval | Web search is an ordinary MCP concern ({§mcp-tool-presentation}); executors prefetch discovered pages through the generic `content: null` `entry()` request ({§execution-output-identity}) into `WebFetcher`, which materializes sanitized readable projections under canonical HTTP URLs ({§scheme-address}) and omits failed candidates. |
 
@@ -285,7 +285,7 @@ stateDiagram-v2
 When a loop parks on live work, `PLURNK_SERVICE_WAIT_SEC` (or `WAIT [seconds]`, `{§send-wait-scope}`) commits `wait_until` atomically with the wait revision; `WAIT [0]` or an idle `WAIT` continues at `102` without parking.
 
 - **Wake identity and completion revision**: Timers and wakes bind to the exact loop and wait generation. Each loop captures the session's completion revision and acknowledges it before inference only after every addressed reply/child terminal has crossed the observation cursor and every closed stream has published its terminal channels.
-- **First-claim latency and execution allowance**: `loops.claimed_at` is stamped once by trigger on first entry to `102`. The first execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` ({§operator-config-loop-timeout}) on the loop; active execution segments (inference, retries, turn-lock waits, proposal waits, optimistic holds) consume that allowance via a monotonic clock, while parked/queued/offline intervals do not. Exhaustion aborts execution with `504`.
+- **First-claim latency and execution allowance**: `loops.claimed_at` is stamped once by trigger on first entry to `102`. The first execution snapshots `PLURNK_SERVICE_LOOP_TIMEOUT` ({§operator-config-workspace-settings}) on the loop; active execution segments (inference, retries, turn-lock waits, proposal waits, optimistic holds) consume that allowance via a monotonic clock, while parked/queued/offline intervals do not. Exhaustion aborts execution with `504`.
 - **Recipient selection and loop-addressed admission**: Unaddressed session arrivals select the running loop, else the oldest parked loop, else a new queued loop under the session's admission lock. When `runLoop` specifies an explicit `loopId`, admission requires that exact loop to belong to the session and remain unresolved, failing `409 daemon/admission/loop-not-open` rather than falling back to a new loop.
 
 ### §session-causal-admission Drains, cancellation, settlement, and restart recovery
@@ -653,7 +653,7 @@ AST: `{ runtime, target, body: string | null, lineMarker }`. Execution refuses a
 
 ### §exec-target-routing Target routing, scratch realization, and registry resolution
 
-The engine routes unconditionally to `exec`, resolves `runtime` from the workspace snapshot at dispatch (installed base plus {§module-workspace-capabilities} overlays; unknown tag `400`, unavailable probe `501`, configuration failure `503` {§configuration-repair-path}), validates {§executor-invocation} or {§executor-tool-registry} before effect admission, and prepares metadata under {§executor-metadata} using `project_root` (or daemon cwd when headless) as default `cwd`.
+The engine routes unconditionally to `exec`, resolves `runtime` from the workspace snapshot at dispatch (installed base plus {§module-lifecycle} overlays; unknown tag `400`, unavailable probe `501`, configuration failure `503` {§configuration-repair-path}), validates {§executor-invocation} or {§executor-tool-registry} before effect admission, and prepares metadata under {§executor-metadata} using `project_root` (or daemon cwd when headless) as default `cwd`.
 
 | Target / Condition | Outcome |
 | --- | --- |
@@ -689,7 +689,7 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | Workspace entries & output | Every entry belongs to one workspace `(workspace_id, scheme, authority, pathname)` ({§entry-address-resolution}). Each execution claims an 8-hex path (`sh:///ab3d5678`) in the workspace commons; deleting a producer session keeps its output. Stored output stays readable when an attachment is disabled or removed, while live control/input binds the workspace resource and wakes the initiating session. |
 | `entry()` sink ({§executor-entry-sink}) | Publishes textual, binary ({§binary-parity}), or HTTP-materialized ({§web-materialization-contract}, {§html-materialization}, {§http-materializer-extensions}) resources under `<invocation>/resources/` ({§resource-publication-names}) with one runtime `EDIT` row ({§env-delta-entry-materialization}). |
 | Session & workspace names | Unnamed sessions allocate 8 random lowercase hex chars (`session://ab3d5678`). Workspace names are unique non-empty strings refusing digit-only (`[0-9]+`), ill-formed Unicode, or `.`/`..` segments (`400 name-invalid`). Default workspace name abbreviates daemon home to `~` (matching `projectLabel` / `project_label`), reusing an existing workspace of that name ({§methods-workspace-rename}, {§methods-workspace-attach}); headless unnamed workspaces draw 5 alphanumeric chars with at least one letter from {§line-anchors}. |
-| Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}, {§state-root}, always excluding `PLURNK_*` and provider API key vars) → workspace `env` → session `env` ({§env-functionality}, {§configuration-definition-resolution}) → invocation `env`. Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-launch-environment}. |
+| Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}, {§host-path-layout}, always excluding `PLURNK_*` and provider API key vars) → workspace `env` → session `env` ({§env-functionality}, {§configuration-repair-path}) → invocation `env`. Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-launch-environment}. |
 
 ## §proposal Proposals and client interactions
 
@@ -788,959 +788,159 @@ Core consumes the language, schemas, and generated types under {§contract-repre
 
 ## §operator-config Operator Configuration
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§host-path-layout} | Host filesystem layout |
-| {§state-root} | A private daemon has one root. |
-| {§operator-config-precedence} | Configuration is one environment cascade. |
-| {§operator-config-env-defaults} | The environment defaults: every package owns its knobs, one assembled floor. |
-| {§operator-config-undeclared-key} | A key no panel declares is reported, never refused. |
-| {§operator-config-only-home} | The cascading environment is the only home for a choice. |
-| {§operator-config-source-errors} | A configuration source's errors surface. |
-| {§operator-config-discovery} | The conventional `plurnk-service config` command family is a view over the environment cascade, never another… |
-| {§operator-config-offline-validation} | `config check` and runtime use the same owning configuration readers, with different failure boundaries. |
-| {§systemd-user-unit} | The service package ships `plurnk.service` as an example systemd user unit. |
-| {§nginx-example} | The service package ships `plurnk.nginx.conf`, an example nginx front, beside the unit and under the same… |
-| {§operator-config-shared-keys} | Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` — The daemon-owned… |
-| {§operator-config-git-ceiling} | `PLURNK_SERVICE_GIT_ALLOWED` — Hard service ceiling: only `1` admits Git membership and status; every other… |
-| {§operator-config-file-create-scope} | `PLURNK_SERVICE_FILE_CREATE_SCOPE` — Hard file-creation ceiling: `none < root < namespace`. |
-| {§operator-config-loop-timeout} | `PLURNK_SERVICE_LOOP_TIMEOUT` — Positive ms of cumulative active execution per loop… |
-| {§operator-config-session-warm} | `PLURNK_SERVICE_WORKSPACE_WARM_MS` — Milliseconds a lease-free workspace Functionality snapshot remains warm;… |
-| {§operator-config-flag-parity} | The companion **flag-parity** check binds code and template both ways: every `PLURNK_SERVICE_*` the service… |
-| {§operator-config-cli-flags} | Admin CLI configuration flags derive from the service panel and the contracts-owned shared keys… |
-| {§service-posix-artifacts} | The service package ships `dist/man/plurnk-service.1` and Bash, Zsh and Fish scripts in `dist/completions/`,… |
-| {§turn-cap-counts-the-tree} | The turn ceiling is the session tree's budget of model calls. |
-| {§operator-config-max-turns-ceiling} | Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. |
-| {§operator-config-workspace-settings} | Client open-context (per workspace). |
-| {§operator-config-workspace-files-items} | `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens… |
-| {§operator-config-workspace-max-commands} | `settings.maxCommands` (number) **min()s** the `PLURNK_SERVICE_MAX_COMMANDS` per-emission cap for the… |
-| {§operator-config-workspace-max-commands-floor} | **The max-commands floor bounds *actions* only.** WAIT is never counted and always dispatch, so `0` is a… |
-| {§operator-config-workspace-git} | `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the… |
-| {§operator-config-workspace-file-create-scope} | `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root <… |
-| {§operator-config-workspace-capabilities} | `settings.capabilities` is one workspace-stable `CapabilityPolicy` layer in {§capability-admission}. |
-| {§operator-config-shipped-defaults} | The shipped `.env.defaults` is itself under test. |
-| {§operator-config-real-model-profile} | Real-model gate profile. |
-| {§operator-config-zero-pin-gate} | Zero-pin is a counterfactual real-model gate, not another configuration source. |
-<!-- /map -->
-
 ### §host-path-layout Host filesystem layout
 
-On XDG-compatible hosts, artifact semantics select the default location. An
-unset or empty base variable uses the XDG default; a relative value is invalid
-and is ignored rather than resolved against the working directory. When the
-daemon projects an ambient environment for subprocess or module launches
-({§execution-output-identity}, {§mcp-launch-environment}), its resolved `HOME` and XDG
-base directories replace any ambient values they supersede, and an absent
-`XDG_RUNTIME_DIR` is omitted.
+On XDG-compatible hosts, artifact semantics select the default location. An unset or empty base variable uses the XDG default; a relative value is ignored rather than resolved against the working directory. When the daemon projects an ambient environment for subprocess or module launches ({§execution-output-identity}, {§mcp-launch-environment}), its resolved `HOME` and XDG base directories replace any ambient values they supersede, and an absent `XDG_RUNTIME_DIR` is omitted.
 
 | Class | Base | Plurnk member |
 |---|---|---|
-| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, plurnk-only MCP definitions `plurnk/mcp.json`, Agent Skills `plurnk/skills/<name>/SKILL.md`, and Agent Plugins `plurnk/plugins/<plugin>/` |
-| Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars |
-| Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}). |
-| Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§startup-admission}); no directory is created until an explicit update writes it. |
-| Shared global Agent Skills | User home | `.agents/skills/<name>/SKILL.md` |
-| Shared global MCP definitions | User home | `.agents/mcp.json` |
-| Shared global Agent Plugins | User home | `.agents/plugins/<plugin>/` ({§agent-plugins-hosting}) |
-| A plugin's `PLUGIN_DATA` | `$XDG_DATA_HOME` | `plurnk/plugins/<plugin>/` |
+| Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, `plurnk/mcp.json`, `plurnk/skills/<name>/SKILL.md`, `plurnk/plugins/<plugin>/` |
+| Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars; `plurnk/plugins/<plugin>/` (`PLUGIN_DATA`) |
+| Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}) |
+| Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§startup-admission}); created on explicit update |
+| Shared global roots | User home | `.agents/skills/<name>/SKILL.md`, `.agents/mcp.json`, `.agents/plugins/<plugin>/` ({§functionality-inspection}) |
 
-§state-root **A private daemon has one root.** `PLURNK_SERVICE_STATE_ROOT` (absolute; a leading
-`~/` expands; a relative value fails hard by name) replaces the data, state, cache and runtime homes
-with `<root>/data`, `<root>/state`, `<root>/cache` and `<root>/runtime`, the database with them
-(`PLURNK_SERVICE_DB_PATH` still names the database exactly). Configuration stays where the cascade
-reads it and the shared Agent Skills root stays under the user's home: a state root separates what
-the daemon *writes*, not what the operator supplies, and is no execution sandbox. What a launcher
-keeps or removes under a root after the daemon stops is that launcher's retention decision.
+`PLURNK_SERVICE_STATE_ROOT` (absolute; `~/` expands; relative fails hard by name) replaces data, state, cache, and runtime homes with `<root>/{data,state,cache,runtime}`, moving the default database with them (`PLURNK_SERVICE_DB_PATH` still overrides explicitly). Newly created config/data directories use `0700` and newly seeded `.env` files use `0600`.
 
-The service creates only a directory required by the current command. A newly
-created configuration or data directory uses mode `0700`; a newly seeded
-secret-bearing `.env` uses `0600`. Existing user-owned permissions are not
-rewritten. Explicit Plurnk path overrides retain `~/` expansion and their
-ordinary precedence; XDG variables themselves require absolute paths.
+### §operator-config-precedence Environment cascade, defaults floor, and CLI
 
-§operator-config-precedence Configuration is one environment cascade. Higher-priority sources preserve or replace values supplied by every lower source:
+Higher-priority sources preserve or replace values supplied by lower sources:
 
-| Priority | Source                             | Ordering                                                  |
-|---------:|------------------------------------|-----------------------------------------------------------|
-|        1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key.                     |
-|        2 | `$XDG_CONFIG_HOME/plurnk/.env`     | User-level ambient configuration.                         |
-|        3 | `--config=<path>`                  | Singular service-owned explicit file.                     |
-|        4 | `--env-file*`                      | Repeatable explicit files; later selected files win.      |
-|        5 | Initial shell environment          | Preserved over every file layer.                          |
-|        6 | Derived service CLI flags          | Assigned last.                                            |
+| Priority | Source | Ordering |
+|---:|---|---|
+| 1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key (`@plurnk/*`, `package.json#plurnk`, or winning daemon-wide Agent Plugin `ai.plurnk/.env.defaults` under {§extension-trust-boundary}). |
+| 2 | `$XDG_CONFIG_HOME/plurnk/.env` | User-level ambient configuration. |
+| 3 | `--config=<path>` | Singular service-owned explicit file. |
+| 4 | `--env-file*` | Repeatable explicit files; later selected files win; `--env-file-if-exists` skips absent files. |
+| 5 | Initial shell environment | Preserved over every file layer. |
+| 6 | Derived service CLI flags | Assigned last (`--<kebab-cased-name>` from active `PLURNK_SERVICE_*` and shared keys). |
 
-A working directory's `.env` configures that directory's application, never plurnk (#926); a
-project's variables reach its commands through the workspace environment ({§execution-output-identity}).
+A working directory's `.env` never configures plurnk (#926). At boot, any `PLURNK_*` key in `$XDG_CONFIG_HOME/plurnk/.env` or `--config` not declared by an assembled panel (or client/bench namespaces) emits one `info` Notice from `engine:configuration` (`configuration_undeclared`) without blocking boot. `scripts/env-surface-policy.mjs` enforces that the cascading environment is the only home for a choice (`undeclared`, `fallback`, `reader-fallback`, `default-constant`, `tunable`, `timer-literal`, `dead-knob`, `duplicate-owner`, `test-floor`), and the flag-parity check binds `PLURNK_SERVICE_*` reads and `.env.defaults` declarations both ways.
 
-Node's pre-script env-file form and the executable's post-script form share the same later-file-wins ordering. `--env-file-if-exists` skips an absent file without changing the order of selected files.
+`plurnk-service config` inspects the cascade (`config`, `config edit`, `config defaults`, `config check`). Offline `config check` validates core, MCP, schedule, hooks, and discovered module configuration with the same owning readers as runtime, failing nonzero on invalid configuration without creating a database, starting a listener, or contacting endpoints. First-run seeding publishes the private config directory atomically without reseeding existing directories. The package ships example `plurnk.service` and `plurnk.nginx.conf` templates plus generated `dist/man/plurnk-service.1` and `dist/completions/{bash,zsh,fish}`.
 
-§operator-config-env-defaults **The environment defaults: every package owns its knobs, one assembled floor.**
+Shared keys (`PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS`, and optional `PLURNK_ACP_URL`) are owned by `@plurnk/plurnk-contracts`. Shipped `.env.defaults` is tested directly (modelless, no local GBNF, single policy section). `plurnk-core/.env.test` is the committed real-model gate profile (complete catalog orientation, git admitted when allowed, ambient operator notes/skills/plugins/MCP/schedules isolated, server approval set to accept, `PLURNK_SERVICE_POLICY` cleared). Zero-pin (`PLURNK_ZERO_PIN=1`) strips `PLURNK_PROVIDERS_CONTEXT_WINDOW` and alias output/reasoning budgets after env files and before the defaults floor so capacity derives naturally.
 
-| Source | Panel | Admission |
+### §operator-config-workspace-settings Service ceilings, loop limits, and workspace settings
+
+Each service knob in `plurnk-core/.env.defaults` is enforced at its owning read site:
+
+- **Ceilings** (most-restrictive-wins — operator caps it, no client or call widens it): `PLURNK_SERVICE_GIT_ALLOWED` (`1` admits Git membership/status, else denied), `PLURNK_SERVICE_FILE_CREATE_SCOPE` (`none < root < namespace`), `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none < root < namespace`), `PLURNK_SERVICE_MAX_COMMANDS` (per-emission action ceiling; `-1` uncapped; WAIT is exempt so `0` admits lifecycle-only turns), `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` uncapped; positive clamps `runLoop({ maxTurns })`).
+- **Loop and workspace bounds**: `PLURNK_SERVICE_LOOP_TIMEOUT` (cumulative active execution ms per loop; `504 loop_timeout` on exhaustion), `PLURNK_SERVICE_WORKSPACE_WARM_MS` and `PLURNK_SERVICE_WORKSPACE_WARM_MAX` ({§module-workspace-residency}), `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES`, `PLURNK_SERVICE_PROVIDER_RECOVERY*`, `PLURNK_SERVICE_EMISSION_ATTEMPTS`, `PLURNK_SERVICE_BUDGET_*`, `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES`, `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES`, `PLURNK_SERVICE_MIN_CYCLES`, `PLURNK_SERVICE_MAX_CYCLE_PERIOD`, `PLURNK_SERVICE_FILES_ITEMS`, `PLURNK_SERVICE_EXEC_CONCURRENCY`, `PLURNK_SERVICE_EXEC_SCRATCH`, `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS`.
+- **Session-tree turn budget**: owned by the current loop of the topmost non-`_plurnk` ancestor-or-self session; every emission turn and BARE call on the owner's loop and its descendants spends one unit; `LoopDriver` rules `429 max-turns` ({§loop-terminals}) and refuses over-budget BARE calls before any provider request.
+
+`workspace.create({ settings })` validates, normalizes, and persists per-workspace client settings on `workspaces.settings`:
+
+| Field | Admitted value | Composition |
 |---|---|---|
-| Extension package | `.env.defaults` at the package root | `@plurnk/*` or a `plurnk` package field; {§extension-trust-boundary} |
-| Agent Plugin extension | `ai.plurnk/.env.defaults` | The winning daemon-wide plugin in {§agent-plugins-hosting}, a valid native declaration, and the same trust gate |
-
-Root and trust flags apply before collection. A project plugin contributes no native panel.
-Non-module native panels follow their framework's npm-only discovery ({§extension-manifest-read});
-a plain-folder declaration does not suppress an installed extension's panel.
-Linked packages resolve panels against the same canonical root as native code;
-an absent panel is optional, but a panel escaping that root is rejected.
-The file travels with its code and is its configuration reference. All admitted files compose
-one floor, applied set-if-unset beneath operator sources. `plurnk-service config defaults`
-renders those same owner-labelled files, preserving comments and optional declarations without
-persisting another copy or exposing effective values. Duplicate key ownership fails naming both
-owners. Invalid optional native panels are diagnosed and prevent that extension from loading;
-they do not block the remaining floor or the repair path ({§configuration-repair-path}).
-
-§operator-config-undeclared-key **A key no panel declares is reported, never refused.** At boot the
-daemon checks each `PLURNK_*` key the operator's configuration files set — `$XDG_CONFIG_HOME/plurnk/.env`
-and a `--config` file, never an `--env-file*` layer or the process environment — against the
-assembled panels' declarations, live and commented alike. A declaration whose name holds a
-`<placeholder>` segment declares a family and is only ever commented. A placeholder, like the scope
-after a declared name's `_`, stands for one or more letters, digits, `_`, `.` or `-`.
-
-| Key the file sets | Outcome |
-|---|---|
-| A declared name | none |
-| A declared name, `_`, and a scope (`PLURNK_PROVIDERS_EFFORT_<alias>`, `PLURNK_MODEL_<alias>`) | none |
-| A family member (`# PLURNK_MCP_<alias>=` declares `PLURNK_MCP_docs_ENABLED`) | none |
-| Another component's: the client's `PLURNK_CLIENT_*` and `PLURNK_COMPOSITION_*`; the bench's `PLURNK_BENCH*`, `PLURNK_SWEBENCH_*`, `PLURNK_PI_*` and `PLURNK_CANDIDATE_*` | none |
-| Any other `PLURNK_*` key | one `info` Notice from `engine:configuration`, kind `configuration_undeclared`, naming the `key` and the file |
-
-Boot continues. The notice is the operator's information: `start`, `config` and `config check` print
-it, `config check` still passes, and it never enters a model's packet.
-
-§operator-config-only-home **The cascading environment is the only home for a choice.** The principle and its reasons are ARCHITECTURE.md's (*Configuration authority*); this is what `scripts/env-surface-policy.mjs` enforces in `root:lint`, over the source Git tracks:
-
-| Rule | What it refuses |
-|---|---|
-| `undeclared` | a knob read that no panel declares, live or as an optional knob; a computed name is covered by one declared example of its family |
-| `fallback` | a read that carries its own value |
-| `reader-fallback` | a reader whose signature accepts one, so a caller could state what the panel did not |
-| `default-constant` | a constant named `DEFAULT_*`: *default* is a word reserved for a value on the panel |
-| `tunable` | a numeric constant whose own name says duration, size, count or pacing, unless `scripts/env-surface-mechanism.json` registers why it is mechanism |
-| `timer-literal` | a bare number handed to a timer or a deadline; it is named or read from the panel, and has no register |
-| `dead-knob` | a live declaration nothing consumes |
-| `duplicate-owner` | a key two packages declare |
-| `test-floor` | a package that ships a panel and tests off it |
-
-Reading the system environment directly is the mechanism and never a finding. The allowance file is a ratchet — new debt is refused, and so is a paid debt left on the books — and it is empty. The register is not a debt: it is the reviewed list of deliberate non-knobs, each with its reason, and an entry whose number is gone is refused.
-
-§operator-config-source-errors **A configuration source's errors surface.** An optional member file may be absent; other read failures surface with the
-owning package and original cause, never as an incomplete successful catalog.
-
-§operator-config-discovery The conventional `plurnk-service config` command
-family is a view over the environment cascade, never another configuration
-representation. `config` reports the canonical `.env`, actual source order,
-and model-selection state; `config edit` opens that file through `$VISUAL` or
-`$EDITOR`; `config defaults` emits the aggregate above; and `config check`
-validates the provider-free configuration contracts without starting a model
-or provider request. The seeded `.env`, first-run diagnostic, service help, and
-missing-model recovery all signpost `plurnk-service config defaults` as the
-complete installed option catalog.
-
-§operator-config-offline-validation **`config check` and runtime use the same
-owning configuration readers, with different failure boundaries.** An offline
-check rejects invalid configuration with a nonzero exit. Runtime contains
-optional-family errors according to {§configuration-repair-path}. Failure
-names the offending variable or file/entry and retains its cause.
-
-| Owner | Offline validation |
-|---|---|
-| Core | Model selection, file-creation/effect/approval policy, members definitions and controls, skill-fetch settings and root selection |
-| MCP | Whole definitions from the environment and selected files (cwd is the project for this check), future-alias controls, catalog settings, timeouts, retry pacing and registry URL |
-| Schedule | Whole definitions and controls, recurrence syntax, time zone and preview count |
-| Hooks | Command/argument/event configuration and delivery bounds |
-| Discovered modules | Each module's own configuration, as its factory constructs it ({§module-self-activation}) |
-
-Disabled definitions and controls without a resource are validated, not skipped.
-Checking creates no database, starts no process or listener, arms no schedule,
-and contacts no provider or endpoint. Symbolic credential references remain
-symbolic: availability belongs to workspace preparation, not offline validation.
-
-First-run seeding publishes the complete private configuration directory atomically.
-Concurrent initializers adopt the winning seed; a failed initializer removes only
-its own staging directory. An existing operator directory is never reseeded.
-
-§systemd-user-unit The service package ships `plurnk.service` as an example
-systemd user unit. Installation and enablement are explicit operator actions;
-package installation performs neither. The template documents executable-path
-and environment adjustments instead of introducing a service-management command.
-
-§nginx-example The service package ships `plurnk.nginx.conf`, an example nginx front, beside
-the unit and under the same terms. Hardening belongs there, not in the daemon: TLS, security
-headers, sign-in throttling by real client address and an optional network allow-list. The
-daemon answers every caller at the address it used ({§http-host}); behind TLS it is
-told the public origin (`PLURNK_AUTH_ISSUER`),
-which it cannot see.
-
-Model selection uses one selector vocabulary in `ProviderRegistry` ({§provider-instantiation}). `PLURNK_MODEL_<alias>=<provider>/<model-id>` optionally declares a friendly route and tuning scope; `PLURNK_MODEL=<selector>` selects either that alias or an exact provider/model route. `PLURNK_MODEL_CHILD=<selector>` uses the same vocabulary for the default child provider; unset means inherit the spawning loop's provider. Operator selections and alias declarations live in `.env`, not `.env.defaults`.
-
-Each knob's value lives on its panel and nowhere else (`plurnk-service config defaults` prints them all); this table says what the service's knobs mean.
-
-| Var | Purpose |
-|---|---|
-| `PLURNK_SERVICE_DB_PATH` | SQLite file path; an explicit non-empty value overrides the derived default. |
-| `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` | Connection-time WAL durability: `OFF`, `NORMAL`, `FULL` or `EXTRA` ({§db-durability}). |
-| `PLURNK_SERVICE_SHARE_FOLDER` | Parent of the shares written when no folder is named ({§share-folder}); empty is `$XDG_STATE_HOME/plurnk/shares`. |
-| §operator-config-shared-keys Shared keys: `PLURNK_HOST`, `PLURNK_PORT`, `PLURNK_AUTH`, `PLURNK_SECRET`, `PLURNK_PASS` | The daemon-owned listener's bind address and TCP port; modules mount their paths on that one listener ({§http-host}). The daemon's authentication posture, the operator's client secret and the operator's browser sign-in ({§credential-authority}, {§auth-oauth}). **A key the daemon and its clients both read has a shared owner**: `@plurnk/plurnk-contracts` declares these, and the optional `PLURNK_ACP_URL`, on its own panel, the one package every side depends on. The daemon folds it like any installed member's, a client folds it beneath its own, and so neither holds the other's default. The service's `--host`, `--port`, `--auth`, `--user` and `--pass` flags are generated from that panel. |
-| §operator-config-git-ceiling `PLURNK_SERVICE_GIT_ALLOWED` | Hard service ceiling: only `1` admits Git membership and status; every other value denies them. |
-| §operator-config-file-create-scope `PLURNK_SERVICE_FILE_CREATE_SCOPE` | Hard file-creation ceiling: `none < root < namespace`. `none` denies new filesystem files, `root` admits only paths inside `project_root`, and `namespace` also admits canonical outside-root paths. Existing-member writes are unaffected. |
-| `PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES` | Byte ceiling in `1..104857600` for one workspace-file snapshot ({§derivation-dedup-parallel}). |
-| `PLURNK_SERVICE_MAX_TURNS` | Operator model-call **ceiling** — `-1` = no cap; a positive value clamps `runLoop({maxTurns})`. The durable session-tree budget includes descendant calls, BARE, and park/resume under {§turn-cap-counts-the-tree}; non-model chronology consumes none. |
-| `PLURNK_SERVICE_MAX_COMMANDS` | Per-emission action ceiling; `-1` = no cap — every resolved op dispatches. Each concrete operation counts once, whether authored separately, in a group ({§target-group}), or selected by a glob ({§op-methods-op-dispatch}). Overflow ops drop with one durable `max-commands-exceeded` error row on the next packet. Lifecycle operations remain exempt ({§operator-config-workspace-max-commands-floor}). Tightened per workspace via `settings.maxCommands` (min wins). |
-| §operator-config-loop-timeout `PLURNK_SERVICE_LOOP_TIMEOUT` | Positive ms of cumulative active execution per loop ({§session-wait-timing}); excludes parked/queued time. Snapshotted on first execution, retained across wakes. Exhaustion aborts in-flight work and terminates `504 loop_timeout`, including a stuck provider call. |
-| `PLURNK_SERVICE_PROVIDER_RECOVERY` | ms of recovery after the first recoverable provider failure; `0` disables reissue. Expiry parks sessions with a reviewer, otherwise concludes their loop, or returns BARE's failure under {§engine-rails}. |
-| `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF` | First recovery delay (ms); doubles per failure up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX` ({§engine-rails}). |
-| `PLURNK_SERVICE_MAX_STRIKES` | Consecutive turn-contract strike threshold ({§engine-rails}). |
-| `PLURNK_SERVICE_EMISSION_ATTEMPTS` | Completed provider responses allowed beneath one engine turn before frame admission is exhausted. Bounded interior operation errors are admitted without spending this budget. Exhaustion contributes one frame-contract strike under {§emission-admission}. |
-| `PLURNK_SERVICE_BUDGET_PRESSURE` | Budget percentage above which the gauge names its largest rows ({§context-gauge}); measured before adding the inventory. |
-| `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` | How many of the heaviest retained log rows the pressured gauge names ({§context-gauge}). |
-| `PLURNK_SERVICE_LINE_ANCHOR_CONTEXT_LINES` | Minimum neighboring lines hashed on each side; repeated handles expand their context ({§line-anchors}). |
-| `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
-| `PLURNK_SERVICE_MIN_CYCLES` | Min repetitions before cycle detection fires ({§engine-rails}). |
-| `PLURNK_SERVICE_MAX_CYCLE_PERIOD` | Max period length cycle detection examines ({§engine-rails}). |
-| `PLURNK_SERVICE_FILES_ITEMS` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§session-initialization-entry}). |
-| `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
-| `PLURNK_SERVICE_EXEC_CONCURRENCY` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-lifetime}). |
-| `PLURNK_SERVICE_EXEC_SCRATCH` | Directory a standalone execution source is written to for its run; empty derives `$XDG_RUNTIME_DIR/plurnk`, else the platform temporary directory ({§exec-target-routing}). |
-| `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal}). |
-| §operator-config-session-warm `PLURNK_SERVICE_WORKSPACE_WARM_MS` | Milliseconds a lease-free workspace Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-workspace-residency}). |
-| `PLURNK_SERVICE_WORKSPACE_WARM_MAX` | Maximum lease-free workspace Functionality snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-workspace-residency}). |
-
-Every core knob listed is enforced at its owning read site; `.env.defaults` is the authoritative default ({§operator-config-env-defaults}). Provider, scheme, executor, mimetype, and client-interface knobs are documented by their owning packages and appear in the assembled catalog.
-
-**Two override semantics — ceiling vs default.** Which kind a var is determines what "override" means across the cascade:
-
-- **Ceiling** (most-restrictive-wins) — an operator-set hard bound nothing downstream may exceed: not a lower-precedence file, not a per-workspace constraint, not a per-call seam argument. `PLURNK_SERVICE_GIT_ALLOWED` ({§operator-config-git-ceiling}), `PLURNK_SERVICE_FILE_CREATE_SCOPE` ({§operator-config-file-create-scope}), `PLURNK_SERVICE_MAX_COMMANDS`, `PLURNK_SERVICE_MAX_STRIKES`, and `PLURNK_SERVICE_MAX_TURNS` (`-1` = no cap; a positive value caps the per-call request). The sandbox/cost guarantee: the operator caps it; no client widens it.
-- **Default** (explicit-wins) — a fallback the most-specific setter replaces freely: `PLURNK_MODEL` (a `runLoop({selector})` request overrides it) and the config-time vars (`HOST` / `PORT` / `DB_PATH`).
-
-§operator-config-flag-parity The companion **flag-parity** check binds code and
-template both ways: every `PLURNK_SERVICE_*` the service reads has a
-`.env.defaults` line — a floor, a `--flag`, and a legend entry — and every
-declared `PLURNK_SERVICE_*` is read. A half-landed rename therefore fails a test
-instead of a user's boot, and a dead knob cannot ship.
-
-Feature-flag bools use `process.env.X === "1"` exactly — never `=== "true"`.
-
-External extensions declare their own env vars in their own `.env.defaults`, assembled at boot ({§operator-config-env-defaults}).
-
-§operator-config-cli-flags **Admin CLI configuration flags derive from the service panel and the contracts-owned shared keys ({§operator-config-shared-keys}).** Each active `PLURNK_*` declaration becomes `--<kebab-cased-name>` (prefix stripped, lowercased, underscores → dashes). A comment immediately above the declaration becomes its `-h` description; undescribed flags still show their environment name and default. Installed extension defaults join the environment floor and catalog but do not implicitly expand the service executable's flag surface.
-
-§service-posix-artifacts The service package ships `dist/man/plurnk-service.1`
-and Bash, Zsh and Fish scripts in `dist/completions/`, generated at build time
-from the same help and panel descriptors as the executable. Completion supplies
-command and long-option names plus ordinary filename completion; it does not
-start the service, inspect configuration values, or contact a provider. Installing
-the manual or enabling completion is explicit and documented in `INSTALL.md`.
-
-### Loop limits
-
-§turn-cap-counts-the-tree **The turn ceiling is the session tree's budget of model calls.**
-
-| Fact | Rule |
-| --- | --- |
-| The owner | the current loop of the topmost ancestor-or-self session that has one, excluding the runtime actor (origin `_plurnk`): for a tree a client started, the root session's loop current when this loop began (its `max_turns`: the client's `maxTurns` clamped by the operator ceiling below); a loop with no such ancestor owns its own budget; a child loop inherits the value and binds the same count |
-| What spends it | every model call on the owner's loop and on any later loop of the owner's descendants, emission turns and BARE calls alike, open or settled, one per call however many physical requests it took |
-| The ceiling | `LoopDriver` reads the tree's count before each turn and rules the `max-turns` 429 terminal ({§loop-terminals}) when the ceiling is met; a BARE beyond the budget is refused 429 `max-turns` before any provider call, so one turn cannot spend past it with a batch |
-
-The runtime actor supplies no ceiling and does not combine otherwise independent model
-subtrees into one allowance. Its descendants still share their own model tree's ceiling.
-The shipped ceiling is `-1` (uncapped); client and transport defaults introduce no finite cap.
-
-§operator-config-max-turns-ceiling Enforcement is per-use-site — no central most-restrictive pass; each ceiling is checked where it bites. `PLURNK_SERVICE_MAX_TURNS` at `-1` is no cap; when an operator sets a positive value, the per-call request is `min()`-capped against it. Other termination rules remain independent ({§loop-terminals}).
-
-### Workspace settings
-
-§operator-config-workspace-settings **Client open-context (per workspace).**
-`workspace.create({ settings })` accepts only the following fields, normalizes
-them before creating the workspace, and persists the resulting snapshot on
-`workspaces.settings`. Unknown fields and malformed values fail at that input
-boundary. Operator-arcane knobs stay environment-only.
-
-| Field                  | Admitted value                                 | Composition / owner                                           |
-| ---------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
-| `settings.filesItems`  | Integer `>= -1`                                | Explicit replacement {§operator-config-workspace-files-items} |
-| `settings.maxCommands` | Non-negative integer                           | Tightening ceiling {§operator-config-workspace-max-commands}  |
-| `settings.git`         | Boolean                                        | Tightening denial {§operator-config-workspace-git}            |
-| `settings.fileCreateScope` | `none`, `root`, or `namespace`             | Tightening ceiling {§operator-config-workspace-file-create-scope} |
-| `settings.client`      | Nonempty string                                | Stable self-identification {§emission-admission}                 |
-| `settings.capabilities` | `CapabilityPolicy`                            | Subtractive capability layer {§operator-config-workspace-capabilities} |
-
-The composition families remain distinct so one setting's semantics never
-leak into another.
-
-*Defaults — explicit-wins (the client replaces/merges freely):*
-
-- §operator-config-workspace-files-items `settings.filesItems` (number) **replaces** `PLURNK_SERVICE_FILES_ITEMS` for the workspace: a one-shot opens clean (`0`, no preview), with ordinary markerless pages (`-1`), or with the file list explicitly capped (`N`, other surveys remain markerless). A single scalar — the client value wins outright.
-*Ceilings — most-restrictive-wins (the client may only narrow, never widen):*
-
-- §operator-config-workspace-max-commands `settings.maxCommands` (number)
-  **min()s** the `PLURNK_SERVICE_MAX_COMMANDS` per-emission cap for the
-  workspace: a client tightens the runaway-op guard and never raises it past
-  the operator's.
-- §operator-config-workspace-max-commands-floor **The max-commands floor bounds *actions* only.**
-  WAIT is never counted and always dispatch, so `0` is a valid
-  floor, admitting lifecycle intent with zero actions. Dropped actions still prevent
-  successful completion under {§turn-disposition}.
-- §operator-config-workspace-git `settings.git` (`false`) **denies** git for the workspace (`PLURNK_SERVICE_GIT_ALLOWED` AND workspace) — the client opts its workspace out of git membership and working-tree status; it can never re-enable git past the operator's service-wide lockout.
-- §operator-config-workspace-file-create-scope `settings.fileCreateScope` narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` by the ordered lattice `none < root < namespace`; a workspace may disable creation or confine a namespace-enabled service to its root, but never widen the operator's ceiling. Unknown service values fail configuration validation and unknown workspace values fail `workspace.create`.
-- `settings.membersModelScope` narrows `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}).
-- §operator-config-workspace-capabilities `settings.capabilities` is one
-  workspace-stable `CapabilityPolicy` layer in {§capability-admission}. It may
-  narrow any registered operation, scheme, runtime, tool, access class, or
-  trait through the canonical `only`/`deny` selectors; it cannot register a
-  capability or restore one removed by the service layer.
-
-### Gate profiles
-
-§operator-config-shipped-defaults **The shipped `.env.defaults` is itself under
-test.** It has no active `PLURNK_MODEL`; no active local GBNF constraint; and
-the policy renders in exactly one packet section. Every other tier runs the
-test cascade, so shipped-default regressions are otherwise invisible by
-construction.
-
-§operator-config-real-model-profile **Real-model gate profile.** `plurnk-core/.env.test` is committed source and is the single shared profile for live, demo, and the candidate daemon used by benchlets. Live/demo load it after operator files; the candidate daemon loads it below its inherited environment. Direct shell/benchmark overrides win in both paths. No operator file is rewritten; definitions remain inspectable. Its exact allowlist is limited to gate-wide service posture that is identical on every machine:
-
-- complete catalog orientation;
-- automatic Git membership when the operator ceiling permits Git;
-- ambient operator-file docs/packet notes cleared;
-- the operator's installed skills and plugins left unread ({§agent-roots});
-- server approval set to accept ({§session-ownership});
-- ambient MCP and schedules default disabled; the drivers also project per-alias `ENABLED=0` overrides for named MCP, schedule, membership, and skill resources in the operator's config file, and Mock-tier bootstrap clears these ambient families before loading its fixture floor.
-
-Configuration with a narrower or variable owner stays outside it:
-
-| Owner | Configuration |
-|---|---|
-| `.env.test` | Universal real-model gate posture, with no model selection, alias declarations, routes, secrets, model tuning, or cost/sandbox ceilings. |
-| Live/demo scripts | The repository policy path and runner topology. |
-| Benchlets | Their snapshotted policy, workspace restrictions, and task-specific exceptions; direct env wins over the profile. |
-| Operator env/shell | Model alias declarations and explicit selection overrides, provider capability such as GBNF, endpoints, credentials, tuning, and deliberate ceiling overrides. |
-| `test/setup.ts` | Mock-only alias, envelope, resource, storage, and isolation fixtures; unit/integration never consume the real-model profile. |
-
-The profile clears `PLURNK_SERVICE_POLICY`, disabling the implicit XDG
-`AGENTS.md` policy under {§policy-sections}. Mock tests do the same in their
-bootstrap. Live/demo and benchmarks may select a harness-owned policy explicitly;
-none implicitly inherit the daily-driving policy. This does not disable project
-`AGENTS.md` guidance or modify the operator's file.
-
-The profile does not repeat `NODE_OPTIONS`: runner selection belongs to the invoking command, and a process-global Node option would leak into the daemon and its children. Hard ceilings such as max turns, max commands, and Git denial remain operator-owned; harnesses bound paid experiments through their per-call contract and never widen a configured ceiling here.
-
-§operator-config-zero-pin-gate **Zero-pin is a counterfactual real-model gate,
-not another configuration source.** The live/demo `:zeropin` scripts load the
-ordinary environment cascade, then the test floor removes operator model tuning
-before assembled package defaults fill unset values:
-
-| Configuration family                                      | Zero-pin treatment |
-|-----------------------------------------------------------|--------------------|
-| Any `PLURNK_PROVIDERS_CONTEXT_WINDOW`                     | Remove             |
-| Alias-specific output and reasoning budgets              | Remove             |
-| Model selection, routes, and credentials                  | Retain             |
-| Bare shipped generation-envelope defaults                | Retain             |
-| Unrelated environment                                     | Retain             |
-
-The floor reports every removed key. A gate that succeeds only with those pins
-is red because provider capacity did not derive for
-a fresh-user configuration.
+| `settings.filesItems` | Integer `>= -1` | Replaces `PLURNK_SERVICE_FILES_ITEMS` (`0` none, `-1` markerless, `N` file-map cap) |
+| `settings.maxCommands` | Non-negative integer | `min()`-tightens `PLURNK_SERVICE_MAX_COMMANDS` (bounds actions only; WAIT exempt) |
+| `settings.git` | Boolean | `false` denies git for the workspace; never overrides operator lockout |
+| `settings.fileCreateScope` | `none \| root \| namespace` | Narrows `PLURNK_SERVICE_FILE_CREATE_SCOPE` in `none < root < namespace` |
+| `settings.membersModelScope` | `none \| root \| namespace` | Narrows `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-functionality}) |
+| `settings.client` | Nonempty string | Stable client self-identification ({§emission-admission}) |
+| `settings.capabilities` | `CapabilityPolicy` | Subtractive workspace capability layer ({§capability-admission}) |
 
 ---
 
 ## §rpc Module seam
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§module-lifecycle} | Module lifecycle and setup seam |
-| {§module-discovery} | Daemon modules compose through their shared lifecycle. |
-| {§module-shutdown-order} | Module shutdown is four phases in order under one deadline. |
-| {§crash-only-stop} | The settle sequence is deadline-bounded (`PLURNK_SERVICE_STOP_TIMEOUT_MS`): one absolute deadline spans… |
-| {§module-host-capabilities} | The coordinator's host interface is core's own. |
-| {§module-workspace-provider} | `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` — Registers one extension-unique… |
-| {§module-workspace-state} | `readWorkspaceModuleState(workspaceId, namespaceOwner)` — Reads one nullable JSON state value per workspace… |
-| {§module-workspace-capabilities} | `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` — Atomically replaces one… |
-| {§workspace-environment-sharing} | The workspace owns its shared environment. |
-| {§module-workspace-quiescence} | A Functionality snapshot changes between workspace operations. |
-| {§module-workspace-sharing} | Workspace sharing: sessions share Functionality by reference. |
-| {§module-workspace-residency} | Persistence is not residency. |
-| {§module-workspace-residency-facet} | Residency is the workspace's; processes are one family's facet. |
-<!-- /map -->
+Core implements {§application-port} and hosts `@plurnk/plurnk-modules` ({§module-contract}) on its single listener ({§http-host}). Client-interface modules (`plurnk-acp`) own their public wire protocol and event projection.
 
-Core implements the contracts-owned {§application-port} and hosts the module
-contract published in `@plurnk/plurnk-modules` ({§module-contract}). It owns the one
-listener modules mount on ({§http-host}), but no public action-name catalog or generic
-string-dispatched method registry. A
-client-interface module such as `plurnk-acp` owns its public protocol, action
-names, request validation, discovery result, and event projection.
-
-### §module-lifecycle Module lifecycle and setup seam
+### §module-lifecycle Module lifecycle, discovery, and setup seam
 
 ```mermaid
 flowchart LR
-    bind["Host binds the daemon's listener<br/>unadmitted"] --> register
-    register["Register explicit, then discovered modules"] --> setup["module.setup(ModuleSetupSeam)"]
-    setup --> capabilities["Register static capabilities,<br/>workspace activators, and actions"]
-    capabilities --> ready["Process-wide schemes ready"]
+    bind["Bind listener unadmitted"] --> register["Register explicit + discovered modules"]
+    register --> setup["module.setup(ModuleSetupSeam)"]
+    setup --> ready["Process-wide schemes ready"]
     ready --> recovery["Reconcile durable lifecycle"]
     recovery --> start["module.start(ApplicationPort)"]
-    start --> interface["Listener admitted:<br/>module-owned client protocol ready"]
-    recovery -->|durable workspace work| demand["First workspace demand"]
-    interface -->|client workspace work| demand
-    demand --> lease["Acquire capability residency"]
-    lease --> activate["Activate if cold;<br/>publish workspace docs"]
-    activate --> calls["Typed ApplicationPort calls"]
-    calls --> release["Release demand lease"]
-    release --> warm["Bounded warm grace / idle LRU"]
-    warm -->|new demand| lease
-    warm -->|idle bound| cool["Deactivate providers;<br/>withdraw runtime projections"]
-    interface -->|daemon call| calls
-    calls --> core["Core state and orchestration"]
-    core --> events["subscribeToEvents<br/>(workspaceId, event, payload)"]
-    events --> interface
+    start --> admit["Listener admitted"]
 ```
 
-Every registered module's `setup` runs in registration order before any module's `start` ({§module-phases}; failures follow {§module-failure}). Core then readies process-wide schemes, reconciles durable lifecycle, and starts modules in registration order. `setup` is the readiness boundary for every capability registered with Core: recovery may demand a workspace provider before `start`, and no registered capability may depend on exterior ingress.
+Every registered module's `setup` runs in registration order before any module's `start` ({§module-phases}). Persisted workspaces with no durable work stay passive until first demand. Modules and `start` return values may implement idempotent `stop()` (reject new ingress, settle producers while keeping observer subscriptions alive) and `close()` (unsubscribe observers and release resources).
 
-| Fact | Rule |
-| --- | --- |
-| The listener | bound before durable admission ({§startup-admission}) and admitted once every module has started ({§module-http-mounts}); requests on it remain unavailable until it is admitted, and a module opens any other exterior ingress only after recovery |
-| Persisted workspaces with no durable work | stay passive until first demand; activation publishes their complete capabilities and documentation before the demanding operation proceeds; an owner's arrival is such a demand ({§methods-workspace-activate}), so a first prompt waits only for what remains of it |
+Daemon modules are discovered from trusted extension packages (`package.json#plurnk` with `kind: "module"`) and daemon-wide Agent Plugins (`plugin.json#extensions.ai.plurnk` with `kind: "module"`). Standard bundles follow {§functionality-inspection} source order, then package-name order; explicitly registered module owners are not rediscovered; modules declaring HTTP mounts are omitted when no listener is bound ({§module-http-mounts}). Invalid declarations or module config errors are diagnosed under `extensions` or `module:<package>` without breaking healthy siblings.
 
-A module, and any distinct lifetime object returned by `start`, may implement the following phases:
+Core's setup seam also exposes host capabilities for the Functionality coordinator and witnesses: `credentials` ({§credential-authority}), `httpAddress()`, `registerRuntimes(...)`, `registerWorkspaceCapabilityProvider(namespaceOwner, provider)`, `readWorkspaceModuleState(workspaceId, namespaceOwner)` (and `session_module_state`), and atomic `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })`. Each {§module-workspace-directory} is lazily allocated with a stable random key in `workspace_module_state` (`0700`) and preserved across cooling and shutdown.
 
-| Phase | Obligation |
+### §module-shutdown-order Module shutdown and deadline
+
+`Daemon.stop()` runs four phases under one shared deadline (`PLURNK_SERVICE_STOP_TIMEOUT_MS`):
+
+1. Reject new capability demand, cancel preparation ({§functionality-preparation-cancellation}), and abort proposals, branches, derivations, and session scopes.
+2. Begin module `stop()` calls in reverse registration order concurrently.
+3. Settle drains, workspace activation/cooling transitions, capability publications, module producers, streaming producers, derivations, mimetypes, schemes, and session cancellation/wake tasks while observers remain subscribed.
+4. Join module `close()` calls in reverse order, then maintain and close the database and listener.
+
+Phase failures join one shutdown aggregate without skipping later phases. Past `PLURNK_SERVICE_STOP_TIMEOUT_MS`, unfinished waits abandon with a named error rather than hanging teardown, and the CLI exits (`0` clean, `1` reported error).
+
+### §module-workspace-residency Workspace sharing, quiescence, and residency
+
+The workspace owns its shared environment (enabled skills, MCP servers, outbound agents, membership definitions, runtime publication, tool outputs, and scratch); sessions own only their logs and session-scoped context. Sessions share workspace Functionality by reference with one effective definition per `(workspace, family, alias)`.
+
+A Functionality snapshot changes only between workspace operations under one exclusive workspace gate:
+
+- Explicit client mutations acquire with `try` (failing `409` while the workspace is held).
+- Accepted model operation mutations acquire with `wait` (yielding the turn's shared lease during publication and reacquiring before the next operation).
+- Activation and turn-admission refresh run inside their already-held demand boundary.
+- Providers reject replacement while active requests, input exchanges, or Tasks depend on the old snapshot.
+
+Model execution, capability-aware operations, residency-requiring module actions, and retained provider work lease workspace Functionality; inspection, listing, attachment, and parked state do not. After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` and `PLURNK_SERVICE_WORKSPACE_WARM_MAX` bound idle residency (`0` immediate cooling, `-1` unbounded). Cooling withdraws live capabilities and process runtimes (MCP servers) at the workspace boundary while preserving durable state in `workspace_module_state`.
+
+## §functionality-coordinator Workspace Functionality
+
+One coordinator owns the common lifecycle across all Functionality families (`list | discover | add | replace | enable | disable | remove`), serialized per scope and family for both client actions (`<scope>.<family>.<verb>`) and the workspace `plurnk` tool.
+
+| Verb | Contract |
 |---|---|
-| `stop()` | Reject new ingress, stop timers and other producers, and settle owned work that can emit core events. Keep event subscriptions and resources needed for settlement alive. |
-| `close()` | Unsubscribe observers and release remaining resources after producer settlement; await admitted notification deliveries. Do not start new core work. |
+| `list` | Project definitions, `origin`, winning `provenance` (`{ kind, source, reference? }`), `enabled`, and published outcome (`disabled`, `dormant`, `active`, `unavailable` with Problem, or `authorization-required`). Never expose secret values. |
+| `discover` | Return inert candidates for the family's declared discovery inputs; never install, persist, or execute. |
+| `add` | Admit, persist, prepare, and enable a local definition atomically (`201` created/override, `200` identical reapply, `409 alias-exists` on conflicting local definition). |
+| `replace` | Whole-definition assignment to an explicit alias (`201` created/override, `200` existing local update; preserves existing enabledness; absent on content-addressed families). |
+| `enable` / `disable` | Publish an available definition (retrying preparation if unavailable) or withdraw live capability while retaining the definition (`200`). |
+| `remove` | Forget the local definition and enabledness override, restoring any inherited definition and its inherited enabledness (`200`). |
 
-Both phases are optional and idempotent; repeated calls join the same work.
-Core tracks a module before `setup` so partially acquired resources are released
-even if setup fails. A returned object identical to its module is tracked once.
+An adapter declares `scopes` (default `["workspace"]`, e.g. Skills, MCP, members; or `["session", "workspace"]` for Environment). Durable state `{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }` lives in `workspace_module_state` or `session_module_state`. Session-scoped state is copied on WORK/FORK with `inherited` provenance and serializes on the session lane without workspace exclusivity. Publication atomically replaces state and runtimes via {§module-lifecycle}, running the coordinator's and adapter's synchronous `publish` callbacks (with composable undo on rollback) followed by `commit`.
 
-§module-discovery **Daemon modules compose through their shared lifecycle.**
+### §functionality-replacement Mutation verbs, addressing, and replacement
 
-| Source | Declaration | Lifetime |
-|---|---|---|
-| Extension package | `package.json#plurnk` with `kind: "module"` and `module`, an export subpath resolved through the package's own exports as in {§executor-dynamic-runtimes} | Daemon-wide; the form every first-party default module uses |
-| Agent Plugin | `plugin.json#extensions.ai.plurnk` with `kind: "module"` and a `module` path under `ai.plurnk/` | Daemon-wide; npm and selected user roots only |
-| Project Agent Plugin | Portable components only | Workspace-scoped; native code is not imported |
+- **Replacement**: validates the complete definition without merging omitted fields; disabled candidates persist without preparation; failed admission, preparation, or publication keeps the prior publication and returns the exact Problem; `authorization-required` publishes its handoff (`202`).
+- **Content-addressed families (`addressing`)**: `add` admits all definitions in the body or none, returning `definitions` in body order; `replace` is not served; `enable`, `disable`, and `remove` take the family's select input and report the resolved `alias`.
+- **Discovery advertisement**: the coordinator builds `discover` schemas strictly from the adapter's declared `FunctionalityDiscoverQuery` inputs (`source` for `skills`/`schedule`, `query` for `mcp`/`members`, `query`+`source` for `env` where empty lists the whole catalog). Unserved or empty inputs fail `400 arguments-invalid`.
 
-The export is one DaemonModule ({§module-contract}) object or no-argument factory. The host records each module's owner, the package it came from, and its diagnostics name that owner. The service registers no module itself; a host that registers one explicitly, such as a test substituting a package, names it by its package the same way. What a module contributes registers through its owning public interfaces and is released during {§module-lifecycle} resource teardown.
+### §configuration-repair-path Definition resolution, provenance, and repair path
 
-| Fact | Rule |
-| --- | --- |
-| Order | standard bundles follow {§agent-plugins-hosting} source order, then other installed module packages load in package-name order; all trusted modules register before setup, and a daemon without a listener then leaves out every one that declares mounts ({§module-http-mounts}) |
-| Explicit registration | a package the host registered explicitly is never also discovered: discovery skips that owner before importing it |
-| Untrusted modules | reported and not imported |
-| Invalid declarations, unavailable module files and configuration errors during construction | diagnosed at the affected extension, a declaration's error owned by `extensions` and a module's own configuration error by `module:<package>`; healthy siblings remain available; a factory validates startup configuration before `setup` acquires resources |
-| Failures after registration begins | follow {§module-lifecycle} cleanup, not a partial-registration fallback |
-| An invalid module object, factory result or lifecycle member | an implementation contract failure, not configuration, and fails loudly |
+Named definitions replace whole from the highest-precedence source or scope without field-level inheritance; `ENABLED` controls resolve independently ({§resource-environment}). Provenance reports only the winning definition's source (`environment` key, `SKILL.md` path, or `mcp.json` path + JSON Pointer) and is derived on inspection.
 
-§module-shutdown-order **Module shutdown is four phases in order under one deadline.** `Daemon.stop()`:
+Invalid optional configuration never removes the agent's repair environment:
 
-1. rejects new capability demand, cancels preparation under {§functionality-preparation-cancellation}, and aborts proposals, branches, derivations, and session scopes;
-2. begins module `stop()` calls in reverse registration order without serially awaiting them, so every producer is asked to stop even if another stalls;
-3. settles drains, whole workspace activation and cooling transitions, capability publications, module producers, streaming producers, derivations, mimetypes, schemes, and the final session-settlement barrier while observers remain subscribed;
-4. only then begins and joins module `close()` calls in reverse order.
+- Optional startup integrations (hooks, observability), invalid model/child selectors, invalid effect/file-creation/approval policies, invalid retention settings, invalid executor probes, and unresolved family configurations record `engine:configuration` Notices (`configuration_unavailable` naming `key` and `owner`) while keeping the client interface, unaffected families, and repair tools operational.
+- Affected operations return `503 daemon:configuration/configuration-invalid` (or the family's exact configuration Problem) without guessing fallbacks.
+- Corrected sources resolve immediately on inspection and restore capabilities on the next publication.
 
-| Rule | What |
-| --- | --- |
-| Failures | do not skip later phases and join one shutdown aggregate; expected preparation cancellation is not a shutdown failure, genuine preparation and cleanup failures are |
-| Supervisor tasks | the supervisor owns each asynchronous cancellation and wake task from acceptance through settlement, including immediately acknowledged and explicitly awaited cancellation, and a task failure participates in the shutdown aggregate; after asynchronous selection it rechecks shutdown before creating a drain or installing a timer, and parked-loop wake mutations also recheck session cancellation under {§session-causal-admission} |
-| The database | remains available through observer closure, which joins the work module routes admitted ({§module-route-settlement}), and final maintenance |
-| Residency transitions | are retained from stop admission through settlement, including failed transitions; one failure does not stop the join of other workspaces |
-| The deadline | the shared deadline bounds every phase, including observer delivery; forced shutdown may therefore lose notifications and reports the unfinished phase |
+### §functionality-inspection Inspection, preparation visibility, and hot-load
 
-§crash-only-stop The settle sequence is deadline-bounded
-(`PLURNK_SERVICE_STOP_TIMEOUT_MS`): one absolute deadline spans daemon drains
-and the enclosing observability, database, and HTTP-listener cleanup. No phase
-renews the budget. The service joins core's bounded producer/observer drain
-before releasing enclosing resources, including on timeout. Past the deadline each wait
-is abandoned with a named error instead of hanging the daemon on a child that
-never closes. A wedged child costs a forced shutdown; it must never cost an
-unbounded one. Later cleanup phases are still attempted. When the teardown settles, success or failure, the process ends
-itself: `0` after a clean teardown, `1` after a reported one. A handle an abandoned
-wait left alive never keeps a stopped daemon running; the supervisor's kill is a
-backstop, not the exit.
+- **Inspection is not demand**: `list` and `discover` never acquire residency, join preparation, reconcile docs, or extend warm timers; enabled definitions not yet prepared by a resident publication report `dormant`.
+- **Preparation visibility**: `workspacePreparationStatus(workspaceId)` and `workspace/preparation` broadcast `{ workspaceId, preparation: [{ family, phase: "preparing" | "publishing", alias, since }] }` until settlement.
+- **Hot-load (`refreshIfChanged`)**: turn admission checks out-of-band sources under the workspace gate before packet assembly and republishes only when enabled definitions or tracked content changed.
+- **Agent Plugins and discovery roots**: `PLURNK_SERVICE_ROOTS` (comma list of `project`, `plurnk`, `global`; default all three) selects which `.agents` and `$XDG_CONFIG_HOME/plurnk` roots are read. Plugins resolve in order: `<project>/.agents/plugins/*`, `$XDG_CONFIG_HOME/plurnk/plugins/*`, `~/.agents/plugins/*`, then installed npm plugin bundles (with `PLUGIN_DATA` under `$XDG_DATA_HOME/plurnk/plugins/<name>/<sha256(canonical-root)>`). Adapters may also expose a `scheme` facet (`env://`, `schedule://`) claiming a path subtree.
 
-```mermaid
-flowchart LR
-    stop[Begin stop] --> abort[Abort core producers]
-    stop --> moduleStop[Begin reverse module stop]
-    abort --> drains[Settle session drains]
-    drains --> residency[Join workspace transitions<br/>and capability publications]
-    residency --> joined[Settle module producers]
-    moduleStop --> joined
-    joined --> producers[Settle streaming producers]
-    producers --> resources[Dispose derivations,<br/>mimetypes, and schemes]
-    resources --> settlement[Settle cancellations and wakes]
-    settlement --> observers[Close observers and resources]
-    observers --> database[Maintain and release database]
-```
+### §env-functionality Environment family and env scheme
 
-§module-host-capabilities **The coordinator's host interface is core's own.**
-The daemon passes one object implementing every published slice
-({§module-seam-slices}); these functions are on it too, for core's
-Functionality coordinator and core's own witnesses, and are not part of the
-published module contract.
+Environment is a session- and workspace-scoped family (`env`). Ambient names admitted by the operator ceiling precede workspace defaults and session overrides. `add` and `replace` bind `{ "value": "…" }` verbatim; `PLURNK_*` and provider credential names are refused at admission. `list` shows effective values and origins. `discover` exposes settable declarations from installed `.env.defaults` panels (`query` matches name/comment; `source` filters by package or fails `400 source-unknown`).
 
-| Setup function | Contract |
-|---|---|
-| `credentials` | The {§credential-authority} on the setup seam: the issuing module publishes its face (`publish({ issuer })`) before any module starts, and every module may `verify` through it. |
-| `httpAddress()` | The address of the listener the host bound before any module set up ({§http-host}), as on the application port: the issuing module derives its issuer from it at setup, so the face it publishes answers from publication. |
-| `registerRuntimes([{ decl, executor, availability, scheme? }, ...])` | Validates the complete canonical tag set under {§executor-runtime-declaration}, then publishes every process-wide executor and optional claimed scheme facet atomically. |
-| §module-workspace-provider `registerWorkspaceCapabilityProvider(namespaceOwner, provider)` | Registers one extension-unique Functionality provider. `activate({ workspaceId, retain })` reconstructs the workspace snapshot; idempotent `deactivate({ workspaceId })` releases process resources. Core coalesces demand and supplies residency leases for work that outlives its caller. |
-| §module-workspace-state `readWorkspaceModuleState(workspaceId, namespaceOwner)` | Reads one nullable JSON state value per workspace and provider. Core owns storage and lifecycle; the provider owns its schema. Store symbolic credential references, not copied secrets. A session-scoped family's coordinator reads and replaces the same shape per session in `session_module_state` ({§functionality-scope}). |
-| §module-workspace-capabilities `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })` | Atomically replaces one provider's durable state and runtime/scheme snapshot at the workspace operation boundary. Namespace claims are validated before mutation. Failure restores the prior state and publication. |
+The `env` scheme projects every effective name for the dispatching Session at `env:///NAME`:
 
-Core keys each {§module-workspace-directory} by a stable random workspace
-storage key in its own `workspace_module_state` row.
-Module directory allocation is lazy, atomic in SQLite, and independent of the
-project root, daemon CWD, and workspace/session environment overrides. New
-directories use mode `0700`; existing permissions are not rewritten. Module
-names occupy a single encoded path component. Missing workspaces, invalid
-stored keys, and filesystem failures are errors, never a fallback to CWD.
-Allocated state is not erased on cooling, disable, removal, or shutdown: its
-contents may be persistent or referenced by retained results. Deleting a
-workspace forgets its storage key through the existing foreign key; old disk
-state is not reassigned or automatically purged. A database copy preserves its
-storage identities; the directory is operational state, not a backup of it.
+- `READ` returns the verbatim value (`404 entry-not-found` if unset/masked); `FIND` lists effective names and matches values; `COPY` copies values out.
+- `EDIT` sets the whole value in the Session's layer (or workspace layer for `_plurnk`); `KILL` removes a session-owned entry or disables an inherited one (`400 value-whole` on line scopes; `400 name-invalid` / `target-required` on invalid coordinates).
 
-§workspace-environment-sharing **The workspace owns its shared environment.**
-Sessions own their logs; delegation retains its existing lifecycle.
-Creating, attaching, forking, cancelling, or deleting a session does not create,
-transfer, or remove ownership of workspace tools or shared resources.
+### §functionality-model-projection Model projection, documents, and mutation settlement
 
-| Fact | Owner |
-|---|---|
-| Enabled skills, MCP servers, outbound agents, and membership definitions | Workspace |
-| Runtime publication, connection residency, and alias configuration | Workspace and the registered provider |
-| Submitted operation, receipt, pending interaction, and cancellation signal | Originating operation in its session's history |
-| Saved tool output and materialized resource bytes | Workspace; independent of live provider availability |
-| Named and commons scratch | Workspace |
-| Log | Session |
+Core registers the in-process `plurnk` runtime at boot (`resourcesPath: "/tools"`, `expandTools: true`), publishing `plurnk (<family>)` tools alongside `plurnk (question)` ({§question-tool}), backed by generated docs at `workspace:///_plurnk/tools/plurnk.md` and `workspace:///_plurnk/tools/plurnk/<family>.json` (incorporating `docs/<family>.md` description body and boot-validated `add` examples). Enabled, active definitions project generated session documents ({§session-scheme}); disabled, unavailable, or capability-denied families project none.
 
-§module-workspace-quiescence **A Functionality snapshot changes between workspace operations.** Mutation admission, external installation/removal, preparation, and publication hold the same exclusive gate. Every mutation or background refresh acquires that gate before the family's serialization lane; turn-admission refresh uses its already-held gate. A queued background refresh cannot own the family lane while waiting for a turn that needs that lane. Settling the coordinator includes accepted refreshes waiting for that gate, not only work already inside a family lane. These are concurrency constraints, not creator privileges.
-
-| Acquirer | Mode |
-| --- | --- |
-| An explicit client mutation | `try`: fails 409 before effects while the workspace is held; a refused mutation reserves no queue position, and a client retry is a new admission |
-| An accepted operation mutation | `wait`: its turn yields the shared lease at that operation, awaits exclusive publication, and reacquires its lease before dispatching the next operation; concurrent publishers yield independently, and no publisher waits while retaining the shared lease it needs released |
-| Activation and turn-admission refresh | `none`, inside their already-held demand boundary |
-| Providers | reject replacement while active requests, input exchanges, or Tasks depend on the old snapshot; infrastructure watches may be replaced |
-
-§module-workspace-sharing **Workspace sharing: sessions share Functionality by reference.**
-There is one effective definition for each workspace, family, and alias.
-Sessions neither inherit module-state copies nor publish private tool registries.
-A conflicting alias is rejected explicitly; it never produces a hidden second
-definition for the submitting client or session.
-
-§module-workspace-residency **Persistence is not residency.** Model execution,
-capability-aware operations, module actions declaring required residency, and retained provider work
-lease the workspace's Functionality. Boot, workspace or session creation,
-attachment, listing, naming, idle clients, and parked state alone do not.
-After the last lease releases, `PLURNK_SERVICE_WORKSPACE_WARM_MS` and
-`PLURNK_SERVICE_WORKSPACE_WARM_MAX` bound idle
-residency. `0` disables the respective grace or allowance; `-1` disables that
-bound. Concurrent demand coalesces; cooling never closes a leased connection.
-
-Cooling withdraws live capability and releases process resources at the
-workspace boundary. Durable configuration, history, and saved entries remain.
-New demand reconstructs the one shared snapshot. Shutdown cancels warm timers and preparation,
-refuses new leases before database access, and joins whole activation and cooling transitions
-before releasing resources. An interrupted acquisition rejects with `AbortError`, never a usable
-lease. Cooling and activation cleanup remain joined, not cancelled.
-Cooling failures are reported; demand awaiting that transition receives its failure, not a lease.
-
-§module-workspace-residency-facet **Residency is the workspace's; processes are
-one family's facet.** The workspace is the lease unit, and every family's
-publication rides the same replacement: its manager executor, its generated
-documents and its state. Only a family that holds processes prepares
-`runtimes` (MCP servers today); the field is absent for every other family, so
-warming and cooling bound workspaces, never families, and the two-stage rollback
-guards the manager registration of every family alongside the one family's
-processes. There is no per-family residency policy: residency is
-MCP-specific.
-
-The version-1 baseline table `workspace_module_state` stores one JSON value
-per `(workspace_id, namespace_owner)`. It is configuration, not an executable
-registry. Deleting the workspace cascades its state; session lifecycle does not.
-
-## Workspace Functionality
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§functionality-coordinator} | One coordinator owns the common lifecycle. |
-| {§functionality-replacement} | Replacement is a named whole-definition assignment. |
-| {§functionality-addressing} | Functionality addressing: a family may name definitions by their content. |
-| {§functionality-mutation-status} | Mutation status describes the committed resource outcome, not the management invocation's stream lifetime. |
-| {§functionality-discover-advertisement} | A family's `discover` advertises exactly the inputs it serves. |
-| {§configuration-definition-resolution} | Named resource definitions replace whole; independent behavior controls remain independent. |
-| {§configuration-provenance} | Configuration provenance names the winning definition's input, not its owner or runtime. |
-| {§configuration-repair-path} | Invalid optional configuration cannot remove the agent's repair environment. |
-| {§functionality-inspection} | Inspection is not demand. |
-| {§functionality-preparation-visibility} | Preparation is workspace activity, not model context. |
-| {§functionality-hotload} | Functionality hot-load: out-of-band state is admitted before the next turn. |
-| {§agent-plugins-hosting} | Installed Agent Plugins are found like skills. |
-| {§agent-roots} | A daemon reads the roots `PLURNK_SERVICE_ROOTS` names. |
-| {§env-functionality} | Environment is a scoped family. |
-| {§env-scheme} | The env scheme is the registry as an address space. |
-| {§functionality-scope} | A family declares its supported scopes. |
-| {§functionality-state} | Functionality state is one durable value per workspace and family. |
-| {§functionality-publication} | Functionality publication is one replacement of a family's state and runtimes. |
-| {§functionality-documents} | Generated documents describe the shared snapshot. |
-| {§functionality-model-projection} | The model's projection of Functionality families is the workspace `plurnk` tool. |
-| {§functionality-document-body} | A family's document body is an authored file in its tool schema. |
-| {§functionality-model-mutation} | The model's mutations of a Functionality family settle in authored order. |
-<!-- /map -->
-
-§functionality-coordinator **One coordinator owns the common lifecycle.**
-Functionality families are adapters beneath
-`list | discover | add | replace | enable | disable | remove`. State and mutations
-serialize per workspace and family. Scope-bound client actions
-`workspace.<family>.<verb>` / `session.<family>.<verb>` and model manager executors invoke the same
-coordinator. Families do not invent another management grammar, proposal
-policy, or hotload path.
-
-Retryability describes the actual failed condition, not its numeric status.
-
-| Verb | Common contract |
-|---|---|
-| `list` | Project definitions, ownership (`origin`), winning configuration source (`provenance`), enabledness, and published preparation outcome: disabled, dormant, active, unavailable with its Problem, or authorization-required. No credential values. |
-| `discover` | Return inert candidates for the inputs the family serves ({§functionality-discover-advertisement}). Never install, persist, enable, or execute them. |
-| `add` | Admit and persist a local definition, prepare it, and enable it atomically. It may override an inherited definition. Reapplying the same local definition enables it idempotently (200); a different local definition for that alias fails 409 without replacing it. |
-| `replace` | Assign a complete definition to an explicit alias through {§functionality-replacement}. Preserve existing enabledness; a new alias is enabled. |
-| `enable` | Publish an available definition; retry preparation if unavailable. |
-| `disable` | Withdraw live capability; retain its definition and saved results. |
-| `remove` | Forget the locally owned definition and its enabledness override. Restore any inherited definition with its inherited enabledness. Inherited definitions cannot be removed at this scope. Saved results remain. |
-
-§functionality-replacement **Replacement is a named whole-definition assignment.**
-The shared coordinator admits it through the family's existing schema and adapter,
-then uses the same serialized preparation and publication path as other mutations.
-It neither removes the old definition first nor merges omitted fields.
-
-| Boundary | Outcome |
-|---|---|
-| Existing local or inherited alias | Persist the complete admitted definition in the selected scope, retaining the alias's effective enabledness. A local override replaces inherited interpretation context and provenance. |
-| Absent alias | Create the named local definition, enabled. The alias is required; replacement never derives one. |
-| Disabled candidate | Persist without preparing that alias. Editing a definition does not enable it. |
-| Admission, preparation, or publication refuses | Keep the preceding definition, enabledness, attachment and documents. Return the exact failure to either client or model caller. External effects of preparation retain the limits of {§functionality-publication}. |
-| Authorization required | Publish the existing authorization-required handoff; this is not a failed preparation. |
-| Identical definition | Retain enabledness and normal attachment reuse; this is not an explicit enable/restart. |
-
-§functionality-addressing **Functionality addressing: a family may name definitions by their content.** An adapter that
-declares `addressing` supplies the input of `add` and the input of `enable`, `disable` and `remove`,
-and reads from a select input the alias it names; its alias grammar ({§functionality-adapter}) is
-the identity's own, and the generated teaching's `add` example is that input. Every other rule of
-the coordinator — ownership, enabledness, `alias-exists`, `alias-unknown`, publication, documents —
-reads the alias as that identity. The members family names its definitions by their glob
-({§members-functionality}).
-
-| Verb | Addressing family |
-|---|---|
-| `add` | Admits every definition the body names, or none: one refusal refuses the whole body. Reapplying a definition the scope holds is idempotent; a different definition under the same name is `alias-exists` (409), whose recovery is remove and add. The receipt lists the admitted definitions in body order (`definitions`) and names no one `alias`. Preparation receives them all as its admissions. |
-| `replace` | Not served: when the name is the definition there is nothing to reassign, so neither projection offers it ({§functionality-discover-advertisement}). |
-| `enable`, `disable`, `remove` | Take the family's select input; the receipt names the one alias it concerned. |
-
-§functionality-mutation-status **Mutation status describes the committed resource
-outcome, not the management invocation's stream lifetime.** Apply these rows in
-order; refusals retain their own Problems and do not commit a replacement.
-
-| Outcome | Status |
-|---|---:|
-| The resulting definition requires authorization | 202 |
-| `add` or `replace` creates a local definition, including an override of an inherited definition; an `add` naming several ({§functionality-addressing}) creates any of them | 201 |
-| `add` reapplies the identical local definition, every one it names; `replace` assigns an existing local definition; `enable`, `disable`, or `remove` settles | 200 |
-
-`add` of a different local definition remains `alias-exists` (409); `replace` is explicit where a family serves it.
-Model invocation settlement follows {§functionality-model-mutation} independently.
-
-§functionality-discover-advertisement **A family's `discover` advertises exactly the inputs it
-serves.** The coordinator builds the family's discover input schema from its declared discovery
-({§functionality-discovery-inputs}): the declared inputs with their shared
-`FunctionalityDiscoverQuery` definitions and no other property (a multi-scope family adds
-`scope`), and, unless a request naming none lists everything, at least one of them: the one
-input required, or any of several. The client actions, the manager's tool documents and their
-schema documents carry that schema. Any other input, or a request naming none, is refused by the
-shared schema check as 400 `arguments-invalid`, its `errors` naming each field; no family mints
-its own refusal for an input it does not serve. A family without discovery has no `discover`
-action, and its manager teaches none. A value of a served input the family cannot use remains the
-family's own refusal.
-
-| Family | Inputs | A request naming none |
-|---|---|---|
-| `skills` | `source` ({§skills-functionality}) | Refused |
-| `schedule` | `source` ({§schedule-clock}) | Refused |
-| `mcp` | `query`, while a registry is configured; otherwise no discovery ({§mcp-registry-discovery}) | Refused |
-| `env` | `query`, `source` ({§env-functionality}) | The whole catalog |
-| `members` | `query` ({§members-functionality}) | Refused |
-
-§configuration-definition-resolution **Named resource definitions replace whole;
-independent behavior controls remain independent.** Source readers and scope
-overlays apply the same boundary:
-
-| Value | Resolution |
-|---|---|
-| Named definition | Select the complete definition from the highest-precedence source or scope declaring that alias. Omitted fields, arrays and nested objects never inherit from a lower definition. |
-| Environment resource declaration | Use {§resource-environment}: absence inherits, an empty definition is invalid, and an explicit enabledness switch disables without erasing the definition. |
-| Definition validity | Validate the selected definition against its family's schema. Missing required fields are errors, not requests to fill from a lower definition; rejected live changes preserve the previous publication. |
-| Independently declared behavior control | Resolve its own value through its cascade. An enabledness override does not copy or patch the definition it controls. |
-| Local definition removal | Remove this scope's definition and enabledness override. Restore the current inherited definition and enabledness, or leave no entry if none exists. Do not persist a replacement or disabling mask; subsequent inherited changes remain effective. Restoration follows the same preparation and publication failure policy as other mutations ({§functionality-publication}). |
-
-§configuration-provenance **Configuration provenance names the winning definition's input, not its owner or runtime.** `provenance` uses the same `{kind, source, reference?}`
-shape as discovery candidates. Source readers contribute it; the coordinator
-preserves it through inheritance, enabledness changes, and every readiness state.
-
-| Definition source | Inspection |
-|---|---|
-| Assembled environment | `kind: environment`, `source`: exact definition key; never its value or an inferred dotenv filename. |
-| Discovered skill root | `kind: file`, `source`: the winning `SKILL.md` path. |
-| Standalone MCP file | `kind: file`, `source`: the winning `mcp.json` path; `reference`: its entry's JSON Pointer. |
-| Local workspace/session definition or host-provided tree with no configuration input | No fabricated provenance; `origin` identifies ownership and the family definition describes the resource. |
-| Local override | Replaces inherited provenance with the local definition; removal restores the current inherited provenance. |
-
-Only the winning definition's source is reported. Shadowed definitions, secrets,
-and environment-file loading history are not tracked. Source metadata is derived
-on inspection, not persisted in the local overlay or used as runtime identity.
-
-§configuration-repair-path **Invalid optional configuration cannot remove the
-agent's repair environment.** Capability owners reject typed operator input
-errors. The launcher and shared coordinator contain them at their respective
-composition boundaries, not arbitrary exceptions:
-
-| Boundary | Outcome |
-|---|---|
-| Optional startup integration (hooks, observability) cannot be configured | Withhold that integration and retain its exact configuration diagnostic. Activate the client interface and unrelated capabilities; never invent a replacement setting. |
-| Invalid default model or child selector | Retain its diagnostic at startup; keep client inspection and explicit selection available. A request relying on the invalid selector fails with `daemon:configuration/configuration-invalid` (503), naming its key. Never substitute another model or silently inherit a child model. |
-| Model construction or endpoint verification fails | Reject selection/use before inference or committing the selection. Keep the client available; a later selection can retry or choose another route. |
-| Invalid effect, file-creation, or server approval policy | Retain the startup diagnostic. Reject the affected operation as `daemon:configuration/configuration-invalid` (503); no guessed admission policy, external effect, or orphan approval wait. Independent operations remain usable. |
-| Invalid retention configuration | Withhold collection and automatic storage conversion, including shutdown collection. Preserve stored evidence and expose the diagnostic; do not substitute a deletion policy. |
-| Invalid executor construction/probe configuration | Keep the installed declaration and its diagnostic, but no executable instance or output scheme. Other executors and ordinary READ/EDIT remain usable. Invoking the unavailable tag returns its exact 503 configuration Problem. |
-| Invalid execution scheduling, input, or scratch configuration | Diagnose at startup and validate on the affected execution path before admission, stream creation, or external effects. Scratch configuration applies only to resource-backed execution; inline programs remain independent. Never substitute concurrency, timeout, or directory settings. |
-| Invalid model-alias catalog | Fail catalog inspection explicitly; omit its unavailable snapshot rather than report an empty catalog. Exact provider/model selection does not depend on aliases. |
-| Offline `config check` | Validate the same inputs without activating integrations; an invalid setting remains a nonzero failure. |
-| Family configuration cannot be resolved | Keep its manager available, identify the configuration failure in its generated documentation, and preserve durable definitions. Do not publish the family's operational capabilities or pretend its catalog is empty. Other families and ordinary model work remain usable. |
-| Inspection or mutation of an unresolved family | Return the exact configuration Problem, naming the key and required correction, through both client and model paths. No silent source fallback or change to stored settings. |
-| Invalid live mutation | Reject atomically and preserve the preceding publication. |
-| Previously valid family becomes invalid | Withdraw its operational capabilities at normal publication, then release the old snapshot. Keep the manager and diagnostic. |
-| Configuration source is corrected or removed | Inspection resolves the current source immediately, even in the repairing turn; a previous source-resolution error cannot override a successful read. Not-yet-published definitions remain dormant. Normal publication restores capabilities; inspection does not activate them. |
-| Preparation configuration is corrected | The published preparation failure remains until ordinary preparation succeeds. Successful source inspection alone does not establish runtime readiness. Environment-file edits follow their ordinary process lifetime, not an implicit reload. |
-| Internal invariant, state, or implementation failure | Preserve the exception; never reclassify it as an operator configuration error. |
-
-Client discovery and passive synchronization report startup diagnostics through the
-existing Notice channel, even without a usable model. Each is a Notice from `engine:configuration`
-of kind `configuration_unavailable` that names the failed setting's `key` and its `owner`: the
-setting's reader (such as `retention`, `model` or `executor:<runtime>`), a family, `extensions` for an
-extension declaration, or a module as `module:<package>`. The first turn of a drain, and a changed diagnostic
-thereafter, reports unresolved configuration to both client and model. An
-unchanged diagnostic is not repeated every turn. Operation failures remain Problems.
-
-§functionality-inspection **Inspection is not demand.** `list` and `discover` do not
-acquire residency, join preparation, reconcile session documents, or extend warm
-retention. An enabled definition no resident publication has prepared is `dormant`: every one while
-the family is cold, and one that arrived or changed out of band until the next turn publishes it
-({§functionality-hotload}). During replacement the preceding publication remains authoritative;
-the candidate is never presented as active. A published outcome belongs to the
-complete definition prepared, not merely its alias. Cooling leaves durable definitions
-inspectable. Mutations and protocol continuations retain their residency rules.
-
-§functionality-preparation-visibility **Preparation is workspace activity, not
-model context.** The coordinator owns a current `FunctionalityPreparationActivity`
-per preparing family. `workspacePreparationStatus(workspaceId)` returns that same
-state without demand; `workspace/preparation` broadcasts
-`{ workspaceId, preparation: [...] }` whenever it changes.
-
-| Boundary | Visible state |
-|---|---|
-| Preparation begins | Family, `phase: preparing`, `alias: null`, UTC `since` |
-| Adapter reports the aliases it is preparing | One activity per alias, each keeping the `since` it began; an alias leaves when a later report omits it, so aliases prepared at once are listed together |
-| Prepared candidate enters publication | `phase: publishing`, `alias: null` |
-| Commit, rejection, or rollback settles | Family removed; empty array means no preparation |
-
-Preparation reports neither definitions nor credentials, does not alter the
-publication contract, and creates no log entries or model Notices. Published
-failures retain their exact Problems in `list`. Concurrent consumers share the
-workspace activity; a client disconnect does not clear another consumer's work.
-
-§functionality-hotload **Functionality hot-load: out-of-band state is admitted before the next turn.** An adapter whose
-`available` reads state that changes outside the daemon, such as skill roots ({§skills-hotload}) or
-installed plugins ({§agent-plugins-hosting}), implements `refreshIfChanged`. Turn admission calls it
-for every family under the workspace gate before packet assembly. The family handle's `refresh` with
-`ifChanged` republishes a resident family only when the enabled definitions it would prepare differ
-from the ones its publication prepared. The coordinator makes that comparison because it alone knows
-what it published, so a change `list` saw first is still published at the next turn. A family whose
-definitions do not capture its published content, such as a skill's files, republishes
-unconditionally when that content changed. An unchanged family dispatches nothing.
-
-§agent-plugins-hosting **Installed Agent Plugins are found like skills.** A workspace's plugins are, in precedence order, loaded and validated by `@plurnk/plurnk-agent-plugins` ({§agent-plugins-roots}):
-
-1. the immediate child directories of its project's `.agents/plugins`;
-2. `$XDG_CONFIG_HOME/plurnk/plugins` (plurnk alone);
-3. `~/.agents/plugins` (every agent);
-4. standard plugin bundles in the installed npm graph.
-
-| Fact | Rule |
-| --- | --- |
-| Shadowing | an earlier source shadows a later plugin of the same manifest name, regardless of distribution or directory name |
-| Native discovery | the same cascade with the project root omitted; workspace discovery includes it |
-| `PLUGIN_DATA` | `$XDG_DATA_HOME/plurnk/plugins/<name>/<sha256(canonical-root)>`, kept across in-place updates and moved with a state root ({§state-root}); distinct installations never share data by name alone, and workspaces referencing the same canonical installation share its data |
-| Modules | receive a workspace's plugins, in precedence order, through the setup seam's `readWorkspacePlugins`, with one signature that changes exactly when a plugin, its manifest, its MCP configuration, or its skills change ({§functionality-hotload}), and the roots the workspace has |
-| The loader | read-only: it does not install or delete plugins; MCP's own lifecycle is independent ({§mcp-definitions}) |
-
-Portable components use each family's existing management and publication path. Within a source
-scope, standalone definitions precede bundled components; nearer scopes precede farther scopes,
-with npm last. Complete environment definitions override those inputs, followed by workspace
-definitions and enabledness. Inspection names the winning component file as plugin provenance.
-Removing a workspace override restores inheritance; it never deletes the installed bundle.
-Current plugin-source diagnostics join the workspace's configuration notices before inference.
-
-§agent-roots **A daemon reads the roots `PLURNK_SERVICE_ROOTS` names.** A comma list drawn from
-`project`, `plurnk` and `global`, nearest first, selects which Agent Skills, Agent Plugins and standalone MCP roots a
-daemon reads; the default names all three. The real-model gate profile selects
-its discovery roots explicitly ({§operator-config-real-model-profile}), so
-operator roots do not shape a gate. Root selection does not restrict explicit
-source definitions. Skills mutations change workspace bindings, not these roots
-({§skills-functionality}); MCP mutations likewise remain workspace-owned. The module setup seam's
-`workspacePaths` supplies selected `<project>/.agents`, `$XDG_CONFIG_HOME/plurnk`,
-and `~/.agents` directories in precedence order with their scopes, omitting project
-when no project is bound ({§module-workspace-paths}). Modules own their file formats;
-core owns discovery roots.
-
-An adapter may expose a `scheme` facet beneath its family's runtime namespace ({§execution-output-identity}). An adapter states the `traits` of its runtime — `web` for a family that reaches the network — so {§capability-admission} selects its manager and its resources alike.
-
-| The facet | Rule |
-| --- | --- |
-| Claims | a path subtree, and is the scheme's whole live half there: READ and FIND preparation, FIND, EDIT, SEND, WAIT and KILL are its own wherever it implements them |
-| Does not implement | a claimed KILL it does not implement is the ordinary entry KILL ({§stream-control}); an unclaimed coordinate keeps the stored-execution behaviour, SEND to a process included |
-| States | where its resources are not shaped like the executor's output, their representation — resource authority, channels, the default channel, who may write them — and that manifest governs every claimed coordinate: its address, its fragmentless READ, the channel a subscription publishes, the writer gate ({§scheme-surface}) an EDIT or a COPY into it passes |
-
-§env-functionality **Environment is a scoped family.** Ambient names admitted by the
-operator's ceiling ({§execution-output-identity}, service origin) precede workspace defaults and
-session overrides ({§execution-output-identity}). `add` takes
-the name as the alias and `{ "value": "…" }` as the definition, used verbatim with no
-interpolation. `disable` withholds a name in the selected scope while retaining it;
-`remove` forgets a locally-owned entry and restores any same-name inherited value
-and enabledness ({§configuration-definition-resolution}). Use `disable` to keep
-an inherited name out of subsequent launches. Definitions from a lower layer
-cannot be removed in the current scope.
-
-`list` projects effective values with their origin. Values are shown: the ceiling is the security
-boundary, not the projection, and any admitted name is already readable by every command the
-Session runs — withholding it here would be theatre and would make `list` lie about the
-environment its commands receive. A name the invariant reserves (`PLURNK_*`, provider credential
-names) is refused at **admission**, not dropped at the spawn, so the model learns why.
-
-`discover` is this installation's configuration catalog: every name an installed package declares under {§operator-config-env-defaults} that a Session may set, projected as candidates whose summary is the declaration's own comment and whose provenance is the declaring package. Files are read with READ; variables are set with `add`.
-
-| Fact | Rule |
-| --- | --- |
-| Reserved names | the names the invariant reserves — plurnk's own configuration and provider credentials — are the operator's and never appear, so the catalog stays short enough to read whole |
-| `query` | matches a name or the comment that documents it, never a value |
-| Not a permissions list | a Session may set any name it lists or none of them; the catalog answers which names have a **consumer**, and it is how a Session learns the name of a value only the operator can supply |
-| Declarations, never the host environment | a credential the operator has filled in appears by name with its documentation and an empty value ({§execution-output-identity}: referred to by name, never read) |
-| `source` | selects one declaring package; an unknown source is `source-unknown` (400), not an empty catalog; a known source with no matching settable declarations returns an empty candidate list; a request naming neither input is the whole catalog |
-| A client's own environment | no input: contributing candidates, it would be a second door past the ceiling |
-
-The family publishes no process runtimes. Its values are read at the spawn that uses them,
-not from a live process or a cached session environment.
-
-§env-scheme **The env scheme is the registry as an address space.** Every name in effect for a Session's commands — the ambient names the ceiling admits, workspace defaults and the Session's own entries, exactly what `list` projects — is a resource at `env:///NAME` whose body is the value, verbatim; a reserved or masked name is no resource. The family's manager exposes it as the facet of its own `env://` namespace ({§execution-output-identity}), read for the dispatching Session; the manager's own output streams, eight hexadecimal characters ({§execution-output-identity}), stay the executor's. Admission is the family's ({§env-functionality}) and its refusal is the operation's result.
-
-| Operation | On `env:///NAME` |
-| --- | --- |
-| READ | projects the value its commands receive now |
-| FIND | lists the names in effect; a pattern on it matches values |
-| COPY | carries a value out |
-| EDIT | sets the whole value through the family's `replace` for the Session: a write is the Session's own layer, never the workspace's or the operator's (the runtime session keeps none, so a person's write is the workspace's, {§actor-boundary-client-operations}) |
-| KILL | retires the name from the Session's commands: `remove` for an entry the Session owns, which restores an inherited value, `disable` for an inherited one, which keeps its definition |
-| a line scope on EDIT or KILL | `value-whole` (400): a value has no lines; a pattern on EDIT is the dispatcher's refusal for any scheme without text scopes |
-| a target that is not `env:///NAME` | `name-invalid` (400), or `target-required` (400) when absent |
-| a name not in effect | `entry-not-found` (404) on READ and KILL alike |
-
-§functionality-scope **A family declares its supported scopes.** The adapter declares `scopes` (absent means `["workspace"]`; the first is the model default), and the coordinator keys durable state and the locally-owned `origin` by it. Origin names ownership, never scope, so a projection never claims the workspace set a value one Session set for itself. Nothing else in the contract varies but the discovery inputs a family serves ({§functionality-discover-advertisement}): the verbs, the two projections, enabledness, and the service-baseline rules are one implementation across every family, which is what keeps their idioms from drifting apart.
-
-| Scope | Describes | Own entries' origin |
-| --- | --- | --- |
-| **workspace** (Skills, MCP and members) | what exists in a workspace: a capability, resident or installable, that every Session there shares | `workspace` |
-| **session** (Environment) | how one Session works — context rather than capability — with session overrides above workspace defaults; a context family's definitions are read where they are used, so a change at either scope holds nothing resident and takes no workspace exclusivity: it serializes on the family's lane | `session` |
-
-A family projects `<scope>.<family>.<verb>` for each verb it serves, in each supported scope. The action's
-context binds that scope; a session-scoped action also names the Session. Its durable
-value is the same shape per (session, family) in `session_module_state`, read
-at each verb and at each spawn rather than held in the workspace snapshot. Its `list` and
-mutations serialize on the Session's own lane and take no workspace exclusivity: nothing
-resident changes, and the next spawn reads the state, so a Session shapes its own environment
-while its siblings run. Its preparation yields outcomes only — no runtimes, documents or
-snapshot — and the coordinator refuses one that does more.
-
-A Session created with a parent — WORK and FORK alike — starts with a copy of the parent's
-session-scoped state, taken at creation. The child owns its copy: neither side's later edits
-reach the other, and depth is transitive with no further rule. Each copied entry carries
-`inherited`, the Session that set it, preserved across generations until the child changes that
-entry, so `list` never claims the child set what it inherited; a parent's masking of an
-ambient name travels the same way.
-
-§functionality-state **Functionality state is one durable value per workspace and family.**
-`{ version: 1, definitions: { [alias]: { origin, enabled, definition? } } }`
-is stored under the provider namespace in `workspace_module_state`; a
-session-scoped family ({§functionality-scope}) stores the same value per session
-and family in `session_module_state`.
-A locally-owned entry persists its exact definition; a lower-layer entry persists
-only enabledness, never a copied value. Active, unavailable, and authorization-required are preparation
-outcomes, not durable desired state. The configuration cascade contributes
-defaults; one workspace snapshot is effective authority.
-
-§functionality-publication **Functionality publication is one replacement of a family's state and runtimes.** The coordinator prepares, then replaces state and runtimes through {§module-workspace-capabilities}, with the manager followed by any runtimes the adapter prepared ({§module-workspace-residency-facet}). Admission, tools, documents, Turn 0, and client status consume that publication. `settleFunctionality` joins queued publications before inspection or shutdown.
-
-| Callback | Rule |
-| --- | --- |
-| The coordinator's synchronous `publish` | participates in the registry commit; its returned undo restores the previous view before rollback reconciles documents |
-| The adapter's `publish` | runs inside that same callback, so the family view, the registry and the adapter's live candidate change in one instant, and its undo composes with the view's |
-| The adapter's `commit` | follows a committed publication |
-| Neither callback | performs fallible I/O |
-| Publication failure | restores the preceding configuration/runtime snapshot; it cannot roll back an external effect of preparation, such as a fetched skill source, and a failed external effect retains its cause and must not be reported as a successful configuration change |
-
-§functionality-documents **Generated documents describe the shared snapshot.**
-Documents are projected through the existing session generated subtree
-({§session-scheme}); the projection does not confer ownership, and it
-follows the family's admission ({§schemes-directory}): a denied family projects none.
-Enabled, active definitions are discoverable. Disabled or unavailable
-definitions add no hot-path teaching. Their exact state and Problem remain
-available through `list`.
-
-§functionality-model-projection **The model's projection of Functionality families is the workspace `plurnk` tool.** Core registers one in-process `plurnk` runtime at boot under `resourcesPath: "/tools"` with `expandTools: true`, publishing one tool per registered Functionality family (`plurnk (<family>)`) alongside `plurnk (question)` ({§question-tool}). Each family tool's `verb` — `discover` only where the family serves discovery
-({§functionality-discover-advertisement}), defaulting to `list` when omitted — and arguments use its actual coordinator schemas and the ordinary
-tool-document machinery (`workspace:///_plurnk/tools/plurnk.md` and `workspace:///_plurnk/tools/plurnk/<family>.json`). `list`/`discover` are read effects; mutations are host
-effects and use normal proposals. Summary, signatures, and deep docs derive
-from the same registry ({§tools-resource-materialization},
-{§executor-input-schema-preview}). Outcomes stream into the invoking operation's
-output entry (`plurnk:///<id>`). A family's `scheme` facet (`env://`, `schedule://`) registers directly in the workspace scheme registry ({§module-workspace-capabilities}).
-A session-scoped family's verbs act for the invoking Session: Core
-binds that Session and workspace to the manager at the operation, so the executor framework's arguments carry no
-identity ({§functionality-scope}).
-
-Expected adapter failures retain their exact status and Problem in both client
-actions and the model operation's stream/result ({§problem-error-carrier}). An
-unexpected exception remains an executor fault, not a managed refusal.
-
-§functionality-document-body **A family's document body is an authored file in
-its tool schema.** The adapter names its package directory (`docsDir`);
-that package's `docs/<family>.md` is read once, by the same rule runtimes use
-for `docs/<tag>.md` ({§executor-discovery}: the authoring title `# <family>` is
-removed), and rides the family tool's `details` into `workspace:///_plurnk/tools/plurnk/<family>.json` (`description`). The runtime header, tool signatures, and
-schema documents stay generated; no prose from the file enters the hot path.
-A family that ships no file has a schema-only tool document. Registration also
-validates the adapter's taught `plurnk (<family>)` `add` example against the `add` input schema it
-teaches, so a wrong example fails boot rather than the model.
-
-§functionality-model-mutation **The model's mutations of a Functionality family settle in authored order.** Every manager verb, including inspection, completes before dispatch proceeds; later operations observe earlier successful configuration changes. The invoking operation and its output remain pending until settlement, and never acknowledge merely starting a future commit; settlement reports `active`, `unavailable`, or the exact publication failure. When a model mutation publishes `authorization-required`, it announces that sign-in requirement and holds at the workspace boundary ({§module-workspace-quiescence}) until a subsequent publication resolves the alias out of `authorization-required`, then streams that settled outcome. Shell commands, remote tools, WORK/FORK and streaming READ retain their deliberately asynchronous contracts ({§op-methods-op-dispatch}).
-
-- These core-owned commands use ordinary proposals and durable execution outputs, but not the background-execution slot pool. Preparation and publication share the family's serialized lane; resident publication uses the lease handoff in {§module-workspace-quiescence}, and context-only families retain their existing scope-local serialization.
-- A preparation failure may publish enabled-but-unavailable state for other mutations, but `replace` rejects it ({§functionality-replacement}); a publication failure never reports a successful mutation. Result observation uses the ordinary execution lifecycle, without a separate deferred-commit queue.
-- An explicit client action publishes now, rejects a failed preparation, and fails 409 while the workspace is held ({§module-workspace-quiescence}). Rejecting a proposal prepares, persists, and publishes nothing. Cancellation removes queued publication and aborts preparation before publication; an already-started atomic publication is joined, never abandoned partway through.
+Model invocations of `plurnk (<family>)` settle in authored order before dispatch proceeds (`list`/`discover` are read effects; mutations are host effects using normal proposals and the lease handoff in {§module-workspace-residency}). When a model mutation publishes `authorization-required`, it holds at the workspace boundary until sign-in resolves the alias, then streams the settled outcome.
 
 ## §methods Application interface
 
@@ -1865,7 +1065,7 @@ Core's behavior behind them.
 | §methods-session-list Session topology              | `listSessions(workspaceId, query?)` | Returns the workspace's durable Session projections under {§application-session-observation}. The origin filter is exact; an explicitly present `parentSessionId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position, and a present `hidden` filters by the mark each projection carries as `hidden_at` ({§machine-processes}). Each projection carries `kind` (`root` for a session with no parent, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound session's own status gauge shows; clients infer neither (#523). |
 | §methods-session-overview Session overview | `readSessionOverview({ workspaceId?, limit, excerptChars })` | Returns `{ sessions, workspaces, omitted }`, the places of the daemon or of one workspace with what waits there, under {§application-session-overview}: each place's lifecycle, the gates it waits on and its latest finished reply ({§message-completion}) with its excerpt ({§list-excerpt}) of at most `excerptChars` characters, most recently finished first; every place waiting on a gate and the first `limit` in that order, `omitted` counting the rest. Hidden places are out of scope ({§machine-processes}). An unknown `workspaceId` is 404 `workspace-not-found`. |
 | §methods-session-loops Loop lifecycle              | `listSessionLoops({ workspaceId, sessionId })` | Ownership-checks the Session and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists, and each Loop's `invocation`: `{ sessionId, address }`, the Session and the log address ({§methods-invocation}) of the operation that sent the Loop's first message ({§loop-completion}), or null when a person, a client, a peer or the daemon sent it. It performs no scheduling or event replay. |
-| §methods-session-accounting Session spend       | `sessionAccounting({ workspaceId, sessionId })` | Ownership-checks the Session and returns the {§provider-accounting} projection of every settled request on any loop the Session or a descendant of it (`parent_session_id`, to any depth) ran, since the Session began: its own spend and its delegations', the same tree the turn cap counts ({§turn-cap-counts-the-tree}). Nothing spent is explicit zero. One loop's own accounting stays {§notifications-loop-terminated}'s. Derived from the request ledger on every read ({§tokenomics-provider-usage}); no rollup, no second store. |
+| §methods-session-accounting Session spend       | `sessionAccounting({ workspaceId, sessionId })` | Ownership-checks the Session and returns the {§provider-accounting} projection of every settled request on any loop the Session or a descendant of it (`parent_session_id`, to any depth) ran, since the Session began: its own spend and its delegations', the same tree the turn cap counts ({§operator-config-workspace-settings}). Nothing spent is explicit zero. One loop's own accounting stays {§notifications-loop-terminated}'s. Derived from the request ledger on every read ({§tokenomics-provider-usage}); no rollup, no second store. |
 | §methods-session-gauge Session gauge | `sessionGauge({ workspaceId, sessionId })` | Ownership-checks the Session and returns the four {§tokenomics-client-gauge} facts its latest packet reported in `loop/packet.gauge`, read from durable evidence: each `null` when unknown, all `null` before the Session's first packet. A client attaching later starts from the gauge a live one holds. |
 | Extension actions | `listModuleActions()`, `invokeModuleAction(name, params, context)` | Lists setup-registered `{ name, scope, inputSchema, outputSchema }` descriptors in sorted order. Invocation requires a context matching the registered scope; missing names, forged scope, and missing workspace identity fail before the owner runs. Handler values remain opaque to core. |
 
@@ -2110,7 +1310,7 @@ answering a message in this session's inbox, omits the field, as does every othe
 | §notifications-workspace-renamed `workspace/renamed`         | `{ id, name }` | A workspace's name changes ({§methods-workspace-rename}), delivered in that workspace's scope; the id is unchanged. |
 | §notifications-workspace-hidden `workspace/hidden` | `{ id, hidden_at }`, as `setWorkspaceHidden` returns it | A workspace is hidden or shown ({§methods-workspace-hide}), delivered in that workspace's scope. A call that changes nothing fires nothing. |
 | §notifications-session-hidden `session/hidden` | `{ id, hidden_at, sessionIds }`, as `setSessionHidden` returns it | A session's group is hidden or shown ({§methods-session-hide}), delivered in its workspace's scope. A call that changes nothing fires nothing. |
-| `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-preparation-visibility}. |
+| `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-inspection}. |
 | §notifications-session-policy `session/policy` | `{ sessionId, model, spawnModel }`, the session's generation policy as `ApplicationPort.readSessionModel` reads it | A session's stored model, effort, effort source or spawn model changes, by whichever path: a client's set, a message's selector, or the seeding of a session's first model. A write that changes nothing, and a change refused while the session has unfinished tasks, fire nothing. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, sessionId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `sessionId` is the initiating actor used for routing to the bound session, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channels}); the generic extension notification capability does not require it. It carries metadata, not content: `contentLength` counts the channel's whole stored content in Unicode code points, the unit of {§entry-read-result}'s `contentOffset` and `contentLength`, and consumers read the content by canonical workspace address. |
 | §notifications-stream-concluded `stream/concluded`           | `{ entryId, sessionId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `sessionId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `summary` is a display line the owning scheme writes; an execution's is {§exec-stream}. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted session scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
@@ -2163,7 +1363,7 @@ Functionality ({§actor-boundary}). Binding a workspace mints nothing.
 | Who answers its proposals | the session's owner reviews them | nobody: it is that person's decision already ({§proposal-disposition}) |
 | Who answers its clarifications | its owner, while it can ({§session-ownership}) | nobody: the runtime's owner receives no client tool, so an interaction the operation needs fails at once as unsupported |
 | What is cancelled and observed together | the session's loops | the operation's own administrative loop |
-| What its `env:///` means | its own layer, above the workspace's | the workspace's layer; `_plurnk` keeps none ({§env-scheme}) |
+| What its `env:///` means | its own layer, above the workspace's | the workspace's layer; `_plurnk` keeps none ({§env-functionality}) |
 | Whose voice its messages carry | its own | the person's, as a thread message's is |
 | Whose log its log addresses and FORK mean | its own | the session the person acts for: read and branched, never curated |
 | What its WORK starts | its own child | a root session the person owns |
@@ -2191,7 +1391,7 @@ FORK is 404 `fork-unaddressed`.
 
 | Frame | Covers | So |
 |---|---|---|
-| Workspace resources | files, executions, Functionality, `env:///` | `_plurnk` keeps no layer of its own, so a person's `env:///` reads and writes the workspace's ({§env-scheme}) |
+| Workspace resources | files, executions, Functionality, `env:///` | `_plurnk` keeps no layer of its own, so a person's `env:///` reads and writes the workspace's ({§env-functionality}) |
 | The person's voice | messages and delegated prompts | a message the operation delivers (SEND, or WORK to a session that exists) arrives from the person, as a thread message does; WORK to a new session starts a root model session the person owns, its first prompt from them |
 | The session it acts for | `log:///`, and the log FORK branches | READ and FIND answer from that session's log as it reads it; FORK branches it as `forkSession` does, its task from the person; curating the log is a client write it refuses ({§scheme-surface}) |
 
@@ -2938,7 +2138,7 @@ already present. Required schema fields use {§executor-input-schema-preview};
 authored examples take precedence. Family alternatives and descriptive summaries
 remain one compact orientation line, not an expansion of every tool's signature.
 
-§members-functionality **File membership is one workspace Functionality family.** Core registers the `members` family with the coordinator ({§functionality-coordinator}): the model, the client, and the operator learn one surface — `list | discover | add | enable | disable | remove`, `workspace.members.<verb>` for the client, ```` ```plurnk (members) ```` for the model — for what the model may see, exactly as they do for skills and MCP servers. A definition is one shell-path glob ({§find}) relative to the project root, or absolute: it is matched against member keys, so its spelling is canonicalized as a path's is ({§fs-namespace}) and an absolute glob admits exactly what its root-relative spelling does; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob is the definition's identity ({§functionality-addressing}). Admission provenance (`service-configuration`, `client-action`, `model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce {§members-model-scope}; configuration-source provenance belongs to the shared inspection projection ({§configuration-provenance}).
+§members-functionality **File membership is one workspace Functionality family.** Core registers the `members` family with the coordinator ({§functionality-coordinator}): the model, the client, and the operator learn one surface — `list | discover | add | enable | disable | remove`, `workspace.members.<verb>` for the client, ```` ```plurnk (members) ```` for the model — for what the model may see, exactly as they do for skills and MCP servers. A definition is one shell-path glob ({§find}) relative to the project root, or absolute: it is matched against member keys, so its spelling is canonicalized as a path's is ({§fs-namespace}) and an absolute glob admits exactly what its root-relative spelling does; a leading `!` excludes matching members, and an exclusion wins over every inclusion. The glob is the definition's identity ({§functionality-replacement}). Admission provenance (`service-configuration`, `client-action`, `model-proposal`) rides the persisted definition, `{ glob, provenance }`, to enforce {§members-model-scope}; configuration-source provenance belongs to the shared inspection projection ({§configuration-repair-path}).
 
 | Verb | Input | Effect |
 | --- | --- | --- |
@@ -2967,7 +2167,7 @@ operator definition, the user's to give; `root` admits patterns inside the root,
 so the family bounds the model without a second grammar; an admission a read earns
 ({§membership-auto-add}) is that same `operation` add and meets the same ceiling.
 
-§members-projection **The members projection is one overlay of the workspace's enabled definitions.** Definitions are desired state per workspace ({§functionality-state}); the workspace overlay (`workspace_constraints`) combines its enabled definitions: inclusions union and an exclusion wins. There is no other membership path: the client's `/members` verbs are these verbs.
+§members-projection **The members projection is one overlay of the workspace's enabled definitions.** Definitions are desired state per workspace ({§functionality-coordinator}); the workspace overlay (`workspace_constraints`) combines its enabled definitions: inclusions union and an exclusion wins. There is no other membership path: the client's `/members` verbs are these verbs.
 
 | Fact | Rule |
 | --- | --- |
@@ -2975,7 +2175,7 @@ so the family bounds the model without a second grammar; an admission a read ear
 | Source | human-authored definitions project with source `members`, model-proposed ones with source `model`; the same pattern from both keeps `members`; a `model` inclusion is a pattern scan like a human one but never admits a path the repository ignores ({§membership}) |
 | Creation records | the engine's (`source: "create"`, {§fs-write-surface}) are not definitions: the projection never overwrites or retires them |
 | When | at the family's publication commit, re-resolving membership; workspace cooling changes nothing, because desired state is durable |
-| Documents | each enabled definition is one generated document at `workspace:///_plurnk/members/<glob>.md` ({§functionality-documents}), the glob percent-encoded as one path segment (RFC 3986 unreserved characters and parentheses stay literal) — its glob, origin, provenance, and what it resolved to — surveyed at turn 0 like every family's enabled definitions ({§session-initialization-entry}), so the model sees why a file is or is not a member before it asks |
+| Documents | each enabled definition is one generated document at `workspace:///_plurnk/members/<glob>.md` ({§functionality-model-projection}), the glob percent-encoded as one path segment (RFC 3986 unreserved characters and parentheses stay literal) — its glob, origin, provenance, and what it resolved to — surveyed at turn 0 like every family's enabled definitions ({§session-initialization-entry}), so the model sees why a file is or is not a member before it asks |
 
 The skills module owns the Agent Skills family ({§skills-functionality}) and its resource trees
 ({§skills-resources}); core supplies the Plurnk reference through {§provided-skills-module-slice}.
@@ -2985,7 +2185,7 @@ The skills module owns the Agent Skills family ({§skills-functionality}) and it
 | It links | Where from |
 | --- | --- |
 | Package-owned configuration, model, COPY/MOVE and extensibility chapters | native chapter files, which retain their owners and locations |
-| The complete `.env.defaults` aggregate at `skill://plurnk/.env.defaults` | the same {§operator-config-env-defaults} renderer as the operator command, never the effective environment; runtime-generated bytes have no invented disk location |
+| The complete `.env.defaults` aggregate at `skill://plurnk/.env.defaults` | the same {§operator-config-precedence} renderer as the operator command, never the effective environment; runtime-generated bytes have no invented disk location |
 | The installed contracts at `skill://plurnk/packages/<package name>/SPEC.md` | the service's own `SPEC.md` and each installed ecosystem package's that ships one, the same membership as the defaults aggregate, with that package's published type declarations beside it at `packages/<package name>/dist/**/*.d.ts`; the service's declarations are its internals and are not served; contracts are listed when the tree is listed and read where each package installed them, never through a symbolic link |
 | The Session's existing tool/resource references | their own owners |
 

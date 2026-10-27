@@ -852,7 +852,7 @@ test("{§mcp-definitions} configured servers are inspectable without installatio
     } finally { await h.module.stop(); }
 });
 
-test("{§functionality-hotload} changed definitions use the coordinator's comparison inside the held turn", async () => {
+test("{§functionality-inspection} changed definitions use the coordinator's comparison inside the held turn", async () => {
     const h = harness();
     await h.setup();
     try {

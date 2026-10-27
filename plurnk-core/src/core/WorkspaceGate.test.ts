@@ -4,7 +4,7 @@ import WorkspaceGate from "./WorkspaceGate.ts";
 
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-test("{§functionality-model-mutation} concurrent turns yield for publications and resume behind the same gate", async () => {
+test("{§functionality-model-projection} concurrent turns yield for publications and resume behind the same gate", async () => {
     const gate = new WorkspaceGate(async () => false);
     const entered = Promise.withResolvers<void>();
     const proceed = Promise.withResolvers<void>();
@@ -35,7 +35,7 @@ test("{§functionality-model-mutation} concurrent turns yield for publications a
     available.release();
 });
 
-test("{§functionality-model-mutation} a failed publication reacquires the turn and no lease escapes its scope", async () => {
+test("{§functionality-model-projection} a failed publication reacquires the turn and no lease escapes its scope", async () => {
     const gate = new WorkspaceGate(async () => false);
     const failure = new Error("publication refused");
     const resume = Promise.withResolvers<void>();
@@ -69,7 +69,7 @@ test("{§functionality-preparation-cancellation} cancelling a queued publisher n
     available.release();
 });
 
-test("{§module-workspace-quiescence} a queued exclusive request blocks later ordinary turns", async () => {
+test("{§module-workspace-residency} a queued exclusive request blocks later ordinary turns", async () => {
     const gate = new WorkspaceGate(async (sessionId, rootSessionId) => sessionId === rootSessionId);
     const first = await gate.acquireTurn(1, 1);
     const exclusive = gate.requestExclusive(1);
@@ -88,7 +88,7 @@ test("{§module-workspace-quiescence} a queued exclusive request blocks later or
     (await later)();
 });
 
-test("{§module-workspace-quiescence} exclusive mode admits only its selected lineage and serializes those turns", async () => {
+test("{§module-workspace-residency} exclusive mode admits only its selected lineage and serializes those turns", async () => {
     const descendants = new Set(["7:7", "8:7"]);
     const gate = new WorkspaceGate(async (sessionId, rootSessionId) => descendants.has(`${sessionId}:${rootSessionId}`));
     const exclusive = gate.requestExclusive(1);
@@ -119,7 +119,7 @@ test("{§module-workspace-quiescence} exclusive mode admits only its selected li
     (await outsider)();
 });
 
-test("{§module-workspace-quiescence} a capability replacement acquires only at an immediately quiescent boundary", async () => {
+test("{§module-workspace-residency} a capability replacement acquires only at an immediately quiescent boundary", async () => {
     const gate = new WorkspaceGate(async () => false);
     const first = gate.tryExclusive(1);
     assert.ok(first !== null);

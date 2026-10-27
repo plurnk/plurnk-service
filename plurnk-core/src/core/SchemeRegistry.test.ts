@@ -114,7 +114,7 @@ test("{§extension-discovery} registerRuntimeSchemes: a non-reserved executor ta
     assert.ok(registry.has("sh"), "the sh per-tag face is registered under its tag");
 });
 
-test("{§module-workspace-capabilities} runtime scheme faces are session-isolated and reversible", async () => {
+test("{§module-lifecycle} runtime scheme faces are session-isolated and reversible", async () => {
     const registry = new SchemeRegistry();
     const executor = {
         runtime: "gitea",

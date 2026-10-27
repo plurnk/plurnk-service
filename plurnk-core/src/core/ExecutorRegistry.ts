@@ -104,7 +104,7 @@ export default class ExecutorRegistry {
     // Validation observes the immutable base and every peer owner, while the
     // owner's own prior set is deliberately replaceable. The commit is
     // synchronous/no-fail and returns an equally no-fail rollback for the
-    // composed registry/docs/database transaction. {§module-workspace-capabilities}
+    // composed registry/docs/database transaction. {§module-lifecycle}
     prepareWorkspaceRegistrations(
         workspaceId: number,
         namespaceOwner: string,

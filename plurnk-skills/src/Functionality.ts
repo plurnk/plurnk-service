@@ -126,7 +126,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
         return installed.toSorted((left, right) => left.name.localeCompare(right.name));
     }
 
-    // {§agent-plugins-hosting} Standalone skills precede bundles within each host-ordered scope.
+    // {§functionality-inspection} Standalone skills precede bundles within each host-ordered scope.
     async #scan(workspaceId: number, { configurationRoots }: WorkspacePaths): Promise<Map<string, Installed>> {
         const union = new Map<string, Installed>();
         const { plugins } = await this.#seam.readWorkspacePlugins(workspaceId);

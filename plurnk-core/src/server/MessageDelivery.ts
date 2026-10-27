@@ -72,7 +72,7 @@ export default class MessageDelivery {
         // {§methods-loop-run-child-provider} — the session's persistent spawn override.
         const childSelection = await this.#sessionModels.resolveSessionSpawnModel(sessionId, childSelector);
         const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
-        // {§operator-config-max-turns-ceiling} — the operator ceiling clamps a per-call maxTurns; a
+        // {§operator-config-workspace-settings} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1);
         const requested = requestedMaxTurns ?? ceiling;

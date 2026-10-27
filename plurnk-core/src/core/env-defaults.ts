@@ -9,7 +9,7 @@ import HostPaths from "./HostPaths.ts";
 import PluginSources from "../server/PluginSources.ts";
 
 // Each package owns its configuration keys and panel (Agent Plugin native panels live in ai.plurnk/)
-// ({§operator-config-env-defaults}). The daemon assembles those files into the lowest-precedence
+// ({§operator-config-precedence}). The daemon assembles those files into the lowest-precedence
 // floor and renders the same sources on demand through `config defaults`, never a second file.
 // Duplicate ownership fails boot naming both packages.
 //
@@ -105,7 +105,7 @@ export default class EnvDefaults {
         return { files, configurationErrors, reports: sources.reports };
     }
 
-    // {§operator-config-env-defaults} A standard bundle's panel is extension data, not a portable component.
+    // {§operator-config-precedence} A standard bundle's panel is extension data, not a portable component.
     static async nativeFile(root: string, owner: string): Promise<EnvDefaultsFile | null> {
         const location = join(root, "ai.plurnk", ".env.defaults");
         try {

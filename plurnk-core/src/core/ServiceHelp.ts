@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import Paths from "../Paths.ts";
 import EnvFlags, { type FlagDescriptor } from "./EnvFlags.ts";
 
-// {§service-posix-artifacts} — executable help and packaged shell/manual projections share this source.
+// {§operator-config-precedence} — executable help and packaged shell/manual projections share this source.
 export default class ServiceHelp {
     static async flags(): Promise<FlagDescriptor[]> {
         return [

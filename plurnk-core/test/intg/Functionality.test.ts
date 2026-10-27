@@ -1,30 +1,66 @@
-import { TEST_OWNER, serverProposals } from "./_approval.ts";
-// {§functionality-coordinator} — the shared workspace Functionality lifecycle proven
-// through a fixture adapter: one client projection, one generated runtime,
-// one durable workspace-owned state, one atomic publication.
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Problems } from "@plurnk/plurnk-contracts";
-import { Mock } from "@plurnk/plurnk-providers";
-import { ConfigurationError } from "@plurnk/plurnk-meta";
-import type { FunctionalityFamilyHandle, FunctionalityListResult, FunctionalityOutcome, FunctionalityProvenance, PlurnkStatement, ProblemDetails } from "@plurnk/plurnk-contracts";
 import Daemon from "../../src/server/Daemon.ts";
-import type { RuntimeRegistration, Executor } from "@plurnk/plurnk-execs";
-import type { HostFunctionalityAdapter, HostSetupSeam } from "../../src/server/ModuleHost.ts";
 import Results, { OperationFailureError } from "../../src/core/results.ts";
-import { awaitExecOutcome } from "./_execs.ts";
-import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
-import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
-import type { Db } from "../../src/core/Db.ts";
 import LoopDocs from "../../src/server/loopDocs.ts";
 import WorkspaceGate from "../../src/core/WorkspaceGate.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
-import { connect, rpcCall, runLoopToTerminal, waitForDb } from "./_rpc.ts";
+import EvidenceReader from "@plurnk/plurnk-service/evidence";
+import HostPaths from "../../src/core/HostPaths.ts";
+import { TEST_OWNER, serverProposals, ownSession } from "./_approval.ts";
+import { mkdir, mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { Problems, type FunctionalityFamilyHandle, type FunctionalityListResult, type FunctionalityOutcome, type FunctionalityProvenance, type PlurnkStatement, type ProblemDetails, type FunctionalityDiscoverResult, type FunctionalityMutationResult, Validator } from "@plurnk/plurnk-contracts";
+import { Mock, chatMessageText } from "@plurnk/plurnk-providers";
+import { ConfigurationError } from "@plurnk/plurnk-meta";
+import { type RuntimeRegistration, type Executor } from "@plurnk/plurnk-execs";
+import { type HostFunctionalityAdapter, type HostSetupSeam } from "../../src/server/ModuleHost.ts";
+import { awaitExecOutcome } from "./_execs.ts";
+import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
+import { insertWorkspace, insertSession, openMigrated } from "./_db.ts";
+import { type Db } from "../../src/core/Db.ts";
+import { connect, rpcCall, runLoopToTerminal, waitForDb, waitFor } from "./_rpc.ts";
 import { modelOperation, namedModelSession } from "./_sessions.ts";
+import { Digest } from "@plurnk/plurnk-digest";
+import { copyStmt, editStmt, findStmt, killStmt, readStmt, regex } from "./_dsl.ts";
+import { fileURLToPath } from "node:url";
+import { createServer } from "node:http";
+import { type AddressInfo } from "node:net";
+import { Module as McpModule } from "@plurnk/plurnk-mcp";
+import { viableWindow } from "./_provider.ts";
+import { parseLogRecords } from "../LogRecords.ts";
+import { mcpEnvironment, stdioEntry, MCP_CONTROLS, httpEntry, mcpFixture } from "./_mcp-config.ts";
+import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
+import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
+
+describe("Functionality", () => {
+// {§functionality-coordinator} — the shared workspace Functionality lifecycle proven
+// through a fixture adapter: one client projection, one generated runtime,
+// one durable workspace-owned state, one atomic publication.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 const OWNER = "fx fixture adapter";
 
@@ -124,7 +160,7 @@ const fixtureAdapter = (log: string[]): HostFunctionalityAdapter => ({
     teardown: async (snapshot) => { log.push(`teardown:${(snapshot as { aliases: string[] }).aliases.join(",")}`); },
 });
 
-test("{§functionality-document-body} an adapter's docs/<family>.md rides inside the family's tool schema description; a wrong add example fails boot", async () => {
+test("{§functionality-model-projection} an adapter's docs/<family>.md rides inside the family's tool schema description; a wrong add example fails boot", async () => {
     const docsDir = await mkdtemp(join(tmpdir(), "plurnk-fx-docs-"));
     const db = await openMigrated();
     try {
@@ -177,7 +213,7 @@ const boot = async (db: Db, log: string[]): Promise<Daemon> => {
 
 const workspaceContext = (workspaceId: number) => ({ scope: "workspace" as const, workspaceId });
 
-test("{§functionality-model-mutation} one raw model program observes each management result in authored order", { timeout: 20_000 }, async (t) => {
+test("{§functionality-model-projection} one raw model program observes each management result in authored order", { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
     const frame = (verb: string, params: object = {}) => PlurnkParser.frame("plurnk (fx)", JSON.stringify({ verb, ...params }));
     const provider = new Mock({ contextWindow: 1_000_000, responses: [
@@ -219,7 +255,7 @@ test("{§functionality-model-mutation} one raw model program observes each manag
     assert.equal(await lifecycle.status(loop.loopId), 200);
 });
 
-test("{§functionality-model-mutation} concurrent configuration bypasses occupied external execution slots", { timeout: 15_000 }, async (t) => {
+test("{§functionality-model-projection} concurrent configuration bypasses occupied external execution slots", { timeout: 15_000 }, async (t) => {
     const prior = process.env.PLURNK_SERVICE_EXEC_CONCURRENCY;
     process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = "1";
     t.after(() => { if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_CONCURRENCY; else process.env.PLURNK_SERVICE_EXEC_CONCURRENCY = prior; });
@@ -257,9 +293,9 @@ test("{§functionality-preparation-cancellation} cancelling an operation joins p
             const prepared = await adapter.prepare(input);
             if (!input.enabled.has("cancelled")) return prepared;
             preparing.resolve();
-            await new Promise<void>((resolve) => {
-                if (input.signal.aborted) resolve();
-                else input.signal.addEventListener("abort", () => resolve(), { once: true });
+            await new Promise<void>((res) => {
+                if (input.signal.aborted) res();
+                else input.signal.addEventListener("abort", () => res(), { once: true });
             });
             return prepared;
         },
@@ -397,7 +433,7 @@ for (const caller of ["action", "operation"] as const) {
     });
 }
 
-test("{§functionality-mutation-status} mutations distinguish local creation, settlement, and authorization", async (t) => {
+test("{§functionality-replacement} mutations distinguish local creation, settlement, and authorization", async (t) => {
     const db = await openMigrated();
     const daemon = await boot(db, []);
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -428,7 +464,7 @@ test("{§functionality-mutation-status} mutations distinguish local creation, se
     assert.equal((await invoke("remove", "login")).status, 200);
 });
 
-test("{§module-workspace-quiescence} a model turn and concurrent catalog refresh both complete without reversing their locks", { timeout: 10000 }, async (t) => {
+test("{§module-workspace-residency} a model turn and concurrent catalog refresh both complete without reversing their locks", { timeout: 10000 }, async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
     const provider = new Mock({ contextWindow: 1_000_000, responses: [makeMockResponse("```SEND [200]\nReady.\n```")] });
@@ -629,7 +665,7 @@ test("{§methods-workspace-activate} activation without a turn publishes a works
     await assert.rejects(daemon.activateWorkspace({ workspaceId: 999_999 }), /does not exist/u);
 });
 
-test("{§functionality-preparation-visibility} aliases prepared at once are each listed from the time it began, and each leaves when a report omits it", { timeout: 10_000 }, async (t) => {
+test("{§functionality-inspection} aliases prepared at once are each listed from the time it began, and each leaves when a report omits it", { timeout: 10_000 }, async (t) => {
     const db = await openMigrated();
     const log: string[] = [];
     const adapter = fixtureAdapter(log);
@@ -662,7 +698,7 @@ test("{§functionality-preparation-visibility} aliases prepared at once are each
     const first = daemon.workspacePreparationStatus(workspaceId);
     assert.deepEqual(first.map(({ family, alias, phase }) => [family, alias, phase]), [["fx", "svc", "preparing"], ["fx", "web", "preparing"]],
         "every alias being prepared is listed");
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((res) => setTimeout(res, 5));
     step.resolve();
     await narrowed.promise;
     const second = daemon.workspacePreparationStatus(workspaceId);
@@ -750,7 +786,7 @@ test("{§functionality-adapter} interpretation context participates in runtime i
     assert.deepEqual(prepared, { definition: { kind: "ok" }, context });
 });
 
-test("{§configuration-provenance} inspection reports the winning source without persisting it or preparing it", async (t) => {
+test("{§configuration-repair-path} inspection reports the winning source without persisting it or preparing it", async (t) => {
     const db = await openMigrated();
     const log: string[] = [];
     let provenance: FunctionalityProvenance = { kind: "environment", source: "PLURNK_FX_svc" };
@@ -788,7 +824,7 @@ test("{§configuration-provenance} inspection reports the winning source without
 });
 
 for (const defect of ["outcome", "namespace"] as const) {
-    test(`{§functionality-publication} invalid ${defect} preparation aborts its candidate and preserves the workspace`, async (t) => {
+    test(`{§functionality-coordinator} invalid ${defect} preparation aborts its candidate and preserves the workspace`, async (t) => {
         const db = await openMigrated();
         const workspaceId = await insertWorkspace(db, `bad-preparation-${defect}`);
         const log: string[] = [];
@@ -831,7 +867,7 @@ const rejectedProblem = async (run: () => Promise<unknown>): Promise<ProblemDeta
     assert.fail("Expected operation failure.");
 };
 
-test("{§configuration-definition-resolution} a workspace definition replaces the whole baseline; enabledness never copies it", async (t) => {
+test("{§configuration-repair-path} a workspace definition replaces the whole baseline; enabledness never copies it", async (t) => {
     const db = await openMigrated();
     const adapter = fixtureAdapter([]);
     let baseline: object = { kind: "ok", args: ["service-argument"], env: { SERVICE: "first" } };
@@ -889,7 +925,7 @@ test("{§configuration-definition-resolution} a workspace definition replaces th
 });
 
 for (const [label, inheritedEnabled] of [["enabled", true], ["disabled", false], ["absent", undefined]] as const) {
-    test(`{§configuration-definition-resolution} removing an override restores the ${label} baseline without persisting a mask`, async (t) => {
+    test(`{§configuration-repair-path} removing an override restores the ${label} baseline without persisting a mask`, async (t) => {
         const db = await openMigrated();
         const adapter = fixtureAdapter([]);
         let baseline = inheritedEnabled === undefined ? [] : [{ alias: "svc", definition: { kind: "ok" }, enabled: inheritedEnabled }];
@@ -921,7 +957,7 @@ for (const [label, inheritedEnabled] of [["enabled", true], ["disabled", false],
     });
 }
 
-test("{§configuration-definition-resolution} failed inherited preparation preserves the local definition and publication", async (t) => {
+test("{§configuration-repair-path} failed inherited preparation preserves the local definition and publication", async (t) => {
     const db = await openMigrated();
     const adapter = fixtureAdapter([]);
     let baseline = { kind: "ok" };
@@ -955,7 +991,7 @@ test("{§configuration-definition-resolution} failed inherited preparation prese
     }], "the local definition remains durable after rejected restoration");
 });
 
-test("{§module-workspace-sharing} {§functionality-coordinator} registration, client lifecycle, documents, persistence, and shared visibility through one owner", async () => {
+test("{§module-workspace-residency} {§functionality-coordinator} registration, client lifecycle, documents, persistence, and shared visibility through one owner", async () => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-${crypto.randomUUID()}`);
@@ -1009,7 +1045,7 @@ fixture
             "the same workspace configuration may be reapplied by another client");
         assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { kind: "doc" } }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
         assert.equal((await rejectedProblem(() => invoke("enable", { alias: "ghost" }))).type, "https://problems.plurnk.xyz/functionality/alias-unknown");
-        // {§configuration-definition-resolution}
+        // {§configuration-repair-path}
         assert.equal((await rejectedProblem(() => invoke("remove", { alias: "svc" }))).type, "https://problems.plurnk.xyz/functionality/alias-service-owned");
         assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: "svc" })).definition.state, "disabled");
         assert.equal((await exec("svc")).status, 400);
@@ -1068,7 +1104,7 @@ fixture
     }
 });
 
-test("{§functionality-publication} a failed publication restores state, runtime selection, and every generated document", async (t) => {
+test("{§functionality-coordinator} a failed publication restores state, runtime selection, and every generated document", async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `publication-rollback-${crypto.randomUUID()}`);
     const log: string[] = [];
@@ -1099,7 +1135,7 @@ test("{§functionality-publication} a failed publication restores state, runtime
     }), [], "rollback cannot leave a document from the rejected workspace snapshot");
 });
 
-test("{§functionality-publication} a candidate goes live at publish, inside the registry commit, and commits after it", async (t) => {
+test("{§functionality-coordinator} a candidate goes live at publish, inside the registry commit, and commits after it", async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `publication-order-${crypto.randomUUID()}`);
     const log: string[] = [];
@@ -1113,7 +1149,7 @@ test("{§functionality-publication} a candidate goes live at publish, inside the
     assert.equal(events[0].split(":")[1], events[1].split(":")[1], "both phases belong to the same candidate");
 });
 
-test("{§functionality-publication} a management stream reports publication refusal instead of premature success", { timeout: 30_000 }, async (t) => {
+test("{§functionality-coordinator} a management stream reports publication refusal instead of premature success", { timeout: 30_000 }, async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `publication-result-${crypto.randomUUID()}`);
     const log: string[] = [];
@@ -1137,7 +1173,7 @@ test("{§functionality-publication} a management stream reports publication refu
 });
 
 for (const verb of ["add", "replace"]) for (const hold of ["", "plurnk:host"]) {
-    test(`{§functionality-model-mutation} a model uses its ${verb} tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async (approvalContext) => {
+    test(`{§functionality-model-projection} a model uses its ${verb} tool with execution hold ${hold || "disabled"}`, { timeout: 30_000 }, async (approvalContext) => {
         serverProposals(approvalContext, "accept");
         const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
         process.env.PLURNK_SERVICE_EXEC_HOLD = hold;
@@ -1170,7 +1206,7 @@ for (const verb of ["add", "replace"]) for (const hold of ["", "plurnk:host"]) {
     });
 }
 
-test("{§functionality-model-mutation} authorization-required holds the model mutation at the workspace boundary until resolved", { timeout: 15_000 }, async (t) => {
+test("{§functionality-model-projection} authorization-required holds the model mutation at the workspace boundary until resolved", { timeout: 15_000 }, async (t) => {
     serverProposals(t, "accept");
     const priorHold = process.env.PLURNK_SERVICE_EXEC_HOLD;
     process.env.PLURNK_SERVICE_EXEC_HOLD = "plurnk:host";
@@ -1213,7 +1249,7 @@ test("{§functionality-model-mutation} authorization-required holds the model mu
     } finally { ws.close(); await daemon.stop(); await db.close(); }
 });
 
-test("{§functionality-model-mutation} {§proposal-disposition} management verbs retain ordinary approval and report their settled result", async (t) => {
+test("{§functionality-model-projection} {§proposal-disposition} management verbs retain ordinary approval and report their settled result", async (t) => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `functionality-exec-${crypto.randomUUID()}`);
@@ -1222,7 +1258,7 @@ test("{§functionality-model-mutation} {§proposal-disposition} management verbs
         (await daemon.invokeModuleAction("workspace.fx.list", {}, workspaceContext(workspaceId)) as { definitions: Array<{ alias: string; state: string; problem?: ProblemDetails }> }).definitions;
     const operate = (program: string) => clientOperation(daemon, workspaceId, parseOne(program));
     // A family verb streams its JSON outcome into the Session's plurnk:// output
-    // entry; dispatch awaits the management result ({§functionality-model-mutation}).
+    // entry; dispatch awaits the management result ({§functionality-model-projection}).
     const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk" });
     const proposals: Array<{ logEntryId: number; disposition: unknown }> = [];
     const unsubscribe = daemon.subscribeToEvents((_workspaceId, method, params) => {
@@ -1301,4 +1337,1164 @@ test("{§schemes-directory} {§capability-admission}: a denied family has no sch
         await daemon.stop();
         await db.close();
     }
+});
+});
+
+describe("env-functionality", () => {
+// {§functionality-coordinator} {§env-functionality} — the environment family beneath the shared
+// coordinator, registered by Core. Session-scoped client actions, one durable value per session, and
+// the model's manager bound to the invoking session: the shared verbs, acting for one session.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
+
+for (const scope of ["session", "workspace"] as const) {
+    test(`{§functionality-model-projection} ${scope} env admission precedes the next shell invocation`, { timeout: 15_000 }, async (t) => {
+        serverProposals(t, "accept");
+        const db = await openMigrated();
+        const provider = new Mock({ contextWindow: 1_000_000, responses: [
+            makeRawMockResponse([
+                PlurnkParser.frame("plurnk (env)", JSON.stringify({ verb: "add", scope, alias: "SETTLEMENT_WITNESS", definition: { value: "settled" } })),
+                PlurnkParser.frame("sh", 'printf "%s" "$SETTLEMENT_WITNESS"'),
+                PlurnkParser.frame("NOTE", "Review the shell output."),
+            ].join("\n\n")),
+            makeRawMockResponse(PlurnkParser.frame("SEND [200]", "Finished.")),
+        ] });
+        const daemon = new Daemon({ db, provider });
+        t.after(async () => { await daemon.stop(); await db.close(); });
+        await daemon.start();
+        const { workspaceId } = await daemon.createWorkspace({ name: `env-ordered-${scope}` });
+        const sessionId = await insertSession(db, workspaceId, null, "reader", "model");
+        const loop = await daemon.runLoop({ workspaceId, sessionId, prompt: "Configure the witness and print it.", maxTurns: 2 });
+        const lifecycle = new LoopLifecycle(db);
+        await waitForDb(() => lifecycle.status(loop.loopId), (status) => status !== null && status >= 200);
+        const rows = await daemon.readLog({ workspaceId, sessionId, limit: Number.MAX_SAFE_INTEGER });
+        assert.equal(rows.find((row) => row.origin === "model" && row.op === "plurnk")?.status_rx, 201);
+        assert.ok(rows.some((row) => row.op === "READ" && row.scheme === "sh" && row.status_rx === 200 && JSON.stringify(row.rx).includes("settled")), "the command receives the just-published environment value");
+    });
+}
+
+const parseOne = (input: string): PlurnkStatement => {
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
+    const item = parsed.items.find((x) => x.kind === "statement");
+    if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
+    return item.statement;
+};
+
+const valueOf = (definition: object | undefined): string => {
+    assert.ok(definition !== undefined && "value" in definition && typeof definition.value === "string", "an env definition carries a string value");
+    return definition.value;
+};
+
+// A refusal is the verb's own operation result — the one shape the client action layer and the
+// model's manager both convert — never a thrown fault.
+const refusal = async (run: () => Promise<unknown>): Promise<string> => {
+    try {
+        await run();
+    } catch (cause) {
+        assert.ok(cause instanceof OperationFailureError, `a refusal is an operation result, not ${String(cause)}`);
+        return cause.result.problem.type;
+    }
+    throw new Error("expected a refusal");
+};
+
+// The root node_modules holds the workspace packages, so `discover` can read a sibling's declarations.
+const boot = async (db: Db): Promise<Daemon> => {
+    const daemon = new Daemon({ db, provider: null, nodeModulesPath: resolve("..", "node_modules") });
+    await daemon.start();
+    return daemon;
+};
+
+test("{§functionality-coordinator} env projects session-scoped actions; its state belongs to one session and its manager acts for the invoking session", async () => {
+    const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+    process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,ENV_WITNESS";
+    process.env.ENV_WITNESS = "ambient";
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-env-family-"));
+    const dbPath = join(scratch, "plurnk.db");
+    const db = await openMigrated(dbPath);
+    let daemon = await boot(db);
+    let quiescent = false;
+    try {
+        const workspaceId = await insertWorkspace(db, `env-family-${crypto.randomUUID()}`);
+        const alice = await insertSession(db, workspaceId, null, "alice", "model");
+        await ownSession(db, workspaceId, alice);
+        const bob = await insertSession(db, workspaceId, null, "bob", "model");
+        await ownSession(db, workspaceId, bob);
+        const invoke = <T>(sessionId: number, verb: string, params: Readonly<Record<string, unknown>> = {}): Promise<T> =>
+            daemon.invokeModuleAction(`session.env.${verb}`, params, { scope: "session", workspaceId, sessionId }) as Promise<T>;
+        const listed = async (sessionId: number) => (await invoke<FunctionalityListResult>(sessionId, "list")).definitions;
+        const stateOf = async (sessionId: number, alias: string): Promise<string | undefined> => {
+            const definition = (await listed(sessionId)).find((entry) => entry.alias === alias);
+            return definition === undefined ? undefined : `${definition.origin}:${definition.state}`;
+        };
+
+        // Both scopes use the same verbs; the action context binds their owner.
+        assert.deepEqual(
+            daemon.listModuleActions().filter(({ name }) => name.includes(".env.")).map(({ name, scope }) => `${name}:${scope}`),
+            ["session", "workspace"].flatMap((scope) => VERBS.map((verb) => `${scope}.env.${verb}:${scope}`)),
+        );
+
+        // The service baseline is what the ceiling admits, with its value, under the shell's alias grammar.
+        assert.equal(await stateOf(alice, "PATH"), "service:active", "an uppercase name is an alias for this family");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active");
+        assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
+        assert.deepEqual((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.provenance,
+            { kind: "environment", source: "ENV_WITNESS" });
+
+        // add → session origin, active, for alice alone.
+        const added = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
+        assert.equal(added.status, 201);
+        assert.equal(added.definition?.origin, "session", "origin names ownership: alice set it, not the workspace");
+        assert.equal(added.definition?.state, "active");
+        assert.equal(await stateOf(bob, "CARGO_TARGET_DIR"), undefined, "a sibling sees nothing of it");
+
+        // disable masks an ambient name for alice alone; enable restores it.
+        assert.equal((await invoke<FunctionalityMutationResult>(alice, "disable", { alias: "ENV_WITNESS" })).definition?.state, "disabled");
+        assert.equal(await stateOf(bob, "ENV_WITNESS"), "service:active", "the sibling's ambient name is untouched");
+        assert.equal((await invoke<FunctionalityMutationResult>(alice, "enable", { alias: "ENV_WITNESS" })).definition?.state, "active");
+        assert.equal((await invoke<FunctionalityMutationResult>(alice, "disable", { alias: "ENV_WITNESS" })).definition?.state, "disabled");
+
+        // Admission refusals are the verb's own outcome: a name a shell cannot export, and plurnk's own.
+        assert.equal(await refusal(() => invoke(alice, "add", { alias: "9NOPE", definition: { value: "x" } })), "https://problems.plurnk.xyz/env/functionality/name-invalid");
+        assert.equal(await refusal(() => invoke(alice, "add", { alias: "PLURNK_SERVICE_DB_PATH", definition: { value: "/tmp/steal.db" } })), "https://problems.plurnk.xyz/env/functionality/name-reserved");
+        assert.equal(await refusal(() => invoke(alice, "enable", { alias: "GHOST" })), "https://problems.plurnk.xyz/functionality/alias-unknown");
+
+        // {§configuration-repair-path}
+        assert.equal(await refusal(() => invoke(alice, "remove", { alias: "ENV_WITNESS" })), "https://problems.plurnk.xyz/functionality/alias-service-owned");
+        const shadow = await invoke<FunctionalityMutationResult>(alice, "add", { alias: "ENV_WITNESS", definition: { value: "mine" } });
+        assert.equal(shadow.definition?.origin, "session");
+        assert.equal(shadow.definition?.provenance, undefined, "a session's override is not the ambient configuration");
+        assert.equal(valueOf(shadow.definition?.definition), "mine");
+        assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "ENV_WITNESS" })).removed, true);
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:active", "removal restores inherited enabledness");
+        assert.deepEqual((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.provenance,
+            { kind: "environment", source: "ENV_WITNESS" });
+        assert.equal(valueOf((await listed(alice)).find((entry) => entry.alias === "ENV_WITNESS")?.definition), "ambient");
+        await invoke(alice, "disable", { alias: "ENV_WITNESS" });
+
+        // remove forgets a session entry; discover is inert and reads a sibling package's declaration.
+        assert.equal((await invoke<FunctionalityMutationResult>(alice, "remove", { alias: "CARGO_TARGET_DIR" })).removed, true);
+        assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), undefined);
+        const discovered = await invoke<FunctionalityDiscoverResult>(alice, "discover", { query: "PAGER" });
+        assert.equal(discovered.candidates.find(({ alias }) => alias === "PAGER")?.provenance.source, "@plurnk/plurnk-execs");
+        assert.equal(await stateOf(alice, "PAGER"), undefined, "discovery persisted nothing");
+        // {§functionality-replacement} A request naming no input is the whole catalog; a client's
+        // own configuration is no input, refused by the shared schema check.
+        const catalog = (await invoke<FunctionalityDiscoverResult>(alice, "discover", {})).candidates;
+        assert.ok(catalog.some(({ alias }) => alias === "PAGER"), "the empty request lists the catalog");
+        assert.ok(catalog.length > discovered.candidates.length, "the whole catalog, not a query's matches");
+        assert.equal(await refusal(() => invoke(alice, "discover", { configuration: {} })), "https://problems.plurnk.xyz/functionality/arguments-invalid");
+        assert.equal(await refusal(() => invoke(alice, "discover", { source: ".env" })), "https://problems.plurnk.xyz/env/functionality/source-unknown");
+        assert.deepEqual((await invoke<FunctionalityDiscoverResult>(alice, "discover", {
+            source: "@plurnk/plurnk-execs", query: "no-such-catalog-name",
+        })).candidates, []);
+
+        // Persistence: alice's shaping survives a restart; bob's is untouched.
+        await invoke(alice, "add", { alias: "CARGO_TARGET_DIR", definition: { value: "/tmp/shared" } });
+        await daemon.stop();
+        daemon = await boot(db);
+        assert.equal(await stateOf(alice, "CARGO_TARGET_DIR"), "session:active");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled");
+        assert.equal(await stateOf(bob, "ENV_WITNESS"), "service:active");
+        assert.equal(await stateOf(bob, "CARGO_TARGET_DIR"), undefined);
+
+        // Inheritance: a child of alice starts with her entries, each named for her; the child's own
+        // entries carry no such name, and touching an inherited entry makes it the child's own.
+        const carol = await insertSession(db, workspaceId, alice, "carol", "model");
+        const inheritedOf = async (sessionId: number, alias: string) => (await listed(sessionId)).find((entry) => entry.alias === alias)?.inherited;
+        assert.equal(await stateOf(carol, "CARGO_TARGET_DIR"), "session:active");
+        assert.equal(await inheritedOf(carol, "CARGO_TARGET_DIR"), "alice", "list names the Session that set an inherited value");
+        assert.equal(await stateOf(carol, "ENV_WITNESS"), "service:disabled", "a parent's masking of an ambient name travels too");
+        assert.equal(await inheritedOf(carol, "ENV_WITNESS"), "alice");
+        await invoke(carol, "add", { alias: "CAROL_ONLY", definition: { value: "c" } });
+        assert.equal(await inheritedOf(carol, "CAROL_ONLY"), undefined, "an entry the child set itself names no source");
+        await invoke(carol, "enable", { alias: "ENV_WITNESS" });
+        assert.equal(await inheritedOf(carol, "ENV_WITNESS"), undefined, "a changed entry is the child's own");
+        assert.equal(await stateOf(alice, "ENV_WITNESS"), "service:disabled", "the child's change never reaches the parent");
+        assert.equal(await stateOf(alice, "CAROL_ONLY"), undefined);
+
+        // The model's projection: `plurnk (env)` is published on the `plurnk` manager, and Core binds it to the invoking
+        // session at the operation, so alice's `list` is alice's and bob's is bob's.
+        const outputs = async (): Promise<number> =>
+            (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length;
+        const exec = async (sessionId: number, program: string) => {
+            const after = await outputs();
+            const { status } = await modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
+            return { status, result: () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after, timeoutMs: 10_000 }) };
+        };
+        const aliceList = await exec(alice, "````plurnk (env)````");
+        assert.equal(aliceList.status, 200);
+        const aliceView = await aliceList.result() as unknown as FunctionalityListResult;
+        assert.equal(aliceView.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.origin, "session");
+        assert.equal(aliceView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "disabled");
+        const bobView = await (await exec(bob, "````plurnk (env)````")).result() as unknown as FunctionalityListResult;
+        assert.equal(bobView.definitions.some(({ alias }) => alias === "CARGO_TARGET_DIR"), false, "the binding is per operation: bob's list is bob's");
+        assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
+
+        // A host verb proposes; acceptance persists for the invoking session and no other. Then the
+        // spawn ({§execution-output-identity}): what alice set reaches alice's next command, bob's command sees
+        // his own entry and the untouched ceiling — a registry, not a prefix.
+        const proposals: number[] = [];
+        const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
+            if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
+        });
+        const accepted = async (sessionId: number, program: string): Promise<{ status: number; logEntryId: number }> => {
+            const seen = proposals.length;
+            const pending = modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
+            await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
+            const logEntryId = proposals[seen];
+            await daemon.resolveProposal(logEntryId, { decision: "accept" }, { workspaceId, address: TEST_OWNER });
+            return { status: (await pending).status, logEntryId };
+        };
+        const stdoutOf = async (logEntryId: number): Promise<string> => {
+            const content = await waitForDb<string | null>(async () => {
+                const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+                const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname?: string };
+                if (pathname === undefined) return null;
+                const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
+                if (entry === undefined) return null;
+                const channel = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entry.id, name: "stdout" });
+                return channel?.state === "closed" ? channel.content : null;
+            }, (value) => value !== null, { timeoutMs: 10_000 });
+            return content!;
+        };
+        try {
+            const before = await outputs();
+            const bobAdded = await accepted(bob, `\`\`\`\`plurnk (env)\n${JSON.stringify({ verb: "add", alias: "BOB_ONLY", definition: { value: "1" } })}\n\`\`\`\``);
+            assert.equal(bobAdded.status, 201, "the accepted add settled inside the operation");
+            const outcome = await awaitExecOutcome(db, { workspaceId, scheme: "plurnk", after: before, timeoutMs: 10_000 }) as unknown as FunctionalityMutationResult;
+            assert.equal(outcome.definition?.origin, "session");
+            assert.equal(await stateOf(bob, "BOB_ONLY"), "session:active", "an accepted model add persisted for the invoking session");
+            assert.equal(await stateOf(alice, "BOB_ONLY"), undefined);
+
+            const command = "````sh\necho \"target=[$CARGO_TARGET_DIR] witness=[$ENV_WITNESS] bob=[$BOB_ONLY]\"\n````";
+            // The record lives on the spawn's output entry ({§execution-output-identity}), never on the
+            // model's own log row.
+            const recorded = async (logEntryId: number) => {
+                const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+                const { pathname } = JSON.parse(log!.attrs) as { pathname: string };
+                const output = await db.crud_find_workspace_entry.get<{ attributes: string }>({ workspace_id: workspaceId, scheme: "sh", authority: "", pathname });
+                return (JSON.parse(output!.attributes) as { env: Record<string, { source: string; from?: string; value?: string }> }).env;
+            };
+            const aliceRun = await accepted(alice, command);
+            assert.match(await stdoutOf(aliceRun.logEntryId), /target=\[\/tmp\/shared\] witness=\[\] bob=\[\]/,
+                "alice's command receives what she set and not the ambient name she disabled");
+            const bobRun = await accepted(bob, command);
+            assert.match(await stdoutOf(bobRun.logEntryId), /target=\[\] witness=\[ambient\] bob=\[1\]/,
+                "bob's command receives his own entry and the untouched ceiling");
+
+            // The spawn records what it received, name by name with provenance, on its own log row.
+            const aliceEnv = await recorded(aliceRun.logEntryId);
+            assert.deepEqual(aliceEnv.CARGO_TARGET_DIR, { source: "session", value: "/tmp/shared" });
+            assert.deepEqual(aliceEnv.ENV_WITNESS, { source: "masked" }, "a name alice withheld is recorded as masked, by her");
+            assert.equal(aliceEnv.PATH?.source, "host");
+            assert.deepEqual((await recorded(bobRun.logEntryId)).ENV_WITNESS, { source: "host", value: "ambient" });
+            const carolRun = await accepted(carol, command);
+            assert.match(await stdoutOf(carolRun.logEntryId), /target=\[\/tmp\/shared\] witness=\[ambient\] bob=\[\]/,
+                "carol's command receives the value she inherited and the name she re-enabled");
+            assert.deepEqual((await recorded(carolRun.logEntryId)).CARGO_TARGET_DIR, { source: "session", from: "alice", value: "/tmp/shared" },
+                "the record names the Session that set an inherited value");
+            await daemon.invokeModuleAction("workspace.env.add", { alias: "ENV_WITNESS", definition: { value: "workspace" } }, { scope: "workspace", workspaceId });
+            const sharedRun = await accepted(bob, command);
+            assert.match(await stdoutOf(sharedRun.logEntryId), /witness=\[workspace\]/u);
+            assert.deepEqual((await recorded(sharedRun.logEntryId)).ENV_WITNESS, { source: "workspace", value: "workspace" });
+            assert.equal(await stateOf(alice, "ENV_WITNESS"), "workspace:disabled", "the session's mask follows the name when its lower origin changes");
+            const maskedRun = await accepted(alice, command);
+            assert.match(await stdoutOf(maskedRun.logEntryId), /witness=\[\]/u);
+            await invoke(bob, "add", { alias: "ENV_WITNESS", definition: { value: "session" } });
+            const localRun = await accepted(bob, command);
+            assert.match(await stdoutOf(localRun.logEntryId), /witness=\[session\]/u);
+        } finally {
+            unsubscribe();
+        }
+
+        // The digest renders what each spawn recorded, beside its operation ({§execution-output-identity}):
+        // alice's own value and her masked name, carol's inherited value by its source.
+        await daemon.stop();
+        await db.close();
+        quiescent = true;
+        Digest.run({ openEvidence: EvidenceReader.open, dbPath, digestDir: join(scratch, "digest") });
+        const waterfall = await readFile(join(scratch, "digest", "digest.md"), "utf8");
+        assert.match(waterfall, /env: host [A-Z_,]+ · CARGO_TARGET_DIR=\/tmp\/shared \(session\) · ENV_WITNESS \(masked\)/u,
+            "the waterfall names alice's spawn environment with each value's provenance");
+        assert.match(waterfall, /CARGO_TARGET_DIR=\/tmp\/shared \(from alice\)/u, "and carol's inherited value by the Session that set it");
+        assert.match(waterfall, /ENV_WITNESS=workspace \(workspace\)/u);
+    } finally {
+        if (!quiescent) {
+            await daemon.stop();
+            await db.close();
+        }
+        await rm(scratch, { recursive: true, force: true });
+        delete process.env.ENV_WITNESS;
+        if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+        else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;
+    }
+});
+
+// {§execution-output-identity} — a module reading the environment on a Session's behalf sees that Session's own
+// overrides above the workspace layer, exactly what its commands run under; the workspace read
+// never includes them.
+test("{§functionality-coordinator} readSessionEnvironment layers the Session's overrides over the workspace's defaults", async () => {
+    const db = await openMigrated();
+    const daemon = await boot(db);
+    try {
+        const workspaceId = await insertWorkspace(db, `env-seam-${crypto.randomUUID()}`);
+        const alice = await insertSession(db, workspaceId, null, "alice", "model");
+        await ownSession(db, workspaceId, alice);
+        const bob = await insertSession(db, workspaceId, null, "bob", "model");
+        await ownSession(db, workspaceId, bob);
+        await daemon.invokeModuleAction("workspace.env.add", { alias: "TZ", definition: { value: "Europe/Paris" } }, { scope: "workspace", workspaceId });
+        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, { scope: "session", workspaceId, sessionId: alice });
+        const ambient = { TZ: "UTC", PATH: process.env.PATH ?? "" };
+        assert.equal((await daemon.readWorkspaceEnvironment(workspaceId))(ambient).TZ, "Europe/Paris", "the workspace layer over the ambient value");
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Asia/Tokyo", "alice's own override wins for alice");
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, bob))(ambient).TZ, "Europe/Paris", "bob inherits the workspace layer");
+        const sessionContext = { scope: "session" as const, workspaceId, sessionId: alice };
+        const removed = await daemon.invokeModuleAction("session.env.remove", { alias: "TZ" }, sessionContext) as FunctionalityMutationResult;
+        assert.deepEqual(removed.definition, { alias: "TZ", origin: "workspace", state: "active", definition: { value: "Europe/Paris" } });
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "removal restores the shared value for subsequent commands");
+        await daemon.invokeModuleAction("session.env.add", { alias: "TZ", definition: { value: "Asia/Tokyo" } }, sessionContext);
+        await daemon.invokeModuleAction("workspace.env.disable", { alias: "TZ" }, { scope: "workspace", workspaceId });
+        const disabled = await daemon.invokeModuleAction("session.env.remove", { alias: "TZ" }, sessionContext) as FunctionalityMutationResult;
+        assert.deepEqual(disabled.definition, { alias: "TZ", origin: "workspace", state: "disabled", definition: { value: "Europe/Paris" } });
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, undefined, "removal also inherits a workspace mask");
+        await daemon.invokeModuleAction("workspace.env.enable", { alias: "TZ" }, { scope: "workspace", workspaceId });
+        assert.equal((await daemon.readSessionEnvironment(workspaceId, alice))(ambient).TZ, "Europe/Paris", "no session mask is left behind when the workspace changes");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+});
+
+describe("env-scheme", () => {
+// {§env-functionality} — the environment registry as an address space: what `list` projects is what
+// env:///NAME reads, writes land on the dispatching Session's own layer, and a value has no lines.
+
+
+
+
+
+
+
+
+
+
+const PROBLEMS = "https://problems.plurnk.xyz";
+const env = (name: string) => parsePath(`env:///${name}`)!;
+
+test("{§env-functionality} every effective name reads at env:///NAME; EDIT and KILL act on the Session's own layer", async (t) => {
+    const previousInherit = process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT;
+    const previousWitness = process.env.ENV_WITNESS;
+    process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = "PATH,HOME,ENV_WITNESS";
+    process.env.ENV_WITNESS = "ambient";
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, nodeModulesPath: resolve("..", "node_modules") });
+    t.after(async () => {
+        await daemon.stop();
+        await db.close();
+        if (previousInherit === undefined) delete process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT; else process.env.PLURNK_SERVICE_EXEC_ENV_INHERIT = previousInherit;
+        if (previousWitness === undefined) delete process.env.ENV_WITNESS; else process.env.ENV_WITNESS = previousWitness;
+    });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: `env-scheme-${crypto.randomUUID()}` });
+    const alice = await insertSession(db, workspaceId, null, "alice", "model");
+    await ownSession(db, workspaceId, alice);
+    const bob = await insertSession(db, workspaceId, null, "bob", "model");
+    await ownSession(db, workspaceId, bob);
+    await daemon.invokeModuleAction("workspace.env.add", { alias: "TEAM_DEFAULT", definition: { value: "shared" } }, { scope: "workspace", workspaceId });
+
+    // Each session's own operation: an env:/// address is the dispatching Session's registry ({§env-functionality}).
+    const as = (sessionId: number) => (statement: PlurnkStatement) => modelOperation(daemon, db, { workspaceId, sessionId, statement });
+    const dispatch = as(alice);
+    const content = async (sessionId: number, name: string): Promise<string | number> => {
+        const result = await as(sessionId)(readStmt(env(name)));
+        return result.status === 200 ? String(result.content) : result.status;
+    };
+    const state = async (sessionId: number, alias: string): Promise<string | undefined> => {
+        const listed = await daemon.invokeModuleAction("session.env.list", {}, { scope: "session", workspaceId, sessionId }) as FunctionalityListResult;
+        const definition = listed.definitions.find((entry) => entry.alias === alias);
+        return definition === undefined ? undefined : `${definition.origin}:${definition.state}`;
+    };
+    const find = async (path: string, matcher: ReturnType<typeof regex> | null = null): Promise<string[]> => {
+        const result = await dispatch({ ...findStmt(parsePath(path), matcher), lineMarker: { marks: [1, -1] } });
+        assert.equal(result.status, 200, JSON.stringify(result));
+        assert.ok(Array.isArray(result.results));
+        return (result.results.flat() as Array<{ path: string }>).map((item) => item.path);
+    };
+
+    // READ: the ceiling's ambient names, workspace defaults; a name outside the ceiling is no resource.
+    assert.equal(await content(alice, "ENV_WITNESS"), "ambient");
+    assert.equal(await content(alice, "TEAM_DEFAULT"), "shared");
+    assert.equal(await content(alice, "PLURNK_SERVICE_DB_PATH"), 404, "reserved names are absent from the env resource projection");
+    assert.equal(await content(alice, "GHOST"), 404);
+
+    // FIND lists the names in effect and a pattern matches values.
+    const listed = await find("env:///*");
+    for (const name of ["ENV_WITNESS", "TEAM_DEFAULT", "PATH"]) assert.ok(listed.includes(`env:///${name}`), `${name} in ${listed.join(" ")}`);
+    assert.deepEqual(await find("env:///**", regex("^ambient$")), ["env:///ENV_WITNESS"]);
+
+    // COPY carries a value into a file.
+    const copied = await dispatch(copyStmt(env("TEAM_DEFAULT"), parsePath("workspace:///value.txt")!));
+    assert.equal(copied.status, 201, JSON.stringify(copied));
+    assert.equal(String((await dispatch(readStmt(parsePath("workspace:///value.txt")))).content).trimEnd(), "shared");
+
+    // EDIT sets a Session's own value: a new name, and an override of an inherited one, for alice alone.
+    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/target"))).status, 200);
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/target");
+    assert.equal(await state(alice, "CARGO_TARGET_DIR"), "session:active");
+    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/replaced"))).status, 200);
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/replaced", "EDIT replaces an already-local value");
+    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), ""))).status, 200);
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 204, "an empty value reads as an empty resource");
+    const emptyValue = await daemon.invokeModuleAction("session.env.list", {}, { scope: "session", workspaceId, sessionId: alice }) as FunctionalityListResult;
+    assert.deepEqual(emptyValue.definitions.find(({ alias }) => alias === "CARGO_TARGET_DIR")?.definition, { value: "" });
+    await daemon.invokeModuleAction("session.env.disable", { alias: "CARGO_TARGET_DIR" }, { scope: "session", workspaceId, sessionId: alice });
+    assert.equal((await dispatch(editStmt(env("CARGO_TARGET_DIR"), "/tmp/offline"))).status, 200);
+    assert.equal(await state(alice, "CARGO_TARGET_DIR"), "session:disabled", "replacement does not enable a disabled definition");
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 404);
+    await daemon.invokeModuleAction("session.env.enable", { alias: "CARGO_TARGET_DIR" }, { scope: "session", workspaceId, sessionId: alice });
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), "/tmp/offline");
+    assert.equal(await content(bob, "CARGO_TARGET_DIR"), 404, "a sibling sees nothing of alice's layer");
+    assert.equal((await dispatch(editStmt(env("ENV_WITNESS"), "mine"))).status, 200);
+    assert.equal(await content(alice, "ENV_WITNESS"), "mine");
+    assert.equal(await state(alice, "ENV_WITNESS"), "session:active");
+    assert.equal(await content(bob, "ENV_WITNESS"), "ambient");
+
+    // A value has no lines: a line scope is the facet's refusal, a pattern the dispatcher's for any
+    // scheme without text scopes; admission is the family's, and its refusal is the operation's result.
+    const problem = async (statement: PlurnkStatement): Promise<string> => {
+        const result = await dispatch(statement) as { status: number; problem?: { type?: string } };
+        return `${result.status} ${String(result.problem?.type).replace(`${PROBLEMS}/`, "")}`;
+    };
+    assert.equal(await problem(editStmt(env("ENV_WITNESS"), "x", { marks: [1, 1] })), "400 scheme/env/value-whole");
+    assert.equal(await problem(editStmt(env("ENV_WITNESS"), "x", null, regex("mine"))), "400 engine/dispatcher/pattern-unsupported");
+    assert.equal(await problem(editStmt(env("9NOPE"), "x")), "400 scheme/env/name-invalid");
+    assert.equal(await problem(editStmt(parsePath("env://host/NAME"), "x")), "400 scheme/env/name-invalid");
+    assert.equal(await problem(editStmt(env("PLURNK_SERVICE_DB_PATH"), "/tmp/steal.db")), "400 env/functionality/name-reserved");
+    assert.equal(await problem(killStmt(env("ENV_WITNESS"), { marks: [1, 1] })), "400 scheme/env/value-whole");
+    assert.equal(await problem(killStmt(env("GHOST"))), "404 scheme/env/entry-not-found");
+
+    // KILL retires the name from alice's commands: remove for her own entry (restoring what it
+    // shadowed), disable for an inherited one (its definition kept), never the workspace's layer.
+    assert.equal((await dispatch(killStmt(env("CARGO_TARGET_DIR")))).status, 200);
+    assert.equal(await content(alice, "CARGO_TARGET_DIR"), 404);
+    assert.equal(await state(alice, "CARGO_TARGET_DIR"), undefined);
+    assert.equal((await dispatch(killStmt(env("ENV_WITNESS")))).status, 200);
+    assert.equal(await content(alice, "ENV_WITNESS"), "ambient", "removing the override restores the inherited value");
+    assert.equal((await dispatch(killStmt(env("ENV_WITNESS")))).status, 200);
+    assert.equal(await content(alice, "ENV_WITNESS"), 404);
+    assert.equal(await state(alice, "ENV_WITNESS"), "service:disabled", "an inherited name is withheld, not forgotten");
+    assert.equal((await dispatch(killStmt(env("TEAM_DEFAULT")))).status, 200);
+    assert.equal(await content(alice, "TEAM_DEFAULT"), 404);
+    assert.equal(await content(bob, "TEAM_DEFAULT"), "shared", "the workspace default is untouched");
+    assert.equal(await problem(killStmt(env("TEAM_DEFAULT"))), "404 scheme/env/entry-not-found");
+});
+});
+
+describe("functionality-parity", () => {
+// {§functionality-coordinator} — lifecycle parity across the real
+// families. One family-neutral matrix runs against Agent Skills and MCP
+// with their representative standards peers beneath: the
+// same client verbs, the same model verbs through the real proposal boundary,
+// the same hotload/withdrawal at the next packet, the same persistence,
+// shared visibility, workspace isolation, concurrency, and rollback. No step encodes a family's
+// management grammar; only the definition payloads and the liveness probe differ.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+type Definition = { readonly alias: string; readonly definition: object; readonly probe: (context: Context) => Promise<number> };
+
+interface Context {
+    readonly daemon: Daemon;
+    readonly db: Db;
+    readonly workspaceId: number;
+    readonly modelSessionId: number;
+    // The person whose client operations probe the workspace ({§connection-lifecycle}).
+    readonly actor: string;
+}
+
+interface Family {
+    readonly family: string;
+    readonly documentOf: (alias: string) => string;
+    readonly service: Definition;              // enabled by default from configuration
+    readonly addable: Definition;              // a second live definition
+    readonly conflicting: Definition;          // same alias as addable, different definition
+    readonly unreachable: Definition;          // admits, fails preparation
+    readonly replacementUnavailable: object;
+    readonly attachmentIdentity?: (context: Context) => Promise<number>;
+    readonly discover: Readonly<Record<string, unknown>>;
+    readonly collidingAlias?: string;          // a publication the host refuses
+    readonly projectRoot?: string;             // the workspace's project root, when the family needs one
+    readonly teaching: RegExp;                 // a phrase only the family's authored docs/<family>.md body carries
+    boot(db: Db, provider: Mock): Promise<{ daemon: Daemon }>;
+    close(): Promise<void>;
+}
+
+class PacketCapturingMock extends Mock {
+    readonly requests: string[] = [];
+
+    override generate(...args: Parameters<Mock["generate"]>): ReturnType<Mock["generate"]> {
+        this.requests.push(args[0].messages.map(chatMessageText).join("\n\n"));
+        return super.generate(...args);
+    }
+}
+
+const parseOne = (input: string): PlurnkStatement => {
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
+    const item = parsed.items.find((x) => x.kind === "statement");
+    if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
+    return item.statement;
+};
+
+const LIVE = new Set([102, 200]);
+// Absent: unknown or disabled (404/501) or unavailable with its exact Problem (5xx).
+const isAbsent = (status: number): boolean => status >= 400;
+
+// A person's operation, acting for the context's model session ({§actor-boundary-client-operations}).
+const dispatch = async (context: Context, statement: PlurnkStatement) => (await context.daemon.dispatchClientAction({
+    workspaceId: context.workspaceId, actor: context.actor, contextSessionId: context.modelSessionId, statements: [statement],
+}))[0];
+
+// Generated documents are workspace resources ({§session-scheme}): the client reads them,
+// leaving the model session's packets to the loops under test.
+const documentPresent = async (context: Context, pathname: string): Promise<number> => {
+    const target = pathname.includes("://") ? pathname : `workspace://${pathname}`;
+    return (await dispatch(context, parseOne(`\`\`\`\`READ (${target})\`\`\`\``))).status;
+};
+
+const problemOf = async (run: () => Promise<unknown>): Promise<ProblemDetails> => {
+    try { await run(); } catch (error) {
+        const problem = (error as { problem?: ProblemDetails }).problem ?? (error as OperationFailureError).result?.problem;
+        assert.ok(problem !== undefined, `expected a Problem, got ${String(error)}`);
+        return problem;
+    }
+    assert.fail("Expected the action to reject.");
+};
+
+const mockProvider = (): PacketCapturingMock => new PacketCapturingMock({
+    contextWindow: viableWindow() * 2,
+    responses: Array.from({ length: 12 }, () => makeMockResponse("````SEND [200]\ndone\n````", 20)),
+});
+
+const packetLogRecords = (source: string): Array<Record<string, unknown>> => {
+    const content = /(?:^|\n)## Log\n\n(?=### log:\/\/\/)([\s\S]*?)(?=\n\n## [^\n]+(?:\n|$)|$)/u.exec(source)?.[1];
+    assert.notEqual(content, undefined, "the generated model request includes its Log section");
+    return parseLogRecords(content!);
+};
+
+// ───────────────────────── families ─────────────────────────
+
+const skillsFamily = async (): Promise<Family> => {
+    const base = await mkdtemp(join(tmpdir(), "plurnk-parity-skills-"));
+    const home = join(base, "home");
+    const project = join(base, "project");
+    const sourceA = join(base, "source-a");
+    const sourceB = join(base, "source-b");
+    const hostPaths = new HostPaths({ home, env: {} });
+    const skill = async (root: string, name: string, description: string) => {
+        await mkdir(join(root, name), { recursive: true });
+        await writeFile(join(root, name, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\nUse ${name}.\n`);
+    };
+    await mkdir(project, { recursive: true });
+    await mkdir(home, { recursive: true });
+    const emptySource = join(base, "empty-source");
+    await mkdir(emptySource);
+    await skill(hostPaths.projectSkillsDir(project), "grep", "Find text");
+    await skill(sourceA, "extra", "Extra from source A");
+    await skill(sourceB, "extra", "Extra from source B");
+    const doc = (alias: string) => `skill://${alias}/SKILL.md`;
+    const probe = (alias: string) => (context: Context) => documentPresent(context, doc(alias));
+    return {
+        family: "skills",
+        documentOf: doc,
+        teaching: /## Adding/u,
+        service: { alias: "grep", definition: { name: "grep", source: join(hostPaths.projectSkillsDir(project), "grep") }, probe: probe("grep") },
+        addable: { alias: "extra", definition: { name: "extra", source: sourceA }, probe: probe("extra") },
+        conflicting: { alias: "extra", definition: { name: "extra", source: sourceB }, probe: probe("extra") },
+        unreachable: { alias: "ghost", definition: { name: "ghost", source: sourceA }, probe: probe("ghost") },
+        replacementUnavailable: { name: "extra", source: emptySource },
+        discover: { source: sourceA },
+        boot: async (db, provider) => {
+            const daemon = new Daemon({ db, provider, hostPaths });
+            return { daemon };
+        },
+        close: () => rm(base, { recursive: true, force: true }),
+        projectRoot: project,
+    };
+};
+
+const mcpFamily = async (): Promise<Family> => {
+    const echo = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
+    const legacy = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/legacy-server.mjs", import.meta.url));
+    // {§mcp-configuration}
+    const home = await mkdtemp(join(tmpdir(), "plurnk-parity-mcp-"));
+    const hostPaths = new HostPaths({ home, env: {} });
+    // {§mcp-registry-discovery} — a registry answering exactly as the MCP Registry does.
+    const registry = createServer((_request, response) => {
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ servers: [{ server: {
+            name: "io.github.example/example-server", version: "1.0.0", description: "An example server.",
+            packages: [{ registryType: "npm", identifier: "@example/server", version: "1.0.0", transport: { type: "stdio" } }],
+        } }] }));
+    });
+    await new Promise<void>((res) => registry.listen(0, "127.0.0.1", res));
+    const registryUrl = `http://127.0.0.1:${(registry.address() as AddressInfo).port}`;
+    // A started stream is an active request; the probe waits for its results
+    // channel to close so a following mutation meets a quiescent server.
+    const exec = (alias: string, tool: string) => async (context: Context) => {
+        const before = (await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" })).length;
+        const { status } = await dispatch(context, parseOne(`\`\`\`\`${alias} (${tool})
+{"message":"parity"}
+\`\`\`\``));
+        if (status !== 200) return status;
+        await waitForDb(async () => {
+            const outputs = await context.db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: context.workspaceId, scheme: alias, prefix: "/%" });
+            if (outputs.length <= before) return false;
+            for (const { pathname } of outputs) {
+                const channel = await context.db.test_get_channel_by_pathname_scheme.get<{ state: string }>({ pathname, scheme: alias, name: "body" });
+                if (channel !== undefined && channel.state !== "closed" && channel.state !== "errored") return false;
+            }
+            return true;
+        }, (closed) => closed, { timeoutMs: 20_000 });
+        return status;
+    };
+    // The echo tool declares readOnlyHint, so a client execution of it runs ungated; the legacy one proposes.
+    const server = (name: string, file: string) => ({ name, type: "stdio", command: "node", args: [file], env: { PLURNK_MCP_TEST_LAUNCH: "1" } });
+    return {
+        family: "mcp",
+        teaching: /## discover, then add/u,
+        documentOf: (alias) => `/_plurnk/tools/${alias}.md`,
+        service: { alias: "fixture", definition: server("fixture", echo), probe: exec("fixture", "echo") },
+        addable: { alias: "extra", definition: server("extra", echo), probe: exec("extra", "echo") },
+        conflicting: { alias: "extra", definition: server("extra", legacy), probe: exec("extra", "legacy_echo") },
+        unreachable: { alias: "ghost", definition: server("ghost", join(tmpdir(), "no-such-mcp-server.mjs")), probe: exec("ghost", "echo") },
+        replacementUnavailable: server("extra", join(tmpdir(), "no-such-mcp-server.mjs")),
+        attachmentIdentity: async (context) => {
+            const after = (await context.db.test_entries_by_scheme_prefix.all({ workspace_id: context.workspaceId, scheme: "extra", prefix: "/%" })).length;
+            assert.equal((await dispatch(context, parseOne(PlurnkParser.frame("extra (launch)", "{}")))).status, 200);
+            const result = await awaitExecOutcome(context.db, { workspaceId: context.workspaceId, scheme: "extra", channel: "body", after });
+            assert.equal(typeof result.pid, "number");
+            return result.pid as number;
+        },
+        discover: { query: "example" },
+        collidingAlias: "sh",
+        boot: async (db, provider) => {
+            const daemon = new Daemon({ db, provider, hostPaths });
+            daemon.registerModule(McpModule.init({ env: { ...mcpEnvironment({ fixture: stdioEntry("echo-server.mjs") }), PLURNK_MCP_REGISTRY_URL: registryUrl, PLURNK_MCP_REGISTRY_LIMIT: "5" } }), "@plurnk/plurnk-mcp");
+            return { daemon };
+        },
+        close: async () => {
+            await new Promise<void>((res) => registry.close(() => res()));
+            await rm(home, { recursive: true, force: true });
+        },
+    };
+};
+
+// ───────────────────────── the matrix ─────────────────────────
+
+const matrix = async (family: Family): Promise<void> => {
+    const db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, `parity-${family.family}-${crypto.randomUUID()}`);
+    if (family.projectRoot !== undefined) await db.test_set_workspace_root.run({ id: workspaceId, project_root: family.projectRoot });
+    const model = await insertSession(db, workspaceId, null, "model", "model");
+    const peer = await insertSession(db, workspaceId, null, "peer", "model");
+    for (const sessionId of [model, peer]) await ownSession(db, workspaceId, sessionId);
+    const personA = TEST_OWNER;
+    const personB = "test://secondary";
+    let provider = mockProvider();
+    let { daemon } = await family.boot(db, provider);
+    await daemon.start();
+    const context = (modelSessionId = model, actor = personA): Context => ({ daemon, db, workspaceId, modelSessionId, actor });
+    // A client retries the one retryable refusal: 409 workspace-busy while a
+    // just-settled stream still holds the workspace ({§module-workspace-residency}).
+    const invoke = async <T>(verb: string, params: Readonly<Record<string, unknown>>): Promise<T> => {
+        for (let attempt = 0; ; attempt++) {
+            try {
+                return await daemon.invokeModuleAction(`workspace.${family.family}.${verb}`, params, { scope: "workspace", workspaceId }) as T;
+            } catch (error) {
+                const problem = (error as { problem?: ProblemDetails }).problem ?? (error as OperationFailureError).result?.problem;
+                if (problem?.type.endsWith("/workspace-busy") && attempt < 100) {
+                    await new Promise((r) => setTimeout(r, 20));
+                    continue;
+                }
+                throw error;
+            }
+        }
+    };
+    type Listed = { alias: string; origin: string; state: string; definition: object; problem?: ProblemDetails };
+    const listed = async (): Promise<Listed[]> => (await invoke<{ definitions: Listed[] }>("list", {})).definitions;
+    const stateOf = async (alias: string): Promise<string | undefined> => (await listed()).find((entry) => entry.alias === alias)?.state;
+    const live = async (definition: Definition, sessionId = model, actor = personA): Promise<boolean> => {
+        const status = await definition.probe(context(sessionId, actor));
+        assert.ok(LIVE.has(status) || isAbsent(status), `${family.family}: probe of ${definition.alias} answered ${status}`);
+        return LIVE.has(status);
+    };
+    const document = (alias: string) => documentPresent(context(), family.documentOf(alias));
+    // Model verbs: the model's own operations through the plurnk execution manager, which streams JSON
+    // into its output entry; its owner reviews what they propose.
+    const exec = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId: model, statement: parseOne(program) });
+    const verbResult = () => awaitExecOutcome(db, { workspaceId, scheme: "plurnk", timeoutMs: 10_000 });
+    const proposals: number[] = [];
+    const events: Array<{ method: string; params: unknown }> = [];
+    let unsubscribe = daemon.subscribeToEvents((_w, method, params) => {
+        events.push({ method, params });
+        if (method === "loop/proposal") proposals.push((params as { logEntryId: number }).logEntryId);
+    });
+    // An execution verb starts a stream: the dispatch reports `started`, the verb's
+    // JSON outcome closes the family's results channel, and an accepted
+    // mutation's publication settles at the turn boundary.
+    const proposed = async (program: string, decision: "accept" | "reject") => {
+        const seen = proposals.length;
+        const outputsBefore = (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length;
+        const pending = exec(program);
+        await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
+        await daemon.resolveProposal(proposals[seen], { decision }, { workspaceId, address: TEST_OWNER });
+        const result = await pending;
+        if (decision === "accept") {
+            await waitForDb(async () => (await db.test_entries_by_scheme_prefix.all<{ pathname: string }>({ workspace_id: workspaceId, scheme: "plurnk", prefix: "/%" })).length, (count) => count > outputsBefore, { timeoutMs: 10_000 });
+            await verbResult();
+            await daemon.settleFunctionality(workspaceId);
+        }
+        return result;
+    };
+    // A model loop: the next packet is what the model actually sees.
+    const nextPacket = async (): Promise<string> => {
+        const before = provider.requests.length;
+        const started = await daemon.runLoop({ workspaceId, sessionId: model, prompt: `parity ${provider.requests.length}` });
+        await waitFor(() => events.filter((e) => e.method === "loop/terminated" && (e.params as { loopId?: number }).loopId === started.loopId), (t) => t.length > 0, { timeoutMs: 20_000 });
+        const packet = provider.requests[before];
+        assert.ok(packet !== undefined, `${family.family}: the loop produced no packet`);
+        return packet;
+    };
+    const add = (definition: Definition) => invoke<{ status: number; definition: { state: string } }>("add", { alias: definition.alias, definition: definition.definition });
+
+    try {
+        // 1. Registration: the common actions, nothing family-specific in the grammar.
+        assert.deepEqual(
+            daemon.listModuleActions().map(({ name }) => name).filter((name) => name.startsWith(`workspace.${family.family}.`) && !name.includes(".oauth.") && !name.endsWith(".complete")).toSorted(),
+            ["add", "disable", "discover", "enable", "list", "remove", "replace"].map((verb) => `workspace.${family.family}.${verb}`),
+        );
+        // 2. Inspection is passive; real use activates the service definition.
+        assert.equal(await stateOf(family.service.alias), "dormant");
+        assert.equal((await listed()).find((entry) => entry.alias === family.service.alias)?.origin, "service");
+        assert.equal(await live(family.service), true, "the configured definition is live");
+        assert.equal(await stateOf(family.service.alias), "active");
+        assert.equal(await document(family.service.alias), 200, "the active definition has its generated document");
+        // {§functionality-model-projection} — real installed managers use the same schema documents as attached tools.
+        const references = await daemon.engine.referenceEntries(workspaceId);
+        const managerDoc = references.find(({ pathname }) => pathname === "/_plurnk/tools/plurnk.md")!;
+        const toolSchemaPath = `/_plurnk/tools/plurnk/${family.family}.json`;
+        const toolDoc = references.find(({ pathname }) => pathname === toolSchemaPath)!;
+        assert.ok(managerDoc && toolDoc, "the manager catalog links to a materialized input schema");
+        assert.ok(managerDoc.content.includes(`Schema: workspace://${toolSchemaPath}`));
+        const toolSchema = JSON.parse(toolDoc.content);
+        assert.ok(toolSchema.properties.verb.enum.includes("add") && toolSchema.properties.verb.enum.includes("replace"));
+        assert.ok(toolSchema.properties.definition !== undefined, "the tool schema includes the definition schema");
+        // {§functionality-model-projection} — the adapter package's docs/<family>.md rides inside the tool schema description.
+        assert.match(String(toolSchema.description ?? ""), family.teaching, `${family.family}.json carries its authored teaching body`);
+        assert.equal(await documentPresent(context(), toolSchemaPath), 200,
+            "the full schema is materialized in the workspace's generated subtree");
+        if (family.family === "mcp") {
+            type Property = { readonly description?: string; readonly $ref?: string };
+            type McpDefinition = { readonly description?: string; readonly properties?: Readonly<Record<string, Property>> };
+            const schema = Validator.schemaByRef("https://schemas.plurnk.xyz/v0/McpServerDefinition.json") as { readonly $defs: Readonly<Record<string, McpDefinition>> } | undefined;
+            assert.ok(schema);
+            assert.deepEqual(toolSchema.$defs["https://schemas.plurnk.xyz/v0/McpServerDefinition.json"], schema, "both transport branches reach the model unchanged");
+            const described = (property: Property): boolean => typeof property.description === "string"
+                || (property.$ref !== undefined && typeof schema.$defs[property.$ref.split("/").at(-1)!]?.description === "string");
+            for (const branch of ["stdio", "streamableHttp"]) {
+                assert.ok(Object.values(schema.$defs[branch]?.properties ?? {}).every(described), `every ${branch} input field is described, directly or through its definition`);
+            }
+        }
+        // 3. Discovery from the representative source is inert.
+        const discovered = await invoke<{ candidates: Array<{ alias?: string; provenance: { kind: string; source: string } }> }>("discover", family.discover);
+        assert.ok(discovered.candidates.length > 0, "the representative source yields candidates");
+        assert.ok(discovered.candidates.every(({ provenance }) => typeof provenance.kind === "string" && typeof provenance.source === "string"), "every candidate carries exact provenance");
+        assert.equal((await listed()).some((entry) => discovered.candidates.some((candidate) => candidate.alias === entry.alias && entry.origin === "workspace")), false, "discovery added nothing");
+        // 4. Client add → live and documented before the next operation.
+        assert.equal(await live(family.addable), false, "the alias is absent before add");
+        const added = await add(family.addable);
+        assert.equal(added.status, 201);
+        assert.equal(added.definition.state, "active");
+        assert.equal(await live(family.addable), true, "add hotloads the definition before the next operation");
+        assert.equal(await document(family.addable.alias), 200);
+        if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.json"), 200);
+        // 5. Publication evidence is the verb outcome plus the document itself;
+        // maintenance receipts never ride the packet (#338 — a receipt answers
+        // an asker, and reconciliation turns have none).
+        const afterAdd = await nextPacket();
+        assert.equal(packetLogRecords(afterAdd).some(({ logPath: path, path: target }) =>
+            typeof path === "string" && path.endsWith("/EDIT") && target === family.documentOf(family.addable.alias)), false, "no reconciliation EDIT receipt rides the packet");
+        assert.equal((await invoke<{ definition: { state: string } }>("disable", { alias: family.addable.alias })).definition.state, "disabled");
+        assert.equal(await live(family.addable), false, "disable withdraws the definition before the next operation");
+        assert.equal(await document(family.addable.alias), 404, "disable withdraws the generated document");
+        if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.json"), 404,
+            "disable withdraws the child schema as well as its family catalog");
+        const afterDisable = await nextPacket();
+        assert.equal(packetLogRecords(afterDisable).some(({ logPath: path, path: target }) =>
+            typeof path === "string" && path.endsWith("/KILL") && target === family.documentOf(family.addable.alias)), false, "no reconciliation KILL receipt rides the packet (#338)");
+        assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
+        if (family.family === "mcp") assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.json"), 200);
+        assert.equal(await live(family.addable), true);
+        // 6. Enabled-unavailable: an accepted model add of an unreachable peer publishes unavailable with its exact Problem;
+        //    the explicit client retry rejects with the same Problem; remove recovers.
+        const viaModel = await proposed(`\`\`\`\`plurnk (${family.family})
+${JSON.stringify({ verb: "add", alias: family.unreachable.alias, definition: family.unreachable.definition })}
+\`\`\`\``, "accept");
+        assert.equal(viaModel.status, 201, "the accepted add reports creation, with resource readiness in its body");
+        await exec(`\`\`\`\`plurnk (${family.family})\`\`\`\``);
+        const downListed = (await listed()).find((entry) => entry.alias === family.unreachable.alias);
+        assert.equal(downListed?.state, "unavailable");
+        assert.ok((downListed?.problem?.status ?? 0) >= 400, "the enabled definition keeps its exact Problem");
+        assert.equal(await live(family.unreachable), false);
+        assert.equal(await document(family.unreachable.alias), 404, "an unavailable definition publishes no document");
+        const retried = await problemOf(() => invoke("enable", { alias: family.unreachable.alias }));
+        assert.equal(retried.type, downListed?.problem?.type, "an explicit retry reports the same exact Problem");
+        assert.equal((await invoke<{ removed: boolean }>("remove", { alias: family.unreachable.alias })).removed, true);
+        assert.equal(await stateOf(family.unreachable.alias), undefined);
+        // 7. Model verbs through the generated manager: read ungated, host verbs propose, rejection performs nothing.
+        assert.equal((await exec(`\`\`\`\`plurnk (${family.family})\`\`\`\``)).status, 200);
+        assert.equal((await verbResult()).family, family.family);
+        const rejected = await proposed(`\`\`\`\`plurnk (${family.family})
+${JSON.stringify({ verb: "remove", alias: family.addable.alias })}
+\`\`\`\``, "reject");
+        assert.equal(rejected.status, 400, "a rejected proposal settles 400");
+        assert.equal(await stateOf(family.addable.alias), "active", "rejection changed nothing");
+        assert.equal(await live(family.addable), true);
+        const viaModelDisable = await proposed(`\`\`\`\`plurnk (${family.family})
+${JSON.stringify({ verb: "disable", alias: family.addable.alias })}
+\`\`\`\``, "accept");
+        assert.equal(viaModelDisable.status, 200);
+        assert.equal(await live(family.addable), false, "an accepted model mutation is published before the next operation");
+        await invoke("enable", { alias: family.addable.alias });
+        // 8. A client add the service refuses rejects and persists nothing (rollback).
+        const refused = await problemOf(() => add(family.unreachable));
+        assert.ok(refused.status >= 400);
+        assert.equal(await stateOf(family.unreachable.alias), undefined, "a rejected client add persists nothing");
+        if (family.collidingAlias !== undefined) {
+            await assert.rejects(() => add({ ...family.addable, alias: family.collidingAlias!, definition: { ...(family.addable.definition), name: family.collidingAlias } }));
+            assert.equal(await stateOf(family.collidingAlias), undefined, "a publication the host refuses rolls back");
+            assert.equal(await live(family.service), true, "the previous snapshot stays authoritative");
+        }
+        // 9. Independent sessions and people see and use the workspace state.
+        assert.equal(await live(family.addable, peer, personB), true, "a second person, acting for an independent session, uses the same workspace definition");
+        await invoke("disable", { alias: family.addable.alias });
+        assert.equal(await live(family.addable, peer, personB), false, "a mutation through one client is observed by the other");
+        await invoke("enable", { alias: family.addable.alias });
+        // 10. Reapplying identical configuration is idempotent; a conflicting alias cannot silently replace it.
+        assert.equal((await add(family.addable)).status, 200);
+        const conflict = await problemOf(() => add(family.conflicting));
+        assert.equal(conflict.type, "https://problems.plurnk.xyz/functionality/alias-exists");
+        assert.equal(await live(family.addable, peer), true, "the rejected replacement did not withdraw the shared definition");
+        // {§functionality-replacement} Both projections keep the old attachment on failure and
+        // publish a complete replacement only on success. Disabled replacements stay offline.
+        const beforeReplacement = (await listed()).find(({ alias }) => alias === family.addable.alias);
+        const attachment = await family.attachmentIdentity?.(context());
+        for (const caller of ["action", "operation"] as const) {
+            const params = { alias: family.addable.alias, definition: family.replacementUnavailable };
+            let problem: ProblemDetails;
+            if (caller === "action") problem = await problemOf(() => invoke("replace", params));
+            else {
+                await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify({ verb: "replace", ...params })), "accept");
+                problem = (await verbResult()).problem as ProblemDetails;
+            }
+            assert.equal(problem.type, refused.type, "the failed replacement reports its preparation problem");
+            assert.deepEqual((await listed()).find(({ alias }) => alias === family.addable.alias), beforeReplacement);
+            assert.equal(await live(family.addable, peer), true, `${caller} failure leaves the old capability usable`);
+            if (attachment !== undefined) assert.equal(await family.attachmentIdentity!(context()), attachment,
+                "a failed replacement preserves the actual server process, not just a re-created configuration");
+        }
+        const replacement = { verb: "replace", alias: family.addable.alias, definition: family.conflicting.definition };
+        await proposed(PlurnkParser.frame(`plurnk (${family.family})`, JSON.stringify(replacement)), "accept");
+        assert.equal((await verbResult()).status, 200);
+        assert.deepEqual((await listed()).find(({ alias }) => alias === family.addable.alias)?.definition, family.conflicting.definition);
+        if (family.family === "mcp") {
+            assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/echo.json"), 404, "the old tool schema is withdrawn");
+            assert.equal(await documentPresent(context(), "/_plurnk/tools/extra/legacy_echo.json"), 200, "the new server's tool schema is published");
+            const seen = proposals.length;
+            const execution = exec(PlurnkParser.frame("extra (legacy_echo)", JSON.stringify({ text: "replacement works" })));
+            await waitFor(() => proposals, (list) => list.length > seen, { timeoutMs: 10_000 });
+            await daemon.resolveProposal(proposals[seen], { decision: "accept" }, { workspaceId, address: TEST_OWNER });
+            assert.equal((await execution).status, 200);
+            const output = await waitForDb(async () => {
+                const entries = await db.test_entries_by_scheme_prefix.all<{ pathname: string; id: number }>({ workspace_id: workspaceId, scheme: "extra", prefix: "/%" });
+                const latest = entries.toSorted((left, right) => right.id - left.id)[0];
+                return db.test_get_channel_by_pathname_scheme.get<{ content: string; state: string }>({ pathname: latest.pathname, scheme: "extra", name: "body" });
+            }, (channel) => channel?.state === "closed", { timeoutMs: 10_000 });
+            assert.equal(output?.content, "legacy echo: replacement works", "the replacement's actual tool is callable");
+        } else assert.equal(await live(family.conflicting, peer), true);
+        await invoke("disable", { alias: family.addable.alias });
+        const offline = await invoke<{ status: number; definition: Listed }>("replace", {
+            alias: family.addable.alias, definition: family.replacementUnavailable,
+        });
+        assert.equal(offline.status, 200);
+        assert.equal(offline.definition.state, "disabled");
+        assert.deepEqual(offline.definition.definition, family.replacementUnavailable);
+        await invoke("replace", { alias: family.addable.alias, definition: family.addable.definition });
+        assert.equal(await stateOf(family.addable.alias), "disabled");
+        await invoke("enable", { alias: family.addable.alias });
+        const restoredAttachment = await family.attachmentIdentity?.(context());
+        await invoke("replace", { alias: family.addable.alias, definition: family.addable.definition });
+        if (restoredAttachment !== undefined) assert.equal(await family.attachmentIdentity!(context()), restoredAttachment,
+            "an identical replacement keeps its current attachment");
+        // 11. A child's environment remains the same shared workspace, not a copied snapshot.
+        const child = await insertSession(db, workspaceId, model, "child", "model");
+        assert.equal(await live(family.addable, child), true);
+        await invoke("disable", { alias: family.addable.alias });
+        assert.equal(await live(family.addable, child), false, "an existing child sees workspace withdrawal");
+        await invoke("enable", { alias: family.addable.alias });
+        assert.equal(await live(family.addable, child), true, "the same child sees re-enablement without re-instantiation");
+        assert.equal(await stateOf(family.addable.alias), "active");
+        // 12. Concurrent mutations serialize to one consistent outcome.
+        const completedMutations: string[] = [];
+        await Promise.all(["disable", "enable", "disable", "enable"].map(async (verb) => {
+            const expected = verb === "enable" ? "active" : "disabled";
+            const result = await invoke<{ definition: { state: string } }>(verb, { alias: family.addable.alias });
+            assert.equal(result.definition.state, expected, "each successful mutation reports its published state");
+            completedMutations.push(expected);
+        }));
+        assert.equal(completedMutations.length, 4);
+        const settled = await stateOf(family.addable.alias);
+        assert.equal(settled, completedMutations.at(-1), "the last completed mutation wins, including client retries");
+        assert.equal(await live(family.addable), settled === "active", "liveness agrees with the listed state");
+        // 13. Restart reconstructs one shared workspace environment.
+        assert.equal((await invoke<{ definition: { state: string } }>("enable", { alias: family.addable.alias })).definition.state, "active");
+        unsubscribe();
+        await daemon.stop();
+        provider = mockProvider();
+        ({ daemon } = await family.boot(db, provider));
+        await daemon.start();
+        unsubscribe = daemon.subscribeToEvents(() => {});
+        assert.equal(await stateOf(family.service.alias), "dormant");
+        assert.equal(await stateOf(family.addable.alias), "dormant", "the workspace definition survives without activation");
+        assert.equal(await live(family.addable), true);
+        assert.equal(await stateOf(family.service.alias), "active");
+        assert.equal(await stateOf(family.addable.alias), "active");
+        assert.equal(await document(family.addable.alias), 200);
+        assert.equal(await live(family.addable, child), true, "the child sees the restored workspace definition");
+        assert.equal(await live(family.addable, peer), true, "the independent session sees the same definition");
+        // 14. Remove forgets the workspace definition and withdraws its capability.
+        assert.equal((await invoke<{ removed: boolean }>("remove", { alias: family.addable.alias })).removed, true);
+        assert.equal(await live(family.addable), false);
+        assert.equal(await document(family.addable.alias), 404);
+    } finally {
+        unsubscribe();
+        await daemon.stop();
+        await db.close();
+    }
+};
+
+for (const make of [skillsFamily, mcpFamily]) {
+    test(`{§functionality-coordinator} lifecycle parity: ${make.name.replace("Family", "")}`, async () => {
+        const family = await make();
+        try {
+            await matrix(family);
+        } finally {
+            await family.close();
+        }
+    });
+}
+});
+
+describe("session-module-state", () => {
+// SPEC {§module-lifecycle} — a family declares whether its definitions belong to the
+// workspace or to a session, and the coordinator keys state by that scope. `env` is the first
+// session-scoped family: an environment is context (how this session works) rather than capability
+// (what exists in this workspace).
+//
+// A sibling table rather than a nullable column, so the foreign key is real. These witnesses
+// cover the two properties that choice buys: isolation between sessions, and a cascade that takes
+// a session's definitions with it.
+
+
+
+
+const OWNER = "@plurnk/plurnk-service";
+
+test("{§module-lifecycle} session state is per session, not shared across siblings", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `session-state-${crypto.randomUUID()}`);
+        const one = await insertSession(db, workspaceId);
+        const two = await insertSession(db, workspaceId);
+
+        await db.session_module_state_put.run({
+            session_id: one, namespace_owner: OWNER,
+            state: JSON.stringify({ version: 1, definitions: { CARGO_TARGET_DIR: { origin: "session", enabled: true } } }),
+        });
+
+        const mine = await db.session_module_state_get.get<{ state: string }>({ session_id: one, namespace_owner: OWNER });
+        const sibling = await db.session_module_state_get.get<{ state: string }>({ session_id: two, namespace_owner: OWNER });
+        assert.match(mine!.state, /CARGO_TARGET_DIR/u);
+        assert.equal(sibling, undefined, "a sibling session sees nothing of it — this is the whole reason for the scope");
+    } finally { await db.close(); }
+});
+
+test("{§module-lifecycle} a session's definitions die with the session", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `session-state-cascade-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await db.session_module_state_put.run({
+            session_id: sessionId, namespace_owner: OWNER, state: JSON.stringify({ version: 1, definitions: {} }),
+        });
+
+        await db.test_delete_session.run({ id: sessionId });
+
+        const orphan = await db.session_module_state_get.get<{ state: string }>({ session_id: sessionId, namespace_owner: OWNER });
+        assert.equal(orphan, undefined, "the real foreign key cascades; a nullable column on the workspace table would have orphaned it");
+    } finally { await db.close(); }
+});
+
+test("{§module-lifecycle} put replaces in place, keyed by (session, owner)", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `session-state-replace-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const key = { session_id: sessionId, namespace_owner: OWNER };
+        await db.session_module_state_put.run({ ...key, state: JSON.stringify({ version: 1, definitions: { A: {} } }) });
+        await db.session_module_state_put.run({ ...key, state: JSON.stringify({ version: 1, definitions: { B: {} } }) });
+
+        const row = await db.session_module_state_get.get<{ state: string }>(key);
+        assert.match(row!.state, /"B"/u);
+        assert.doesNotMatch(row!.state, /"A"/u, "one snapshot per (session, owner), replaced whole");
+    } finally { await db.close(); }
+});
+
+// {§functionality-coordinator} — inheritance is a row copy at the child's creation, marked with its source.
+const definitionsOf = async (db: Awaited<ReturnType<typeof openMigrated>>, sessionId: number): Promise<Record<string, Record<string, unknown>>> => {
+    const row = await db.session_module_state_get.get<{ state: string }>({ session_id: sessionId, namespace_owner: OWNER });
+    return row === undefined ? {} : (JSON.parse(row.state) as { definitions: Record<string, Record<string, unknown>> }).definitions;
+};
+
+test("{§functionality-coordinator} a child starts with a copy of its parent's state, every entry named for its source", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `session-state-inherit-${crypto.randomUUID()}`);
+        const alice = await insertSession(db, workspaceId, null, "alice");
+        await db.session_module_state_put.run({
+            session_id: alice, namespace_owner: OWNER,
+            state: JSON.stringify({ version: 1, definitions: {
+                CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" } },
+                CI: { origin: "service", enabled: false },
+            } }),
+        });
+        const bob = await insertSession(db, workspaceId, alice, "bob");
+        assert.deepEqual(await definitionsOf(db, bob), {
+            CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" }, inherited: "alice" },
+            CI: { origin: "service", enabled: false, inherited: "alice" },
+        }, "copied faithfully, disabled entries included, each named for the Session that set it");
+
+        // A snapshot, not a link: alice's later edit never reaches bob.
+        await db.session_module_state_put.run({
+            session_id: alice, namespace_owner: OWNER,
+            state: JSON.stringify({ version: 1, definitions: { LATER: { origin: "session", enabled: true, definition: { value: "x" } } } }),
+        });
+        assert.deepEqual(Object.keys(await definitionsOf(db, bob)), ["CARGO_TARGET_DIR", "CI"]);
+
+        // Depth is transitive and provenance names the origin, not the intermediate.
+        const carol = await insertSession(db, workspaceId, bob, "carol");
+        assert.equal((await definitionsOf(db, carol)).CARGO_TARGET_DIR.inherited, "alice", "a grandchild still names the Session that set the entry");
+
+        // A parentless Session inherits nothing.
+        const loner = await insertSession(db, workspaceId, null, "loner");
+        assert.deepEqual(await definitionsOf(db, loner), {});
+    } finally { await db.close(); }
+});
+});
+
+describe("workspace-functionality", () => {
+test("{§module-workspace-residency}: MCP definitions belong to the workspace, not to any session", async (t) => {
+    const server = await serveMcpHttp(t, createMcpHandler(() => {
+        const mcp = new McpServer({ name: "shared-fixture", version: "1.0.0" });
+        mcp.registerTool("echo", {
+            inputSchema: fromJsonSchema({ type: "object", additionalProperties: false }),
+            annotations: { readOnlyHint: true },
+        }, async () => ({ content: [{ type: "text", text: "workspace tool" }] }));
+        mcp.registerResource("shared-item", "fixture://shared/item", { mimeType: "text/plain" }, async () => ({
+            contents: [{ uri: "fixture://shared/item", mimeType: "text/plain", text: "shared resource" }],
+        }));
+        return mcp;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { shared: httpEntry(server.url) });
+    const db = await openMigrated();
+    const provider = new Mock({ contextWindow: 1_000_000, responses: [] });
+    const daemon = new Daemon({ db, provider, nodeModulesPath: resolve("node_modules"), hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const { workspaceId } = await daemon.createWorkspace({ name: "shared-functionality" });
+    const other = await daemon.createWorkspace({ name: "other-functionality" });
+    const action = (id: number, verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(
+        `workspace.mcp.${verb}`, params, { scope: "workspace", workspaceId: id },
+    );
+    const enabled = await action(workspaceId, "enable", { alias: "shared" }) as { definition: { state: string } };
+    assert.equal(enabled.definition.state, "active", "the workspace connects its installed server with no session");
+    const listed = await action(workspaceId, "list") as FunctionalityListResult;
+    assert.equal(listed.definitions.find(({ alias }) => alias === "shared")?.state, "active");
+    assert.deepEqual((await action(other.workspaceId, "list") as FunctionalityListResult).definitions.map(({ alias, state }) => ({ alias, state })),
+        [{ alias: "shared", state: "dormant" }], "the workspace boundary remains real: another workspace holds no connection of this one's");
+    const alice = await insertSession(db, workspaceId, null, "alice", "model");
+    const bob = await insertSession(db, workspaceId, null, "bob", "model");
+    assert.deepEqual((await action(workspaceId, "list") as FunctionalityListResult).definitions, listed.definitions,
+        "creating sessions neither copies nor redefines the shared environment");
+    const read = PlurnkParser.parseStatements(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null), { executors: fixtureExecutors(PlurnkParser.frame("READ (shared:///resources) <1,-1>", null)) }).items[0];
+    assert.equal(read?.kind, "statement");
+    if (read?.kind !== "statement") throw new Error("Expected one READ");
+    for (const sessionId of [alice, bob]) {
+        const docs = await daemon.engine.referenceEntries(workspaceId);
+        assert.ok(docs.some(({ content }) => content.includes("shared (echo)")), "every session discovers the same enabled tool");
+        // The session's own READ.
+        const catalog = await modelOperation(daemon, db, { workspaceId, sessionId, statement: read.statement });
+        assert.equal(catalog.status, 200, JSON.stringify(catalog));
+        assert.match(String(catalog.content), /fixture:\/\/shared\/item/u);
+    }
+    await action(workspaceId, "disable", { alias: "shared" });
+    assert.equal((await action(workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "disabled");
+    const docs = await daemon.engine.referenceEntries(workspaceId);
+    assert.equal(docs.some(({ content }) => content.includes("shared (echo)")), false, "disable changes the one shared discovery surface");
+    assert.equal((await action(other.workspaceId, "list") as FunctionalityListResult).definitions[0]?.state, "dormant",
+        "disabling a server in one workspace leaves it enabled in another");
+    assert.equal(provider.received.length, 0, "environment management never invokes a model");
+});
 });

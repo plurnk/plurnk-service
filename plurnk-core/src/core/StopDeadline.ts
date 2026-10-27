@@ -1,6 +1,6 @@
 import { Knob } from "@plurnk/plurnk-meta";
 
-// {§crash-only-stop}: one absolute budget across daemon drains and enclosing resource cleanup.
+// {§module-shutdown-order}: one absolute budget across daemon drains and enclosing resource cleanup.
 export default class StopDeadline {
     readonly #expires = Date.now() + Knob.integer("PLURNK_SERVICE_STOP_TIMEOUT_MS", 1);
 

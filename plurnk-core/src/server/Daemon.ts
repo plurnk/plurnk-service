@@ -131,7 +131,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     #discoveryCwd: string;
     #started = false; // {§module-lifecycle}: one discovery/module boot; no listener
 
-    // {§module-discovery} — the daemon's modules, composed and discovered, with their mounts, phases and actions.
+    // {§module-lifecycle} — the daemon's modules, composed and discovered, with their mounts, phases and actions.
     readonly #modules: DaemonModules;
     // {§connection-lifecycle} — the client operations in flight: their loops, scopes and settlement.
     readonly #clientOperations: ClientOperations;
@@ -208,7 +208,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             engine: () => this.#engine,
             workspaceGate: this.#workspaceGate,
             normalizeRuntime: (registration) => this.#normalizeRuntime(registration) });
-        // {§module-discovery} — the modules' owner exists before Core registers its own families below: their
+        // {§module-lifecycle} — the modules' owner exists before Core registers its own families below: their
         // actions register through the same seam a module's do.
         this.#modules = new DaemonModules({
             db, http: this.#http, configuration: this.#configuration, residency: this.#residency, workspaceGate: this.#workspaceGate,
@@ -232,7 +232,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
         // {§env-functionality} — Core's own family: the environment a Session's commands run in.
-        // {§env-scheme} — the family's face: reads project the dispatching Session's effective
+        // {§env-functionality} — the family's face: reads project the dispatching Session's effective
         // environment, writes go through the family's own admission at the Session's layer. The runtime
         // session keeps none: its environment is the workspace's ({§actor-boundary-client-operations}).
         this.#functionality.register(new EnvFunctionality(
@@ -260,7 +260,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             wakeSessionNotify: (payload) => this.#drains.notifyWakeSession(payload),
             injectSession: (args) => this.#delivery.injectSession(args),
             withWorkspaceTurn: (workspaceId, sessionId, run, signal) => this.#workspaceGate.withTurn(workspaceId, sessionId, run, signal),
-            // {§functionality-hotload} — skills and plugins change out of band.
+            // {§functionality-inspection} — skills and plugins change out of band.
             // Republish under the workspace turn gate before packet assembly so
             // the first subsequent model turn sees their exact result.
             workspaceTurnStarting: async ({ workspaceId }) => {
@@ -549,7 +549,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
     }
 
-    // {§functionality-model-mutation} — await every queued Functionality
+    // {§functionality-model-projection} — await every queued Functionality
     // publication (a Session's accepted mutation publishes at its turn boundary).
     async settleFunctionality(workspaceId?: number): Promise<void> {
         await this.#functionality.settle(workspaceId);
@@ -1089,7 +1089,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return workspacePaths(this.#hostPaths, workspace?.project_root ?? null);
     }
 
-    // {§agent-plugins-hosting}
+    // {§functionality-inspection}
     readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet<AgentRootScope>> {
         return this.#plugins.read(workspaceId);
     }
@@ -1132,7 +1132,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     get schemes(): SchemeRegistry { return this.#schemes; }
     get mimetypes(): Mimetypes { return this.#mimetypes; }
 
-    // {§module-discovery} — `owner` is the module's package name; diagnostics name it.
+    // {§module-lifecycle} — `owner` is the module's package name; diagnostics name it.
     registerModule(module: DaemonModule<HostSetupSeam>, owner: string): void {
         if (this.#started) throw new Error("registerModule: modules must be registered before daemon start");
         this.#modules.register(module, owner);
@@ -1199,7 +1199,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // (agnostic, by plurnk.kind:"scheme"). They light up http://, etc. with
         // no further engine change — #run wraps their context in SchemeCtxImpl ({§extension-discovery}).
         await this.#schemes.discoverExternal(this.#discoveryCwd);
-        // {§module-discovery} — discovery composes beside the service's explicit modules, then every module sets
+        // {§module-lifecycle} — discovery composes beside the service's explicit modules, then every module sets
         // up against this daemon as the seam ({§module-lifecycle}).
         await this.#modules.setup(this, { cwd: this.#discoveryCwd, hostPaths: this.#hostPaths });
         // {§credential-authority} — the posture is never an inference: a listening daemon that
@@ -1320,7 +1320,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // Settle the stopped world FIRST: a drain paused at a pending proposal awaits a resolution
         // that will never arrive once clients are gone — allSettled(drains) below would deadlock
         // the stop forever (a daemon with a pending HITL proposal could not shut down).
-        // {§crash-only-stop} — the settle sequence is DEADLINE-BOUNDED: a child
+        // {§module-shutdown-order} — the settle sequence is DEADLINE-BOUNDED: a child
         // that never closes (a wedged MCP server, a stuck stream) must not hang
         // the daemon forever. Past the deadline the waits are abandoned; the
         // process may exit with the WAL in place (SQLite recovers) rather than
@@ -1329,7 +1329,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const clientResult = await shutdown.settle("client operations idle", () => this.#clientOperations.idle());
         const residencyResult = await shutdown.settle("workspace Functionality transitions", () => this.#residency.settle());
         // A boundary publication queued behind the last turn settles before
-        // modules close and before the DB goes away ({§functionality-publication}).
+        // modules close and before the DB goes away ({§functionality-coordinator}).
         const functionalityResult = await shutdown.settle("functionality publications", () => this.#functionality.settle());
         const moduleStopResult = await moduleStop;
         const streamingResult = await shutdown.settle("streaming schemes idle", () => this.#drainStreamingSchemes());

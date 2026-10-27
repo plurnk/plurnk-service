@@ -2627,7 +2627,7 @@ test("{§session-wait-timing}: a queued loop is stamped when first claimed; a ru
 });
 
 describe("operator-timeouts", () => {
-// {§operator-config-loop-timeout}
+// {§operator-config-workspace-settings}
 
 
 
@@ -2655,7 +2655,7 @@ class AbortBlockingMock extends Mock {
     }
 }
 
-test("{§operator-config-loop-timeout} execution exhaustion rules a legible 504 loop_timeout terminal", async (t) => {
+test("{§operator-config-workspace-settings} execution exhaustion rules a legible 504 loop_timeout terminal", async (t) => {
     const loopTimeoutMs = 60_000;
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
@@ -2695,7 +2695,7 @@ test("{§operator-config-loop-timeout} execution exhaustion rules a legible 504 
     }
 });
 
-test("{§operator-config-loop-timeout}: waiting preserves one execution allowance across engine reconstruction", async (t) => {
+test("{§operator-config-workspace-settings}: waiting preserves one execution allowance across engine reconstruction", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
     t.mock.method(performance, "now", () => Date.now());
     const originalTimeout = process.env.PLURNK_SERVICE_LOOP_TIMEOUT;
@@ -2749,7 +2749,7 @@ test("{§operator-config-loop-timeout}: waiting preserves one execution allowanc
     }
 });
 
-test("{§operator-config-loop-timeout} the panel's wall never intrudes — a short loop concludes 200 untouched", async () => {
+test("{§operator-config-workspace-settings} the panel's wall never intrudes — a short loop concludes 200 untouched", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loop-wall-off-${crypto.randomUUID()}`);
@@ -3313,7 +3313,7 @@ test("{§session-causal-admission} the settlement deadline is bounded and does n
 describe("scheduled-occurrence", () => {
 const INITIAL = Date.UTC(2026, 8, 17, 12, 0, 0, 250);
 
-test("{§functionality-state} schedule startup rejects malformed persisted enabledness before arming", async (t) => {
+test("{§functionality-coordinator} schedule startup rejects malformed persisted enabledness before arming", async (t) => {
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, "invalid-schedule-state");
     await db.workspace_module_state_put.run({

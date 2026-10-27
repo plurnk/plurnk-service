@@ -23,7 +23,7 @@ registration and browser-session endpoints on the daemon's listener.
 | {§problems-auth} | Auth Problems. |
 <!-- /map -->
 
-§auth-daemon-module **The module is a discovered module of the daemon.** The package declares `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it ({§module-discovery}); nothing composes it by hand. The daemon authenticates under the shared `PLURNK_AUTH=1` ({§operator-config-shared-keys}), the shipped posture, and never by inference from what else is set: then the module claims `/oauth`, `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource` on the daemon's listener ({§http-host}, {§module-http-mounts}), publishes the authority's face at setup, and mounts the endpoints at `start`. Under `PLURNK_AUTH=0` it claims no mounts, publishes nothing, and serves none of them. A daemon without a listener leaves an authenticating module out.
+§auth-daemon-module **The module is a discovered module of the daemon.** The package declares `plurnk: { kind: "module", module: "./module" }` and the daemon discovers it ({§module-lifecycle}); nothing composes it by hand. The daemon authenticates under the shared `PLURNK_AUTH=1` ({§operator-config-precedence}), the shipped posture, and never by inference from what else is set: then the module claims `/oauth`, `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource` on the daemon's listener ({§http-host}, {§module-http-mounts}), publishes the authority's face at setup, and mounts the endpoints at `start`. Under `PLURNK_AUTH=0` it claims no mounts, publishes nothing, and serves none of them. A daemon without a listener leaves an authenticating module out.
 
 §auth-oauth-authority **One authority, scoped by resource.** A credential carries the scopes of the resources it may reach; `acp` names the ACP client interface ({§acp-http-authorization}), and each mounted resource admits only a token carrying its own scope. Grants are authorization code with PKCE (`S256`, required) for public clients, `client_credentials` for confidential clients, and `refresh_token`; no password or implicit grant exists (RFC 9700). Nothing about a credential is interpreted by a consumer: every answer about one comes from the authority.
 
@@ -75,7 +75,7 @@ Every request under the authorization server's paths is answered at the address 
 | Wrong | the form again, at 401 |
 | Right | the browser's session ({§auth-oauth-session}) and a redirect with the code and the `state` |
 | Empty (`PLURNK_PASS` ships empty) | every browser is told so, and the operator's configuration file to set it in, at 503 and issued nothing; client credentials are unaffected |
-| Many attempts | the daemon does not throttle failed attempts: limiting requests by their real source is the job of a front such as the example nginx configuration ({§nginx-example}), which sees addresses a proxied daemon cannot |
+| Many attempts | the daemon does not throttle failed attempts: limiting requests by their real source is the job of a front such as the example nginx configuration ({§operator-config-precedence}), which sees addresses a proxied daemon cannot |
 
 §auth-oauth-tokens **Credentials are opaque and bounded.** An access token lives `PLURNK_AUTH_ACCESS_TTL_SEC`, a refresh token `PLURNK_AUTH_REFRESH_TTL_SEC`; both are random strings the authority holds in memory, so a daemon restart revokes every credential and a client simply acquires again. A refresh token rotates: each use consumes it and answers a new access token and a new refresh token of the same family, with the same or a narrower scope; a consumed refresh token presented again is reuse, and reuse revokes the whole family (RFC 9700 §4.14). A code grant and a refresh grant answer a refresh token; `client_credentials` answers an access token alone, renewed with the secret.
 
@@ -92,11 +92,11 @@ Every request under the authorization server's paths is answered at the address 
 
 ## §auth-configuration Module configuration
 
-The daemon assembles installed package defaults through {§operator-config-env-defaults}; `@plurnk/plurnk-auth` reads and validates its own keys from that environment as the daemon discovers it, and an invalid value fails boot. Explicit `Module.create` options override their corresponding environment values.
+The daemon assembles installed package defaults through {§operator-config-precedence}; `@plurnk/plurnk-auth` reads and validates its own keys from that environment as the daemon discovers it, and an invalid value fails boot. Explicit `Module.create` options override their corresponding environment values.
 
 | Input | Owner | Empty or absent | Accepted value | Effect |
 | --- | --- | --- | --- | --- |
-| `PLURNK_AUTH` | Shared | Invalid; the shared panel is required | `1` or `0` | The daemon's posture ({§credential-authority}, {§operator-config-shared-keys}): authenticate, or admit anonymously. |
+| `PLURNK_AUTH` | Shared | Invalid; the shared panel is required | `1` or `0` | The daemon's posture ({§credential-authority}, {§operator-config-precedence}): authenticate, or admit anonymously. |
 | `PLURNK_SECRET` | Shared | The daemon mints one at boot | Any non-empty string | The operator's client secret ({§auth-oauth-clients}), what the operator's own tools exchange for access tokens. |
 | `PLURNK_PASS` | Shared | Empty: no browser signs in until it is set ({§auth-oauth-session}) | Any string | The operator's browser sign-in password ({§auth-oauth-login}). |
 | `PLURNK_AUTH_ISSUER` | Auth | The origin each request reached ({§http-host}) | An absolute http(s) origin | The authorization server's issuer, the public origin clients reach ({§auth-oauth-endpoints}). |

@@ -871,7 +871,7 @@ test("{§loop-terminals} Engine.runLoop: maxTurns hit — force-terminate with 4
     } finally { await db.close(); }
 });
 
-test("{§operator-config-max-turns-ceiling} maxTurns=-1 disables the turn terminator — loop ends on completed inventory, not a cap", async () => {
+test("{§operator-config-workspace-settings} maxTurns=-1 disables the turn terminator — loop ends on completed inventory, not a cap", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Four continuing turns then completion. A positive cap of 3 would

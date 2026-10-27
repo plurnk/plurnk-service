@@ -1,4 +1,4 @@
-// {§mcp-module} {§module-self-activation} — this package's daemon module entry ({§module-discovery}):
+// {§mcp-module} {§module-self-activation} — this package's daemon module entry ({§module-lifecycle}):
 // a setup-only module that reads its own configuration from the environment.
 import Module from "./Module.ts";
 

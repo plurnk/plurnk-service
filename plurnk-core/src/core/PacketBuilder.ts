@@ -133,7 +133,7 @@ export default class PacketBuilder {
     #executors: () => ExecutorRegistry | undefined;
     #capabilities: CapabilityResolver;
     readonly #hostPaths: HostPaths | undefined;
-    // {§functionality-documents} — family-generated documents of a Session's
+    // {§functionality-model-projection} — family-generated documents of a Session's
     // published Functionality, reconciled with its other reference entries.
     #functionalityDocuments: (workspaceId: number) => Array<{ family: string; pathname: string; content: string }> = () => [];
 

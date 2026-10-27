@@ -13,7 +13,7 @@ export interface PluginSourceSet extends PluginDiscovery {
     readonly configurationErrors: readonly ConfigurationError[];
 }
 
-// {§agent-plugins-hosting} One source cascade for native startup and workspace components.
+// {§functionality-inspection} One source cascade for native startup and workspace components.
 export default class PluginSources {
     static async read({ hostPaths = new HostPaths(), projectRoot = null, nodeModules, packageDirs,
         environment = process.env }: {

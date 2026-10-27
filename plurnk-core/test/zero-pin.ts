@@ -1,4 +1,4 @@
-// {§operator-config-zero-pin-gate} — remove tuning without changing provider selection.
+// {§operator-config-precedence} — remove tuning without changing provider selection.
 export const isZeroPinTuning = (key: string): boolean =>
     /^PLURNK_PROVIDERS_CONTEXT_WINDOW(_.+)?$/.test(key)              // any window pin → force the probe
     || /^PLURNK_PROVIDERS_(OUTPUT|REASONING)_BUDGET_.+$/.test(key); // per-alias envelope pins (bare floor stays)
