@@ -568,8 +568,17 @@ const toTranscriptContext = (
         }
         const parts = msg.content.flatMap((part: ChatContentPart): Array<{ type: "text"; text: string } | { type: "image"; mimeType: string; data: string }> => {
             if (part.type === "text") return [{ type: "text", text: part.text }];
-            if (!part.mediaType.startsWith("image/") && api !== "google-generative-ai") return [];
-            return [{ type: "image", mimeType: part.mediaType, data: encodeBytesBase64(part.data) }];
+            const isAudio = part.mediaType === "audio/wav"
+                || part.mediaType === "audio/x-wav"
+                || part.mediaType === "audio/mpeg"
+                || part.mediaType === "audio/mp3";
+            if (part.mediaType.startsWith("image/")
+                || api === "google-generative-ai"
+                || (api === "anthropic-messages" && part.mediaType === "application/pdf")
+                || (api === "openai-completions" && isAudio)) {
+                return [{ type: "image", mimeType: part.mediaType, data: encodeBytesBase64(part.data) }];
+            }
+            return [];
         });
         return { role: "user", content: parts, timestamp: 0 };
     });
@@ -630,10 +639,26 @@ const applyOpenAICompletionsPayload = (
     const { providerModel } = request;
     const namespace = providerModel.namespace ?? providerModel.provider;
     const instructionCount = validateMessageOrder(request.messages);
-    if (instructionCount > 0 && Array.isArray(params.messages)) {
-        const first = recordOf(params.messages[0]);
-        if (first?.role !== "system" && first?.role !== "developer") {
-            params.messages.unshift({ role: "system", content: "" });
+    if (Array.isArray(params.messages)) {
+        if (instructionCount > 0) {
+            const first = recordOf(params.messages[0]);
+            if (first?.role !== "system" && first?.role !== "developer") {
+                params.messages.unshift({ role: "system", content: "" });
+            }
+        }
+        for (const msg of params.messages) {
+            const rec = recordOf(msg);
+            if (rec?.role !== "user" || !Array.isArray(rec.content)) continue;
+            rec.content = rec.content.map((item: unknown) => {
+                const part = recordOf(item);
+                const url = part?.type === "image_url" ? recordOf(part.image_url)?.url : undefined;
+                if (typeof url !== "string" || !url.startsWith("data:audio/")) return item;
+                const comma = url.indexOf(",");
+                if (comma < 0) return item;
+                const mediaType = url.slice(5, url.indexOf(";"));
+                const format = mediaType === "audio/wav" || mediaType === "audio/x-wav" ? "wav" : "mp3";
+                return { type: "input_audio", input_audio: { data: url.slice(comma + 1), format } };
+            });
         }
     }
     applySystemCacheControl(params.messages, request.systemProviderOptions, namespace);
@@ -724,6 +749,19 @@ const applyAnthropicPayload = (
     request: ProviderModelRequest,
 ): void => {
     applySystemCacheControl(params.system, request.systemProviderOptions, "anthropic");
+    if (Array.isArray(params.messages)) {
+        for (const msg of params.messages) {
+            const rec = recordOf(msg);
+            if (rec?.role !== "user" || !Array.isArray(rec.content)) continue;
+            for (const item of rec.content) {
+                const block = recordOf(item);
+                const source = recordOf(block?.source);
+                if (block?.type === "image" && source?.media_type === "application/pdf") {
+                    block.type = "document";
+                }
+            }
+        }
+    }
 
     const anthropicOptions = isRecord(request.providerOptions?.anthropic) ? request.providerOptions.anthropic : undefined;
     const thinkingConfig = isRecord(anthropicOptions?.thinking) ? anthropicOptions.thinking : undefined;

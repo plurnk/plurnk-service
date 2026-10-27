@@ -405,6 +405,51 @@ test("{§provider-request-authority} the catalog route carries the operator's ti
     assert.equal(bodies[0].top_logprobs, 2);
     assert.equal(bodies[0].prompt_cache_key, "w-1", "the controls merge into the namespace the cache key uses");
 });
+
+test("{§provider-interface} anthropic PDF document and openai-compatible audio attachments project onto their wire blocks", async (t) => {
+    t.after(() => mock.restoreAll());
+    const anthropicBodies = captureBodies(() => new Response([
+        `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg-pdf", model: "claude-sonnet-4-5", usage: { input_tokens: 10, output_tokens: 0 } } })}`,
+        `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })}`,
+        `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } })}`,
+        `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`,
+        `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 1 } })}`,
+        `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}`,
+    ].join("\n\n"), { headers: { "content-type": "text/event-stream" } }));
+    await nativeProvider("anthropic", "claude-sonnet-4-5").generate({
+        sessionId: "pdf-1",
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: "Read this PDF." },
+                { type: "file", mediaType: "application/pdf", data: new Uint8Array([0x25, 0x50, 0x44, 0x46]) },
+            ],
+        }],
+    });
+    const anthropicMessages = anthropicBodies[0]?.messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+    assert.deepEqual(anthropicMessages[0]?.content[1], {
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: "JVBERg==" },
+    });
+
+    mock.restoreAll();
+    const openaiBodies = captureBodies(openAiReply);
+    await nativeProvider("openai", "gpt-4.1").generate({
+        sessionId: "aud-1",
+        messages: [{
+            role: "user",
+            content: [
+                { type: "text", text: "Listen." },
+                { type: "file", mediaType: "audio/wav", data: new Uint8Array([0x52, 0x49, 0x46, 0x46]) },
+            ],
+        }],
+    });
+    const openaiMessages = openaiBodies[0]?.messages as Array<{ role: string; content: Array<Record<string, unknown>> }>;
+    assert.deepEqual(openaiMessages[0]?.content[1], {
+        type: "input_audio",
+        input_audio: { data: "UklGRg==", format: "wav" },
+    });
+});
 }
 
 {
