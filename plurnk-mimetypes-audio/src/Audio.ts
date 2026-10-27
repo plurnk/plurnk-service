@@ -6,7 +6,7 @@ export interface AudioFacts {
     readonly bytes: number;
 }
 
-// {§mimetype-audio-facts} — parsing is lazy; concurrent projection hooks share one observation.
+// {§mimetype-binary-input} — parsing is lazy; concurrent projection hooks share one observation.
 export default class Audio extends BaseHandler {
     readonly #observations = new WeakMap<Uint8Array, Promise<AudioFacts>>();
 

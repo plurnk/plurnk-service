@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import ParserCoordinates, {
-    materializeTreeSitterSymbols,
-    ParserCoordinateError,
-    treeSitterSpan,
-} from "./ParserCoordinates.ts";
+import test, { describe, it } from "node:test";
+import ParserCoordinates, { materializeTreeSitterSymbols, ParserCoordinateError, treeSitterSpan } from "./ParserCoordinates.ts";
+import TextCoordinates from "./TextCoordinates.ts";
 
+// ─── ParserCoordinates.test.ts ───
+{
 function node(startIndex: number, endIndex: number): never {
     return {
         text: "",
@@ -17,7 +16,7 @@ function node(startIndex: number, endIndex: number): never {
 }
 
 describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
-    it("materializes Tree-sitter UTF-16 offsets as Unicode-code-point regions", () => {
+    it("{§mimetype-parser-coordinates} materializes Tree-sitter UTF-16 offsets as Unicode-code-point regions", () => {
         const source = "a😀b\r\ncafe\u0301\rz";
         assert.deepEqual(
             materializeTreeSitterSymbols(source, [{
@@ -51,7 +50,7 @@ describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
         );
     });
 
-    it("preserves a terminal zero-width insertion point", () => {
+    it("{§mimetype-parser-coordinates} preserves a terminal zero-width insertion point", () => {
         assert.deepEqual(
             materializeTreeSitterSymbols("x😀", [{
                 name: "end",
@@ -69,7 +68,7 @@ describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
         );
     });
 
-    it("can end a semantic span at the next node's start boundary", () => {
+    it("{§mimetype-parser-coordinates} can end a semantic span at the next node's start boundary", () => {
         assert.deepEqual(
             materializeTreeSitterSymbols("first\nsecond", [{
                 name: "first",
@@ -87,7 +86,7 @@ describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
         );
     });
 
-    it("normalizes point-only synthetic nodes through the same source boundary", () => {
+    it("{§mimetype-parser-coordinates} normalizes point-only synthetic nodes through the same source boundary", () => {
         const synthetic = {
             startPosition: { row: 0, column: 1 },
             endPosition: { row: 0, column: 3 },
@@ -109,7 +108,7 @@ describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
         );
     });
 
-    it("surfaces a native span that bisects an astral character", () => {
+    it("{§mimetype-parser-coordinates} surfaces a native span that bisects an astral character", () => {
         assert.throws(
             () => materializeTreeSitterSymbols("x😀", [{
                 name: "broken",
@@ -120,7 +119,7 @@ describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
         );
     });
 
-    it("encloses partial CRLF separators without expanding zero-width spans", () => {
+    it("{§mimetype-parser-coordinates} encloses partial CRLF separators without expanding zero-width spans", () => {
         const coordinates = new ParserCoordinates("a\r\nb");
         for (const [start, end, region] of [
             [0, 2, { startLine: 1, startColumn: 1, endLine: 2, endColumn: 1 }],
@@ -136,7 +135,7 @@ describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
         }), { startLine: 1, startColumn: 1, endLine: 2, endColumn: 1 });
     });
 
-    it("does not normalize corrupt offsets alongside a CRLF boundary", () => {
+    it("{§mimetype-parser-coordinates} does not normalize corrupt offsets alongside a CRLF boundary", () => {
         const coordinates = new ParserCoordinates("😀\r\nx");
         for (const [start, end] of [[1, 3], [3, 9], [3, 2]] as const) {
             assert.throws(
@@ -150,3 +149,121 @@ describe("{§mimetype-parser-coordinates} parser-native source spans", () => {
         }), ParserCoordinateError);
     });
 });
+}
+
+// ─── TextCoordinates.test.ts ───
+{
+test("{§mimetype-parser-coordinates} TextCoordinates counts Unicode code points rather than UTF-16 code units", () => {
+    const content = "a😀b\nnext";
+    assert.equal(TextCoordinates.offsetAtPosition(content, 1, 3), 3);
+    assert.deepEqual(TextCoordinates.regionFromOffsets(content, 1, 3), {
+        startLine: 1,
+        startColumn: 2,
+        endLine: 1,
+        endColumn: 3,
+    });
+    assert.equal(TextCoordinates.positionAtOffset(content, 2), null);
+});
+
+test("{§mimetype-parser-coordinates} TextCoordinates recognizes CRLF, CR, and LF boundaries", () => {
+    const content = "one\r\ntwo\rthree\nfour";
+    assert.deepEqual(
+        TextCoordinates.lines(content).map(({ start, contentEnd, end, separator }) => ({
+            start,
+            contentEnd,
+            end,
+            separator,
+        })),
+        [
+            { start: 0, contentEnd: 3, end: 5, separator: "\r\n" },
+            { start: 5, contentEnd: 8, end: 9, separator: "\r" },
+            { start: 9, contentEnd: 14, end: 15, separator: "\n" },
+            { start: 15, contentEnd: 19, end: 19, separator: "" },
+        ],
+    );
+    assert.deepEqual(TextCoordinates.positionAtOffset(content, 5), { line: 2, column: 1 });
+    assert.deepEqual(TextCoordinates.positionAtOffset(content, 15), { line: 4, column: 1 });
+    assert.deepEqual(TextCoordinates.positionAtOffset(content, 19), { line: 4, column: 5 });
+    assert.equal(TextCoordinates.positionAtOffset(content, 4), null);
+    assert.deepEqual(TextCoordinates.positionAtOffset(content, 8), { line: 2, column: 4 });
+});
+
+test("{§mimetype-parser-coordinates} TextCoordinates minimally encloses offsets inside indivisible text units", () => {
+    assert.deepEqual(TextCoordinates.enclosingRegionFromOffsets("a\r\nb", 2, 3), {
+        startLine: 1,
+        startColumn: 2,
+        endLine: 2,
+        endColumn: 1,
+    });
+    assert.deepEqual(TextCoordinates.enclosingRegionFromOffsets("a😀b", 1, 2), {
+        startLine: 1,
+        startColumn: 2,
+        endLine: 1,
+        endColumn: 3,
+    });
+});
+
+test("{§mimetype-parser-coordinates} TextCoordinates produces complete exclusive whole-line regions", () => {
+    assert.deepEqual(TextCoordinates.lineRegion("one\r\ntwo\r\n", 1, 2), {
+        startLine: 1,
+        startColumn: 1,
+        endLine: 2,
+        endColumn: 4,
+    });
+    assert.deepEqual(TextCoordinates.lineRegion("", 1, 1), {
+        startLine: 1,
+        startColumn: 1,
+        endLine: 1,
+        endColumn: 1,
+    });
+    assert.equal(TextCoordinates.lineRegion("one", 2, 2), null);
+});
+
+test("{§mimetype-parser-coordinates} TextCoordinates distinguishes a terminal insertion position from a whole line", () => {
+    assert.equal(TextCoordinates.offsetAtPosition("one\n", 2, 1), 4);
+    assert.deepEqual(TextCoordinates.regionFromOffsets("one\n", 4, 4), {
+        startLine: 2,
+        startColumn: 1,
+        endLine: 2,
+        endColumn: 1,
+    });
+    assert.equal(TextCoordinates.lineRegion("one\n", 2, 2), null);
+});
+
+test("{§mimetype-parser-coordinates} TextCoordinates names the line's current text in a column range rejection (#321)", () => {
+    const content = "line one\n</html>\n";
+    assert.throws(
+        () => TextCoordinates.offsetAtPosition(content, 2, 48),
+        new RangeError("Column 48 is outside line 2's available column range 1..8. Line 2: `</html>`"),
+    );
+});
+
+test("{§mimetype-parser-coordinates} TextCoordinates bounds the rejected line's preview to 96 code points (#321)", () => {
+    const wide = "x".repeat(200);
+    try {
+        TextCoordinates.offsetAtPosition(`${wide}\n`, 1, 999);
+        assert.fail("expected a RangeError");
+    } catch (error) {
+        assert.ok(error instanceof RangeError);
+        assert.match(error.message, /Line 1: `x{95}…`$/, "over-wide lines truncate with an ellipsis");
+    }
+});
+
+// {§mimetype-error-policy} — the one line count every consumer calls.
+test("{§mimetype-error-policy} TextCoordinates.lineCount is the logical line count: a terminator ends a line, it never opens one", () => {
+    const corpus: ReadonlyArray<readonly [string, number]> = [
+        ["", 0],
+        ["a\nb", 2],
+        ["a\nb\n", 2],
+        ["a\r\nb\r\n", 2],
+        ["a\rb\r", 2],
+        ["\n", 1],
+        ["a\n\n\nb\n", 4],
+        ["a\n\n\nb", 4],
+    ];
+    for (const [content, expected] of corpus) {
+        assert.equal(TextCoordinates.lineCount(content), expected, JSON.stringify(content));
+        assert.equal(TextCoordinates.lineCount(content), TextCoordinates.logicalLines(content).length, `${JSON.stringify(content)}: the count is logicalLines' length`);
+    }
+});
+}

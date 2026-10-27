@@ -57,7 +57,7 @@ const HANDLER_METHODS = [
 
 // Public seam types stay reachable from the orchestrator module.
 
-// Default and caller-owned loading modes ({§mimetype-package-resolution}).
+// Default and caller-owned loading modes ({§mimetype-discovery}).
 export type HandlerLoader = (packageName: string) => Promise<unknown>;
 
 const defaultLoader = (cwd: string): HandlerLoader => {
@@ -92,10 +92,10 @@ export interface ProcessOptions {
     // Absent fields are not requested; `[]` performs no projection parse.
     channels?: readonly Channel[];
     // Request parser-recovery evidence independently of structural channel
-    // materialization ({§mimetype-parse-issues}).
+    // materialization ({§mimetype-channel-selection}).
     parseIssues?: boolean;
     // Request optional handler-owned document summary metadata independently
-    // of projection channels ({§mimetype-summary}).
+    // of projection channels ({§mimetype-channel-selection}).
     summary?: boolean;
     // A missing grammar normally returns explicit empty structural channels;
     // strict mode throws instead ({§mimetype-error-policy}).
@@ -120,7 +120,7 @@ export interface ProcessResult {
     symbols?: MimeSymbol[];
     // Faithful JSONPath target; null when unavailable.
     deepJson?: unknown;
-    // {§mimetype-projection-facts} — the handler's structured facts, present iff requested and owned.
+    // {§mimetype-binary-input} — the handler's structured facts, present iff requested and owned.
     facts?: unknown;
     // Faithful XPath target; handler overrides remain authoritative.
     deepXml?: string;
@@ -136,7 +136,7 @@ export interface ReadableProjection {
     content: string;
     sourceMimetype: string;
     projectionIdentity: string;
-    // {§mimetype-projection-facts} — the handler's structured facts (deepJson) beside the text.
+    // {§mimetype-binary-input} — the handler's structured facts (deepJson) beside the text.
     facts?: unknown;
 }
 
@@ -228,7 +228,7 @@ export default class Mimetypes {
     }
 
     // Registry-aware classification; installed declarations are authoritative
-    // ({§mimetype-classification}).
+    // ({§mimetype-content}).
     async classify(mimetype: string): Promise<MimeClassification> {
         await this.ready();
         const info = this.#discovered.handlers.get(mimetype);
@@ -237,7 +237,7 @@ export default class Mimetypes {
     }
 
     // Opaque identity for installed projection behavior
-    // ({§mimetype-projection-identity}).
+    // ({§mimetype-lifecycle}).
     async projectionIdentity(mimetype: string): Promise<string> {
         await this.ready();
         const info = this.#discovered.handlers.get(mimetype);
@@ -343,7 +343,7 @@ export default class Mimetypes {
         if (mimetype === null) return null;
         const handler = await this.getHandler(mimetype);
         if (handler === null || handler.content === BaseHandler.prototype.content) return null;
-        // {§mimetype-projection-facts} — a handler that owns structured facts hands them over with the
+        // {§mimetype-binary-input} — a handler that owns structured facts hands them over with the
         // text. A source the handler refuses (its header is not what its label says) has no readable
         // projection: null, never a crash. The caller may still preserve the source bytes.
         const withFacts = handler.facts !== BaseHandler.prototype.facts;
@@ -455,7 +455,7 @@ export default class Mimetypes {
     }
 
     // Detect, read, route, validate, and materialize the selected projections
-    // under {§mimetype-handler-authority} and {§mimetype-error-policy}.
+    // under {§mimetype-handler-contract} and {§mimetype-error-policy}.
     async process(input: ProcessInput, options: ProcessOptions = {}): Promise<ProcessResult> {
         const channels = new Set<Channel>(options.channels ?? STRUCTURAL_CHANNELS);
         const mimetype = await this.detect(input);
@@ -536,7 +536,7 @@ export default class Mimetypes {
             if (isGrammarNotInstalled(err) || isMimetypeInputError(err)) throw err;
             throw new MimetypeDerivationError({ path: input.path, mimetype, cause: err });
         }
-        const totalLines = typeof content === "string" ? TextCoordinates.lineCount(content) : 0; // {§logical-line-count}
+        const totalLines = typeof content === "string" ? TextCoordinates.lineCount(content) : 0; // {§mimetype-error-policy}
 
         return attachNotices({
             mimetype,
@@ -581,7 +581,7 @@ export default class Mimetypes {
     }
 
     // Raw standalone matchers and grammar-parsed matchers converge on one
-    // dispatch/evidence path ({§mimetype-query-input}).
+    // dispatch/evidence path ({§mimetype-query}).
     async query(input: ProcessInput, matcher: string | ParsedBodyMatcher): Promise<QueryMatch[]> {
         const mimetype = await this.detect(input);
         if (mimetype === null) {
@@ -647,7 +647,7 @@ export default class Mimetypes {
         channels: ReadonlySet<Channel>,
         plurnkPackage: string,
     ): Promise<ProcessResult> {
-        const totalLines = typeof content === "string" ? TextCoordinates.lineCount(content) : 0; // {§logical-line-count}
+        const totalLines = typeof content === "string" ? TextCoordinates.lineCount(content) : 0; // {§mimetype-error-policy}
         return attachNotices({
             mimetype,
             ok: true,

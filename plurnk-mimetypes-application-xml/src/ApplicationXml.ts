@@ -1,3 +1,4 @@
+// {§xml-shape}
 import {
     BaseHandler,
     InvalidExpressionError,
@@ -44,7 +45,7 @@ export default class ApplicationXml extends BaseHandler {
         return source === null ? null : projectDomToJson(source.document, (node) => source.region(node)).value;
     }
 
-    // {§mimetype-parse-issues} — xmldom's recoverable reports, or one for content that is not a document.
+    // {§mimetype-channel-selection} — xmldom's recoverable reports, or one for content that is not a document.
     override parseIssues(content: HandlerContent): number {
         const text = textOf(content);
         if (text.length === 0) return 0;

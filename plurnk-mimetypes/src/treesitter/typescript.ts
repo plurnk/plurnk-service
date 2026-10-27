@@ -20,7 +20,7 @@ import {
 //   abstract_class_declaration → class (handled in JS dispatch)
 //   ambient_declaration     → unwrap and dispatch
 //
-// Container semantics ({§mimetype-symbol-container}): symbols inside a class, interface, enum,
+// Container semantics ({§mimetype-symbol}): symbols inside a class, interface, enum,
 // or namespace/module carry the dotted path of enclosing emitted scope names.
 // Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

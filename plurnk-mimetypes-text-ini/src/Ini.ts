@@ -9,8 +9,8 @@ import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch, TextRegion }
 // The record guard, local since this package holds no contracts dependency.
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-// text/x-ini handler: a single-line scan ({§ini-tree}); symbols are {§ini-symbols} and
-// structural queries answer with lexical spans ({§ini-regions}).
+// text/x-ini handler: a single-line scan ({§ini-tree}); symbols are {§ini-tree} and
+// structural queries answer with lexical spans ({§ini-tree}).
 export default class Ini extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
         const out: MimeSymbol[] = [];

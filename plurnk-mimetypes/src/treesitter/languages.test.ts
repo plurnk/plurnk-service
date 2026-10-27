@@ -1,11 +1,18 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TreeSitterLanguageHandler from "./handler.ts";
-import { lookupTreeSitterLanguage } from "./registry.ts";
+import { lookupTreeSitterLanguage, TREE_SITTER_REGISTRY } from "./registry.ts";
 import type { MimeSymbol, SymbolKind } from "../types.ts";
+import { projectJsonToXml } from "../projectJsonToXml.ts";
+import { discover } from "../discover.ts";
+import Mimetypes from "../Mimetypes.ts";
+import { TomlError } from "smol-toml";
+import MimetypeInputError from "../MimetypeInputError.ts";
 
+// ─── languages.test.ts ───
+{
 // One emitted symbol's asserted facts ({§mimetype-symbol}). A key left out asserts nothing;
-// `container: undefined`, written out, asserts absence ({§mimetype-symbol-container}).
+// `container: undefined`, written out, asserts absence ({§mimetype-symbol}).
 interface Expectation {
     readonly kind?: SymbolKind;
     readonly params?: readonly string[];
@@ -38,7 +45,7 @@ interface Language {
     readonly mimetype: string;
     readonly sources: readonly Snippet[];
     readonly malformed: readonly string[];
-    // The top-level case: no container, 1-indexed columns ({§mimetype-symbol-container}).
+    // The top-level case: no container, 1-indexed columns ({§mimetype-symbol}).
     readonly topLevel: Snippet;
     readonly also?: readonly Witness[];
 }
@@ -835,9 +842,249 @@ describe("{§mimetype-symbol} tree-sitter language matrix", () => {
         }
     });
 
-    it("{§mimetype-symbol-container} top-level symbols carry no container and 1-indexed columns, in every language", async () => {
+    it("{§mimetype-symbol} top-level symbols carry no container and 1-indexed columns, in every language", async () => {
         for (const language of LANGUAGES) {
             check(language.mimetype, language.topLevel, await handlerFor(language.mimetype).extractRaw(language.topLevel.source));
         }
     });
 });
+}
+
+// ─── deep.test.ts ───
+{
+// End-to-end checks that the tree-sitter registry handlers emit both the
+// symbols channel AND the deep-json channel from a single source, and that
+// projectJsonToXml produces a congruent deep-xml view.
+
+describe("{§mimetype-channel-architecture} TreeSitterLanguageHandler.deepJson: Python", () => {
+    const entry = lookupTreeSitterLanguage("text/x-python")!;
+    const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
+
+    it("{§mimetype-channel-architecture} returns the full named-children tree with native tree-sitter node types", async () => {
+        const src = "def greet(name):\n    return name\n";
+        const h = new TreeSitterLanguageHandler(md, entry);
+        const tree = await h.deepJson(src) as { type: string; children?: unknown[] };
+        assert.equal(tree.type, "module");
+        assert.ok(Array.isArray(tree.children));
+        const fn = (tree.children as { type: string }[]).find((c) => c.type === "function_definition");
+        assert.ok(fn, "function_definition node should be present in deep tree");
+    });
+
+    it("{§mimetype-channel-architecture} leaf nodes carry text; internal nodes carry children", async () => {
+        const src = "x = 42\n";
+        const h = new TreeSitterLanguageHandler(md, entry);
+        type N = { type: string; text?: string; children?: N[] };
+        const tree = await h.deepJson(src) as N;
+        // Walk to find an identifier leaf.
+        const stack: N[] = [tree];
+        let found: N | null = null;
+        while (stack.length > 0) {
+            const cur = stack.pop()!;
+            if (cur.type === "identifier") { found = cur; break; }
+            if (cur.children) stack.push(...cur.children);
+        }
+        assert.ok(found, "should locate an identifier leaf");
+        assert.equal(found.text, "x");
+        assert.equal(found.children, undefined);
+    });
+
+    it("{§mimetype-channel-architecture} returns null for binary content", async () => {
+        const h = new TreeSitterLanguageHandler(md, entry);
+        assert.equal(await h.deepJson(new Uint8Array([1, 2, 3])), null);
+    });
+
+    it("{§mimetype-channel-architecture} deepJson + projectJsonToXml produces self-consistent XML", async () => {
+        const src = "def f(): pass\n";
+        const h = new TreeSitterLanguageHandler(md, entry);
+        const json = await h.deepJson(src);
+        const xml = projectJsonToXml(json);
+        // The function_definition node type appears in both projections.
+        assert.ok(xml.includes("<function_definition"));
+        assert.ok(xml.includes("</function_definition>") || xml.includes("/>"));
+        // The identifier 'f' is preserved in some text node.
+        assert.ok(xml.includes(">f<") || xml.includes(">f</"));
+    });
+
+    it("{§mimetype-channel-architecture} uses code-point columns for nodes after astral text", async () => {
+        const source = "def f(): \"😀\"; g()\n";
+        const h = new TreeSitterLanguageHandler(md, entry);
+        type N = { type: string; text?: string; column?: number; endColumn?: number; children?: N[] };
+        const root = await h.deepJson(source) as N;
+        const stack = [root];
+        let g: N | undefined;
+        while (stack.length > 0) {
+            const current = stack.pop()!;
+            if (current.type === "identifier" && current.text === "g") g = current;
+            if (current.children) stack.push(...current.children);
+        }
+        assert.deepEqual({ column: g?.column, endColumn: g?.endColumn }, {
+            column: 15,
+            endColumn: 16,
+        });
+    });
+});
+}
+
+// ─── dispatch.test.ts ───
+{
+describe("{§treesitter-runtime-gate} tree-sitter registry: dispatch wiring", () => {
+    it("{§treesitter-runtime-gate} discover() seeds tree-sitter entries by default", async () => {
+        const result = await discover({ packageDirs: [] });
+        const py = result.handlers.get("text/x-python");
+        assert.ok(py);
+        assert.equal(py.source, "treesitter");
+        assert.equal(py.packageName, "@plurnk/plurnk-mimetypes-grammar-python");
+        assert.equal(py.glyph, "🐍");
+    });
+
+    it("{§treesitter-runtime-gate} discover() includeTreeSitter:false skips the seed (test-only)", async () => {
+        const result = await discover({ packageDirs: [], includeTreeSitter: false });
+        assert.equal(result.handlers.get("text/x-python"), undefined);
+    });
+
+    it("{§treesitter-runtime-gate} detect() routes .py to text/x-python via the registry baseline", async () => {
+        const mt = new Mimetypes();
+        const resolved = await mt.detect({ path: "src/foo.py" });
+        assert.equal(resolved, "text/x-python");
+    });
+
+    it("{§treesitter-runtime-gate} getHandler() returns a working TreeSitterLanguageHandler for text/x-python", async () => {
+        const mt = new Mimetypes();
+        const handler = await mt.getHandler("text/x-python");
+        assert.ok(handler);
+        const syms = await handler.extractRaw("def add(a, b):\n    return a + b\n");
+        const add = syms.find((s) => s.name === "add");
+        assert.ok(add);
+        assert.equal(add.kind, "function");
+        assert.deepEqual(add.params, ["a", "b"]);
+    });
+
+    it("{§treesitter-runtime-gate} process() pipeline runs end-to-end against a tree-sitter handler", async () => {
+        const mt = new Mimetypes();
+        const result = await mt.process({
+            hint: "text/x-python",
+            content: "class Foo:\n    def bar(self):\n        return 42\n",
+        });
+        assert.equal(result.ok, true);
+        assert.equal(result.mimetype, "text/x-python");
+        const names = (result.symbols ?? []).map((s) => `${s.kind} ${s.name}`);
+        assert.ok(names.includes("class Foo"), `expected class Foo in ${names.join(", ")}`);
+        assert.ok(names.includes("method bar"), `expected method bar in ${names.join(", ")}`);
+    });
+});
+}
+
+// ─── registry.test.ts ───
+{
+// Coverage: {§treesitter-runtime-gate} (backend registry).
+
+
+
+describe("{§treesitter-runtime-gate} TreeSitter registry", () => {
+    it("{§treesitter-runtime-gate} lists at least one entry", () => {
+        assert.ok(TREE_SITTER_REGISTRY.length >= 1);
+    });
+
+    it("{§treesitter-runtime-gate} lookupTreeSitterLanguage matches a known mimetype", () => {
+        const entry = lookupTreeSitterLanguage("text/x-python");
+        assert.ok(entry);
+        assert.equal(entry.mimetype, "text/x-python");
+        assert.equal(entry.slug, "python");
+    });
+
+    it("{§treesitter-runtime-gate} lookupTreeSitterLanguage returns null for unknown mimetype", () => {
+        const entry = lookupTreeSitterLanguage("text/x-unknown-language");
+        assert.equal(entry, null);
+    });
+
+    it("{§treesitter-runtime-gate} every registry entry has a non-empty mimetype, glyph, slug, extensions", () => {
+        for (const entry of TREE_SITTER_REGISTRY) {
+            assert.ok(entry.mimetype.length > 0, `mimetype empty: ${JSON.stringify(entry)}`);
+            assert.ok(entry.glyph.length > 0, `glyph empty: ${entry.mimetype}`);
+            assert.ok(entry.slug.length > 0, `slug empty: ${entry.mimetype}`);
+            // Hint-only convention aliases carry empty
+            // extensions on purpose — extension detection stays with the
+            // canonical entry for the same slug, which must exist and own them.
+            if (entry.extensions.length === 0) {
+                const canonical = TREE_SITTER_REGISTRY.find((e) => e.slug === entry.slug && e.extensions.length > 0);
+                assert.ok(canonical, `alias without an extension-bearing canonical entry: ${entry.mimetype}`);
+            }
+            assert.equal(typeof entry.importMapping, "function");
+        }
+    });
+
+    it("{§treesitter-runtime-gate} mimetypes are unique across the registry", () => {
+        const seen = new Set<string>();
+        for (const entry of TREE_SITTER_REGISTRY) {
+            assert.ok(!seen.has(entry.mimetype), `duplicate mimetype: ${entry.mimetype}`);
+            seen.add(entry.mimetype);
+        }
+    });
+});
+}
+
+// ─── yaml_toml_deepjson.test.ts ───
+{
+describe("{§mimetype-channel-architecture} YAML deepJson via parsed value", () => {
+    const entry = lookupTreeSitterLanguage("application/yaml")!;
+    const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
+
+    it("{§mimetype-channel-architecture} returns the parsed value tree, not the tree-sitter AST", async () => {
+        const src = "name: Alice\nserver:\n  host: localhost\n  port: 8080\n";
+        const h = new TreeSitterLanguageHandler(md, entry);
+        const tree = await h.deepJson(src);
+        assert.deepEqual(tree, { name: "Alice", server: { host: "localhost", port: 8080 } });
+    });
+
+    it("{§mimetype-channel-architecture} classifies malformed YAML and preserves the parser cause", async () => {
+        const h = new TreeSitterLanguageHandler(md, entry);
+        await assert.rejects(
+            h.deepJson(":\n:\n\t"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypeInputError);
+                assert.equal(error.mimetype, "application/yaml");
+                assert.equal((error.cause as Error).name, "YAMLParseError");
+                return true;
+            },
+        );
+    });
+
+    it("{§mimetype-channel-architecture} classifies an unresolved alias without swallowing unrelated reference defects", async () => {
+        const h = new TreeSitterLanguageHandler(md, entry);
+        await assert.rejects(
+            h.deepJson("value: *missing"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypeInputError);
+                assert.equal(error.mimetype, "application/yaml");
+                assert.match((error.cause as Error).message, /^Unresolved alias /);
+                return true;
+            },
+        );
+    });
+});
+
+describe("{§mimetype-channel-architecture} TOML deepJson via parsed value", () => {
+    const entry = lookupTreeSitterLanguage("application/toml")!;
+    const md = { mimetype: entry.mimetype, glyph: entry.glyph, extensions: entry.extensions };
+
+    it("{§mimetype-channel-architecture} returns the parsed value tree", async () => {
+        const src = '[server]\nhost = "localhost"\nport = 8080\n';
+        const h = new TreeSitterLanguageHandler(md, entry);
+        const tree = await h.deepJson(src);
+        assert.deepEqual(tree, { server: { host: "localhost", port: 8080 } });
+    });
+
+    it("{§mimetype-channel-architecture} classifies malformed TOML and preserves the parser cause", async () => {
+        const h = new TreeSitterLanguageHandler(md, entry);
+        await assert.rejects(
+            h.deepJson("[[[invalid"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypeInputError);
+                assert.equal(error.mimetype, "application/toml");
+                assert.ok(error.cause instanceof TomlError);
+                return true;
+            },
+        );
+    });
+});
+}

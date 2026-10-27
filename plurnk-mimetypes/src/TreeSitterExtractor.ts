@@ -46,7 +46,7 @@ export interface TreeSitterNode {
     descendantsOfType(types: string | string[]): TreeSitterNode[];
 }
 
-// Shared tree-sitter adapter ({§mimetype-backend-selection}). Subclasses supply
+// Shared tree-sitter adapter ({§treesitter-runtime-gate}). Subclasses supply
 // parser loading and symbol projection; thrown failures remain causal.
 export default abstract class TreeSitterExtractor extends BaseHandler {
     #parserPromise: Promise<TreeSitterParser> | null = null;
@@ -220,7 +220,7 @@ export function walkDeepNode(node: TreeSitterNode, content?: string): DeepTreeNo
 }
 
 // Count concrete recovery sites, not ancestor nodes whose `hasError` merely
-// summarizes a descendant ({§mimetype-parse-issues}). The iterative walk
+// summarizes a descendant ({§mimetype-channel-selection}). The iterative walk
 // avoids consuming the JavaScript call stack on a deeply nested source tree.
 function countParseIssues(root: TreeSitterNode): number {
     if (root.hasError === false) return 0;

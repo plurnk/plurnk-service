@@ -1,5 +1,4 @@
-// Contracts: {§mimetype-discovery}, {§mimetype-package-resolution}.
-import { after, before, describe, it } from "node:test";
+import test, { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -8,6 +7,21 @@ import { pathToFileURL } from "node:url";
 import { discover } from "./discover.ts";
 import Mimetypes from "./Mimetypes.ts";
 import MimetypeExtensionError from "./MimetypeExtensionError.ts";
+import type { ExtensionAttributionContext } from "@plurnk/plurnk-meta";
+import BaseHandler from "./BaseHandler.ts";
+import type { Discovery, HandlerInfo, HandlerMetadata, Registry } from "./types.ts";
+
+// ─── discover.test.ts ───
+{
+// Contracts: {§mimetype-discovery}, {§mimetype-discovery}.
+
+
+
+
+
+
+
+
 
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
 // ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
@@ -75,14 +89,14 @@ describe("{§mimetype-discovery} discover", () => {
         await fs.rm(tmpRoot, { recursive: true, force: true });
     });
 
-    it("returns empty registry and handlers when no packages found", async () => {
+    it("{§mimetype-discovery} returns empty registry and handlers when no packages found", async () => {
         const result = await discover({ packageDirs: [], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
         assert.equal(result.registry.byExtension.size, 0);
         assert.equal(result.registry.byFilename.size, 0);
     });
 
-    it("returns empty when default cwd has no node_modules/@plurnk", async () => {
+    it("{§mimetype-discovery} returns empty when default cwd has no node_modules/@plurnk", async () => {
         const empty = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-empty-"));
         try {
             const result = await discover({ cwd: empty, includeTreeSitter: false });
@@ -92,7 +106,7 @@ describe("{§mimetype-discovery} discover", () => {
         }
     });
 
-    it("registers a single-entry handlers array", async () => {
+    it("{§mimetype-discovery} registers a single-entry handlers array", async () => {
         const dir = await makePackage(tmpRoot, "pkg-py", {
             name: "@plurnk/plurnk-mimetypes-text-x-python",
             plurnk: {
@@ -114,7 +128,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.registry.byExtension.get(".pyw"), "text/x-python");
     });
 
-    it("splits dotted extensions into byExtension and bare entries into byFilename", async () => {
+    it("{§mimetype-discovery} splits dotted extensions into byExtension and bare entries into byFilename", async () => {
         const dir = await makePackage(tmpRoot, "pkg-dockerfile", {
             name: "@plurnk/plurnk-mimetypes-text-x-dockerfile",
             plurnk: {
@@ -136,7 +150,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.registry.byFilename.size, 2);
     });
 
-    it("normalizes extension case to lowercase in byExtension", async () => {
+    it("{§mimetype-discovery} normalizes extension case to lowercase in byExtension", async () => {
         const dir = await makePackage(tmpRoot, "pkg-cased", {
             name: "@plurnk/plurnk-mimetypes-cased",
             plurnk: {
@@ -148,7 +162,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.registry.byExtension.get(".caps"), "text/cased");
     });
 
-    it("preserves filename case (Dockerfile stays Dockerfile)", async () => {
+    it("{§mimetype-discovery} preserves filename case (Dockerfile stays Dockerfile)", async () => {
         const dir = await makePackage(tmpRoot, "pkg-filename-case", {
             name: "@plurnk/plurnk-mimetypes-filename",
             plurnk: {
@@ -161,7 +175,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.registry.byFilename.get("makefile"), undefined);
     });
 
-    it("skips packages missing plurnk metadata", async () => {
+    it("{§mimetype-discovery} skips packages missing plurnk metadata", async () => {
         const dir = await makePackage(tmpRoot, "pkg-noplurnk", {
             name: "@plurnk/plurnk-mimetypes-unrelated",
         });
@@ -169,7 +183,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("skips packages with non-mimetype kind", async () => {
+    it("{§mimetype-discovery} skips packages with non-mimetype kind", async () => {
         const dir = await makePackage(tmpRoot, "pkg-provider", {
             name: "@plurnk/plurnk-providers-openai",
             plurnk: { kind: "provider", name: "openai" },
@@ -178,7 +192,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("rejects a mimetype declaration missing the handlers array", async () => {
+    it("{§mimetype-discovery} rejects a mimetype declaration missing the handlers array", async () => {
         const dir = await makePackage(tmpRoot, "pkg-no-handlers", {
             name: "@plurnk/plurnk-mimetypes-bad",
             plurnk: { kind: "mimetype" },
@@ -189,7 +203,7 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("rejects a mimetype declaration whose handlers field is not an array", async () => {
+    it("{§mimetype-discovery} rejects a mimetype declaration whose handlers field is not an array", async () => {
         const dir = await makePackage(tmpRoot, "pkg-handlers-nonarray", {
             name: "@plurnk/plurnk-mimetypes-bad",
             plurnk: { kind: "mimetype", handlers: "not an array" },
@@ -200,7 +214,7 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("rejects the whole declaration when a handler entry has no name", async () => {
+    it("{§mimetype-discovery} rejects the whole declaration when a handler entry has no name", async () => {
         const dir = await makePackage(tmpRoot, "pkg-entry-noname", {
             name: "@plurnk/plurnk-mimetypes-test",
             plurnk: {
@@ -218,7 +232,7 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("{§mimetype-naming} rejects a handler entry whose name is not a media type", async () => {
+    it("{§mimetype-discovery} rejects a handler entry whose name is not a media type", async () => {
         const dir = await makePackage(tmpRoot, "pkg-entry-invalid-name", {
             name: "@plurnk/plurnk-mimetypes-test",
             plurnk: {
@@ -232,7 +246,7 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("rejects a handler entry without a canonical projection revision", async () => {
+    it("{§mimetype-discovery} rejects a handler entry without a canonical projection revision", async () => {
         for (const [folder, revision] of [
             ["pkg-revision-missing", undefined],
             ["pkg-revision-empty", ""],
@@ -256,7 +270,7 @@ describe("{§mimetype-discovery} discover", () => {
         }
     });
 
-    it("rejects the whole declaration when a handler entry is not an object", async () => {
+    it("{§mimetype-discovery} rejects the whole declaration when a handler entry is not an object", async () => {
         const dir = await makePackage(tmpRoot, "pkg-entry-junk", {
             name: "@plurnk/plurnk-mimetypes-test",
             plurnk: {
@@ -275,14 +289,14 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("skips directories without a package.json", async () => {
+    it("{§mimetype-discovery} skips directories without a package.json", async () => {
         const dir = path.join(tmpRoot, "pkg-empty-dir");
         await fs.mkdir(dir, { recursive: true });
         const result = await discover({ packageDirs: [dir], includeTreeSitter: false });
         assert.equal(result.handlers.size, 0);
     });
 
-    it("skips packages with malformed JSON", async () => {
+    it("{§mimetype-discovery} skips packages with malformed JSON", async () => {
         const dir = path.join(tmpRoot, "pkg-bad-json");
         await fs.mkdir(dir, { recursive: true });
         await fs.writeFile(path.join(dir, "package.json"), "{ not valid json");
@@ -290,7 +304,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.handlers.size, 0);
     });
 
-    it("rejects non-string extension entries within a handler", async () => {
+    it("{§mimetype-discovery} rejects non-string extension entries within a handler", async () => {
         const dir = await makePackage(tmpRoot, "pkg-mixed-ext", {
             name: "@plurnk/plurnk-mimetypes-mixed",
             plurnk: {
@@ -306,7 +320,7 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("rejects an unsafe package name on an explicit mimetype declaration", async () => {
+    it("{§mimetype-discovery} rejects an unsafe package name on an explicit mimetype declaration", async () => {
         const dir = await makePackage(tmpRoot, "pkg-invalid-name", {
             name: "../not-a-package",
             plurnk: {
@@ -320,7 +334,7 @@ describe("{§mimetype-discovery} discover", () => {
         );
     });
 
-    it("last-loaded wins on conflicting mimetype across packages", async () => {
+    it("{§mimetype-discovery} last-loaded wins on conflicting mimetype across packages", async () => {
         const dirA = await makePackage(tmpRoot, "pkg-conflict-a", {
             name: "@plurnk/plurnk-mimetypes-conflict-a",
             plurnk: {
@@ -341,7 +355,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(info?.glyph, "B");
     });
 
-    it("attributes only packages represented by a surviving handler", async () => {
+    it("{§mimetype-discovery} attributes only packages represented by a surviving handler", async () => {
         const dirA = await makePackage(tmpRoot, "pkg-attribution-conflict-a", {
             name: "@acme/mime-a",
             plurnk: {
@@ -362,7 +376,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.deepEqual([...result.packageAttributions], [["@acme/mime-b", ["@acme/b"]]]);
     });
 
-    it("{§mimetype-client-display} defaults glyph to empty string when not declared in a handler entry", async () => {
+    it("{§mimetype-discovery} defaults glyph to empty string when not declared in a handler entry", async () => {
         const dir = await makePackage(tmpRoot, "pkg-noglyph", {
             name: "@plurnk/plurnk-mimetypes-noglyph",
             plurnk: {
@@ -375,7 +389,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(info?.glyph, "");
     });
 
-    it("registers each entry in a multi-handler array as its own HandlerInfo", async () => {
+    it("{§mimetype-discovery} registers each entry in a multi-handler array as its own HandlerInfo", async () => {
         const dir = await makePackage(tmpRoot, "pkg-multi", {
             name: "@plurnk/plurnk-mimetypes-application-json",
             plurnk: {
@@ -401,7 +415,7 @@ describe("{§mimetype-discovery} discover", () => {
         assert.equal(result.registry.byExtension.get(".jsonc"), "application/jsonc");
     });
 
-    it("default cwd scan finds packages under node_modules/@plurnk/", async () => {
+    it("{§mimetype-discovery} default cwd scan finds packages under node_modules/@plurnk/", async () => {
         const sandbox = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-sandbox-"));
         try {
             await makePackage(path.join(sandbox, "node_modules", "@plurnk"), "plurnk-mimetypes-text-plain", {
@@ -422,7 +436,7 @@ describe("{§mimetype-discovery} discover", () => {
 });
 
 describe("{§mimetype-discovery} scope-agnostic scan", () => {
-    it("finds mimetype handlers under @plurnk, third-party scopes, AND unscoped; skips non-mimetype", async () => {
+    it("{§mimetype-discovery} finds mimetype handlers under @plurnk, third-party scopes, AND unscoped; skips non-mimetype", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-scan-"));
         try {
             const nm = path.join(root, "node_modules");
@@ -456,7 +470,7 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
         }
     });
 
-    it("loads a discovered third-party handler from the consumer-visible module graph (#85)", async () => {
+    it("{§mimetype-discovery} loads a discovered third-party handler from the consumer-visible module graph (#85)", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-consumer-loader-"));
         try {
             const dir = await makePackage(root, "node_modules/@acme/acme-mime-cobol", {
@@ -490,7 +504,7 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
         }
     });
 
-    it("makes import-only package roots an explicit-loader contract (#156)", async () => {
+    it("{§mimetype-discovery} makes import-only package roots an explicit-loader contract (#156)", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-import-only-loader-"));
         try {
             const dir = await makePackage(root, "node_modules/@acme/acme-mime-cobol", {
@@ -532,7 +546,7 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
         }
     });
 
-    it("@plurnk wins a mimetype collision (a third party can't silently shadow the floor)", async () => {
+    it("{§mimetype-discovery} @plurnk wins a mimetype collision (a third party can't silently shadow the floor)", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-prec-"));
         try {
             const nm = path.join(root, "node_modules");
@@ -574,7 +588,7 @@ describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TR
         return root;
     }
 
-    it("gate OFF ('' or '0') registers every discovered handler; unset defers to the panel", async () => {
+    it("{§mimetype-discovery} gate OFF ('' or '0') registers every discovered handler; unset defers to the panel", async () => {
         const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-off-")));
         try {
             for (const env of [{ PLURNK_EXTENSIONS_TRUSTED_ONLY: "" }, { PLURNK_EXTENSIONS_TRUSTED_ONLY: "0" }]) {
@@ -589,7 +603,7 @@ describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TR
         }
     });
 
-    it("gate ON keeps @plurnk + allowlisted, skips the rest", async () => {
+    it("{§mimetype-discovery} gate ON keeps @plurnk + allowlisted, skips the rest", async () => {
         const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-on-")));
         try {
             const r = await discover({
@@ -605,7 +619,7 @@ describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TR
         }
     });
 
-    it("gate ON with a non-package value (\"1\") = @plurnk only, zero third-party", async () => {
+    it("{§mimetype-discovery} gate ON with a non-package value (\"1\") = @plurnk only, zero third-party", async () => {
         const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-1-")));
         try {
             const r = await discover({
@@ -622,7 +636,7 @@ describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TR
         }
     });
 
-    it("does not crash on an untrusted package and preserves skipped evidence", async () => {
+    it("{§mimetype-discovery} does not crash on an untrusted package and preserves skipped evidence", async () => {
         const root = await buildNm(await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-nocrash-")));
         try {
             const result = await discover({
@@ -635,7 +649,7 @@ describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TR
         }
     });
 
-    it("withholds an untrusted kind claim before validating its handler declaration", async () => {
+    it("{§mimetype-discovery} withholds an untrusted kind claim before validating its handler declaration", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-gate-malformed-"));
         try {
             const dir = await makePackage(root, "broken-handler", {
@@ -654,3 +668,330 @@ describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TR
         }
     });
 });
+}
+
+// ─── discover.attribution.test.ts ───
+{
+// This file's fixtures are third-party packages, so it exercises the operator who admitted them
+// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// their own value below and override this one.
+process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
+
+async function makePackage(
+    root: string,
+    folder: string,
+    pkg: Record<string, unknown>,
+): Promise<string> {
+    const dir = path.join(root, folder);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "package.json"), JSON.stringify(pkg, null, 2));
+    return dir;
+}
+
+describe("{§extension-attribution} discover attribution", () => {
+    let tmpRoot: string;
+
+    before(async () => {
+        tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-attribution-"));
+    });
+
+    after(async () => {
+        await fs.rm(tmpRoot, { recursive: true, force: true });
+    });
+
+    it("{§mimetype-discovery} a single-string attribution becomes one canonical package fact", async () => {
+        const dir = await makePackage(tmpRoot, "c1", {
+            name: "@acme/acme-mime-foo",
+            plurnk: {
+                kind: "mimetype",
+                attribution: "acme",
+                handlers: [{ name: "application/x-foo", revision: "test-1", glyph: "🅰", extensions: [".foo"] }],
+            },
+        });
+        const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
+        assert.equal("attribution" in handlers.get("application/x-foo")!, false, "the handler descriptor carries identity only");
+        assert.deepEqual(packageAttributions.get("@acme/acme-mime-foo"), ["acme"]);
+    });
+
+    it("{§mimetype-discovery} a multi-handler package contributes one canonical attribution fact", async () => {
+        const dir = await makePackage(tmpRoot, "c2", {
+            name: "@acme/acme-mime-multi",
+            plurnk: {
+                kind: "mimetype",
+                attribution: ["acme", "acme-pro"],
+                handlers: [
+                    { name: "application/x-a", revision: "test-1", glyph: "A", extensions: [".a"] },
+                    { name: "application/x-b", revision: "test-1", glyph: "B", extensions: [".b"] },
+                ],
+            },
+        });
+        const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
+        assert.deepEqual([...handlers.keys()].toSorted(), ["application/x-a", "application/x-b"]);
+        assert.deepEqual([...packageAttributions], [["@acme/acme-mime-multi", ["acme", "acme-pro"]]]);
+    });
+
+    it("{§mimetype-discovery} an absent attribution produces no package fact", async () => {
+        const dir = await makePackage(tmpRoot, "c3", {
+            name: "@acme/acme-mime-bare",
+            plurnk: {
+                kind: "mimetype",
+                handlers: [{ name: "application/x-bare", revision: "test-1", glyph: "·", extensions: [".bare"] }],
+            },
+        });
+        const { handlers, packageAttributions } = await discover({ packageDirs: [dir], includeTreeSitter: false });
+        assert.ok(handlers.get("application/x-bare"));
+        assert.equal(packageAttributions.size, 0);
+    });
+
+    it("{§mimetype-discovery} a trusted malformed attribution fails whole-package admission", async () => {
+        const cases: Array<[string, unknown]> = [["empty-string", ""], ["number", 7], ["object", { tag: "x" }], ["mixed", ["keep", 1]]];
+        for (const [folder, value] of cases) {
+            const dir = await makePackage(tmpRoot, `c4-${folder}`, {
+                name: `@acme/acme-mime-${folder}`,
+                plurnk: {
+                    kind: "mimetype",
+                    attribution: value,
+                    handlers: [{ name: `application/x-${folder}`, revision: "test-1", glyph: "?", extensions: [`.${folder}`] }],
+                },
+            });
+            await assert.rejects(
+                discover({ packageDirs: [dir], includeTreeSitter: false }),
+                /plurnk\.attribution must be a non-empty string or string\[\]/,
+                folder,
+            );
+        }
+
+        const reserved = await makePackage(tmpRoot, "reserved", {
+            name: "@acme/acme-mime-reserved",
+            plurnk: {
+                kind: "mimetype",
+                attribution: "@plurnk/staff",
+                handlers: [{ name: "application/x-reserved", revision: "test-1", extensions: [".reserved"] }],
+            },
+        });
+        await assert.rejects(discover({ packageDirs: [reserved], includeTreeSitter: false }), /'@plurnk\/' is reserved/);
+    });
+
+    it("{§mimetype-discovery} an untrusted malformed attribution is withheld before validation", async () => {
+        const dir = await makePackage(tmpRoot, "untrusted-invalid", {
+            name: "@acme/acme-mime-untrusted",
+            plurnk: {
+                kind: "mimetype",
+                attribution: ["keep", 1],
+                handlers: [{ name: "application/x-untrusted", revision: "test-1", extensions: [".untrusted"] }],
+            },
+        });
+        const result = await discover({
+            packageDirs: [dir],
+            includeTreeSitter: false,
+            env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
+        });
+        assert.deepEqual(result.skipped, ["@acme/acme-mime-untrusted"]);
+        assert.equal(result.packageAttributions.size, 0);
+    });
+
+    it("{§mimetype-discovery} tree-sitter built-ins carry no package attribution", async () => {
+        const { handlers, packageAttributions } = await discover({ packageDirs: [] });
+        const treesitter = [...handlers.values()].find((h) => h.source === "treesitter");
+        assert.ok(treesitter, "expected at least one tree-sitter handler");
+        assert.equal(packageAttributions.size, 0);
+    });
+});
+}
+
+// ─── attributions.test.ts ───
+{
+// {§extension-attribution}
+
+
+
+
+
+
+
+const context = (attempt: number): ExtensionAttributionContext => ({
+    workspaceId: "workspace",
+    sessionId: "session",
+    loop: 1,
+    turn: 2,
+    attempt,
+});
+
+const info: HandlerInfo = {
+    mimetype: "text/x-attribution-test",
+    glyph: "",
+    packageName: "@acme/mimetype-attribution-test",
+    projectionRevision: "1",
+    extensions: [".attr"],
+    binary: false,
+    source: "package",
+};
+
+const discovery: Discovery = {
+    registry: {
+        byExtension: new Map([[".attr", info.mimetype]]),
+        byFilename: new Map(),
+    },
+    handlers: new Map([[info.mimetype, info]]),
+    packageAttributions: new Map([[info.packageName, ["static:mimetype"]]]),
+    skipped: [],
+};
+
+class AttributingHandler extends BaseHandler {
+    attributions({ attempt }: ExtensionAttributionContext): string[] {
+        return attempt === 2 ? ["runtime:mimetype", "static:mimetype"] : [];
+    }
+}
+
+test("{§extension-attribution} Mimetypes composes static tags with hooks from already-loaded handlers only", async () => {
+    const mimetypes = new Mimetypes({
+        discovery,
+        loader: async () => ({ default: AttributingHandler }),
+    });
+
+    assert.deepEqual(
+        await mimetypes.attributions(context(1)),
+        ["static:mimetype"],
+        "collecting telemetry does not force the lazy handler to load",
+    );
+
+    await mimetypes.getHandler(info.mimetype);
+    assert.deepEqual(
+        await mimetypes.attributions(context(2)),
+        ["runtime:mimetype", "static:mimetype"],
+        "a loaded handler controls its attempt-time tags and the host canonicalizes the union",
+    );
+});
+}
+
+// ─── projectionIdentity.test.ts ───
+{
+// Contract: {§mimetype-lifecycle}. Issue #175 is provenance.
+
+
+
+
+
+
+
+
+let configuration = "configuration-a";
+
+class ConfigurableHandler extends BaseHandler {
+    override projectionConfiguration(): string {
+        return configuration;
+    }
+}
+
+const info = (
+    packageName: string,
+    projectionRevision: string,
+): HandlerInfo => ({
+    mimetype: "text/x-community",
+    glyph: "🧩",
+    packageName,
+    extensions: [".community"],
+    binary: false,
+    source: "package",
+    projectionRevision,
+});
+
+type HandlerConstructor = new (metadata: HandlerMetadata) => BaseHandler;
+
+const mimetypes = (
+    handlerInfo: HandlerInfo,
+    Handler: HandlerConstructor = ConfigurableHandler,
+): Mimetypes => {
+    const registry: Registry = {
+        byExtension: new Map([[".community", handlerInfo.mimetype]]),
+        byFilename: new Map(),
+    };
+    const discovery: Discovery = {
+        registry,
+        handlers: new Map([[handlerInfo.mimetype, handlerInfo]]),
+        packageAttributions: new Map(), skipped: [],
+    };
+    return new Mimetypes({
+        discovery,
+        loader: async () => ({ default: Handler }),
+    });
+};
+
+describe("{§mimetype-lifecycle} mimetype projection identity", () => {
+    it("{§mimetype-lifecycle} is stable for identical behavior and changes with live configuration", async () => {
+        configuration = "configuration-a";
+        const service = mimetypes(info("@community/cobol", "reader-1"));
+
+        const first = await service.projectionIdentity("text/x-community");
+        assert.match(first, /^[a-f0-9]{64}$/u);
+        assert.equal(await service.projectionIdentity("text/x-community"), first);
+
+        configuration = "configuration-b";
+        assert.notEqual(await service.projectionIdentity("text/x-community"), first);
+    });
+
+    it("{§mimetype-lifecycle} keeps package ownership and self-declared revision in the identity", async () => {
+        configuration = "configuration-a";
+        const first = await mimetypes(info("@community/cobol", "reader-1"))
+            .projectionIdentity("text/x-community");
+        const revised = await mimetypes(info("@community/cobol", "reader-2"))
+            .projectionIdentity("text/x-community");
+        const independent = await mimetypes(info("@another/cobol", "reader-1"))
+            .projectionIdentity("text/x-community");
+
+        assert.notEqual(revised, first);
+        assert.notEqual(independent, first);
+    });
+
+    it("{§mimetype-lifecycle} fails a non-string handler configuration at the extension boundary", async () => {
+        class InvalidConfigurationHandler extends BaseHandler {
+            override projectionConfiguration(): never {
+                return 42 as never;
+            }
+        }
+        const service = mimetypes(
+            info("@community/invalid", "reader-1"),
+            InvalidConfigurationHandler,
+        );
+
+        await assert.rejects(
+            () => service.projectionIdentity("text/x-community"),
+            (error: unknown) => {
+                assert.ok(error instanceof MimetypeExtensionError);
+                assert.match(error.message, /projectionConfiguration\(\) must return a string/u);
+                assert.ok(error.cause instanceof TypeError);
+                return true;
+            },
+        );
+    });
+
+    it("{§mimetype-lifecycle} identifies an unregistered projection without loading extension code", async () => {
+        let loads = 0;
+        const service = new Mimetypes({
+            discovery: {
+                registry: { byExtension: new Map(), byFilename: new Map() },
+                handlers: new Map(),
+                packageAttributions: new Map(), skipped: [],
+            },
+            loader: async () => {
+                loads++;
+                return { default: ConfigurableHandler };
+            },
+        });
+
+        const first = await service.projectionIdentity("text/x-unregistered");
+        assert.equal(await service.projectionIdentity("text/x-unregistered"), first);
+        assert.equal(loads, 0);
+    });
+
+    it("{§mimetype-lifecycle} includes the installed Tree-sitter grammar artifact", async () => {
+        const service = new Mimetypes({
+            discovery: await discover({ packageDirs: [] }),
+        });
+
+        const first = await service.projectionIdentity("text/x-python");
+        assert.match(first, /^[a-f0-9]{64}$/u);
+        assert.equal(await service.projectionIdentity("text/x-python"), first);
+    });
+});
+}

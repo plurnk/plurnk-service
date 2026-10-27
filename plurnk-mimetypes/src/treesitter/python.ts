@@ -18,7 +18,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 // Function-body locals are excluded by not recursing into function bodies.
 // Class-body recursion is necessary to surface methods + class-level fields.
 //
-// Container semantics ({§mimetype-symbol-container}): symbols inside a class carry the dotted
+// Container semantics ({§mimetype-symbol}): symbols inside a class carry the dotted
 // path of enclosing emitted class names (`Outer.Inner` for a method on a
 // nested class). Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   const_declaration    → constant (per const_spec)
 //   var_declaration      → variable (per var_spec)
 //
-// Container semantics ({§mimetype-symbol-container}): flat — the mapping walks no nested scopes
+// Container semantics ({§mimetype-symbol}): flat — the mapping walks no nested scopes
 // and never emits the method receiver type, so no symbol carries a container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

@@ -1056,7 +1056,7 @@ const failingMimetypes = (failure: Error, poison: string): Mimetypes => {
     });
 };
 
-test("{§derivation-dedup-parallel} {§mimetype-derivation-evidence} a handler's defect on one member is that member's failed row, named by the completing notice", async () => {
+test("{§derivation-dedup-parallel} {§mimetype-error-policy} a handler's defect on one member is that member's failed row, named by the completing notice", async () => {
     const db = await openMigrated();
     const failure = Object.freeze(new ParserCoordinateError("unaddressable native span"));
     const mimetypes = failingMimetypes(failure, "interrupted");

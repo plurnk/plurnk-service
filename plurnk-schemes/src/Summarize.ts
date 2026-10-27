@@ -54,7 +54,7 @@ export default class Summarize {
     }
 
     static #textIndex(content: string): OrientIndex {
-        const lines = TextCoordinates.lineCount(content); // {§logical-line-count}
+        const lines = TextCoordinates.lineCount(content); // {§mimetype-error-policy}
         // Markdown-style headings (`#`..`######`) — the structural anchors the
         // model slices toward in prose output.
         const headings: string[] = [];

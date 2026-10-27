@@ -5,7 +5,7 @@ import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
 // as a Uint8Array. Nothing is decoded: the format's header alone yields the facts a reader
 // needs (format, pixel dimensions, byte size), which is the model-facing body. The picture
 // itself reaches a model that can see it as a native image part of the packet, built by the
-// service from the source bytes ({§mimetype-image} in the framework SPEC).
+// service from the source bytes ({§mimetype-binary-input} in the framework SPEC).
 
 export interface ImageFacts {
     readonly format: "png" | "jpeg" | "gif" | "webp";

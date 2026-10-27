@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Deterministic dependency and grammar-pin health checks across the @plurnk/plurnk-mimetypes
-// universe and sibling @plurnk repositories ({§release-candidate-graph}, {§grammar-package-lifecycle}).
+// universe and sibling @plurnk repositories ({§release-candidate-graph}, {§mimetype-grammar-packages}).
 //
 //   1. PINS      — exact pins (first-party @plurnk/* and third-party exact pins such as
 //                  tree-sitter-cli in the grammar packages) that trail npm-latest.
@@ -22,7 +22,7 @@ import { runGrammarLifecycle } from "./update-grammars.mjs";
 
 usage(import.meta, `
 usage: npm run deps:check [-- --only pins|audit]   (from plurnk-mimetypes)
-Checks exact pins, external ranges, committed lockfiles, peer ranges, upstream grammar pins, and npm audit across the mimetypes package family ({§release-candidate-graph}, {§grammar-package-lifecycle}).
+Checks exact pins, external ranges, committed lockfiles, peer ranges, upstream grammar pins, and npm audit across the mimetypes package family ({§release-candidate-graph}, {§mimetype-grammar-packages}).
 Reads: PLURNK_MIMETYPES_PACKAGES_ROOT, PLURNK_MIMETYPES_AUDIT_LEVEL, package manifests, lockfiles, and npm registry metadata.
 Writes: findings to stdout; exit 1 on any issue.
 `);

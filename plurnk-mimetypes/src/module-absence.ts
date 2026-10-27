@@ -2,7 +2,7 @@ const MODULE_NOT_FOUND_CODES = new Set(["ERR_MODULE_NOT_FOUND", "MODULE_NOT_FOUN
 const MISSING_SPECIFIER = /^Cannot find (?:package|module) (['"])([^'"]+)\1(?: imported from|\nRequire stack:|$)/;
 
 // Node exposes the unresolved specifier only in its primary resolution
-// message; exact classification enforces {§mimetype-artifact-absence}.
+// message; exact classification enforces {§mimetype-error-policy}.
 export function isExactModuleAbsent(error: unknown, specifier: string): boolean {
     if (typeof error !== "object" || error === null) return false;
     const { code, message } = error as { code?: unknown; message?: unknown };

@@ -1,15 +1,19 @@
-import { describe, it } from "node:test";
+import test, { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TextMarkdown from "./TextMarkdown.ts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 
+// ─── TextMarkdown.test.ts ───
+{
 const metadata = {
     mimetype: "text/markdown",
     glyph: "📝",
     extensions: [".md", ".markdown"] as const,
 };
 
-describe("{§mimetype-validation} validate is the no-op default", () => {
-    it("validate is a no-op (any string is valid markdown)", () => {
+describe("{§mimetype-channel-selection} validate is the no-op default", () => {
+    it("{§markdown-symbols} validate is a no-op (any string is valid markdown)", () => {
         const h = new TextMarkdown(metadata);
         assert.doesNotThrow(() => h.validate(""));
         assert.doesNotThrow(() => h.validate("not really markdown @@@"));
@@ -17,7 +21,7 @@ describe("{§mimetype-validation} validate is the no-op default", () => {
 });
 
 describe("{§markdown-symbols} headings and code blocks are the symbols", () => {
-    it("extracts a single ATX heading", () => {
+    it("{§markdown-symbols} extracts a single ATX heading", () => {
         const h = new TextMarkdown(metadata);
         const symbols = h.extractRaw("# Title\n");
         assert.equal(symbols.length, 1);
@@ -32,7 +36,7 @@ describe("{§markdown-symbols} headings and code blocks are the symbols", () => 
         });
     });
 
-    it("extracts multiple headings at distinct levels with correct line numbers", () => {
+    it("{§markdown-symbols} extracts multiple headings at distinct levels with correct line numbers", () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "# Top",
@@ -57,7 +61,7 @@ describe("{§markdown-symbols} headings and code blocks are the symbols", () => 
         assert.equal(byName.get("Other")?.level, 2);
     });
 
-    it("extracts setext headings (=== and ---)", () => {
+    it("{§markdown-symbols} extracts setext headings (=== and ---)", () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "Title One",
@@ -76,7 +80,7 @@ describe("{§markdown-symbols} headings and code blocks are the symbols", () => 
         assert.equal(titleTwo?.level, 2);
     });
 
-    it("extracts a fenced code block with its language", () => {
+    it("{§markdown-symbols} extracts a fenced code block with its language", () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "Before code.",
@@ -95,7 +99,7 @@ describe("{§markdown-symbols} headings and code blocks are the symbols", () => 
         assert.equal(code.endLine, 5);
     });
 
-    it("extracts a fenced code block without language as kind=module name=code", () => {
+    it("{§markdown-symbols} extracts a fenced code block without language as kind=module name=code", () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "```",
@@ -108,7 +112,7 @@ describe("{§markdown-symbols} headings and code blocks are the symbols", () => 
         assert.equal(code.name, "code");
     });
 
-    it("ignores inline content (paragraphs, links, lists) — only headings and code blocks", () => {
+    it("{§markdown-symbols} ignores inline content (paragraphs, links, lists) — only headings and code blocks", () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "# Heading",
@@ -123,17 +127,17 @@ describe("{§markdown-symbols} headings and code blocks are the symbols", () => 
         assert.equal(symbols[0].name, "Heading");
     });
 
-    it("returns empty array for prose with no headings or code blocks", () => {
+    it("{§markdown-symbols} returns empty array for prose with no headings or code blocks", () => {
         const h = new TextMarkdown(metadata);
         assert.deepEqual(h.extractRaw("Some prose without headings.\nMore prose. Still no structure."), []);
     });
 
-    it("returns empty array for empty input", () => {
+    it("{§markdown-symbols} returns empty array for empty input", () => {
         const h = new TextMarkdown(metadata);
         assert.deepEqual(h.extractRaw(""), []);
     });
 
-    it("symbolsRaw() renders heading hierarchy via format()", async () => {
+    it("{§markdown-symbols} symbolsRaw() renders heading hierarchy via format()", async () => {
         const h = new TextMarkdown(metadata);
         const src = [
             "# Top",
@@ -149,8 +153,8 @@ describe("{§markdown-symbols} headings and code blocks are the symbols", () => 
     });
 });
 
-describe("{§mimetype-symbol-container} containers are the open ancestor-heading path", () => {
-    it("headings carry ancestor-heading container paths", async () => {
+describe("{§mimetype-symbol} containers are the open ancestor-heading path", () => {
+    it("{§markdown-symbols} headings carry ancestor-heading container paths", async () => {
         const h = new TextMarkdown(metadata);
         const src = "# A\n\n## B\n\n### C\n\n## D\n";
         const syms = h.extractRaw(src);
@@ -161,14 +165,14 @@ describe("{§mimetype-symbol-container} containers are the open ancestor-heading
         assert.equal(byName.get("D")!.container, "A", "level-2 D closes B and C");
     });
 
-    it("code blocks carry the innermost open heading as container", async () => {
+    it("{§markdown-symbols} code blocks carry the innermost open heading as container", async () => {
         const h = new TextMarkdown(metadata);
         const src = "# A\n\n## B\n\n```ts\nconst x = 1;\n```\n";
         const syms = h.extractRaw(src);
         assert.equal(syms.find((s) => s.kind === "module")!.container, "A.B");
     });
 
-    it("code block before any heading has no container", async () => {
+    it("{§markdown-symbols} code block before any heading has no container", async () => {
         const h = new TextMarkdown(metadata);
         const src = "```ts\nconst x = 1;\n```\n\n# After\n";
         const syms = h.extractRaw(src);
@@ -176,8 +180,8 @@ describe("{§mimetype-symbol-container} containers are the open ancestor-heading
     });
 });
 
-describe("{§markdown-tree} deepJson is the block-token tree", () => {
-    it("deepJson returns the marked AST as a document tree with line annotations", async () => {
+describe("{§markdown-symbols} deepJson is the block-token tree", () => {
+    it("{§markdown-symbols} deepJson returns the marked AST as a document tree with line annotations", async () => {
         const h = new TextMarkdown(metadata);
         const tree = await h.deepJson("# Top\n\nA paragraph.\n\n```ts\nconst x = 1;\n```\n") as {
             type: string;
@@ -193,14 +197,14 @@ describe("{§markdown-tree} deepJson is the block-token tree", () => {
         assert.equal(code.lang, "ts");
     });
 
-    it("deepJson returns null for binary content", async () => {
+    it("{§markdown-symbols} deepJson returns null for binary content", async () => {
         const h = new TextMarkdown(metadata);
         assert.equal(await h.deepJson(new Uint8Array([1, 2, 3])), null);
     });
 });
 
-describe("{§mimetype-summary} summary is frontmatter description, else the Summary paragraph", () => {
-    it("derives the first paragraph directly under the first exact Summary H2", () => {
+describe("{§mimetype-channel-selection} summary is frontmatter description, else the Summary paragraph", () => {
+    it("{§markdown-symbols} derives the first paragraph directly under the first exact Summary H2", () => {
         const h = new TextMarkdown(metadata);
         const source = [
             "# Tool",
@@ -219,7 +223,7 @@ describe("{§mimetype-summary} summary is frontmatter description, else the Summ
         assert.equal(h.summary(source), "Read one issue and its\ndiscussion.");
     });
 
-    it("ignores non-exact, nested, fenced, and paragraph-less Summary headings", () => {
+    it("{§markdown-symbols} ignores non-exact, nested, fenced, and paragraph-less Summary headings", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(h.summary("# Summary\n\nWrong depth."), undefined);
         assert.equal(h.summary("### Summary\n\nWrong depth."), undefined);
@@ -228,7 +232,7 @@ describe("{§mimetype-summary} summary is frontmatter description, else the Summ
         assert.equal(h.summary("## Summary\n\n### Detail\n\nNot direct."), undefined);
     });
 
-    it("prefers standard frontmatter descriptions without altering Markdown", () => {
+    it("{§markdown-symbols} prefers standard frontmatter descriptions without altering Markdown", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(h.summary("---\r\ndescription: Read bundled references\r\n---\r\n## Summary\n\nDetails."), "Read bundled references");
         assert.equal(h.summary("---\ndescription: >-\n  Read bundled\n  references\n---\n"), "Read bundled references");
@@ -239,7 +243,7 @@ describe("{§mimetype-summary} summary is frontmatter description, else the Summ
         assert.equal(h.summary("```md\n---\ndescription: fenced\n---\n```"), undefined);
     });
 
-    it("recognizes a semantic setext H2", () => {
+    it("{§markdown-symbols} recognizes a semantic setext H2", () => {
         const h = new TextMarkdown(metadata);
         assert.equal(h.summary("Summary\n-------\n\nA compact description."), "A compact description.");
     });
@@ -248,7 +252,7 @@ describe("{§mimetype-summary} summary is frontmatter description, else the Summ
 describe("{§mimetype-query} structural dialects query the tree, regex the raw body", () => {
     const md = "# Project\n\nIntro line.\n\n## Build\n\nRun npm ci.\nThen npm test.\n\n## Testing\n\nUse node --test.\n\n## Style\n\nDouble quotes.\n";
 
-    it("jsonpath queries the deep-json markdown AST", async () => {
+    it("{§markdown-symbols} jsonpath queries the deep-json markdown AST", async () => {
         const h = new TextMarkdown(metadata);
         const src = ["# Top", "", "## Section", "", "### Sub"].join("\n");
         // Find all heading nodes via filter expression — full-tree reach per
@@ -264,7 +268,7 @@ describe("{§mimetype-query} structural dialects query the tree, regex the raw b
         assert.equal((h1s[0].matched as { text: string }).text, "Top");
     });
 
-    it("inherits regex query against the raw markdown body", async () => {
+    it("{§markdown-symbols} inherits regex query against the raw markdown body", async () => {
         const h = new TextMarkdown(metadata);
         const src = "# Top\n\nSome body with codename: phoenix in it.";
         const out = await h.query(src, "regex", "codename: (\\w+)");
@@ -274,7 +278,7 @@ describe("{§mimetype-query} structural dialects query the tree, regex the raw b
         assert.deepEqual(out[0].matched, ["phoenix"]);
     });
 
-    it("xpath selects headings by level through the content attribute and by text", async () => {
+    it("{§markdown-symbols} xpath selects headings by level through the content attribute and by text", async () => {
         const h = new TextMarkdown(metadata);
         const byLevel = await h.query(md, "xpath", "//heading[@level='2']");
         assert.deepEqual(byLevel.map((m) => m.regions?.[0]?.startLine), [5, 10, 14]);
@@ -284,10 +288,89 @@ describe("{§mimetype-query} structural dialects query the tree, regex the raw b
         assert.equal((await h.query(md, "xpath", "//heading[@pk:level='1']")).length, 1);
     });
 
-    it("jsonpath selects headings by type and level with their source lines", async () => {
+    it("{§markdown-symbols} jsonpath selects headings by type and level with their source lines", async () => {
         const h = new TextMarkdown(metadata);
         const rows = await h.query(md, "jsonpath", "$..[?(@.type=='heading' && @.level==2)]");
         assert.deepEqual(rows.map((m) => (m.matched as { text: string }).text), ["Build", "Testing", "Style"]);
         assert.deepEqual(rows.map((m) => m.regions?.[0]?.startLine), [5, 10, 14]);
     });
 });
+}
+
+// ─── MarkdownSource.test.ts ───
+{
+const handler = new TextMarkdown({ mimetype: "text/markdown", glyph: "", extensions: [".md"] });
+
+for (const separator of ["\n", "\r\n", "\r"]) {
+    test(`{§markdown-symbols} block coordinates preserve source after definitions (${JSON.stringify(separator)})`, async () => {
+        const source = ["[a]: /one", "", "[a]: /two", "", "# 😀 Title", "", "Setext", "------", "", "> nested **text**", ""].join(separator);
+        const coordinates = new TextCoordinates(source);
+        for (const [dialect, pattern] of [["jsonpath", "$..[?(@.type=='heading')]"], ["xpath", "//heading"]] as const) {
+            const matches = await handler.query(source, dialect, pattern);
+            assert.equal(matches.length, 2);
+            assert.deepEqual(matches.map(({ regions }) => regions?.map((region) => source.slice(
+                coordinates.offsetAtPosition(region.startLine, region.startColumn),
+                coordinates.offsetAtPosition(region.endLine, region.endColumn),
+            ))), [["# 😀 Title"], [`Setext${separator}------`]]);
+        }
+        const [nested] = await handler.query(source, "jsonpath", "$..[?(@.type=='strong')]");
+        assert.equal(nested?.regions, undefined, "a transformed nested token cannot inherit exact block coordinates");
+        assert.ok(nested?.enclosingRegions?.length);
+    });
+}
+}
+
+// ─── queryEvidence.conformance.test.ts ───
+{
+// A block node maps exactly to its source lines; a scalar field maps to the
+// nearest honest enclosing block.
+const h = new TextMarkdown({"mimetype":"text/markdown","glyph":"📝","extensions":[".md",".markdown"]});
+const src = "# Alpha\n\nintro\n\n## Beta\n";
+
+describe("{§mimetype-query} blocks are exact regions and scalars enclosing in both dialects", () => {
+    it("{§markdown-symbols} jsonpath distinguishes exact block and enclosing scalar evidence", async () => {
+        await assertQueryEvidenceConformance(h, [
+            {
+                source: src,
+                dialect: "jsonpath",
+                pattern: "$.children[0]",
+                verdict: "exact",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 8,
+                }]],
+            },
+            {
+                source: src,
+                dialect: "jsonpath",
+                pattern: "$.children[0].text",
+                verdict: "enclosing",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 8,
+                }]],
+            },
+        ]);
+    });
+    it("{§markdown-symbols} xpath distinguishes exact block and enclosing scalar evidence", async () => {
+        await assertQueryEvidenceConformance(h, [
+            {
+                source: src,
+                dialect: "xpath",
+                pattern: "(//heading)[1]",
+                verdict: "exact",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 8,
+                }]],
+            },
+            {
+                source: src,
+                dialect: "xpath",
+                pattern: "(//heading)[1]/text",
+                verdict: "enclosing",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 1, endColumn: 8,
+                }]],
+            },
+        ]);
+    });
+});
+}

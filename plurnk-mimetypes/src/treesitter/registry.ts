@@ -18,7 +18,7 @@ export interface TreeSitterLanguageEntry {
      * name (`{slug}.wasm`).
      */
     readonly slug: string;
-    /** Mapping-owned behavior revision ({§mimetype-projection-identity}). */
+    /** Mapping-owned behavior revision ({§mimetype-lifecycle}). */
     readonly revision: string;
     /**
      * Dynamic-import factory for the mapping module. The module must
@@ -28,7 +28,7 @@ export interface TreeSitterLanguageEntry {
     /**
      * An optional grammar is not part of the composed service's default extensions: its extension is
      * installed only by an operator who wants it, and until then the language degrades exactly as
-     * any detected language with an absent leaf does ({§mimetype-optional-grammars}).
+     * any detected language with an absent leaf does ({§mimetype-grammar-packages}).
      */
     readonly optional?: true;
 }
@@ -46,7 +46,7 @@ export interface TreeSitterLanguageMapping {
     // Optional references-channel query ({§mimetype-references}): tree-sitter query
     // source (S-expression patterns) whose `@ref.<kind>` captures yield the
     // classified symbol uses. Loaded from packaged .scm assets by the mapping
-    // module ({§mimetype-query-assets}). Languages without a query serve an empty
+    // module ({§mimetype-references}). Languages without a query serve an empty
     // references channel.
     refsQuery?: string;
 }

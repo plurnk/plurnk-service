@@ -89,7 +89,7 @@ export function parseDotenv(text: string): DotenvVar[] {
     return out;
 }
 
-// {§dotenv-source} — a frame that disagrees with the complete parse supplies no region.
+// {§dotenv-values} — a frame that disagrees with the complete parse supplies no region.
 function sourceSpans(text: string): Map<string, TextRegion> {
     const spans = new Map<string, TextRegion>();
     const root = TextCoordinates.regionFromOffsets(text, 0, text.length);

@@ -12,7 +12,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   local_declaration → variable_declaration → assignment → identifier:
 //                                                          variable / constant
 //
-// {§mimetype-symbol-container}: flat mapping — no recursion into named scopes, so no containers;
+// {§mimetype-symbol}: flat mapping — no recursion into named scopes, so no containers;
 // symbols carry 1-indexed columns only.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

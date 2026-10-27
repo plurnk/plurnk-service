@@ -1319,7 +1319,7 @@ test("{§http-lifecycle} an invalid image remains byte-readable without invented
     }
 });
 
-// {§mimetype-pdf-facts} (#542) — a fetched PDF's readable body is its header facts, never extracted
+// {§mimetype-binary-input} (#542) — a fetched PDF's readable body is its header facts, never extracted
 // text; the bytes ride the packet as a native document part on a route that accepts one.
 test("{§http-lifecycle} a direct PDF retains its complete bytes beside facts and projection evidence", async () => {
     const db = await openMigrated();

@@ -2,7 +2,7 @@ import { BaseHandler, TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent, MimeSymbol } from "@plurnk/plurnk-mimetypes";
 
 // text/x-diff handler: a hand-written line scanner whose one piece of state is the hunk
-// line budget ({§diff-line-budget}). Symbols are {§diff-symbols}; deepJson is {§diff-tree}.
+// line budget ({§diff-line-budget}). Symbols are {§diff-line-budget}; deepJson is {§diff-line-budget}.
 export default class TextDiff extends BaseHandler {
     override extractRaw(content: HandlerContent): MimeSymbol[] {
         const { files } = scanDiff(toText(content));

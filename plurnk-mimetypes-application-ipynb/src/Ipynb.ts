@@ -1,3 +1,4 @@
+// {§ipynb-reading}
 import { BaseHandler, projectJsonToXml, queryJsonpathObject } from "@plurnk/plurnk-mimetypes";
 import { JsonSource } from "@plurnk/plurnk-mimetypes-application-json";
 import type { HandlerContent, MimeSymbol, QueryDialect, QueryMatch } from "@plurnk/plurnk-mimetypes";

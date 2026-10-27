@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS entry_channel_rows (
     weight   INTEGER NOT NULL DEFAULT 0   CHECK (weight >= 0),
     -- Line count of the body, kept at every write so a catalog lists extent without reading
     -- bodies: a trailing newline terminates the last line; empty content has none
-    -- ({§tokenomics}, {§logical-line-count}).
+    -- ({§tokenomics}, {§mimetype-error-policy}).
     lines    INTEGER NOT NULL             CHECK (lines >= 0),
     -- Search derivation for this exact addressable channel representation.
     -- Content or mimetype changes invalidate it at the owning channel row.
@@ -152,7 +152,7 @@ SELECT entry_channel_rows.entry_id, entry_channel_rows.name,
 FROM entry_channel_rows
 LEFT JOIN contents ON contents.id = entry_channel_rows.content_id;
 
--- {§logical-line-count}: `entry_channels.lines` mirrors `TextCoordinates.lineCount`, which breaks a
+-- {§mimetype-error-policy}: `entry_channels.lines` mirrors `TextCoordinates.lineCount`, which breaks a
 -- line on LF, on CRLF and on a lone CR.
 CREATE TRIGGER IF NOT EXISTS entry_channels_insert
 INSTEAD OF INSERT ON entry_channels

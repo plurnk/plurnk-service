@@ -348,7 +348,7 @@ test("{§execution-output-identity} entry_channels: CASCADE chain workspace→en
     } finally { await db.close(); }
 });
 
-test("{§logical-line-count} entry resources have no tag relation", async () => {
+test("{§mimetype-error-policy} entry resources have no tag relation", async () => {
     const db = await openMigrated();
     try {
         const row = await db.test_entries_table_sql.get<{ sql: string }>({ name: "entry_tags" });
@@ -356,7 +356,7 @@ test("{§logical-line-count} entry resources have no tag relation", async () => 
     } finally { await db.close(); }
 });
 
-// {§logical-line-count} — `entry_channels.lines` is the persisted mirror of the one line count: the
+// {§mimetype-error-policy} — `entry_channels.lines` is the persisted mirror of the one line count: the
 // trigger expression and `TextCoordinates.lineCount` agree on every shape, at insert and at
 // update ({§tokenomics}).
 const LINE_CORPUS: ReadonlyArray<readonly [label: string, content: string]> = [
@@ -378,7 +378,7 @@ const storedLines = async (db: Db, entryId: number, content: string): Promise<{ 
     return { inserted, updated };
 };
 
-test("{§logical-line-count} entry_channels: the stored line count mirrors TextCoordinates.lineCount on every LF shape", async () => {
+test("{§mimetype-error-policy} entry_channels: the stored line count mirrors TextCoordinates.lineCount on every LF shape", async () => {
     const db = await openMigrated();
     try {
         for (const [label, content] of LINE_CORPUS) {
@@ -391,8 +391,8 @@ test("{§logical-line-count} entry_channels: the stored line count mirrors TextC
     } finally { await db.close(); }
 });
 
-// {§logical-line-count} — a lone CR breaks a line; `005_entries` counts it.
-test("{§logical-line-count} entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
+// {§mimetype-error-policy} — a lone CR breaks a line; `005_entries` counts it.
+test("{§mimetype-error-policy} entry_channels: the stored line count mirrors TextCoordinates.lineCount on a lone CR", async () => {
     const db = await openMigrated();
     try {
         const entryId = await insertEntry(db, "session", "/lines/lone-cr");
@@ -557,7 +557,7 @@ describe("bundled-mimetype-handlers", () => {
 //
 // NOTE: tree-sitter-backed languages (python, typescript, toml, yaml, …) are
 // NOT standalone deps — the 0.10.0 framework absorbed them into its internal
-// TREE_SITTER_REGISTRY ({§mimetype-backend-selection} Tier 1), so they're covered by
+// TREE_SITTER_REGISTRY ({§treesitter-runtime-gate} Tier 1), so they're covered by
 // @plurnk/plurnk-mimetypes' own suite, not here. Only bespoke standalone
 // handlers belong to this service-side composition check.
 
@@ -679,9 +679,9 @@ test("{§bundled-set} discovery: every service-owned format-handler declaration 
     }
 });
 
-test("{§mimetype-pdf-facts} the default service installs its image and PDF owners without inference or optional artifact catalogs", () => {
+test("{§mimetype-binary-input} the default service installs its image and PDF owners without inference or optional artifact catalogs", () => {
     assert.equal(serviceManifest.dependencies?.[imagePackage], imageManifest.version);
-    // {§mimetype-pdf-facts} — the PDF owner is header-only and dependency-free, so it ships by default like the image owner (#542).
+    // {§mimetype-binary-input} — the PDF owner is header-only and dependency-free, so it ships by default like the image owner (#542).
     assert.equal(serviceManifest.dependencies?.["@plurnk/plurnk-mimetypes-application-pdf"], pdfManifest.version);
     assert.deepEqual(pdfManifest.dependencies, undefined, "the PDF owner pulls no extraction or rendering stack");
 });

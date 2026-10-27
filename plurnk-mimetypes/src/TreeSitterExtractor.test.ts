@@ -1,4 +1,4 @@
-// Contracts: {§mimetype-backend-selection}, {§mimetype-channel-architecture}.
+// Contracts: {§treesitter-runtime-gate}, {§mimetype-channel-architecture}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TreeSitterExtractor from "./TreeSitterExtractor.ts";
@@ -32,7 +32,7 @@ function fakeNode(text: string): TreeSitterNode {
 }
 
 describe("{§mimetype-symbol} TreeSitterExtractor", () => {
-    it("{§mimetype-parse-issues} counts parser recovery sites without rejecting the partial tree", async () => {
+    it("{§mimetype-channel-selection} counts parser recovery sites without rejecting the partial tree", async () => {
         const errorNode = {
             ...fakeNode("="),
             type: "ERROR",
@@ -68,7 +68,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         ]);
     });
 
-    it("calls loadParser once across multiple extractRaw calls (primed cache)", async () => {
+    it("{§treesitter-runtime-gate} calls loadParser once across multiple extractRaw calls (primed cache)", async () => {
         let loadCount = 0;
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
@@ -91,7 +91,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         assert.equal(c[0]?.name, "gamma");
     });
 
-    it("preserves a parser-load defect instead of converting it to an empty channel", async () => {
+    it("{§treesitter-runtime-gate} preserves a parser-load defect instead of converting it to an empty channel", async () => {
         const failure = new Error("WASM init failed");
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
@@ -105,7 +105,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         await assert.rejects(h.extractRaw("anything"), (error) => error === failure);
     });
 
-    it("preserves a parser execution defect", async () => {
+    it("{§treesitter-runtime-gate} preserves a parser execution defect", async () => {
         const failure = new Error("parse failed");
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
@@ -123,7 +123,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         await assert.rejects(h.extractRaw("anything"), (error) => error === failure);
     });
 
-    it("does not collapse a parser-coordinate invariant failure", async () => {
+    it("{§treesitter-runtime-gate} does not collapse a parser-coordinate invariant failure", async () => {
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
                 return { parse: (content) => ({ rootNode: fakeNode(content) }) };
@@ -136,7 +136,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         await assert.rejects(h.extractRaw("anything"), ParserCoordinateError);
     });
 
-    it("returns [] when parser.parse returns null", async () => {
+    it("{§treesitter-runtime-gate} returns [] when parser.parse returns null", async () => {
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
                 return { parse: () => null };
@@ -149,7 +149,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         assert.deepEqual(await h.extractRaw("anything"), []);
     });
 
-    it("preserves an extractor defect", async () => {
+    it("{§treesitter-runtime-gate} preserves an extractor defect", async () => {
         const failure = new Error("visit failed");
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
@@ -163,7 +163,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         await assert.rejects(h.extractRaw("anything"), (error) => error === failure);
     });
 
-    it("returns [] when content is binary", async () => {
+    it("{§treesitter-runtime-gate} returns [] when content is binary", async () => {
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {
                 throw new Error("should never load — binary content rejects early");
@@ -176,7 +176,7 @@ describe("{§mimetype-symbol} TreeSitterExtractor", () => {
         assert.deepEqual(await h.extractRaw(new Uint8Array([1, 2, 3])), []);
     });
 
-    it("calls tree.delete() after extraction for memory hygiene", async () => {
+    it("{§treesitter-runtime-gate} calls tree.delete() after extraction for memory hygiene", async () => {
         let deleteCount = 0;
         class Fake extends TreeSitterExtractor {
             protected async loadParser(): Promise<TreeSitterParser> {

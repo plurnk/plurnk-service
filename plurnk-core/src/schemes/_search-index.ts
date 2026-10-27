@@ -156,7 +156,7 @@ export default class SearchIndex {
         } catch (error) {
             if (ctx.signal?.aborted === true) throw error;
             // {§derivation-dedup-parallel}: a typed invalid-source rejection and a handler's own
-            // defect on this one member ({§mimetype-derivation-evidence}) are both that member's
+            // defect on this one member ({§mimetype-error-policy}) are both that member's
             // terminal disposition, never the pass's. Anything else thrown here — a grammar not
             // installed, a contract violation outside the handler — stays fatal.
             const handlerDefect = error instanceof MimetypeDerivationError;

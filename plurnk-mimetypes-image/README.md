@@ -10,7 +10,7 @@ npm i @plurnk/plurnk-mimetypes-image
 
 ## what it does
 
-The package declares `plurnk.binary: true`, so the framework hands the handler a `Uint8Array` ({§mimetype-handler-content}). The handler reads only the format's header ({§mimetype-image}): `validate` refuses a mislabelled file by its magic, and `content`, `summary`, `facts` and `deepJson` are the header's facts — format, pixel dimensions when the header carries them, byte size. The picture itself is the service's to attach to a packet ({§log-wire-format} in the core specification).
+The package declares `plurnk.binary: true`, so the framework hands the handler a `Uint8Array` ({§mimetype-handler-contract}). The handler reads only the format's header ({§mimetype-binary-input}): `validate` refuses a mislabelled file by its magic, and `content`, `summary`, `facts` and `deepJson` are the header's facts — format, pixel dimensions when the header carries them, byte size. The picture itself is the service's to attach to a packet ({§log-wire-format} in the core specification).
 
 ## license
 

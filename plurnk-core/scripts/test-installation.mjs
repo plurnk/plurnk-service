@@ -357,7 +357,7 @@ ok(
     "a packed default handler loads through the composed service module graph",
 );
 
-// {§mimetype-pdf-facts} (#542) — the PDF owner is a header-only extension that ships by default like
+// {§mimetype-binary-input} (#542) — the PDF owner is a header-only extension that ships by default like
 // the image owner; no extraction or rendering stack rides with it.
 const pdfRoot = resolve(mods, "@plurnk", "plurnk-mimetypes-application-pdf");
 ok(existsSync(resolve(pdfRoot, "package.json")), "the header-only PDF owner ships in the clean service composition");

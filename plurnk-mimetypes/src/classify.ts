@@ -1,4 +1,4 @@
-// Pure registry-free half of {§mimetype-classification}; Mimetypes.classify()
+// Pure registry-free half of {§mimetype-content}; Mimetypes.classify()
 // applies installed handler declarations first.
 
 export interface MimeClassification {

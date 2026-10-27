@@ -17,7 +17,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   var_definition       → variable (or field in class)
 //   type_definition      → type
 //
-// Container semantics ({§mimetype-symbol-container}): members carry the dotted path of enclosing
+// Container semantics ({§mimetype-symbol}): members carry the dotted path of enclosing
 // emitted class/object/trait/enum/package names. Top-level symbols carry no
 // container. Package blocks (`package foo { ... }`) contribute to the
 // container path but are NOT class scope — defs/vals inside stay

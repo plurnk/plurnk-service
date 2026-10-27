@@ -102,7 +102,7 @@ export type {
     NoticeLevel,
 } from "./Notice.ts";
 
-// Registry-free half of {§mimetype-classification}.
+// Registry-free half of {§mimetype-content}.
 export { classifyMimetype } from "./classify.ts";
 export type { MimeClassification } from "./classify.ts";
 

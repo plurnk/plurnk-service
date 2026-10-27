@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import TextDiff, { scanDiff } from "./TextDiff.ts";
+import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 
+// ─── TextDiff.test.ts ───
+{
 const metadata = {
     mimetype: "text/x-diff",
     glyph: "🔀",
@@ -80,33 +83,33 @@ const MULTI = [
     "Binary files a/logo.png and b/logo.png differ",         // 42
 ].join("\n");
 
-describe("{§diff-symbols} file sections are modules and hunks are their fields", () => {
-    it("emits one module symbol per file section (6 files)", () => {
+describe("{§diff-line-budget} file sections are modules and hunks are their fields", () => {
+    it("{§diff-line-budget} emits one module symbol per file section (6 files)", () => {
         const syms = h.extractRaw(MULTI);
         const modules = syms.filter((s) => s.kind === "module");
         assert.equal(modules.length, 6);
     });
 
-    it("names the rename module `old → new`", () => {
+    it("{§diff-line-budget} names the rename module `old → new`", () => {
         const syms = h.extractRaw(MULTI);
         const names = syms.filter((s) => s.kind === "module").map((s) => s.name);
         assert.ok(names.includes("old/name.js → new/name.js"));
     });
 
-    it("names the pure-deletion module by its old path", () => {
+    it("{§diff-line-budget} names the pure-deletion module by its old path", () => {
         const syms = h.extractRaw(MULTI);
         const names = syms.filter((s) => s.kind === "module").map((s) => s.name);
         assert.ok(names.includes("src/gone.js"));
     });
 
-    it("names edit/new modules by their new path", () => {
+    it("{§diff-line-budget} names edit/new modules by their new path", () => {
         const syms = h.extractRaw(MULTI);
         const names = new Set(syms.filter((s) => s.kind === "module").map((s) => s.name));
         assert.ok(names.has("src/edit.js"));
         assert.ok(names.has("src/new.js"));
     });
 
-    it("emits hunks as `field` symbols contained by their file module", () => {
+    it("{§diff-line-budget} emits hunks as `field` symbols contained by their file module", () => {
         const syms = h.extractRaw(MULTI);
         const hunks = syms.filter((s) => s.kind === "field");
         // edit(1) + new(1) + delete(1) + rename(1); mode-only and binary have none.
@@ -117,8 +120,8 @@ describe("{§diff-symbols} file sections are modules and hunks are their fields"
     });
 });
 
-describe("{§diff-sections} git sections recover their paths with or without hunks", () => {
-    it("recovers binary section paths from the diff --git line", () => {
+describe("{§diff-line-budget} git sections recover their paths with or without hunks", () => {
+    it("{§diff-line-budget} recovers binary section paths from the diff --git line", () => {
         const { files } = scanDiff(MULTI);
         const bin = files.find((f) => f.binary);
         assert.ok(bin);
@@ -126,7 +129,7 @@ describe("{§diff-sections} git sections recover their paths with or without hun
         assert.equal(bin.oldPath, "logo.png");
     });
 
-    it("recovers mode-only section paths with no hunk", () => {
+    it("{§diff-line-budget} recovers mode-only section paths with no hunk", () => {
         const { files } = scanDiff(MULTI);
         const mode = files.find((f) => f.newPath === "script.sh");
         assert.ok(mode);
@@ -135,8 +138,8 @@ describe("{§diff-sections} git sections recover their paths with or without hun
     });
 });
 
-describe("{§diff-tree} deepJson carries per-file counts and hunk coordinates", () => {
-    it("carries per-file add/del counts in deepJson", () => {
+describe("{§diff-line-budget} deepJson carries per-file counts and hunk coordinates", () => {
+    it("{§diff-line-budget} carries per-file add/del counts in deepJson", () => {
         const { files } = deep(MULTI);
         const edit = files.find((f) => f.newPath === "src/edit.js")!;
         assert.equal(edit.additions, 2);
@@ -151,7 +154,7 @@ describe("{§diff-tree} deepJson carries per-file counts and hunk coordinates", 
         assert.equal(gone.newPath, null);
     });
 
-    it("carries hunk oldStart/newStart/counts in deepJson", () => {
+    it("{§diff-line-budget} carries hunk oldStart/newStart/counts in deepJson", () => {
         const { files } = deep(MULTI);
         const edit = files.find((f) => f.newPath === "src/edit.js")!;
         assert.deepEqual(edit.hunks[0], {
@@ -162,7 +165,7 @@ describe("{§diff-tree} deepJson carries per-file counts and hunk coordinates", 
     });
 });
 
-describe("{§diff-sections} a bare ---/+++ pair opens a section without a diff --git line", () => {
+describe("{§diff-line-budget} a bare ---/+++ pair opens a section without a diff --git line", () => {
     const src = [
         "--- original.txt\t2026-01-01 00:00:00.000 +0000",
         "+++ modified.txt\t2026-01-02 00:00:00.000 +0000",
@@ -172,14 +175,14 @@ describe("{§diff-sections} a bare ---/+++ pair opens a section without a diff -
         "+new",
     ].join("\n");
 
-    it("opens a file section from the bare ---/+++ pair, timestamp tails stripped", () => {
+    it("{§diff-line-budget} opens a file section from the bare ---/+++ pair, timestamp tails stripped", () => {
         const { files } = scanDiff(src);
         assert.equal(files.length, 1);
         assert.equal(files[0].oldPath, "original.txt");
         assert.equal(files[0].newPath, "modified.txt");
     });
 
-    it("counts the single hunk's add/del", () => {
+    it("{§diff-line-budget} counts the single hunk's add/del", () => {
         const { files } = scanDiff(src);
         assert.equal(files[0].additions, 1);
         assert.equal(files[0].deletions, 1);
@@ -187,7 +190,7 @@ describe("{§diff-sections} a bare ---/+++ pair opens a section without a diff -
     });
 });
 
-describe("{§diff-combined} a combined diff reads N prefix columns against one summed budget", () => {
+describe("{§diff-line-budget} a combined diff reads N prefix columns against one summed budget", () => {
     // Two parents → `@@@` fence, 2 old ranges + 1 new range. Conflict-marker
     // lines (<<<<<<<, =======, >>>>>>>) appear as additions in the new column.
     const src = [
@@ -205,7 +208,7 @@ describe("{§diff-combined} a combined diff reads N prefix columns against one s
         "  more shared",
     ].join("\n");
 
-    it("does not crash and bounds the hunk correctly", () => {
+    it("{§diff-line-budget} does not crash and bounds the hunk correctly", () => {
         const { files } = scanDiff(src);
         assert.equal(files.length, 1);
         assert.equal(files[0].hunks.length, 1);
@@ -216,14 +219,14 @@ describe("{§diff-combined} a combined diff reads N prefix columns against one s
         assert.equal(hunk.endLine, 12);
     });
 
-    it("counts conflict-marker lines as additions", () => {
+    it("{§diff-line-budget} counts conflict-marker lines as additions", () => {
         const { files } = scanDiff(src);
         // 5 lines carry a `+` in some column → 5 additions.
         assert.equal(files[0].additions, 5);
     });
 });
 
-describe("{§diff-symbols} a hunk is named by its heading text, else its new-file coordinates", () => {
+describe("{§diff-line-budget} a hunk is named by its heading text, else its new-file coordinates", () => {
     const src = [
         "diff --git a/greet.js b/greet.js",
         "--- a/greet.js",
@@ -234,21 +237,21 @@ describe("{§diff-symbols} a hunk is named by its heading text, else its new-fil
         "+return msg.trim();",
     ].join("\n");
 
-    it("names the hunk by its section-heading text", () => {
+    it("{§diff-line-budget} names the hunk by its section-heading text", () => {
         const syms = h.extractRaw(src);
         const hunk = syms.find((s) => s.kind === "field");
         assert.ok(hunk);
         assert.equal(hunk.name, "function greet(name) {");
     });
 
-    it("stores the heading in deepJson", () => {
+    it("{§diff-line-budget} stores the heading in deepJson", () => {
         const { files } = deep(src);
         assert.equal(files[0].hunks[0].heading, "function greet(name) {");
         assert.equal(files[0].hunks[0].oldStart, 10);
         assert.equal(files[0].hunks[0].newStart, 10);
     });
 
-    it("falls back to `@@ +c,d` coords when no heading is present", () => {
+    it("{§diff-line-budget} falls back to `@@ +c,d` coords when no heading is present", () => {
         const noHeading = [
             "--- a/x",
             "+++ b/x",
@@ -273,7 +276,7 @@ describe("{§diff-line-budget} an unsatisfied budget closes at the end of the do
         "+added",
     ].join("\n");
 
-    it("closes the unsatisfied hunk at the last seen line, no throw", () => {
+    it("{§diff-line-budget} closes the unsatisfied hunk at the last seen line, no throw", () => {
         const { files } = scanDiff(src);
         assert.equal(files.length, 1);
         const hunk = files[0].hunks[0];
@@ -283,7 +286,7 @@ describe("{§diff-line-budget} an unsatisfied budget closes at the end of the do
     });
 });
 
-describe("{§diff-sections} lines outside any section are skipped", () => {
+describe("{§diff-line-budget} lines outside any section are skipped", () => {
     const src = [
         "Some commit prose before the diff.",
         "Signed-off-by: Someone <x@y.z>",
@@ -299,7 +302,7 @@ describe("{§diff-sections} lines outside any section are skipped", () => {
         "trailing prose",
     ].join("\n");
 
-    it("skips non-header lines and parses only the real section", () => {
+    it("{§diff-line-budget} skips non-header lines and parses only the real section", () => {
         const { files } = scanDiff(src);
         assert.equal(files.length, 1);
         assert.equal(files[0].newPath, "f.txt");
@@ -323,20 +326,20 @@ describe("{§diff-line-budget} a deleted line beginning `---` is content inside 
         " [end]",
     ].join("\n");
 
-    it("reads `--- old config` as a deletion, not a new file section", () => {
+    it("{§diff-line-budget} reads `--- old config` as a deletion, not a new file section", () => {
         const { files } = scanDiff(src);
         // ONE file section — the trap line did NOT open a second.
         assert.equal(files.length, 1);
         assert.equal(files[0].newPath, "config.txt");
     });
 
-    it("counts the trap lines as one deletion and one addition", () => {
+    it("{§diff-line-budget} counts the trap lines as one deletion and one addition", () => {
         const { files } = scanDiff(src);
         assert.equal(files[0].deletions, 1); // `--- old config`
         assert.equal(files[0].additions, 1); // `+++ new config`
     });
 
-    it("keeps both trap lines inside the single hunk span", () => {
+    it("{§diff-line-budget} keeps both trap lines inside the single hunk span", () => {
         const { files } = scanDiff(src);
         assert.equal(files[0].hunks.length, 1);
         assert.equal(files[0].hunks[0].endLine, 8); // ` [end]` line
@@ -354,24 +357,87 @@ describe("{§diff-line-budget} the no-newline annotation spends no budget", () =
         "\\ No newline at end of file",
     ].join("\n");
 
-    it("does not consume budget or count as add/del", () => {
+    it("{§diff-line-budget} does not consume budget or count as add/del", () => {
         const { files } = scanDiff(src);
         assert.equal(files[0].additions, 1);
         assert.equal(files[0].deletions, 1);
     });
 });
 
-describe("{§diff-sections} input with no section projects nothing", () => {
-    it("returns [] symbols for empty input", () => {
+describe("{§diff-line-budget} input with no section projects nothing", () => {
+    it("{§diff-line-budget} returns [] symbols for empty input", () => {
         assert.deepEqual(h.extractRaw(""), []);
     });
 
-    it("returns an empty files tree for empty input", () => {
+    it("{§diff-line-budget} returns an empty files tree for empty input", () => {
         const { files } = deep("");
         assert.deepEqual(files, []);
     });
 
-    it("returns [] for prose with no diff", () => {
+    it("{§diff-line-budget} returns [] for prose with no diff", () => {
         assert.deepEqual(h.extractRaw("just some text\nno diff here\n"), []);
     });
 });
+}
+
+// ─── queryEvidence.conformance.test.ts ───
+{
+// Structural matches carry honest regions in the readable text.
+const h = new TextDiff({ mimetype: "text/x-diff", glyph: "🔀", extensions: [".diff", ".patch"] });
+
+const src = "--- a/f\n+++ b/f\n@@ -1,2 +1,2 @@\n-old\n+new\n ctx\n";
+
+describe("{§mimetype-query} sections are exact regions and scalars enclosing in both dialects", () => {
+    for (const separator of ["\n", "\r\n", "\r"]) it(`{§diff-line-budget} exact diff sections use source code-point columns with ${JSON.stringify(separator)}`, async () => {
+        const source = ["--- a/f", "+++ b/f", "@@ -1 +1 @@", "-old", "+😀"].join(separator);
+        const regions = [{ startLine: 1, startColumn: 1, endLine: 5, endColumn: 3 }];
+        assert.deepEqual((await h.query(source, "jsonpath", "$.files[0]"))[0].regions, regions);
+        assert.deepEqual((await h.query(source, "xpath", "//file"))[0].regions, regions);
+        assert.deepEqual((await h.query(source, "xpath", "//hunk"))[0].regions, [{ ...regions[0], startLine: 3 }]);
+    });
+    it("{§diff-line-budget} jsonpath distinguishes an exact file section from an enclosing scalar region", async () => {
+        await assertQueryEvidenceConformance(h, [
+            {
+                source: src,
+                dialect: "jsonpath",
+                pattern: "$.files[0]",
+                verdict: "exact",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 6, endColumn: 5,
+                }]],
+            },
+            {
+                source: src,
+                dialect: "jsonpath",
+                pattern: "$.files[0].newPath",
+                verdict: "enclosing",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 6, endColumn: 5,
+                }]],
+            },
+        ]);
+    });
+    it("{§diff-line-budget} xpath distinguishes an exact file section from an enclosing scalar region", async () => {
+        await assertQueryEvidenceConformance(h, [
+            {
+                source: src,
+                dialect: "xpath",
+                pattern: "//file",
+                verdict: "exact",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 6, endColumn: 5,
+                }]],
+            },
+            {
+                source: src,
+                dialect: "xpath",
+                pattern: "//newPath",
+                verdict: "enclosing",
+                expectRegions: [[{
+                    startLine: 1, startColumn: 1, endLine: 6, endColumn: 5,
+                }]],
+            },
+        ]);
+    });
+});
+}

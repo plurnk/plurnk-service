@@ -6,7 +6,7 @@ import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
 // source extents. DOM serialization cannot recover lexical quotes or entities.
 export default class XmlSource {
     readonly document;
-    // {§mimetype-parse-issues} — xmldom keeps building past an `error` report (an entity declared
+    // {§mimetype-channel-selection} — xmldom keeps building past an `error` report (an entity declared
     // only in the internal DTD subset, which it does not process); each one is a recovery site.
     readonly issues: number;
     readonly #tree;
@@ -56,7 +56,7 @@ export default class XmlSource {
         }
     }
 
-    // {§mimetype-parse-issues} — content that is not a document (a template, a truncated file) has
+    // {§mimetype-channel-selection} — content that is not a document (a template, a truncated file) has
     // no source: null, never a throw. Anything but xmldom's ParseError is a defect and keeps its identity.
     static parse(content: string): XmlSource | null {
         try { return new XmlSource(content); }

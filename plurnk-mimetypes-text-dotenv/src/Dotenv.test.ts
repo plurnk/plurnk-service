@@ -4,7 +4,10 @@ import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import Dotenv, { parseDotenv } from "./Dotenv.ts";
+import { assertQueryEvidenceConformance } from "@plurnk/plurnk-mimetypes/conformance";
 
+// ─── Dotenv.test.ts ───
+{
 const META = { mimetype: "text/x-dotenv", glyph: "🔑", extensions: [".env"] };
 const h = () => new Dotenv(META);
 
@@ -16,7 +19,7 @@ describe("{§mimetype-query}: value queries preserve lexical dotenv spans", () =
         ["VALUE=", ""],
         ["VALUE=old\nVALUE=new", "new"],
     ]) for (const dialect of ["jsonpath", "xpath"] as const) {
-        it(`${dialect} selects ${JSON.stringify(selected)} from ${JSON.stringify(source)}`, async () => {
+        it(`{§dotenv-values} ${dialect} selects ${JSON.stringify(selected)} from ${JSON.stringify(source)}`, async () => {
             const [match] = await h().query(source, dialect, dialect === "jsonpath" ? "$.VALUE" : "//VALUE");
             assert.equal(match.regions?.length, 1, JSON.stringify(match));
             const region = match.regions[0];
@@ -32,14 +35,14 @@ const { fixtures } = JSON.parse(await readFile(new URL("../test/fixtures/node-do
 
 describe("{§dotenv-values}: Node's complete dotenv fixture set", () => {
     for (const fixture of fixtures) for (const eol of ["\n", "\r\n"]) {
-        it(`${fixture.name}, ${JSON.stringify(eol)}`, () => {
+        it(`{§dotenv-values} ${fixture.name}, ${JSON.stringify(eol)}`, () => {
             const text = fixture.text.replaceAll("\n", eol);
             const expected = { ...parseEnv(text) };
             assert.deepEqual(h().deepJson(text), expected);
             assert.deepEqual(Object.fromEntries(parseDotenv(text).map(({ key, value }) => [key, value])), expected);
         });
     }
-    it("uses the same alias and JSON-string values as the configuration cascade, without expansion", () => {
+    it("{§dotenv-values} uses the same alias and JSON-string values as the configuration cascade, without expansion", () => {
         const text = [
             "PLURNK_MODEL=fast # selected alias",
             "PLURNK_MODEL_fast=provider/model",
@@ -62,14 +65,14 @@ const ENV = [
 ].join("\n");
 
 describe("{§dotenv-values} Dotenv variables as symbols", () => {
-    it("a multiline value does not introduce false assignments", () => {
+    it("{§dotenv-values} a multiline value does not introduce false assignments", () => {
         const source = 'MULTI="first\nDECOY=inside the value\nlast" # outside\nAFTER=ok';
         assert.deepEqual(h().extractRaw(source), [
             { name: "MULTI", kind: "constant", line: 1, endLine: 3 },
             { name: "AFTER", kind: "constant", line: 4, endLine: 4 },
         ]);
     });
-    it("each KEY is a constant symbol at its line", () => {
+    it("{§dotenv-values} each KEY is a constant symbol at its line", () => {
         const syms = h().extractRaw(ENV);
         assert.deepEqual(syms.map((s) => s.name), ["MODEL", "OPENAI_BASE_URL", "TEMPERATURE", "EMPTY"]);
         assert.ok(syms.every((s) => s.kind === "constant"));
@@ -78,7 +81,7 @@ describe("{§dotenv-values} Dotenv variables as symbols", () => {
 });
 
 describe("{§dotenv-values} Dotenv deepJson value map", () => {
-    it("exposes values (no redaction), strips export + surrounding quotes", () => {
+    it("{§dotenv-values} exposes values (no redaction), strips export + surrounding quotes", () => {
         const map = h().deepJson(ENV) as Record<string, string>;
         assert.equal(map.MODEL, "gpt-4");
         assert.equal(map.OPENAI_BASE_URL, "https://api.example.com");
@@ -86,9 +89,53 @@ describe("{§dotenv-values} Dotenv deepJson value map", () => {
         assert.equal(map.EMPTY, "");
     });
 
-    it("comments and non-variable lines are ignored", () => {
+    it("{§dotenv-values} comments and non-variable lines are ignored", () => {
         const map = h().deepJson(ENV) as Record<string, string>;
         assert.equal(Object.keys(map).length, 4);
         assert.equal("not a var line" in map, false);
     });
 });
+}
+
+// ─── queryEvidence.conformance.test.ts ───
+{
+// A structural value maps to its honest exact value span.
+const h = new Dotenv({"mimetype":"text/x-dotenv","glyph":"🔑","extensions":[".env",".env.local",".env.development",".env.production",".env.test",".env.example"]});
+const src = "A=1\nB=2\nC=3\n";
+
+describe("{§mimetype-query} query-evidence conformance (both dialects)", () => {
+    for (const eol of ["\n", "\r\n"]) for (const dialect of ["jsonpath", "xpath"] as const) {
+        it(`{§dotenv-values} ${dialect} locates the complete multiline assignment and the last duplicate, ${JSON.stringify(eol)}`, async () => {
+            await assertQueryEvidenceConformance(h, [{
+                source: ["MULTI=old", 'MULTI="first', "DECOY=inside the value", 'last" # outside', "AFTER=ok"].join(eol),
+                dialect,
+                pattern: dialect === "jsonpath" ? "$.MULTI" : "//MULTI",
+                verdict: "exact",
+                expectRegions: [[{ startLine: 2, startColumn: 7, endLine: 4, endColumn: 6 }]],
+            }]);
+        });
+    }
+    it("{§dotenv-values} jsonpath reports the exact value span", async () => {
+        await assertQueryEvidenceConformance(h, [{
+            source: src,
+            dialect: "jsonpath",
+            pattern: "$.B",
+            verdict: "exact",
+            expectRegions: [[{
+                startLine: 2, startColumn: 3, endLine: 2, endColumn: 4,
+            }]],
+        }]);
+    });
+    it("{§dotenv-values} xpath reports the exact value span", async () => {
+        await assertQueryEvidenceConformance(h, [{
+            source: src,
+            dialect: "xpath",
+            pattern: "//B",
+            verdict: "exact",
+            expectRegions: [[{
+                startLine: 2, startColumn: 3, endLine: 2, endColumn: 4,
+            }]],
+        }]);
+    });
+});
+}

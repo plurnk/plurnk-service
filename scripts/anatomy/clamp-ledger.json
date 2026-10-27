@@ -9165,9 +9165,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 4,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-handler-contract contract section (#1269)."
                 },
                 "mimetype-handler-authority": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9177,9 +9177,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-handler-contract",
+                    "reason": "Folded §mimetype-handler-authority into heading tag §mimetype-handler-contract (#1269)."
                 },
                 "mimetype-handler-content": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9189,9 +9189,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-handler-contract",
+                    "reason": "Folded §mimetype-handler-content into heading tag §mimetype-handler-contract (#1269)."
                 },
                 "mimetype-binary-input": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9201,9 +9201,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 3,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-binary-input contract section (#1269)."
                 },
                 "mimetype-projection-facts": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9213,9 +9213,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-binary-input",
+                    "reason": "Folded §mimetype-projection-facts into heading tag §mimetype-binary-input (#1269)."
                 },
                 "mimetype-image": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9225,9 +9225,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-binary-input",
+                    "reason": "Folded §mimetype-image into heading tag §mimetype-binary-input (#1269)."
                 },
                 "mimetype-pdf-facts": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9237,9 +9237,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-binary-input",
+                    "reason": "Folded §mimetype-pdf-facts into heading tag §mimetype-binary-input (#1269)."
                 },
                 "mimetype-audio-facts": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9249,9 +9249,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-binary-input",
+                    "reason": "Folded §mimetype-audio-facts into heading tag §mimetype-binary-input (#1269)."
                 },
                 "mimetype-lifecycle": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9261,9 +9261,9 @@
                     "liveShape": "heading",
                     "codeCitations": 5,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-lifecycle contract section (#1269)."
                 },
                 "mimetype-projection-identity": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9273,9 +9273,9 @@
                     "liveShape": "heading",
                     "codeCitations": 4,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-lifecycle",
+                    "reason": "Folded §mimetype-projection-identity into heading tag §mimetype-lifecycle (#1269)."
                 },
                 "mimetype-client-display": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9285,9 +9285,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-discovery",
+                    "reason": "Folded §mimetype-client-display into heading tag §mimetype-discovery (#1269)."
                 },
                 "mimetype-discovery": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9297,9 +9297,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-discovery contract section (#1269)."
                 },
                 "mimetype-extension-failure": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9309,9 +9309,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-discovery",
+                    "reason": "Folded §mimetype-extension-failure into heading tag §mimetype-discovery (#1269)."
                 },
                 "mimetype-package-resolution": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9321,9 +9321,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-discovery",
+                    "reason": "Folded §mimetype-package-resolution into heading tag §mimetype-discovery (#1269)."
                 },
                 "mimetype-naming": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9333,9 +9333,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-discovery",
+                    "reason": "Folded §mimetype-naming into heading tag §mimetype-discovery (#1269)."
                 },
                 "mimetype-symbol": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9345,9 +9345,9 @@
                     "liveShape": "heading",
                     "codeCitations": 26,
                     "testCitations": 6,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-symbol contract section (#1269)."
                 },
                 "mimetype-symbol-container": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9357,9 +9357,9 @@
                     "liveShape": "heading",
                     "codeCitations": 23,
                     "testCitations": 6,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-symbol",
+                    "reason": "Folded §mimetype-symbol-container into heading tag §mimetype-symbol (#1269)."
                 },
                 "mimetype-outline": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9369,9 +9369,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-symbol",
+                    "reason": "Folded §mimetype-outline into heading tag §mimetype-symbol (#1269)."
                 },
                 "mimetype-channel-selection": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9381,9 +9381,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-channel-selection contract section (#1269)."
                 },
                 "mimetype-parse-issues": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9393,9 +9393,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 5,
                     "testCitations": 4,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-channel-selection",
+                    "reason": "Folded §mimetype-parse-issues into heading tag §mimetype-channel-selection (#1269)."
                 },
                 "mimetype-summary": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9405,9 +9405,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-channel-selection",
+                    "reason": "Folded §mimetype-summary into heading tag §mimetype-channel-selection (#1269)."
                 },
                 "mimetype-validation": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9417,9 +9417,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 4,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-channel-selection",
+                    "reason": "Folded §mimetype-validation into heading tag §mimetype-channel-selection (#1269)."
                 },
                 "mimetype-error-policy": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9429,9 +9429,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 3,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-error-policy contract section (#1269)."
                 },
                 "logical-line-count": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9441,9 +9441,9 @@
                     "liveShape": "list",
                     "codeCitations": 4,
                     "testCitations": 4,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-error-policy",
+                    "reason": "Folded §logical-line-count into heading tag §mimetype-error-policy (#1269)."
                 },
                 "mimetype-derivation-evidence": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9453,9 +9453,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-error-policy",
+                    "reason": "Folded §mimetype-derivation-evidence into heading tag §mimetype-error-policy (#1269)."
                 },
                 "mimetype-artifact-absence": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9465,9 +9465,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-error-policy",
+                    "reason": "Folded §mimetype-artifact-absence into heading tag §mimetype-error-policy (#1269)."
                 },
                 "mimetype-detection": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9477,9 +9477,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "treesitter-runtime-gate",
+                    "reason": "Folded §mimetype-detection into heading tag §treesitter-runtime-gate (#1269)."
                 },
                 "treesitter-runtime-gate": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9489,9 +9489,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for treesitter-runtime-gate contract section (#1269)."
                 },
                 "mimetype-backend-selection": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9501,9 +9501,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 5,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "treesitter-runtime-gate",
+                    "reason": "Folded §mimetype-backend-selection into heading tag §treesitter-runtime-gate (#1269)."
                 },
                 "mimetype-parser-coordinates": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9513,9 +9513,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 6,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-parser-coordinates contract section (#1269)."
                 },
                 "mimetype-query": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9525,9 +9525,9 @@
                     "liveShape": "heading",
                     "codeCitations": 12,
                     "testCitations": 17,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-query contract section (#1269)."
                 },
                 "mimetype-query-input": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9537,9 +9537,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-query",
+                    "reason": "Folded §mimetype-query-input into heading tag §mimetype-query (#1269)."
                 },
                 "jsonpath-query-failures": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9549,9 +9549,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-query",
+                    "reason": "Folded §jsonpath-query-failures into heading tag §mimetype-query (#1269)."
                 },
                 "mimetype-channel-architecture": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9561,9 +9561,9 @@
                     "liveShape": "heading",
                     "codeCitations": 8,
                     "testCitations": 11,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-channel-architecture contract section (#1269)."
                 },
                 "mimetype-materialization": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9573,9 +9573,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-channel-selection",
+                    "reason": "Folded §mimetype-materialization into heading tag §mimetype-channel-selection (#1269)."
                 },
                 "mimetype-grammar-packages": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9585,9 +9585,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-grammar-packages contract section (#1269)."
                 },
                 "mimetype-optional-grammars": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9597,9 +9597,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-grammar-packages",
+                    "reason": "Folded §mimetype-optional-grammars into heading tag §mimetype-grammar-packages (#1269)."
                 },
                 "grammar-package-reproducibility": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9609,9 +9609,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-grammar-packages",
+                    "reason": "Folded §grammar-package-reproducibility into heading tag §mimetype-grammar-packages (#1269)."
                 },
                 "grammar-package-lifecycle": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9621,9 +9621,9 @@
                     "liveShape": "heading",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-grammar-packages",
+                    "reason": "Folded §grammar-package-lifecycle into heading tag §mimetype-grammar-packages (#1269)."
                 },
                 "mimetype-query-conformance": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9633,9 +9633,9 @@
                     "liveShape": "heading",
                     "codeCitations": 4,
                     "testCitations": 14,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-query",
+                    "reason": "Folded §mimetype-query-conformance into heading tag §mimetype-query (#1269)."
                 },
                 "mimetype-public-api": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9645,9 +9645,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-references",
+                    "reason": "Folded §mimetype-public-api into heading tag §mimetype-references (#1269)."
                 },
                 "mimetype-references": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9657,9 +9657,9 @@
                     "liveShape": "heading",
                     "codeCitations": 37,
                     "testCitations": 33,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-references contract section (#1269)."
                 },
                 "mimetype-reference-container": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9669,9 +9669,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-references",
+                    "reason": "Folded §mimetype-reference-container into heading tag §mimetype-references (#1269)."
                 },
                 "mimetype-query-assets": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9681,9 +9681,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-references",
+                    "reason": "Folded §mimetype-query-assets into heading tag §mimetype-references (#1269)."
                 },
                 "mimetype-content": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9693,9 +9693,9 @@
                     "liveShape": "heading",
                     "codeCitations": 4,
                     "testCitations": 4,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for mimetype-content contract section (#1269)."
                 },
                 "mimetype-content-query": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9705,9 +9705,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 8,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-content",
+                    "reason": "Folded §mimetype-content-query into heading tag §mimetype-content (#1269)."
                 },
                 "mimetype-classification": {
                     "spec": "plurnk-mimetypes/SPEC.md",
@@ -9717,9 +9717,9 @@
                     "liveShape": "heading",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "mimetype-content",
+                    "reason": "Folded §mimetype-classification into heading tag §mimetype-content (#1269)."
                 },
                 "ipynb-reading": {
                     "spec": "plurnk-mimetypes-application-ipynb/SPEC.md",
@@ -9729,9 +9729,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for ipynb-reading contract section (#1269)."
                 },
                 "ipynb-cells": {
                     "spec": "plurnk-mimetypes-application-ipynb/SPEC.md",
@@ -9741,9 +9741,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "ipynb-reading",
+                    "reason": "Folded §ipynb-cells into heading tag §ipynb-reading (#1269)."
                 },
                 "ipynb-source": {
                     "spec": "plurnk-mimetypes-application-ipynb/SPEC.md",
@@ -9753,9 +9753,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "ipynb-reading",
+                    "reason": "Folded §ipynb-source into heading tag §ipynb-reading (#1269)."
                 },
                 "json-strictness": {
                     "spec": "plurnk-mimetypes-application-json/SPEC.md",
@@ -9765,9 +9765,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for json-strictness contract section (#1269)."
                 },
                 "json-keys": {
                     "spec": "plurnk-mimetypes-application-json/SPEC.md",
@@ -9777,9 +9777,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "json-strictness",
+                    "reason": "Folded §json-keys into heading tag §json-strictness (#1269)."
                 },
                 "json-value-spans": {
                     "spec": "plurnk-mimetypes-application-json/SPEC.md",
@@ -9789,9 +9789,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "json-strictness",
+                    "reason": "Folded §json-value-spans into heading tag §json-strictness (#1269)."
                 },
                 "jsonl-records": {
                     "spec": "plurnk-mimetypes-application-jsonl/SPEC.md",
@@ -9801,9 +9801,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for jsonl-records contract section (#1269)."
                 },
                 "jsonl-schema": {
                     "spec": "plurnk-mimetypes-application-jsonl/SPEC.md",
@@ -9813,9 +9813,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "jsonl-records",
+                    "reason": "Folded §jsonl-schema into heading tag §jsonl-records (#1269)."
                 },
                 "pdf-magic": {
                     "spec": "plurnk-mimetypes-application-pdf/SPEC.md",
@@ -9825,9 +9825,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for pdf-magic contract section (#1269)."
                 },
                 "pdf-facts-line": {
                     "spec": "plurnk-mimetypes-application-pdf/SPEC.md",
@@ -9837,9 +9837,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "pdf-magic",
+                    "reason": "Folded §pdf-facts-line into heading tag §pdf-magic (#1269)."
                 },
                 "xml-shape": {
                     "spec": "plurnk-mimetypes-application-xml/SPEC.md",
@@ -9849,9 +9849,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for xml-shape contract section (#1269)."
                 },
                 "xml-recovery": {
                     "spec": "plurnk-mimetypes-application-xml/SPEC.md",
@@ -9861,9 +9861,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "xml-shape",
+                    "reason": "Folded §xml-recovery into heading tag §xml-shape (#1269)."
                 },
                 "xml-lexical-spans": {
                     "spec": "plurnk-mimetypes-application-xml/SPEC.md",
@@ -9873,9 +9873,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "xml-shape",
+                    "reason": "Folded §xml-lexical-spans into heading tag §xml-shape (#1269)."
                 },
                 "xml-text-nodes": {
                     "spec": "plurnk-mimetypes-application-xml/SPEC.md",
@@ -9885,9 +9885,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "xml-shape",
+                    "reason": "Folded §xml-text-nodes into heading tag §xml-shape (#1269)."
                 },
                 "csv-records": {
                     "spec": "plurnk-mimetypes-text-csv/SPEC.md",
@@ -9897,9 +9897,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for csv-records contract section (#1269)."
                 },
                 "diff-line-budget": {
                     "spec": "plurnk-mimetypes-text-diff/SPEC.md",
@@ -9909,9 +9909,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for diff-line-budget contract section (#1269)."
                 },
                 "diff-combined": {
                     "spec": "plurnk-mimetypes-text-diff/SPEC.md",
@@ -9921,9 +9921,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "diff-line-budget",
+                    "reason": "Folded §diff-combined into heading tag §diff-line-budget (#1269)."
                 },
                 "diff-sections": {
                     "spec": "plurnk-mimetypes-text-diff/SPEC.md",
@@ -9933,9 +9933,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "diff-line-budget",
+                    "reason": "Folded §diff-sections into heading tag §diff-line-budget (#1269)."
                 },
                 "diff-symbols": {
                     "spec": "plurnk-mimetypes-text-diff/SPEC.md",
@@ -9945,9 +9945,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "diff-line-budget",
+                    "reason": "Folded §diff-symbols into heading tag §diff-line-budget (#1269)."
                 },
                 "diff-tree": {
                     "spec": "plurnk-mimetypes-text-diff/SPEC.md",
@@ -9957,9 +9957,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "diff-line-budget",
+                    "reason": "Folded §diff-tree into heading tag §diff-line-budget (#1269)."
                 },
                 "dotenv-values": {
                     "spec": "plurnk-mimetypes-text-dotenv/SPEC.md",
@@ -9969,9 +9969,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for dotenv-values contract section (#1269)."
                 },
                 "dotenv-source": {
                     "spec": "plurnk-mimetypes-text-dotenv/SPEC.md",
@@ -9981,9 +9981,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "dotenv-values",
+                    "reason": "Folded §dotenv-source into heading tag §dotenv-values (#1269)."
                 },
                 "html-readable-text": {
                     "spec": "plurnk-mimetypes-text-html/SPEC.md",
@@ -9993,9 +9993,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for html-readable-text contract section (#1269)."
                 },
                 "html-markdown-serializer": {
                     "spec": "plurnk-mimetypes-text-html/SPEC.md",
@@ -10005,9 +10005,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "html-readable-text",
+                    "reason": "Folded §html-markdown-serializer into heading tag §html-readable-text (#1269)."
                 },
                 "html-wrap-columns": {
                     "spec": "plurnk-mimetypes-text-html/SPEC.md",
@@ -10017,9 +10017,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "html-readable-text",
+                    "reason": "Folded §html-wrap-columns into heading tag §html-readable-text (#1269)."
                 },
                 "html-symbols": {
                     "spec": "plurnk-mimetypes-text-html/SPEC.md",
@@ -10029,9 +10029,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "html-readable-text",
+                    "reason": "Folded §html-symbols into heading tag §html-readable-text (#1269)."
                 },
                 "html-tree": {
                     "spec": "plurnk-mimetypes-text-html/SPEC.md",
@@ -10041,9 +10041,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "html-readable-text",
+                    "reason": "Folded §html-tree into heading tag §html-readable-text (#1269)."
                 },
                 "html-source-regions": {
                     "spec": "plurnk-mimetypes-text-html/SPEC.md",
@@ -10053,9 +10053,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "html-readable-text",
+                    "reason": "Folded §html-source-regions into heading tag §html-readable-text (#1269)."
                 },
                 "ini-tree": {
                     "spec": "plurnk-mimetypes-text-ini/SPEC.md",
@@ -10065,9 +10065,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for ini-tree contract section (#1269)."
                 },
                 "ini-symbols": {
                     "spec": "plurnk-mimetypes-text-ini/SPEC.md",
@@ -10077,9 +10077,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "ini-tree",
+                    "reason": "Folded §ini-symbols into heading tag §ini-tree (#1269)."
                 },
                 "ini-regions": {
                     "spec": "plurnk-mimetypes-text-ini/SPEC.md",
@@ -10089,9 +10089,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "ini-tree",
+                    "reason": "Folded §ini-regions into heading tag §ini-tree (#1269)."
                 },
                 "markdown-symbols": {
                     "spec": "plurnk-mimetypes-text-markdown/SPEC.md",
@@ -10101,9 +10101,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for markdown-symbols contract section (#1269)."
                 },
                 "markdown-block-regions": {
                     "spec": "plurnk-mimetypes-text-markdown/SPEC.md",
@@ -10113,9 +10113,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "markdown-symbols",
+                    "reason": "Folded §markdown-block-regions into heading tag §markdown-symbols (#1269)."
                 },
                 "markdown-tree": {
                     "spec": "plurnk-mimetypes-text-markdown/SPEC.md",
@@ -10125,9 +10125,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "markdown-symbols",
+                    "reason": "Folded §markdown-tree into heading tag §markdown-symbols (#1269)."
                 },
                 "plain-text-defaults": {
                     "spec": "plurnk-mimetypes-text-plain/SPEC.md",
@@ -10137,9 +10137,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for plain-text-defaults contract section (#1269)."
                 }
             },
             "tests": {
@@ -10156,9 +10156,9 @@
                         "ipynb-reading",
                         "ipynb-source"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-application-ipynb/src/Ipynb.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-ipynb/src/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -10172,9 +10172,9 @@
                         "ipynb-source",
                         "mimetype-content-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-application-ipynb/src/Ipynb.test.ts",
+                    "reason": "Merged plurnk-mimetypes-application-ipynb/src/queryEvidence.conformance.test.ts into plurnk-mimetypes-application-ipynb/src/Ipynb.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-ipynb/src/queryRegions.test.ts": {
                     "tier": "unit",
@@ -10189,9 +10189,9 @@
                         "mimetype-content",
                         "mimetype-content-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-application-ipynb/src/Ipynb.test.ts",
+                    "reason": "Merged plurnk-mimetypes-application-ipynb/src/queryRegions.test.ts into plurnk-mimetypes-application-ipynb/src/Ipynb.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-json/src/ApplicationJson.test.ts": {
                     "tier": "unit",
@@ -10209,9 +10209,9 @@
                         "mimetype-symbol",
                         "mimetype-symbol-container"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-application-json/src/ApplicationJson.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-json/src/queryRegions.test.ts": {
                     "tier": "unit",
@@ -10225,9 +10225,9 @@
                         "json-value-spans",
                         "slice-semantics-compose-pattern"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-application-json/src/ApplicationJson.test.ts",
+                    "reason": "Merged plurnk-mimetypes-application-json/src/queryRegions.test.ts into plurnk-mimetypes-application-json/src/ApplicationJson.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-jsonl/src/Jsonl.test.ts": {
                     "tier": "unit",
@@ -10241,9 +10241,9 @@
                         "jsonl-records",
                         "jsonl-schema"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-application-jsonl/src/Jsonl.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-jsonl/src/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -10257,9 +10257,9 @@
                         "jsonl-records",
                         "mimetype-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-application-jsonl/src/Jsonl.test.ts",
+                    "reason": "Merged plurnk-mimetypes-application-jsonl/src/queryEvidence.conformance.test.ts into plurnk-mimetypes-application-jsonl/src/Jsonl.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-pdf/src/ApplicationPdf.test.ts": {
                     "tier": "unit",
@@ -10274,9 +10274,9 @@
                         "pdf-facts-line",
                         "pdf-magic"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-application-pdf/src/ApplicationPdf.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-xml/src/ApplicationXml.test.ts": {
                     "tier": "unit",
@@ -10295,9 +10295,9 @@
                         "xml-recovery",
                         "xml-shape"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-application-xml/src/ApplicationXml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-application-xml/src/queryRegions.test.ts": {
                     "tier": "unit",
@@ -10312,9 +10312,9 @@
                         "xml-lexical-spans",
                         "xml-text-nodes"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-application-xml/src/ApplicationXml.test.ts",
+                    "reason": "Merged plurnk-mimetypes-application-xml/src/queryRegions.test.ts into plurnk-mimetypes-application-xml/src/ApplicationXml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-audio/src/Audio.test.ts": {
                     "tier": "unit",
@@ -10327,9 +10327,9 @@
                     "citedTags": [
                         "mimetype-audio-facts"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-audio/src/Audio.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-image/src/Image.test.ts": {
                     "tier": "unit",
@@ -10342,9 +10342,9 @@
                     "citedTags": [
                         "mimetype-image"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-image/src/Image.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-csv/src/TextCsv.test.ts": {
                     "tier": "unit",
@@ -10359,9 +10359,9 @@
                         "mimetype-query",
                         "mimetype-validation"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-text-csv/src/TextCsv.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-csv/src/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -10375,9 +10375,9 @@
                         "mimetype-query",
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-csv/src/TextCsv.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-csv/src/queryEvidence.conformance.test.ts into plurnk-mimetypes-text-csv/src/TextCsv.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-csv/src/spectrum.test.ts": {
                     "tier": "unit",
@@ -10390,9 +10390,9 @@
                     "citedTags": [
                         "csv-records"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-csv/src/TextCsv.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-csv/src/spectrum.test.ts into plurnk-mimetypes-text-csv/src/TextCsv.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-diff/src/TextDiff.test.ts": {
                     "tier": "unit",
@@ -10409,9 +10409,9 @@
                         "diff-symbols",
                         "diff-tree"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-text-diff/src/TextDiff.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-diff/src/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -10424,9 +10424,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-diff/src/TextDiff.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-diff/src/queryEvidence.conformance.test.ts into plurnk-mimetypes-text-diff/src/TextDiff.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-dotenv/src/Dotenv.test.ts": {
                     "tier": "unit",
@@ -10440,9 +10440,9 @@
                         "dotenv-values",
                         "mimetype-query"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-text-dotenv/src/Dotenv.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-dotenv/src/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -10455,9 +10455,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-dotenv/src/Dotenv.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-dotenv/src/queryEvidence.conformance.test.ts into plurnk-mimetypes-text-dotenv/src/Dotenv.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-html/src/TextHtml.test.ts": {
                     "tier": "unit",
@@ -10479,9 +10479,9 @@
                         "mimetype-symbol",
                         "mimetype-validation"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-text-html/src/TextHtml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-html/src/content.test.ts": {
                     "tier": "unit",
@@ -10496,9 +10496,9 @@
                         "mimetype-content",
                         "mimetype-content-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-html/src/TextHtml.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-html/src/content.test.ts into plurnk-mimetypes-text-html/src/TextHtml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-html/src/domToMarkdown.test.ts": {
                     "tier": "unit",
@@ -10511,9 +10511,9 @@
                     "citedTags": [
                         "html-markdown-serializer"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-html/src/TextHtml.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-html/src/domToMarkdown.test.ts into plurnk-mimetypes-text-html/src/TextHtml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-html/src/queryRegions.test.ts": {
                     "tier": "unit",
@@ -10527,9 +10527,9 @@
                         "html-source-regions",
                         "mimetype-content-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-html/src/TextHtml.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-html/src/queryRegions.test.ts into plurnk-mimetypes-text-html/src/TextHtml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-html/src/wrapMarkdown.test.ts": {
                     "tier": "unit",
@@ -10542,9 +10542,9 @@
                     "citedTags": [
                         "html-wrap-columns"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-html/src/TextHtml.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-html/src/wrapMarkdown.test.ts into plurnk-mimetypes-text-html/src/TextHtml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-ini/src/Ini.test.ts": {
                     "tier": "unit",
@@ -10558,9 +10558,9 @@
                         "ini-symbols",
                         "ini-tree"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-text-ini/src/Ini.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-ini/src/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -10573,9 +10573,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-ini/src/Ini.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-ini/src/queryEvidence.conformance.test.ts into plurnk-mimetypes-text-ini/src/Ini.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-ini/src/queryRegions.test.ts": {
                     "tier": "unit",
@@ -10588,9 +10588,9 @@
                     "citedTags": [
                         "ini-regions"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-ini/src/Ini.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-ini/src/queryRegions.test.ts into plurnk-mimetypes-text-ini/src/Ini.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-markdown/src/MarkdownSource.test.ts": {
                     "tier": "unit",
@@ -10603,9 +10603,9 @@
                     "citedTags": [
                         "markdown-block-regions"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-markdown/src/TextMarkdown.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-markdown/src/MarkdownSource.test.ts into plurnk-mimetypes-text-markdown/src/TextMarkdown.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-markdown/src/TextMarkdown.test.ts": {
                     "tier": "unit",
@@ -10624,9 +10624,9 @@
                         "mimetype-symbol-container",
                         "mimetype-validation"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-text-markdown/src/TextMarkdown.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-markdown/src/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -10639,9 +10639,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes-text-markdown/src/TextMarkdown.test.ts",
+                    "reason": "Merged plurnk-mimetypes-text-markdown/src/queryEvidence.conformance.test.ts into plurnk-mimetypes-text-markdown/src/TextMarkdown.test.ts (#1269)."
                 },
                 "plurnk-mimetypes-text-plain/src/TextPlain.test.ts": {
                     "tier": "unit",
@@ -10655,9 +10655,9 @@
                         "mimetype-query",
                         "plain-text-defaults"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes-text-plain/src/TextPlain.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/scripts/update-grammars.test.mjs": {
                     "tier": "unit",
@@ -10670,9 +10670,9 @@
                     "citedTags": [
                         "grammar-package-lifecycle"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/scripts/update-grammars.test.mjs (#1269)."
                 },
                 "plurnk-mimetypes/scripts/verify-grammar-packages.test.mjs": {
                     "tier": "unit",
@@ -10686,9 +10686,9 @@
                         "grammar-package-reproducibility",
                         "mimetype-grammar-packages"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/scripts/update-grammars.test.mjs",
+                    "reason": "Merged plurnk-mimetypes/scripts/verify-grammar-packages.test.mjs into plurnk-mimetypes/scripts/update-grammars.test.mjs (#1269)."
                 },
                 "plurnk-mimetypes/src/AntlrExtractor.test.ts": {
                     "tier": "unit",
@@ -10704,9 +10704,9 @@
                         "mimetype-references",
                         "mimetype-symbol"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/AntlrExtractor.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/BaseHandler.channels.test.ts": {
                     "tier": "unit",
@@ -10720,9 +10720,9 @@
                         "mimetype-channel-architecture",
                         "mimetype-materialization"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/BaseHandler.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/BaseHandler.channels.test.ts into plurnk-mimetypes/src/BaseHandler.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/BaseHandler.query.lines.test.ts": {
                     "tier": "unit",
@@ -10735,9 +10735,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/BaseHandler.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/BaseHandler.query.lines.test.ts into plurnk-mimetypes/src/BaseHandler.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/BaseHandler.query.test.ts": {
                     "tier": "unit",
@@ -10751,9 +10751,9 @@
                         "mimetype-query",
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/BaseHandler.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/BaseHandler.query.test.ts into plurnk-mimetypes/src/BaseHandler.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/BaseHandler.test.ts": {
                     "tier": "unit",
@@ -10768,9 +10768,9 @@
                         "mimetype-handler-contract",
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/BaseHandler.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.channels.test.ts": {
                     "tier": "unit",
@@ -10784,9 +10784,9 @@
                         "mimetype-channel-selection",
                         "mimetype-public-api"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.channels.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.content.test.ts": {
                     "tier": "unit",
@@ -10799,9 +10799,9 @@
                     "citedTags": [
                         "mimetype-content"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.content.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.dispose.test.ts": {
                     "tier": "unit",
@@ -10814,9 +10814,9 @@
                     "citedTags": [
                         "mimetype-lifecycle"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.dispose.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.extension-failure.test.ts": {
                     "tier": "unit",
@@ -10831,9 +10831,9 @@
                         "mimetype-discovery",
                         "mimetype-handler-contract"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.extension-failure.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.grammar-degradation.test.ts": {
                     "tier": "unit",
@@ -10846,9 +10846,9 @@
                     "citedTags": [
                         "mimetype-error-policy"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.grammar-degradation.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.projection-failure.test.ts": {
                     "tier": "unit",
@@ -10861,9 +10861,9 @@
                     "citedTags": [
                         "mimetype-error-policy"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.projection-failure.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.query-input.test.ts": {
                     "tier": "unit",
@@ -10876,9 +10876,9 @@
                     "citedTags": [
                         "mimetype-query-input"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.query-input.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.symbols.test.ts": {
                     "tier": "unit",
@@ -10892,9 +10892,9 @@
                         "mimetype-symbol",
                         "mimetype-symbol-container"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/Mimetypes.symbols.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/Mimetypes.test.ts": {
                     "tier": "unit",
@@ -10919,9 +10919,9 @@
                         "mimetype-references",
                         "mimetype-validation"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/ParserCoordinates.test.ts": {
                     "tier": "unit",
@@ -10934,9 +10934,9 @@
                     "citedTags": [
                         "mimetype-parser-coordinates"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/ParserCoordinates.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/QueryError.test.ts": {
                     "tier": "unit",
@@ -10949,9 +10949,9 @@
                     "citedTags": [
                         "mimetype-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/query.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/QueryError.test.ts into plurnk-mimetypes/src/query.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/TextCoordinates.test.ts": {
                     "tier": "unit",
@@ -10965,9 +10965,9 @@
                         "logical-line-count",
                         "mimetype-parser-coordinates"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/ParserCoordinates.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/TextCoordinates.test.ts into plurnk-mimetypes/src/ParserCoordinates.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/TreeSitterExtractor.test.ts": {
                     "tier": "unit",
@@ -10983,9 +10983,9 @@
                         "mimetype-parse-issues",
                         "mimetype-symbol"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/TreeSitterExtractor.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/attributions.test.ts": {
                     "tier": "unit",
@@ -10998,9 +10998,9 @@
                     "citedTags": [
                         "extension-attribution"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/discover.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/attributions.test.ts into plurnk-mimetypes/src/discover.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/buildJsonOutline.test.ts": {
                     "tier": "unit",
@@ -11014,9 +11014,9 @@
                         "mimetype-outline",
                         "mimetype-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/format.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/buildJsonOutline.test.ts into plurnk-mimetypes/src/format.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/classify.test.ts": {
                     "tier": "unit",
@@ -11029,9 +11029,9 @@
                     "citedTags": [
                         "mimetype-classification"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/classify.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/conformance.public.test.ts": {
                     "tier": "unit",
@@ -11045,9 +11045,9 @@
                         "mimetype-public-api",
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/conformance.public.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/conformance.queryEvidence.test.ts": {
                     "tier": "unit",
@@ -11060,9 +11060,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/conformance.public.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/conformance.queryEvidence.test.ts into plurnk-mimetypes/src/conformance.public.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/detect.test.ts": {
                     "tier": "unit",
@@ -11075,9 +11075,9 @@
                     "citedTags": [
                         "mimetype-detection"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/classify.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/detect.test.ts into plurnk-mimetypes/src/classify.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/discover.attribution.test.ts": {
                     "tier": "unit",
@@ -11091,9 +11091,9 @@
                         "executor-trust",
                         "extension-attribution"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/discover.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/discover.attribution.test.ts into plurnk-mimetypes/src/discover.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/discover.test.ts": {
                     "tier": "unit",
@@ -11111,9 +11111,9 @@
                         "mimetype-naming",
                         "mimetype-package-resolution"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/discover.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/format.test.ts": {
                     "tier": "unit",
@@ -11126,9 +11126,9 @@
                     "citedTags": [
                         "mimetype-outline"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/format.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/module-absence.test.ts": {
                     "tier": "unit",
@@ -11141,9 +11141,9 @@
                     "citedTags": [
                         "mimetype-artifact-absence"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/Mimetypes.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/module-absence.test.ts into plurnk-mimetypes/src/Mimetypes.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/parseBodyMatcher.test.ts": {
                     "tier": "unit",
@@ -11156,9 +11156,9 @@
                     "citedTags": [
                         "mimetype-query-input"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/query.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/parseBodyMatcher.test.ts into plurnk-mimetypes/src/query.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/projectDomToJson.test.ts": {
                     "tier": "unit",
@@ -11171,9 +11171,9 @@
                     "citedTags": [
                         "mimetype-query"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/projectJsonToXml.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/projectDomToJson.test.ts into plurnk-mimetypes/src/projectJsonToXml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/projectJsonToXml.namespace.test.ts": {
                     "tier": "unit",
@@ -11186,9 +11186,9 @@
                     "citedTags": [
                         "mimetype-channel-architecture"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/projectJsonToXml.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/projectJsonToXml.namespace.test.ts into plurnk-mimetypes/src/projectJsonToXml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/projectJsonToXml.test.ts": {
                     "tier": "unit",
@@ -11201,9 +11201,9 @@
                     "citedTags": [
                         "mimetype-channel-architecture"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/projectJsonToXml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/projectLineFor.test.ts": {
                     "tier": "unit",
@@ -11216,9 +11216,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/projectJsonToXml.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/projectLineFor.test.ts into plurnk-mimetypes/src/projectJsonToXml.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/projectionIdentity.test.ts": {
                     "tier": "unit",
@@ -11231,9 +11231,9 @@
                     "citedTags": [
                         "mimetype-projection-identity"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/discover.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/projectionIdentity.test.ts into plurnk-mimetypes/src/discover.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/query.evidence.test.ts": {
                     "tier": "unit",
@@ -11246,9 +11246,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/query.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/query.evidence.test.ts into plurnk-mimetypes/src/query.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/query.test.ts": {
                     "tier": "unit",
@@ -11263,9 +11263,9 @@
                         "mimetype-query",
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/query.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/deep.test.ts": {
                     "tier": "unit",
@@ -11278,9 +11278,9 @@
                     "citedTags": [
                         "mimetype-channel-architecture"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/treesitter/languages.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/treesitter/deep.test.ts into plurnk-mimetypes/src/treesitter/languages.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/dispatch.test.ts": {
                     "tier": "unit",
@@ -11293,9 +11293,9 @@
                     "citedTags": [
                         "mimetype-backend-selection"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/treesitter/languages.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/treesitter/dispatch.test.ts into plurnk-mimetypes/src/treesitter/languages.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/languages.test.ts": {
                     "tier": "unit",
@@ -11312,9 +11312,9 @@
                         "mimetype-symbol-container",
                         "text-region"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/treesitter/languages.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/queryEvidence.conformance.test.ts": {
                     "tier": "unit",
@@ -11327,9 +11327,9 @@
                     "citedTags": [
                         "mimetype-query-conformance"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/treesitter/refsEngine.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/treesitter/queryEvidence.conformance.test.ts into plurnk-mimetypes/src/treesitter/refsEngine.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/reference-query.test.ts": {
                     "tier": "unit",
@@ -11342,9 +11342,9 @@
                     "citedTags": [
                         "mimetype-query-assets"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/treesitter/refsEngine.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/treesitter/reference-query.test.ts into plurnk-mimetypes/src/treesitter/refsEngine.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/refsEngine.test.ts": {
                     "tier": "unit",
@@ -11357,9 +11357,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/treesitter/refsEngine.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/registry.test.ts": {
                     "tier": "unit",
@@ -11372,9 +11372,9 @@
                     "citedTags": [
                         "mimetype-backend-selection"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/treesitter/languages.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/treesitter/registry.test.ts into plurnk-mimetypes/src/treesitter/languages.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/runtime.test.ts": {
                     "tier": "unit",
@@ -11387,9 +11387,9 @@
                     "citedTags": [
                         "treesitter-runtime-gate"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/src/treesitter/runtime.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/treesitter/yaml_toml_deepjson.test.ts": {
                     "tier": "unit",
@@ -11402,9 +11402,9 @@
                     "citedTags": [
                         "mimetype-channel-architecture"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/treesitter/languages.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/treesitter/yaml_toml_deepjson.test.ts into plurnk-mimetypes/src/treesitter/languages.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/src/withExtractor.test.ts": {
                     "tier": "unit",
@@ -11418,9 +11418,9 @@
                         "mimetype-references",
                         "mimetype-symbol-container"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/src/AntlrExtractor.test.ts",
+                    "reason": "Merged plurnk-mimetypes/src/withExtractor.test.ts into plurnk-mimetypes/src/AntlrExtractor.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/bash.test.ts": {
                     "tier": "intg",
@@ -11433,9 +11433,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/bash.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/c.test.ts": {
                     "tier": "intg",
@@ -11448,9 +11448,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/c.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/cpp.test.ts": {
                     "tier": "intg",
@@ -11463,9 +11463,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/cpp.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/dart.test.ts": {
                     "tier": "intg",
@@ -11478,9 +11478,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/dart.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/elixir.test.ts": {
                     "tier": "intg",
@@ -11493,9 +11493,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/elixir.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/fsharp-signature.test.ts": {
                     "tier": "intg",
@@ -11508,9 +11508,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/fsharp-signature.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/fsharp.test.ts": {
                     "tier": "intg",
@@ -11523,9 +11523,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/fsharp.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/go.test.ts": {
                     "tier": "intg",
@@ -11538,9 +11538,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/go.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/haskell.test.ts": {
                     "tier": "intg",
@@ -11553,9 +11553,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/haskell.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/java.test.ts": {
                     "tier": "intg",
@@ -11568,9 +11568,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/java.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/javascript.test.ts": {
                     "tier": "intg",
@@ -11583,9 +11583,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/javascript.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/julia.test.ts": {
                     "tier": "intg",
@@ -11598,9 +11598,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/julia.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/kotlin.test.ts": {
                     "tier": "intg",
@@ -11613,9 +11613,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/kotlin.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/lua.test.ts": {
                     "tier": "intg",
@@ -11628,9 +11628,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/lua.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/make.test.ts": {
                     "tier": "intg",
@@ -11643,9 +11643,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/make.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/ocaml.test.ts": {
                     "tier": "intg",
@@ -11658,9 +11658,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/ocaml.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/odin.test.ts": {
                     "tier": "intg",
@@ -11673,9 +11673,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/odin.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/php.test.ts": {
                     "tier": "intg",
@@ -11688,9 +11688,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/php.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/python.test.ts": {
                     "tier": "intg",
@@ -11703,9 +11703,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/python.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/ruby.test.ts": {
                     "tier": "intg",
@@ -11718,9 +11718,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/ruby.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/rust.test.ts": {
                     "tier": "intg",
@@ -11733,9 +11733,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/rust.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/scala.test.ts": {
                     "tier": "intg",
@@ -11748,9 +11748,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/scala.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/tsx.test.ts": {
                     "tier": "intg",
@@ -11763,9 +11763,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/tsx.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/typescript.test.ts": {
                     "tier": "intg",
@@ -11778,9 +11778,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/conformance/zig.test.ts": {
                     "tier": "intg",
@@ -11793,9 +11793,9 @@
                     "citedTags": [
                         "mimetype-references"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/conformance/typescript.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/conformance/zig.test.ts into plurnk-mimetypes/test/conformance/typescript.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/integration/full-pipeline.test.ts": {
                     "tier": "intg",
@@ -11809,9 +11809,9 @@
                         "executor-trust",
                         "mimetype-materialization"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary consolidated test suite for plurnk-mimetypes/test/integration/full-pipeline.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/integration/parser-coordinates.test.ts": {
                     "tier": "intg",
@@ -11824,9 +11824,9 @@
                     "citedTags": [
                         "mimetype-parser-coordinates"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/integration/full-pipeline.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/integration/parser-coordinates.test.ts into plurnk-mimetypes/test/integration/full-pipeline.test.ts (#1269)."
                 },
                 "plurnk-mimetypes/test/integration/reentrancy.test.ts": {
                     "tier": "intg",
@@ -11839,9 +11839,9 @@
                     "citedTags": [
                         "mimetype-lifecycle"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-mimetypes/test/integration/full-pipeline.test.ts",
+                    "reason": "Merged plurnk-mimetypes/test/integration/reentrancy.test.ts into plurnk-mimetypes/test/integration/full-pipeline.test.ts (#1269)."
                 }
             }
         },

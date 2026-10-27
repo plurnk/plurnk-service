@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Grammar package acceptance for {§grammar-package-reproducibility}.
+// Grammar package acceptance for {§mimetype-grammar-packages}.
 import { spawn } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -9,7 +9,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run grammars:verify [-- --contract-only] [-- --only <grammar>]   (from plurnk-mimetypes)
-Grammar package acceptance: each shipped grammar rebuilds reproducibly and honours its contract ({§grammar-package-reproducibility}).
+Grammar package acceptance: each shipped grammar rebuilds reproducibly and honours its contract ({§mimetype-grammar-packages}).
 Reads: PLURNK_MIMETYPES_GRAMMARS_ROOT and the shipped grammar packages.
 Writes: findings to stdout; exit 1 on any.
 `);

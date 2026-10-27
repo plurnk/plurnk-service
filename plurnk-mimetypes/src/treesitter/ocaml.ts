@@ -15,7 +15,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   exception_definition        → class
 //   signature                   → interface
 //
-// Container semantics ({§mimetype-symbol-container}): symbols inside `module M = struct ... end`
+// Container semantics ({§mimetype-symbol}): symbols inside `module M = struct ... end`
 // carry the dotted path of enclosing module names; top-level symbols carry
 // no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

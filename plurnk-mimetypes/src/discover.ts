@@ -21,7 +21,7 @@ import type {
 //
 // Exact `plurnk.kind === "mimetype"` enters this kind. Once trusted,
 // the package must expose one or more peer entries through
-// `plurnk.handlers: HandlerDecl[]` ({§mimetype-extension-failure}). Each entry
+// `plurnk.handlers: HandlerDecl[]` ({§mimetype-discovery}). Each entry
 // produces its own HandlerInfo and routing-map registration. Detection returns
 // the matched name, which flows through to `ProcessResult.mimetype`.
 //

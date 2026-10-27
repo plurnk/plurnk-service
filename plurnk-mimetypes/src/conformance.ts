@@ -5,7 +5,7 @@ import { UnsupportedDialectError } from "./QueryError.ts";
 import type { MimeRef, MimeSymbol } from "./types.ts";
 
 // The public conformance harness implements {§mimetype-references} under
-// {§mimetype-public-api}. Framework suites and external handler authors run the
+// {§mimetype-references}. Framework suites and external handler authors run the
 // same invariants through one implementation, exposed via
 // the `@plurnk/plurnk-mimetypes/conformance` subpath so node:assert stays out
 // of the runtime bundle.

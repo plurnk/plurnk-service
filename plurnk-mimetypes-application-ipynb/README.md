@@ -13,8 +13,8 @@ npm i @plurnk/plurnk-mimetypes-application-ipynb
 A notebook file is JSON, but a reader wants the narrative and the code, so the load-bearing channel is `content`:
 
 - `content(content)` projects the notebook to reading Markdown: markdown cells verbatim, code cells fenced in the kernel language, text outputs folded in, images dropped ({§ipynb-reading}).
-- `extractRaw(content)` indexes that projection: headings become `heading` symbols and code cells `module` symbols ({§ipynb-cells}).
-- `deepJson(content)` is the parsed notebook; JSONPath and XPath carry regions in the notebook JSON, and `validate` is the JSON gate ({§ipynb-source}).
+- `extractRaw(content)` indexes that projection: headings become `heading` symbols and code cells `module` symbols ({§ipynb-reading}).
+- `deepJson(content)` is the parsed notebook; JSONPath and XPath carry regions in the notebook JSON, and `validate` is the JSON gate ({§ipynb-reading}).
 
 ## fixtures
 

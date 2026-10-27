@@ -94,7 +94,7 @@ test("{§mimetype-binary-input} source acquisition enforces the ceiling even wit
     assert.equal(closed, true);
 });
 
-test("{§mimetype-parse-issues} parser-recovery inspection requests metadata without structural channels", async () => {
+test("{§mimetype-channel-selection} parser-recovery inspection requests metadata without structural channels", async () => {
     let options: unknown;
     const ctx = {
         mimetypes: {

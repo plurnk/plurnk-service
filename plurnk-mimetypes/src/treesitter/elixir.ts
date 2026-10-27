@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   call defmodule/defprotocol  → module (recurse into do_block)
 //   call def/defp/defmacro/...  → function (no body recursion)
 //
-// Container semantics ({§mimetype-symbol-container}): symbols inside a defmodule carry the
+// Container semantics ({§mimetype-symbol}): symbols inside a defmodule carry the
 // dotted path of enclosing emitted module names; module names are already
 // dotted aliases (`Foo.Bar`) and are used verbatim as path segments.
 const MODULE_MACROS = new Set(["defmodule", "defprotocol", "defimpl"]);

@@ -115,7 +115,7 @@ export function queryJsonpathObject(
     regionFor?: (pointer: string, value: unknown) => readonly TextRegion[] | undefined,
     readableText?: string,
 ): QueryMatch[] {
-    // {§jsonpath-query-failures}: only typed compilation failures describe an
+    // {§mimetype-query}: only typed compilation failures describe an
     // invalid expression; evaluation and projection failures retain their cause.
     let query: JSONPathQuery;
     try {
@@ -188,7 +188,7 @@ export function queryXpathString(
 }
 
 // Translate xpath.select result to QueryMatch[] under {§mimetype-query}.
-// {§mimetype-query-conformance} — only the selected element's complete source
+// {§mimetype-query} — only the selected element's complete source
 // coordinates are exact. Ancestors and line-only bounds provide context.
 function shapeXpathResult(
     pattern: string,
@@ -338,7 +338,7 @@ export function globToRegex(glob: string): RegExp {
     }
 }
 
-// Default jsonpath source-line resolver under {§mimetype-query-conformance},
+// Default jsonpath source-line resolver under {§mimetype-query},
 // for deepJson that carries its own line annotations (synthesized models like
 // PDF) or the bare-number outline. Strategy, in order:
 //   1. The matched value's own span — explicit line/endLine, or for the outline
@@ -403,7 +403,7 @@ function regionsForSpans(
 }
 
 // Outline-to-projectJsonToXml line resolver under the dialect symmetry in
-// {§mimetype-query-conformance}. The bare-number symbol outline carries no
+// {§mimetype-query}. The bare-number symbol outline carries no
 // `line` fields; a leaf number is its
 // line. So when a symbols-only handler projects that outline for XPath
 // (BaseHandler.deepXml), this resolves each pointer to the SAME min..max leaf

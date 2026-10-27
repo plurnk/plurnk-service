@@ -15,7 +15,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //     other (literal/builtin)    → constant (if SCREAMING) or variable
 //   test_declaration → function (Zig's test blocks)
 //
-// Container semantics ({§mimetype-symbol-container}): container_fields of a named
+// Container semantics ({§mimetype-symbol}): container_fields of a named
 // struct/enum/union declaration carry the declared name as container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

@@ -5,7 +5,7 @@ import Audio from "./Audio.ts";
 import { wav } from "../test/wav.ts";
 
 for (const mimetype of ["audio/wav", "audio/x-wav", "audio/vnd.wave"]) {
-    test(`{§mimetype-audio-facts} ${mimetype} has duration facts and a compact readable projection`, async () => {
+    test(`{§mimetype-binary-input} ${mimetype} has duration facts and a compact readable projection`, async () => {
         const handler = new Audio({ mimetype, glyph: "🎵", extensions: [] });
         const bytes = wav();
         await handler.validate(bytes);
@@ -17,13 +17,13 @@ for (const mimetype of ["audio/wav", "audio/x-wav", "audio/vnd.wave"]) {
     });
 }
 
-test("{§mimetype-audio-facts} invalid bytes and text are not presented as native audio", async () => {
+test("{§mimetype-binary-input} invalid bytes and text are not presented as native audio", async () => {
     const handler = new Audio({ mimetype: "audio/wav", glyph: "🎵", extensions: [] });
     await assert.rejects(handler.validate("not binary"), /Uint8Array/u);
     await assert.rejects(handler.validate(new TextEncoder().encode("not an audio container")), { name: "SyntaxError", message: "No audio track identified in the source bytes." });
 });
 
-test("{§mimetype-audio-facts} MPEG frames without a reliable duration preserve unknown rather than inventing time", async () => {
+test("{§mimetype-binary-input} MPEG frames without a reliable duration preserve unknown rather than inventing time", async () => {
     const bytes = Buffer.alloc(417 * 3);
     for (let offset = 0; offset < bytes.length; offset += 417) bytes.set([0xff, 0xfb, 0x90, 0x64], offset);
     const handler = new Audio({ mimetype: "audio/mpeg", glyph: "🎵", extensions: [] });
@@ -31,7 +31,7 @@ test("{§mimetype-audio-facts} MPEG frames without a reliable duration preserve 
     assert.equal(await handler.content(bytes), "MPEG audio, 1251 bytes");
 });
 
-test("{§mimetype-audio-facts} loading the handler does not load the media parser", () => {
+test("{§mimetype-binary-input} loading the handler does not load the media parser", () => {
     execFileSync(process.execPath, ["--conditions=plurnk-dev", "--input-type=module", "-e", `
         import assert from "node:assert/strict";
         import { registerHooks } from "node:module";

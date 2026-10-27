@@ -1,3 +1,4 @@
+// {§pdf-magic}
 import { BaseHandler } from "@plurnk/plurnk-mimetypes";
 import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
 
@@ -5,7 +6,7 @@ import type { HandlerContent } from "@plurnk/plurnk-mimetypes";
 // Nothing is parsed, extracted, or rendered: the header magic proves the type and a scan of the
 // page tree yields the facts a reader needs (page count when the tree is uncompressed, byte size),
 // which is the model-facing body. The document itself reaches a model that can read it as a native
-// document part of the packet, built by the service from the source bytes ({§mimetype-pdf-facts}).
+// document part of the packet, built by the service from the source bytes ({§mimetype-binary-input}).
 // A route that accepts no document input reports the attachment unsupported; the model's recourse
 // is the workspace's own tools through an executor fence (`pdftotext` and the like), never daemon-side extraction.
 

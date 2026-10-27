@@ -4,7 +4,7 @@ import { parseDocument } from "yaml";
 import MarkdownSource from "./MarkdownSource.ts";
 
 // text/markdown handler over marked's lexer. Symbols are {§markdown-symbols}; deepJson is
-// {§markdown-tree}; block coordinates come from the lexer callbacks ({§markdown-block-regions}).
+// {§markdown-symbols}; block coordinates come from the lexer callbacks ({§markdown-symbols}).
 export default class TextMarkdown extends BaseHandler {
     override summary(content: HandlerContent): string | undefined {
         if (typeof content !== "string") return undefined;
@@ -47,7 +47,7 @@ export default class TextMarkdown extends BaseHandler {
         return symbols;
     }
 
-    // {§markdown-tree}: one rooted tree, so the deep-xml projection is <document>...</document>.
+    // {§markdown-symbols}: one rooted tree, so the deep-xml projection is <document>...</document>.
     override deepJson(content: HandlerContent): unknown {
         if (typeof content !== "string") return null;
         const source = new MarkdownSource(content);

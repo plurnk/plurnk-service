@@ -54,7 +54,7 @@ export interface SourceProjectionMetadata {
     disposition: SourceProjectionDisposition;
     maximumBytes?: number;
     observedBytes?: number;
-    // {§mimetype-projection-facts} — the handler's structured facts (an image's dimensions).
+    // {§mimetype-binary-input} — the handler's structured facts (an image's dimensions).
     facts?: Readonly<Record<string, unknown>>;
 }
 

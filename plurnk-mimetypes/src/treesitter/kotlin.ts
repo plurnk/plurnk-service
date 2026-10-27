@@ -15,7 +15,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   property_declaration          → field (in class) / variable or constant (top)
 //   type_alias                    → type
 //
-// Container semantics ({§mimetype-symbol-container}): members carry the dotted path of enclosing
+// Container semantics ({§mimetype-symbol}): members carry the dotted path of enclosing
 // emitted class/object/interface/enum names. Top-level symbols carry no
 // container (package_header has no body, so it never contains).
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

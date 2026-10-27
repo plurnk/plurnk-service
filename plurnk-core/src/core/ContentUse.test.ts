@@ -50,7 +50,7 @@ const match = (content: string, marks: readonly number[]) => PatternSelection.ma
     matcher: { dialect: "glob", raw: "old*" }, content, mimetype: "text/plain", target: parsePath("workspace:///entry")!, marks, ctx, scheme: "workspace", operation: "EDIT",
 });
 
-test("{§logical-line-count} a pattern scope's -1 is the last logical line whether or not the text ends in a newline", async () => {
+test("{§mimetype-error-policy} a pattern scope's -1 is the last logical line whether or not the text ends in a newline", async () => {
     for (const content of ["keep\nold value", "keep\nold value\n"]) {
         const bounded = await match(content, [2, -1]);
         assert.ok(!("result" in bounded), `<2,-1> on ${JSON.stringify(content)} selects`);

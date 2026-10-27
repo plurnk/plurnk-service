@@ -77,7 +77,7 @@ const RESERVED_FIELDS = new Set([
 export const PK_PREFIX = "pk";
 export const PK_NS = "https://plurnk.xyz/deep-xml/1";
 
-// Optional source-line resolver ({§mimetype-query-conformance}): for deepJson whose nodes carry no
+// Optional source-line resolver ({§mimetype-query}): for deepJson whose nodes carry no
 // `line` of their own (raw parsed JSON/INI/etc.), the handler supplies a
 // resolver keyed by JSON pointer. When present, it owns source coordinates;
 // data fields cannot impersonate parser provenance.
@@ -156,7 +156,7 @@ function renderObject(obj: Record<string, unknown>, fallbackName: string, pointe
             if (key === "line") hasOwnLine = true;
         }
     }
-    // {§mimetype-query-conformance} — explicit mapping is authoritative.
+    // {§mimetype-query} — explicit mapping is authoritative.
     if (!hasOwnLine) attrs += resolvedLineAttrs(lineFor, pointer);
     // Additional attrs from the optional `attrs` object — HTML/XML
     // convention for source-algebra attributes. Rendered in the default

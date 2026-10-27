@@ -2,7 +2,7 @@ const bounded = (value: string): string => value.length <= 512
     ? value
     : `${value.slice(0, 255)}…${value.slice(-256)}`;
 
-// {§mimetype-derivation-evidence}: context belongs to the invocation, never
+// {§mimetype-error-policy}: context belongs to the invocation, never
 // to the original error, which may be frozen or shared by concurrent calls.
 export default class MimetypeDerivationError extends Error {
     readonly path: string | null;

@@ -1,3 +1,4 @@
+// {§json-strictness}
 import {
     BaseHandler,
     projectJsonToXml,

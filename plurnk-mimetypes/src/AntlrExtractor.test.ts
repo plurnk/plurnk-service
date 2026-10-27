@@ -1,9 +1,17 @@
-// Contract: {§mimetype-backend-selection}.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import AntlrExtractor from "./AntlrExtractor.ts";
 import { ParserCoordinateError } from "./ParserCoordinates.ts";
 import type { ExtractionVisitor, MimeSymbol } from "./types.ts";
+import { withExtractor } from "./withExtractor.ts";
+
+// ─── AntlrExtractor.test.ts ───
+{
+// Contract: {§treesitter-runtime-gate}.
+
+
+
+
 
 const metadata = {
     mimetype: "application/x-test",
@@ -24,7 +32,7 @@ function visitorReturning(symbols: MimeSymbol[]): ExtractionVisitor {
 }
 
 describe("{§mimetype-symbol} AntlrExtractor", () => {
-    it("orchestrates parseTree -> createVisitor -> visit -> symbols", () => {
+    it("{§mimetype-parser-coordinates} orchestrates parseTree -> createVisitor -> visit -> symbols", () => {
         const expected: MimeSymbol[] = [
             { name: "Foo", kind: "class", line: 1, endLine: 10 },
         ];
@@ -41,7 +49,7 @@ describe("{§mimetype-symbol} AntlrExtractor", () => {
         assert.deepEqual(e.extractRaw("content"), expected);
     });
 
-    it("preserves a thrown parser defect instead of guessing that it is malformed input", () => {
+    it("{§mimetype-parser-coordinates} preserves a thrown parser defect instead of guessing that it is malformed input", () => {
         const failure = new Error("parser implementation failed");
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
@@ -55,7 +63,7 @@ describe("{§mimetype-symbol} AntlrExtractor", () => {
         assert.throws(() => e.extractRaw("content"), (error) => error === failure);
     });
 
-    it("returns [] when parseTree returns null or undefined", () => {
+    it("{§mimetype-parser-coordinates} returns [] when parseTree returns null or undefined", () => {
         class NullExtractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
                 return null;
@@ -76,7 +84,7 @@ describe("{§mimetype-symbol} AntlrExtractor", () => {
         assert.deepEqual(new UndefExtractor(metadata).extractRaw("x"), []);
     });
 
-    it("preserves a visitor defect instead of converting it to an empty channel", () => {
+    it("{§mimetype-parser-coordinates} preserves a visitor defect instead of converting it to an empty channel", () => {
         const failure = new Error("visitor implementation failed");
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
@@ -97,7 +105,7 @@ describe("{§mimetype-symbol} AntlrExtractor", () => {
         assert.throws(() => e.extractRaw("content"), (error) => error === failure);
     });
 
-    it("does not collapse a parser-coordinate invariant failure", () => {
+    it("{§mimetype-parser-coordinates} does not collapse a parser-coordinate invariant failure", () => {
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
                 return { fake: "tree" };
@@ -115,7 +123,7 @@ describe("{§mimetype-symbol} AntlrExtractor", () => {
         assert.throws(() => e.extractRaw("anything"), ParserCoordinateError);
     });
 
-    it("calls visit on the tree returned by parseTree", () => {
+    it("{§mimetype-parser-coordinates} calls visit on the tree returned by parseTree", () => {
         let visitedTree: unknown = null;
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
@@ -138,7 +146,7 @@ describe("{§mimetype-symbol} AntlrExtractor", () => {
         assert.deepEqual(visitedTree, { tag: "root" });
     });
 
-    it("inherits BaseHandler symbolsRaw behavior via extractRaw output", async () => {
+    it("{§mimetype-parser-coordinates} inherits BaseHandler symbolsRaw behavior via extractRaw output", async () => {
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown {
                 return { fake: "tree" };
@@ -185,7 +193,7 @@ describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed 
         return { symbol: { line, text, type: 1, start, stop: start + Array.from(text).length - 1 } };
     }
 
-    it("walks rule contexts emitting type from constructor.name (stripped of Context)", async () => {
+    it("{§mimetype-parser-coordinates} walks rule contexts emitting type from constructor.name (stripped of Context)", async () => {
         const source = "\nclass Foo\n\n\nx";
         const fakeTree = new Compilation_unitContext([
             new Class_declarationContext([term("class", 2, 1), term("Foo", 2, 7)], 1, 11),
@@ -204,7 +212,7 @@ describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed 
         assert.equal(classCtx.type, "class_declaration");
     });
 
-    it("walks terminal nodes as { type, line, endLine, text }", async () => {
+    it("{§mimetype-parser-coordinates} walks terminal nodes as { type, line, endLine, text }", async () => {
         const source = "\n\nhello";
         const fakeTree = new Compilation_unitContext([term("hello", 3, 2)], 0, 6);
         class Extractor extends AntlrExtractor {
@@ -220,7 +228,7 @@ describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed 
         assert.equal(leaf.type, "hello");
     });
 
-    it("preserves a parser defect on the deep projection", async () => {
+    it("{§mimetype-parser-coordinates} preserves a parser defect on the deep projection", async () => {
         const failure = new Error("deep parser implementation failed");
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown { throw failure; }
@@ -230,7 +238,7 @@ describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed 
         await assert.rejects(Promise.resolve().then(() => e.deepJson("content")), (error) => error === failure);
     });
 
-    it("preserves inserted recovery tokens without assigning them exact source bounds", async () => {
+    it("{§mimetype-parser-coordinates} preserves inserted recovery tokens without assigning them exact source bounds", async () => {
         const source = "hello";
         const missing = { symbol: {
             text: "<missing '('>", type: 2, tokenIndex: -1,
@@ -260,7 +268,7 @@ describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed 
         assert.deepEqual(eof.regions, [{ ...parent, startColumn: 6 }]);
     });
 
-    it("still rejects invalid native spans that are not inserted recovery tokens", () => {
+    it("{§mimetype-parser-coordinates} still rejects invalid native spans that are not inserted recovery tokens", () => {
         for (const symbol of [
             { start: -1, stop: -1, tokenIndex: 0 },
             { start: -1, stop: 0, tokenIndex: -1 },
@@ -276,7 +284,7 @@ describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed 
         }
     });
 
-    it("returns null for binary content", async () => {
+    it("{§mimetype-parser-coordinates} returns null for binary content", async () => {
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown { return new Compilation_unitContext([], 0, 0); }
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
@@ -287,7 +295,7 @@ describe("{§mimetype-channel-architecture} AntlrExtractor.deepJson: duck-typed 
 });
 
 describe("{§mimetype-references} AntlrExtractor references channel", () => {
-    it("returns the visitor's refs from a same-shaped visit", async () => {
+    it("{§mimetype-parser-coordinates} returns the visitor's refs from a same-shaped visit", async () => {
         const refs = [
             { name: "users", kind: "use" as const, line: 3, column: 6, endLine: 3, endColumn: 11, container: "v_active" },
         ];
@@ -301,7 +309,7 @@ describe("{§mimetype-references} AntlrExtractor references channel", () => {
         assert.deepEqual(e.references("content"), refs);
     });
 
-    it("returns [] when the visitor emits no refs (default ANTLR handler)", async () => {
+    it("{§mimetype-parser-coordinates} returns [] when the visitor emits no refs (default ANTLR handler)", async () => {
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown { return { fake: "tree" }; }
             protected createVisitor(): ExtractionVisitor { return visitorReturning([]); }
@@ -310,7 +318,7 @@ describe("{§mimetype-references} AntlrExtractor references channel", () => {
         assert.deepEqual(e.references("content"), []);
     });
 
-    it("preserves a parser defect on the references projection", async () => {
+    it("{§mimetype-parser-coordinates} preserves a parser defect on the references projection", async () => {
         const failure = new Error("references parser implementation failed");
         class Extractor extends AntlrExtractor {
             protected parseTree(_content: string): unknown { throw failure; }
@@ -320,3 +328,262 @@ describe("{§mimetype-references} AntlrExtractor references channel", () => {
         await assert.rejects(Promise.resolve().then(() => e.references("content")), (error) => error === failure);
     });
 });
+}
+
+// ─── withExtractor.test.ts ───
+{
+// Stub the antlr4ng visitor base class — `withExtractor` only requires `visit`
+// and `visitChildren` shape; real generated visitors satisfy this.
+class StubVisitorBase {
+    visit(_tree: unknown): unknown {
+        return null;
+    }
+    visitChildren(_node: unknown): unknown {
+        return null;
+    }
+}
+
+// Stub ParserRuleContext shape — addSymbol only reads start.line and stop?.line.
+function ctx(line: number, endLine?: number): unknown {
+    return {
+        start: { line },
+        stop: endLine !== undefined ? { line: endLine } : null,
+    };
+}
+
+describe("{§mimetype-symbol} withExtractor mixin", () => {
+    it("{§mimetype-parser-coordinates} starts with an empty symbols list", () => {
+        class V extends withExtractor(StubVisitorBase) {}
+        const v = new V();
+        assert.deepEqual(v.symbols, []);
+    });
+
+    it("{§mimetype-parser-coordinates} starts with inBody false", () => {
+        class V extends withExtractor(StubVisitorBase) {
+            check(): boolean {
+                return this.inBody;
+            }
+        }
+        const v = new V();
+        assert.equal(v.check(), false);
+    });
+
+    it("{§mimetype-parser-coordinates} addSymbol captures start line and stop line from the context", () => {
+        class V extends withExtractor(StubVisitorBase) {
+            doAdd(): void {
+                this.addSymbol("class", "Foo", ctx(5, 20) as never);
+            }
+        }
+        const v = new V();
+        v.doAdd();
+        assert.deepEqual(v.symbols, [
+            { name: "Foo", kind: "class", line: 5, endLine: 20 },
+        ]);
+    });
+
+    it("{§mimetype-parser-coordinates} addSymbol falls back to start line when stop is null", () => {
+        class V extends withExtractor(StubVisitorBase) {
+            doAdd(): void {
+                this.addSymbol("constant", "X", ctx(7) as never);
+            }
+        }
+        const v = new V();
+        v.doAdd();
+        assert.deepEqual(v.symbols, [
+            { name: "X", kind: "constant", line: 7, endLine: 7 },
+        ]);
+    });
+
+    it("{§mimetype-parser-coordinates} addSymbol includes params and extra fields when provided", () => {
+        class V extends withExtractor(StubVisitorBase) {
+            doAdd(): void {
+                this.addSymbol(
+                    "heading",
+                    "Section",
+                    ctx(3) as never,
+                    undefined,
+                    { level: 2 },
+                );
+                this.addSymbol(
+                    "function",
+                    "parse",
+                    ctx(10, 15) as never,
+                    ["source", "options"],
+                );
+            }
+        }
+        const v = new V();
+        v.doAdd();
+        assert.deepEqual(v.symbols, [
+            { name: "Section", kind: "heading", line: 3, endLine: 3, level: 2 },
+            {
+                name: "parse",
+                kind: "function",
+                line: 10,
+                endLine: 15,
+                params: ["source", "options"],
+            },
+        ]);
+    });
+
+    it("{§mimetype-parser-coordinates} gateBody flips inBody true during children visit and restores after", () => {
+        let inBodyDuringVisit: boolean | null = null;
+        class FakeBase {
+            visit(_tree: unknown): unknown {
+                return null;
+            }
+            visitChildren(_node: unknown): unknown {
+                inBodyDuringVisit = (this as unknown as { inBody: boolean }).inBody;
+                return null;
+            }
+        }
+        class V extends withExtractor(FakeBase) {
+            run(): void {
+                this.gateBody(ctx(1, 10) as never);
+            }
+            checkAfter(): boolean {
+                return this.inBody;
+            }
+        }
+        const v = new V();
+        v.run();
+        assert.equal(inBodyDuringVisit, true);
+        assert.equal(v.checkAfter(), false);
+    });
+
+    it("{§mimetype-parser-coordinates} gateBody restores prior inBody value, not always false (handles nesting)", () => {
+        const seen: boolean[] = [];
+        class FakeBase {
+            visit(_tree: unknown): unknown {
+                return null;
+            }
+            visitChildren(_node: unknown): unknown {
+                seen.push((this as unknown as { inBody: boolean }).inBody);
+                return null;
+            }
+        }
+        class V extends withExtractor(FakeBase) {
+            outer(): void {
+                this.gateBody({
+                    ...(ctx(1, 100) as object),
+                } as never);
+            }
+            inner(): void {
+                this.gateBody(ctx(5, 20) as never);
+            }
+        }
+        const v = new V();
+        // Simulate nested body: outer gates, during visitChildren the inner gates.
+        // The mixin must restore correctly so a hypothetical post-inner peek inside
+        // outer would still see inBody=true.
+        v.outer();
+        // After outer: inBody should be false again.
+        assert.equal(seen.length, 1);
+        assert.equal(seen[0], true);
+    });
+
+    it("{§mimetype-parser-coordinates} returns a defensive copy from symbols getter (caller can't mutate state)", () => {
+        class V extends withExtractor(StubVisitorBase) {
+            doAdd(): void {
+                this.addSymbol("class", "Foo", ctx(1) as never);
+            }
+        }
+        const v = new V();
+        v.doAdd();
+        const snapshot = v.symbols;
+        snapshot.pop();
+        assert.equal(v.symbols.length, 1, "internal state should be unaffected by mutating the snapshot");
+    });
+});
+
+describe("{§mimetype-references} withExtractor addRef", () => {
+    function refCtx(line: number, column: number, stopLine = line, stopColumn = column, stopText = "x") {
+        return { start: { line, column }, stop: { line: stopLine, column: stopColumn, text: stopText } } as never;
+    }
+
+    it("{§mimetype-parser-coordinates} addRef stamps 1-indexed positions; top-level refs carry no container", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        v.addRef("call", "tokenize", refCtx(12, 4, 12, 4, "tokenize"));
+        const [r] = v.refs;
+        assert.equal(r.name, "tokenize");
+        assert.equal(r.kind, "call");
+        assert.equal(r.line, 12);
+        assert.equal(r.column, 5, "antlr column 4 -> 1-indexed 5");
+        assert.equal(r.endColumn, 4 + "tokenize".length + 1);
+        assert.equal("container" in r, false);
+    });
+
+    it("{§mimetype-parser-coordinates} refs collected inside a gateContainer carry the dotted path", () => {
+        class V extends withExtractor(StubVisitorBase) {
+            override visitChildren(_node: unknown): unknown {
+                this.addRef("use", "accounts", refCtx(5, 8, 5, 16, "accounts"));
+                return null;
+            }
+        }
+        const v = new V();
+        v.gateContainer("v_report", refCtx(1, 0, 9, 0));
+        assert.equal(v.refs[0].container, "v_report");
+    });
+
+    it("{§mimetype-parser-coordinates} materializes ANTLR code-point offsets without widening astral stop tokens", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        v.bindContent("SET 😀 value");
+        v.addRef("use", "😀", {
+            start: { start: 4 },
+            stop: { stop: 4 },
+        } as never);
+        assert.deepEqual(v.refs, [{
+            name: "😀",
+            kind: "use",
+            line: 1,
+            column: 5,
+            endLine: 1,
+            endColumn: 6,
+        }]);
+    });
+
+    it("{§mimetype-parser-coordinates} materializes multiline contexts and terminal insertion points from absolute offsets", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        const source = "first😀\r\nlast";
+        v.bindContent(source);
+        v.addSymbol("function", "all", {
+            start: { start: 0 },
+            stop: { stop: Array.from(source).length - 1 },
+        } as never);
+        v.addSymbol("variable", "end", {
+            start: { start: Array.from(source).length },
+            stop: { stop: Array.from(source).length - 1 },
+        } as never);
+        assert.deepEqual(v.symbols.map(({ line, column, endLine, endColumn }) => ({
+            line,
+            column,
+            endLine,
+            endColumn,
+        })), [
+            { line: 1, column: 1, endLine: 2, endColumn: 5 },
+            { line: 2, column: 5, endLine: 2, endColumn: 5 },
+        ]);
+    });
+
+    it("{§mimetype-parser-coordinates} derives ANTLR lines from absolute offsets across CR and LF separators", () => {
+        const V = withExtractor(StubVisitorBase);
+        const v = new V();
+        v.bindContent("a\r😀\nb");
+        v.addRef("use", "😀", {
+            start: { start: 2 },
+            stop: { stop: 2 },
+        } as never);
+        assert.deepEqual(v.refs, [{
+            name: "😀",
+            kind: "use",
+            line: 2,
+            column: 1,
+            endLine: 2,
+            endColumn: 2,
+        }]);
+    });
+});
+}

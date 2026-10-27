@@ -1,27 +1,13 @@
 # Markdown handler
 
-§markdown-symbols `text/markdown` structure is headings and code blocks, located by
-marked's lexer. Every ATX or setext heading is a `heading` symbol with `level` 1
-through 6; every code block, fenced or indented, is a `module` spanning the whole
-block, named by its fence's language tag or `code` when it has none. Paragraphs,
-lists, links, inline code, blockquotes and tables are content, not symbols. A
-heading's container is the dotted path of its open ancestor headings, a heading at
-level N closing every open heading at level N or deeper; a code block's container is
-the innermost open heading path ({§mimetype-symbol-container}).
+## §markdown-symbols Markdown headings, code blocks, and block-token tree
 
-§markdown-block-regions Marked lexes a line-ending-normalized copy and transforms
-nested block input, so a top-level block token is located by the tokenizer callback
-that produced it and carries its complete region in the source's line and column
-coordinates, whatever its line separator; a nested token (a list item's paragraph, a
-`strong` run) has only its enclosing block's lines. No region is invented for a token
-the source cannot locate ({§mimetype-query}).
+Located by marked's lexer over a line-ending-normalized copy while preserving source line and column coordinates regardless of LF/CRLF/CR separator.
 
 | Surface | Contract |
 |---|---|
-| `validate` | The no-op default: any string is Markdown ({§mimetype-validation}). |
-| `extractRaw` | The symbols above. |
-| §markdown-tree `deepJson` | `{ type: "document", children }` of marked's block tokens: each node carries its token `type`, its region or enclosing lines, `level` (mirrored as `attrs.level` so `//heading[@level='2']` selects by level), and `text`, `lang`, `href`, `title`, `ordered` and nested `children` as the token has them. A `Uint8Array` projects `null`. |
-| `summary` | Document metadata as {§mimetype-summary} defines it. |
-| JSONPath / XPath | The default dispatch over that tree ({§mimetype-query}); regex and glob run over the raw body. |
-
-Raw source text remains unchanged.
+| `validate` | Framework default no-op: any string is Markdown ({§mimetype-channel-selection}). |
+| `extractRaw` | Every ATX or setext heading is a `heading` symbol (`level` 1–6) whose `container` is the dotted path of open ancestor headings (a level-$N$ heading closes open headings at level $\ge N$); every fenced or indented code block is a `module` spanning the whole block, named by fence language tag or `code` when absent, with the innermost open heading path as `container` ({§mimetype-symbol}). Paragraphs, lists, links, inline code, blockquotes, and tables are not symbols. |
+| `deepJson` | `{ type: "document", children }` of marked's block tokens (`null` for `Uint8Array`): each node carries token `type`, complete source region for top-level blocks or enclosing block lines for nested tokens (list item paragraphs, `strong` runs; no region invented when unlocatable), `level` (mirrored as `attrs.level` so `//heading[@level='2']` selects by level), and `text`, `lang`, `href`, `title`, `ordered`, and nested `children` when present. |
+| `summary` | Leading YAML frontmatter string `description`, else first paragraph directly beneath the first exact semantic H2 `Summary` before any subsequent heading ({§mimetype-channel-selection}). |
+| JSONPath / XPath | Default dispatch over `deepJson` ({§mimetype-query}); regex and glob run over the raw body. |

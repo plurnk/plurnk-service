@@ -168,7 +168,7 @@ test("{§packed-projection} package artifact projection requires runtime-loaded 
     }
 });
 
-test("{§mimetype-query-assets} packed MIME query assets are complete and load from the packed archive", async () => {
+test("{§mimetype-references} packed MIME query assets are complete and load from the packed archive", async () => {
     const workspace = fileURLToPath(new URL("../plurnk-mimetypes/", import.meta.url));
     const assets = (await readdir(join(workspace, "queries"))).filter((name) => name.endsWith(".scm")).map((name) => `queries/${name}`);
     assert.ok(assets.length > 0);

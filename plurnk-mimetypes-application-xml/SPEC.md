@@ -1,38 +1,13 @@
 # XML handler
 
-§xml-shape Symbols are the document's shape, not its leaves: the root element is a
-`module` symbol and each immediate child element is a `field` symbol named by its
-`id` attribute, else its `name` attribute, else its tag name, with the root's tag
-name as `container` ({§mimetype-symbol-container}). Every symbol spans its complete
-element. Empty input or content that is not a document has no symbols.
-
-§xml-recovery xmldom's recoverable `error` reports, such as an entity declared only
-in the internal DTD subset, each count as one parse issue and the channels project
-the recovered DOM. Content that is not a document (xmldom `fatalError`: a template,
-a truncated file) counts as one issue, has no symbols and a `null` `deepJson`, and
-refuses XPath and JSONPath with `QueryParseFailureError`; regex and glob run
-unaffected ({§mimetype-parse-issues}). Empty input reports no issue. Only a defect
-outside xmldom's own `ParseError` fails a derivation.
-
-§xml-lexical-spans XPath runs over the real DOM (XPath 1.0 through `xpath`) and
-JSONPath over the DOM projection; every node match selects its exact lexical source
-through the concrete syntax tree: an element without surrounding whitespace, an
-attribute as `name = 'value'` as written, text with its entity, character-reference
-and CDATA markup, a comment or processing instruction whole. A computed scalar is
-locator-only; a malformed expression is `InvalidExpressionError` ({§mimetype-query}).
-
-§xml-text-nodes XPath sees the XPath 1.0 logical text model: a CDATA section is
-text, adjacent text coalesces into one node, an empty text node does not exist,
-and the document node carries neither whitespace text nor the XML declaration
-while other processing instructions remain. `matched` is the logical string; the
-region is the lexical source ({§xml-lexical-spans}).
+## §xml-shape XML shape, recovery, lexical spans, and logical text nodes
 
 | Surface | Contract |
 |---|---|
-| `validate` | Framework default; recovery is advisory ({§xml-recovery}). |
-| `extractRaw` | Root and immediate children ({§xml-shape}). |
-| `deepJson` | The DOM as nested `{ type, attrs, children }` objects through the framework's `projectDomToJson`, each with its source coordinates; a text-only element collapses to `text`, mixed content keeps `#text` siblings, comments and instructions are omitted ({§mimetype-channel-architecture}). |
-| `parseIssues` | Recovery sites ({§xml-recovery}). |
-| JSONPath / XPath | Lexical source spans ({§xml-lexical-spans}, {§xml-text-nodes}). |
+| `validate` | Framework default no-op; recovery is advisory ({§mimetype-channel-selection}). Only a defect outside xmldom's `ParseError` fails derivation. |
+| `parseIssues` | Each recoverable xmldom `error` (such as an entity declared only in the internal DTD subset) counts as 1 issue and channels project the recovered DOM. Content that is not a document (xmldom `fatalError`: template or truncated file) counts as 1 issue, yields `[]` symbols and `null` `deepJson`, and refuses XPath/JSONPath with `QueryParseFailureError` (regex/glob unaffected). Empty input reports 0 issues and `[]` symbols. |
+| `extractRaw` | Document shape: root element is a `module` symbol and each immediate child element is a `field` symbol named by `id`, else `name`, else tag name, with the root's tag name as `container` ({§mimetype-symbol}), each spanning its complete element. |
+| `deepJson` | DOM as nested `{ type, attrs, children }` objects via `projectDomToJson` with source coordinates; text-only elements collapse to `text`, mixed content keeps `#text` siblings, and comments/processing instructions are omitted ({§mimetype-channel-architecture}). |
+| JSONPath / XPath | XPath 1.0 runs over the real DOM and JSONPath over `deepJson`. Every node match selects its exact lexical source via the concrete syntax tree: elements without surrounding whitespace, attributes as `name = 'value'` as written, text with entity/character-reference/CDATA markup, and comments or processing instructions whole. XPath sees the XPath 1.0 logical text model (CDATA is text, adjacent text coalesces, empty text nodes do not exist, document node drops whitespace text and the XML declaration while keeping other processing instructions); `matched` is the logical string while the region is lexical source. Computed scalars are locator-only; malformed expressions throw `InvalidExpressionError` ({§mimetype-query}). |
 
-Raw source remains unchanged. Binary input is decoded as UTF-8.
+Raw source remains unchanged; binary input is decoded as UTF-8.

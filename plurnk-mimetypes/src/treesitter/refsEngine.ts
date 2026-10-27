@@ -14,7 +14,7 @@ import type { TreeSitterNode, TreeSitterTree } from "../TreeSitterExtractor.ts";
 // the scopes.
 
 // The ONLY node fields the engine reads off a capture: the matched text and
-// its source span. Blessed as a public type ({§mimetype-public-api}) so a Tier 2 adapter
+// its source span. Blessed as a public type ({§mimetype-references}) so a Tier 2 adapter
 // composing a qualified name from several capture nodes (HCL `TYPE.NAME`) can
 // construct an honest capture node — no cast through TreeSitterNode relying on
 // a comment-only field-subset contract. A real

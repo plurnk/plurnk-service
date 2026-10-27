@@ -1,3 +1,4 @@
+// {§jsonl-records}
 import { BaseHandler, projectJsonToXml, queryJsonpathObject, TextCoordinates, type TextRegion, type HandlerContent, type MimeSymbol, type QueryDialect, type QueryMatch } from "@plurnk/plurnk-mimetypes";
 import { JsonSource } from "@plurnk/plurnk-mimetypes-application-json";
 import { parseTree } from "jsonc-parser";

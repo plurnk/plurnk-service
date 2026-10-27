@@ -237,7 +237,7 @@ test("{§matcher-dispatch} matcher: unexpected error propagates (not caught)", a
     );
 });
 
-test("{§jsonpath-query-failures} real JSONPath syntax and evaluation failures stay distinct through the scheme adapter", async () => {
+test("{§mimetype-query} real JSONPath syntax and evaluation failures stay distinct through the scheme adapter", async () => {
     const malformed: MatcherBody = { dialect: "jsonpath", raw: "$[?(@.value == " };
     const refused = await Matcher.fromQuery(malformed, "application/json", () =>
         queryJsonpathObject({ value: 42 }, malformed.raw));
@@ -259,7 +259,7 @@ test("{§jsonpath-query-failures} real JSONPath syntax and evaluation failures s
 // xml engine. This pins that schemes serves xpath through the framework with
 // zero runtime deps. Uses
 // a real Mimetypes instance, not a stub, so a regression in the dep surfaces.
-test("{§mimetype-content-query} matcher receives XPath source coordinates through the framework", async () => {
+test("{§mimetype-content} matcher receives XPath source coordinates through the framework", async () => {
     const { Mimetypes } = await import("@plurnk/plurnk-mimetypes");
     const mts = new Mimetypes({ defaultMimetype: "text/markdown" });
     const xpathBody: MatcherBody = { dialect: "xpath", raw: "//item" };

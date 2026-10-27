@@ -17,7 +17,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   field_declaration             → field (in class)
 //   declaration (file-scope var)  → variable
 //
-// Container semantics ({§mimetype-symbol-container}): classes/structs/unions, namespaces, and
+// Container semantics ({§mimetype-symbol}): classes/structs/unions, namespaces, and
 // named enums are containers — members carry the dotted path of enclosing
 // emitted scope names. `container` is the path; `inClass` stays a separate
 // flag because namespace members keep function/variable kinds.

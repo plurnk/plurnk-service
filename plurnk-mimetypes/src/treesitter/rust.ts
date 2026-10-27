@@ -18,7 +18,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   union_item            → class
 //   macro_definition      → function
 //
-// Container semantics ({§mimetype-symbol-container}): impl blocks (the impl'd type name), trait
+// Container semantics ({§mimetype-symbol}): impl blocks (the impl'd type name), trait
 // bodies (the trait name), and mod blocks (the mod name) are containers —
 // items inside carry the dotted path of enclosing scope names. `container`
 // is the path; `inImplOrTrait` stays a separate flag because mod members

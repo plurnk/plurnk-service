@@ -235,12 +235,12 @@ describe("default grammar and dependency policy", () => {
         }
     });
 
-    it("{§mimetype-optional-grammars} refuses an optional grammar package in the default composition", () => {
+    it("{§mimetype-grammar-packages} refuses an optional grammar package in the default composition", () => {
         assert.ok(optionalLeaves.length > 0, "the registry declares at least one optional grammar");
         assert.deepEqual(defaultGrammarViolations({
             dependencies: { ...dependencies, ...Object.fromEntries(optionalLeaves.map((name) => [name, "1.0.0"])) },
         }), optionalLeaves.map((name) =>
-            `plurnk-core/package.json: dependencies.${name} is an optional grammar package and must not ship by default ({§mimetype-optional-grammars})`));
+            `plurnk-core/package.json: dependencies.${name} is an optional grammar package and must not ship by default ({§mimetype-grammar-packages})`));
     });
 
     it("{§lint-gate} enforces install-script review and root-only npm configuration", () => {

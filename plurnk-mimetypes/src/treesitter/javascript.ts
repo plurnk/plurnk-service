@@ -14,7 +14,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   variable_declaration (var) → variable
 //   export_statement / export_default → unwrap and dispatch
 //
-// Container semantics ({§mimetype-symbol-container}): symbols inside a class carry the dotted
+// Container semantics ({§mimetype-symbol}): symbols inside a class carry the dotted
 // path of enclosing emitted scope names. Top-level symbols carry no container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

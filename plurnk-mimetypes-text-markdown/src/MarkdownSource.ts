@@ -3,7 +3,7 @@ import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
 
 const BLOCK_METHODS = ["space", "code", "fences", "heading", "hr", "blockquote", "list", "html", "def", "table", "lheading", "paragraph", "text"] as const;
 
-// {§mimetype-query-conformance} Marked normalizes line endings and transforms nested
+// {§mimetype-query} Marked normalizes line endings and transforms nested
 // block inputs. Its public tokenizer callbacks locate top-level tokens without
 // searching for repeated text or assigning transformed children their parent's span.
 export default class MarkdownSource extends Lexer {

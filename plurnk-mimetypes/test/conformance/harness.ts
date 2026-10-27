@@ -8,7 +8,7 @@ import type { ConformanceFixture, ConformanceResult } from "../../src/conformanc
 // channels ({§mimetype-references}). Each language's conformance test
 // supplies a fixture and its expectations; the SHARED invariants live in the
 // public src/conformance.ts harness (the same one third-party handler authors
-// run via @plurnk/plurnk-mimetypes/conformance under {§mimetype-public-api}).
+// run via @plurnk/plurnk-mimetypes/conformance under {§mimetype-references}).
 // This wrapper only adds the registry lookup that builds the in-registry
 // handler from a mimetype. A language participates in the service's graph only
 // when its suite is green.

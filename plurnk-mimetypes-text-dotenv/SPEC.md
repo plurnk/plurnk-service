@@ -1,17 +1,13 @@
 # Dotenv handler
 
-§dotenv-values The `text/x-dotenv` value projection uses `node:util.parseEnv`,
-the same semantics as Node's environment-file loader. It neither modifies
-`process.env` nor expands variable references or redacts values. Raw source
-text remains unchanged.
+## §dotenv-values Environment value projection and source framing
 
-| Surface | Projection |
+The `text/x-dotenv` handler uses `node:util.parseEnv` without modifying `process.env`, expanding variable references, or redacting values.
+
+| Surface | Contract |
 |---|---|
 | `deepJson` | Flat key/string-value object; Node owns quoting, comments, multiline values, and duplicate-key resolution. |
-| `extractRaw` | Recognized assignments as `constant` symbols, spanning the complete assignment, including multiline values. |
-| JSONPath / XPath | Query the value projection with enclosing source regions; a duplicate key points to its last assignment. |
+| `extractRaw` | Recognized assignments as `constant` symbols spanning the complete assignment, including multiline values. |
+| JSONPath / XPath | Query the value projection with enclosing source regions; a duplicate key points to its last assignment. Source framing locates assignments while Node parses each frame; a frame whose value disagrees with the complete parse supplies no query region ({§mimetype-query}). |
 
-§dotenv-source Source framing locates assignments; it does not interpret their
-values. Node parses each frame. A frame whose value disagrees with the complete
-parse supplies no query region. Source coordinates follow {§mimetype-query};
-no line position is invented for an unlocated value.
+Raw source text remains unchanged.

@@ -104,7 +104,7 @@ test("{§methods} Daemon: listenerless boot — the seam is live with no socket 
     });
 });
 
-test("{§manifest} {§mimetype-client-display} Daemon composes deterministic scheme and MIME display capabilities for clients", async () => {
+test("{§manifest} {§mimetype-discovery} Daemon composes deterministic scheme and MIME display capabilities for clients", async () => {
     const db = await openMigrated();
     const mimetypes = new Mimetypes({
         discovery: {

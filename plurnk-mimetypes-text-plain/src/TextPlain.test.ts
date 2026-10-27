@@ -15,45 +15,45 @@ const streamMetadata = {
 };
 
 describe("{§plain-text-defaults} text/plain is BaseHandler's defaults", () => {
-    it("instantiates with text/plain metadata", () => {
+    it("{§plain-text-defaults} instantiates with text/plain metadata", () => {
         const h = new TextPlain(plainMetadata);
         assert.equal(h.mimetype, "text/plain");
         assert.equal(h.glyph, "📄");
         assert.deepEqual([...h.extensions], [".txt"]);
     });
 
-    it("extractRaw is empty (no structural symbols in plain text)", () => {
+    it("{§plain-text-defaults} extractRaw is empty (no structural symbols in plain text)", () => {
         const h = new TextPlain(plainMetadata);
         assert.deepEqual(h.extractRaw("any content"), []);
     });
 
-    it("symbolsRaw is empty (no structural symbols in plain text)", async () => {
+    it("{§plain-text-defaults} symbolsRaw is empty (no structural symbols in plain text)", async () => {
         const h = new TextPlain(plainMetadata);
         assert.equal(await h.symbolsRaw("any content"), "");
     });
 
-    it("validate is a no-op (any content is valid plain text)", () => {
+    it("{§plain-text-defaults} validate is a no-op (any content is valid plain text)", () => {
         const h = new TextPlain(plainMetadata);
         assert.doesNotThrow(() => h.validate("anything"));
     });
 });
 
 describe("{§plain-text-defaults} text/stream is the same class under its own name", () => {
-    it("instantiates with text/stream metadata and reports its own mimetype", () => {
+    it("{§plain-text-defaults} instantiates with text/stream metadata and reports its own mimetype", () => {
         const h = new TextPlain(streamMetadata);
         assert.equal(h.mimetype, "text/stream");
         assert.equal(h.glyph, "📡");
         assert.deepEqual([...h.extensions], []);
     });
 
-    it("extractRaw is empty (no structural symbols in stream text)", () => {
+    it("{§plain-text-defaults} extractRaw is empty (no structural symbols in stream text)", () => {
         const h = new TextPlain(streamMetadata);
         assert.deepEqual(h.extractRaw("log line 1\nlog line 2"), []);
     });
 });
 
 describe("{§mimetype-query} the inherited default dispatch serves both names", () => {
-    it("regex against text body works on both mimetypes", async () => {
+    it("{§plain-text-defaults} regex against text body works on both mimetypes", async () => {
         const plain = new TextPlain(plainMetadata);
         const stream = new TextPlain(streamMetadata);
         const text = "error: foo\nok: bar\nerror: baz";
@@ -63,7 +63,7 @@ describe("{§mimetype-query} the inherited default dispatch serves both names", 
         assert.equal(streamOut.length, 2);
     });
 
-    it("jsonpath against the (empty) outline returns no matches", async () => {
+    it("{§plain-text-defaults} jsonpath against the (empty) outline returns no matches", async () => {
         const h = new TextPlain(plainMetadata);
         const out = await h.query("any text", "jsonpath", "$.anything");
         assert.deepEqual(out, []);

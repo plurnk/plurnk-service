@@ -31,7 +31,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //                                            optionally surface)
 //   import                                → excluded
 //
-// Container semantics ({§mimetype-symbol-container}): module-level declarations are flat (the
+// Container semantics ({§mimetype-symbol}): module-level declarations are flat (the
 // header module is a sibling, not a structural parent). Only class-body
 // method signatures carry a container — the type class name.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

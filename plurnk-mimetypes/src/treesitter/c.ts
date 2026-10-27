@@ -13,7 +13,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   type_definition      → type (typedef)
 //   declaration          → variable (file-scope, named, not extern/static-fn-proto)
 //
-// Container semantics ({§mimetype-symbol-container}): the mapping is flat except enum bodies —
+// Container semantics ({§mimetype-symbol}): the mapping is flat except enum bodies —
 // enumerators of a *named* enum carry the enum name as container.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {
     const out: TreeSitterSymbolProjection[] = [];

@@ -28,8 +28,8 @@ const WEBP_VP8X = new Uint8Array([
     0xff, 0x03, 0x00, 0x7f, 0x02, 0x00, // canvas 1024 × 640 (minus one)
 ]);
 
-describe("{§mimetype-image} validate checks the header magic and nothing else", () => {
-    it("accepts each format by its header magic and refuses garbage", () => {
+describe("{§mimetype-binary-input} validate checks the header magic and nothing else", () => {
+    it("{§mimetype-binary-input} accepts each format by its header magic and refuses garbage", () => {
         assert.doesNotThrow(() => png.validate(PNG));
         assert.doesNotThrow(() => jpeg.validate(JPEG));
         assert.doesNotThrow(() => gif.validate(GIF));
@@ -39,25 +39,25 @@ describe("{§mimetype-image} validate checks the header magic and nothing else",
         assert.throws(() => gif.validate(PNG), /Not a GIF image/);
         assert.throws(() => webp.validate(GIF), /Not a WebP image/);
     });
-    it("refuses text content: a binary handler receives bytes", () => {
+    it("{§mimetype-binary-input} refuses text content: a binary handler receives bytes", () => {
         assert.throws(() => png.validate("not bytes"), /Uint8Array/);
     });
 });
 
-describe("{§mimetype-image} the body and deepJson are the header's facts", () => {
-    it("reads dimensions from each header and states them as the body", () => {
+describe("{§mimetype-binary-input} the body and deepJson are the header's facts", () => {
+    it("{§mimetype-binary-input} reads dimensions from each header and states them as the body", () => {
         assert.deepEqual(png.facts(PNG), { format: "png", width: 640, height: 480, bytes: PNG.length });
         assert.equal(png.content(PNG), `PNG image, 640×480 px, ${PNG.length} bytes`);
         assert.deepEqual(jpeg.facts(JPEG), { format: "jpeg", width: 300, height: 100, bytes: JPEG.length });
         assert.deepEqual(gif.facts(GIF), { format: "gif", width: 16, height: 32, bytes: GIF.length });
         assert.deepEqual(webp.facts(WEBP_VP8X), { format: "webp", width: 1024, height: 640, bytes: WEBP_VP8X.length });
     });
-    it("states size alone when a header carries no dimensions", () => {
+    it("{§mimetype-binary-input} states size alone when a header carries no dimensions", () => {
         const truncated = PNG.subarray(0, 12);
         assert.deepEqual(png.facts(truncated), { format: "png", width: null, height: null, bytes: 12 });
         assert.equal(png.content(truncated), "PNG image, 12 bytes");
     });
-    it("the summary is the body and deepJson is the facts", () => {
+    it("{§mimetype-binary-input} the summary is the body and deepJson is the facts", () => {
         assert.equal(gif.summary(GIF), gif.content(GIF));
         assert.deepEqual(gif.deepJson(GIF), gif.facts(GIF));
     });

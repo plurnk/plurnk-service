@@ -95,7 +95,7 @@ Regional mutation receipts (`ResolvedEditStatement`, `EditBatchResult`): Core re
 
 Additional framework helpers:
 
-- **`MimetypeClassifier` & `PathMimetype`:** `isBinary(mimetype)` (delegates to `@plurnk/plurnk-mimetypes`), `isHtml(mimetype)` (`text/html`, `application/xhtml+xml`), `isJson(mimetype)` (`application/json` and `+json`, excluding NDJSON), `normalizeAutoText(mimetype)` (`text/plain` / `null` / `undefined` $\to$ `TEXT_PRIMITIVE_MIMETYPE` `"text/markdown"`), and `isTransferCompatible(source, destination, sourceClassification?)` (permits verbatim `COPY`/`MOVE` between equal mimetypes or from any textual source into `text/plain` or `text/markdown`, `{§mimetype-classification}`). `PathMimetype.resolve(pathname, defaultMimetype, mimetypes)` detects by extension and auto-normalizes `text/plain` to `text/markdown`.
+- **`MimetypeClassifier` & `PathMimetype`:** `isBinary(mimetype)` (delegates to `@plurnk/plurnk-mimetypes`), `isHtml(mimetype)` (`text/html`, `application/xhtml+xml`), `isJson(mimetype)` (`application/json` and `+json`, excluding NDJSON), `normalizeAutoText(mimetype)` (`text/plain` / `null` / `undefined` $\to$ `TEXT_PRIMITIVE_MIMETYPE` `"text/markdown"`), and `isTransferCompatible(source, destination, sourceClassification?)` (permits verbatim `COPY`/`MOVE` between equal mimetypes or from any textual source into `text/plain` or `text/markdown`, `{§mimetype-content}`). `PathMimetype.resolve(pathname, defaultMimetype, mimetypes)` detects by extension and auto-normalizes `text/plain` to `text/markdown`.
 - **Packet transformation (`PacketSections`):** A scheme implementing `transformSections(sections: PacketSectionDraft[])` may add, remove, or reorder `{ name, slot: "system" | "user" | "assistant", header: string | null, content }` drafts before core token measurement (`{§packet-assembly}`), validated before and after by `PacketSections.assertDrafts` (unique non-empty names).
 - **Executor output schemes (`OutputScheme`, `Summarize`):** `OutputScheme.manifestFromRuntime(decl)` derives a read-only volatile data `SchemeManifest` from an executor `RuntimeDecl` (preserving `glyph` and `traits`); `Summarize.summarize(content, mimetype) -> OrientIndex` produces structural-only receipt indices.
 - **Resource capture (`ctx.resources.capture`, `MessageAttachments`):** Acquires ordered snapshots (`{ name, mediaType, contentHash, target, bytes }`) without performing `SEND` or transferring ownership (`{§op-methods-op-dispatch}`).
@@ -108,7 +108,7 @@ Additional framework helpers:
 | `binary(chunks, mimetype)` | Return bounded source `bytes`, nullable `readable: ProjectedText`, and `projectionIdentity`, consuming one async byte source under `{§mimetype-binary-input}`. |
 | `identity(mimetype)` | Return opaque identity of configured projection behavior for cache and materialization freshness. |
 | `isBinary(mimetype)` | Classify through the configured registry so installed handler declarations remain authoritative. |
-| `parseIssues(content, mimetype)` | Return nonnegative parser-recovery count, or `undefined` when unavailable (`{§mimetype-parse-issues}`). |
+| `parseIssues(content, mimetype)` | Return nonnegative parser-recovery count, or `undefined` when unavailable (`{§mimetype-channel-selection}`). |
 | `ProjectedText` | Derived Unicode plus output mimetype, source mimetype, and opaque projection identity. |
 
 ## §slicer-text-algebra Text, window, and pagination slicing

@@ -4,7 +4,7 @@ import type { HandlerContent } from "./BaseHandler.ts";
 import ParserCoordinates from "./ParserCoordinates.ts";
 import type { ExtractionVisitor, MimeRef, MimeSymbol } from "./types.ts";
 
-// ANTLR handler adapter ({§mimetype-backend-selection}). Subclasses supply the
+// ANTLR handler adapter ({§treesitter-runtime-gate}). Subclasses supply the
 // entry parse and visitor. A null tree is honest absence; thrown parser or
 // visitor failures retain their causal identity.
 export default abstract class AntlrExtractor extends BaseHandler {

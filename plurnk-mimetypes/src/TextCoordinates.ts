@@ -58,7 +58,7 @@ export default class TextCoordinates {
         return new TextCoordinates(content).logicalLines();
     }
 
-    // {§logical-line-count} — the one line count every consumer calls.
+    // {§mimetype-error-policy} — the one line count every consumer calls.
     static lineCount(content: string): number {
         return TextCoordinates.logicalLines(content).length;
     }

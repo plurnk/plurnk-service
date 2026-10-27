@@ -15,7 +15,7 @@ import type { TreeSitterNode } from "../TreeSitterExtractor.ts";
 //   var(iable)_declaration → variable (typed `x: T` and inferred `x := e`)
 //   type_declaration      → type
 //
-// Container semantics ({§mimetype-symbol-container}): top-level declarations are flat (procs are
+// Container semantics ({§mimetype-symbol}): top-level declarations are flat (procs are
 // never nested in structs). Struct/union fields carry the struct name as
 // container; enum constants carry the enum name.
 export function extract(root: TreeSitterNode, _content: string): TreeSitterSymbolProjection[] {

@@ -28,7 +28,7 @@ const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string;
 };
 
 // {§log-wire-format} — a projected PDF member names its document: source mimetype, the
-// handler's page count when the page tree is readable ({§mimetype-pdf-facts}), and its size.
+// handler's page count when the page tree is readable ({§mimetype-binary-input}), and its size.
 // {§channel-selection} — the stream address a log execution item recorded, when the scheme supplied it.
 const streamOf = (attributes: StoredEntryData["attributes"]): string | null => {
     const stream = attributes?.stream;

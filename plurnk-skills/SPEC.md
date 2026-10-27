@@ -126,7 +126,7 @@ serialized URI address the same resource, not separate skill identities.
 
 | Operation | Contract |
 | --- | --- |
-| Turn0 `FIND (skill://*/SKILL.md)` | One ordinary resource catalog: name, address, and standard frontmatter description via {§mimetype-summary}. No synthetic index, body injection, or execution. |
+| Turn0 `FIND (skill://*/SKILL.md)` | One ordinary resource catalog: name, address, and standard frontmatter description via {§mimetype-channel-selection}. No synthetic index, body injection, or execution. |
 | `READ (skill://<name>/SKILL.md)` | Original frontmatter and Markdown, unchanged; relative links remain relative to the source layout. |
 | `READ` / `FIND` below the authority | References, scripts, and assets retain their source paths and ordinary pattern, channel, byte, and multimodal semantics. Acquisition observes current source contents, including disappearance. |
 | ```` ```runtime (skill://<name>/scripts/program.ext) ```` | Ordinary resource execution and proposal policy; preserve the native file and its siblings under {§exec-target-routing}. Discovery and READ never execute scripts. |

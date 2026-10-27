@@ -137,7 +137,7 @@ export function withExtractor<T extends VisitorCtor>(Base: T): MixedCtor<T> {
             return null;
         }
 
-        // Visit children inside a named container scope ({§mimetype-symbol-container}): symbols
+        // Visit children inside a named container scope ({§mimetype-symbol}): symbols
         // added during the recursion carry `container` = the dotted path of
         // enclosing gateContainer names. Call after addSymbol-ing the
         // container's own symbol so it doesn't contain itself.

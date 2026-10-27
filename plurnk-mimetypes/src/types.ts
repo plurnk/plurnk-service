@@ -24,7 +24,7 @@ export interface MimeSymbol {
     endColumn?: number;
     params?: string[];
     level?: number;
-    // Qualified enclosing definition path ({§mimetype-symbol-container}).
+    // Qualified enclosing definition path ({§mimetype-symbol}).
     container?: string;
 }
 
@@ -54,7 +54,7 @@ export type RefKind =
     | "use";
 
 // One symbol use, with an optional enclosing definition path
-// ({§mimetype-references}, {§mimetype-reference-container}).
+// ({§mimetype-references}, {§mimetype-references}).
 export interface MimeRef {
     name: string;
     kind: RefKind;
@@ -80,10 +80,10 @@ export interface HandlerInfo {
     mimetype: string;
     glyph: string;
     packageName: string;
-    // Handler-owned behavior revision ({§mimetype-projection-identity}).
+    // Handler-owned behavior revision ({§mimetype-lifecycle}).
     projectionRevision: string;
     extensions: readonly string[];
-    // Package-level file-decoding declaration ({§mimetype-handler-content}).
+    // Package-level file-decoding declaration ({§mimetype-handler-contract}).
     binary: boolean;
     // Package-discovered handler or framework tree-sitter registry entry.
     source: "package" | "treesitter";
@@ -132,7 +132,7 @@ export interface QueryMatch {
     readonly matched: unknown;
     // Canonical structural locator when meaningful.
     readonly matching?: string;
-    // Exact selected source spans ({§mimetype-query-conformance}).
+    // Exact selected source spans ({§mimetype-query}).
     readonly regions?: ReadonlyArray<TextRegion>;
     // Presentation context when the selected value lacks exact source bounds.
     readonly enclosingRegions?: ReadonlyArray<TextRegion>;

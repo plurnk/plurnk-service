@@ -4,7 +4,7 @@ import { TextCoordinates, type TextRegion } from "@plurnk/plurnk-mimetypes";
 
 type HtmlNode = DefaultTreeAdapterMap["childNode"];
 
-// {§mimetype-content-query} — XPath traverses the same HTML tree that owns
+// {§mimetype-content} — XPath traverses the same HTML tree that owns
 // source locations. Implied nodes have no source span; there is no XML reparse.
 export default class HtmlSource {
     readonly tree: DefaultTreeAdapterMap["document"];

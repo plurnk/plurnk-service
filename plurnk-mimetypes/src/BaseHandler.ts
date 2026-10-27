@@ -12,7 +12,7 @@ import type {
 } from "./types.ts";
 
 // Handler content union; file decoding follows the package declaration while
-// inline callers supply either member directly ({§mimetype-handler-content}).
+// inline callers supply either member directly ({§mimetype-handler-contract}).
 export type HandlerContent = string | Uint8Array;
 
 // Default handler projections ({§mimetype-handler-contract}).
@@ -54,7 +54,7 @@ export default class BaseHandler {
         return undefined;
     }
 
-    // {§mimetype-projection-facts} — small structured facts about the source (an image's
+    // {§mimetype-binary-input} — small structured facts about the source (an image's
     // dimensions) that ride its readable projection; absent by default.
     facts(_content: HandlerContent): unknown {
         return undefined;
@@ -66,20 +66,20 @@ export default class BaseHandler {
     }
 
     // Positive parser-recovery sites are advisory metadata; the default
-    // handler has no parser evidence ({§mimetype-parse-issues}).
+    // handler has no parser evidence ({§mimetype-channel-selection}).
     parseIssues(_content: HandlerContent): number | Promise<number> {
         return 0;
     }
 
     // Optional semantic document summary. The orchestrator requests and
     // normalizes it independently of structural projections
-    // ({§mimetype-summary}).
+    // ({§mimetype-channel-selection}).
     summary(_content: HandlerContent): string | undefined | Promise<string | undefined> {
         return undefined;
     }
 
     // Canonical effective settings that can change projection output
-    // ({§mimetype-projection-identity}).
+    // ({§mimetype-lifecycle}).
     projectionConfiguration(): string | Promise<string> {
         return "";
     }
@@ -89,7 +89,7 @@ export default class BaseHandler {
         // Default handlers retain nothing.
     }
 
-    // Unbudgeted human/diagnostic rendering ({§mimetype-outline}).
+    // Unbudgeted human/diagnostic rendering ({§mimetype-symbol}).
     async symbolsRaw(content: HandlerContent): Promise<string> {
         return format(await this.extractRaw(content));
     }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Coordinated grammar maintenance for {§grammar-package-lifecycle}.
+// Coordinated grammar maintenance for {§mimetype-grammar-packages}.
 import { execFile } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -9,7 +9,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run grammars:check | npm run grammars:update   (from plurnk-mimetypes)
-Coordinated grammar package maintenance ({§grammar-package-lifecycle}): check reports what an update would change; update regenerates the packages and commits them, signed.
+Coordinated grammar package maintenance ({§mimetype-grammar-packages}): check reports what an update would change; update regenerates the packages and commits them, signed.
 Reads: PLURNK_MIMETYPES_GRAMMARS_ROOT and the grammar sources.
 Writes: with update, the grammar packages and one signed commit.
 `);

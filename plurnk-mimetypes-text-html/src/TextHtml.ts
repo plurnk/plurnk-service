@@ -19,8 +19,8 @@ import * as xpath from "xpath";
 import { htmlToMarkdown } from "./htmlToMarkdown.ts";
 import { markdownWrapColumns } from "./wrapMarkdown.ts";
 
-// text/html + application/xhtml+xml handler. Symbols are {§html-symbols}; deepJson is
-// {§html-tree}; structural queries address the parse5 tree ({§html-source-regions}).
+// text/html + application/xhtml+xml handler. Symbols are {§html-readable-text}; deepJson is
+// {§html-readable-text}; structural queries address the parse5 tree ({§html-readable-text}).
 
 type Element = DefaultTreeAdapterMap["element"];
 type ChildNode = DefaultTreeAdapterMap["childNode"];
