@@ -4,8 +4,7 @@
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
-import Guard, { GuardBlockedError } from "./Guard.ts";
-import HostPolicy, { HOSTS_ENV, HostPolicyError } from "./HostPolicy.ts";
+import Guard, { GuardBlockedError, HostPolicy } from "./Guard.ts";
 import { requestUrl } from "../../scripts/lib/test-fetch.ts";
 
 test("{§http-host-policy} isPublicAddress: blocks RFC-reserved v4 ranges", () => {
@@ -175,6 +174,7 @@ test("{§http-host-policy} Guard.fetch: cancels a followed redirect response bod
 });
 
 {
+const HOSTS_ENV = "PLURNK_SCHEMES_HTTP_HOSTS";
 const withPolicy = (value: string | undefined, run: () => void): void => {
     const prior = process.env[HOSTS_ENV];
     if (value === undefined) delete process.env[HOSTS_ENV]; else process.env[HOSTS_ENV] = value;
@@ -190,7 +190,6 @@ test("{§http-host-policy} unset or empty admits every host", () => {
 test("{§http-host-policy} [] admits no host; a list admits exact hosts and wildcard subdomains", () => {
     withPolicy("[]", () => {
         assert.equal(HostPolicy.permits("https://api.github.com/search/issues"), false);
-        assert.throws(() => HostPolicy.require("https://api.github.com/x"), HostPolicyError);
     });
     withPolicy('["api.example.com", "*.docs.example.org"]', () => {
         assert.equal(HostPolicy.permits("https://api.example.com/v1"), true);

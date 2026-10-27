@@ -1,51 +1,42 @@
 // One outbound HTTP request from a statement, with its bounded error detail. Split out of Http.
-import type { SchemeCtx, SubscriptionHandle, StreamSubscription, ChannelProducerResult, PassthroughResult, SchemeManifest, UrlPath, EntryData, SchemeResult } from "@plurnk/plurnk-schemes";
+import type {
+    PassthroughResult,
+    SchemeCtx,
+    SchemeManifest,
+    SubscriptionHandle,
+    UrlPath,
+} from "@plurnk/plurnk-schemes";
 import { MimetypeClassifier, NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { outboundFetch } from "@plurnk/plurnk-meta";
-import ErrorDetail from "./ErrorDetail.ts";
-import WebFetcher, { webUserAgent, WebMaterializationError } from "./WebFetcher.ts";
-import { responseMimetype } from "./ContentType.ts";
-import { BODY } from "./http-names.ts";
-import LiveAcquisitions from "./LiveAcquisitions.ts";
-import HostPolicy from "./HostPolicy.ts";
+import { HostPolicy } from "./Guard.ts";
+import {
+    BODY,
+    LiveAcquisitions,
+    errorDetail,
+    httpAddress,
+    httpBad,
+    httpCancelled,
+    httpMaterializationFailure,
+    httpPassthrough,
+    parseRequestHeaders,
+    responseHeader,
+    responseMimetype,
+    seedEntry,
+    webUserAgent,
+    writeProjectionIdentity,
+} from "./HttpShared.ts";
+import WebFetcher, { WebMaterializationError } from "./WebFetcher.ts";
 
 export default class HttpRequester {
     readonly #manifest: SchemeManifest;
-    readonly #address: (target: UrlPath) => NetworkAddress | PassthroughResult;
-    readonly #requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
-    readonly #bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
-    readonly #seedEntry: () => EntryData;
-    readonly #passthrough: (result: SchemeResult) => PassthroughResult & ChannelProducerResult;
-    readonly #responseHeader: (method: string, status: number, statusText: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
-    readonly #writeProjectionIdentity: (subscription: StreamSubscription, identity: string) => Promise<void>;
-    readonly #cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
-    readonly #materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
-
     readonly #live: LiveAcquisitions;
-    constructor({ live, manifest, address, requestHeaders, bad, seedEntry, passthrough, responseHeader, writeProjectionIdentity, cancelled, materializationFailure }: {
-        manifest: SchemeManifest;
-        address: (target: UrlPath) => NetworkAddress | PassthroughResult;
-        requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
-        bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
-        seedEntry: () => EntryData;
-        passthrough: (result: SchemeResult) => PassthroughResult & ChannelProducerResult;
-        responseHeader: (method: string, status: number, statusText: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
-        writeProjectionIdentity: (subscription: StreamSubscription, identity: string) => Promise<void>;
-        cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
-        materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
+
+    constructor({ live, manifest }: {
         live: LiveAcquisitions;
+        manifest: SchemeManifest;
     }) {
         this.#live = live;
         this.#manifest = manifest;
-        this.#address = address;
-        this.#requestHeaders = requestHeaders;
-        this.#bad = bad;
-        this.#seedEntry = seedEntry;
-        this.#passthrough = passthrough;
-        this.#responseHeader = responseHeader;
-        this.#writeProjectionIdentity = writeProjectionIdentity;
-        this.#cancelled = cancelled;
-        this.#materializationFailure = materializationFailure;
     }
 
     // Mutation responses use the same entry/channel and subscription primitives
@@ -58,16 +49,16 @@ export default class HttpRequester {
         method: string,
         body: string | undefined,
     ): Promise<PassthroughResult> {
-        const address = this.#address(target);
+        const address = httpAddress(target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
         const { pathname } = address;
-        const headers = this.#requestHeaders(metadata);
+        const headers = parseRequestHeaders(metadata);
         if (!Array.isArray(headers)) return headers;
         const publishedChannel = target.fragment ?? this.#manifest.defaultChannel;
         if (!Object.hasOwn(this.#manifest.channels, publishedChannel)) {
             const availableChannels = Object.keys(this.#manifest.channels);
-            return this.#bad(
+            return httpBad(
                 404,
                 "http",
                 "channel-not-found",
@@ -88,8 +79,8 @@ export default class HttpRequester {
 
         // {§http-lifecycle} open() binds an existing entry, so the handler seeds
         // its manifest-owned channel shape before subscribing.
-        const written = await ctx.entries.write(pathname, this.#seedEntry());
-        if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
+        const written = await ctx.entries.write(pathname, seedEntry());
+        if (Results.isErrorStatus(written.status)) return httpPassthrough(written);
 
         // open() returns the session+teardown-composed signal — fires on loop.cancel
         // OR our local teardown. Wire it so either path aborts acquisition.
@@ -110,7 +101,7 @@ export default class HttpRequester {
             // {§http-host-policy} — a followed redirect may not leave the operator's hosts.
             if (response.url !== "" && !HostPolicy.permits(response.url)) {
                 await response.body?.cancel();
-                return this.#bad(403, "http", "host-not-permitted", `${new URL(response.url).hostname} is outside the operator's web host policy.`, {
+                return httpBad(403, "http", "host-not-permitted", `${new URL(response.url).hostname} is outside the operator's web host policy.`, {
                     target: url,
                     stage: "acquisition",
                     retryable: false,
@@ -121,7 +112,7 @@ export default class HttpRequester {
 
             // {§http-lifecycle} — completed binary input uses ordinary entry byte storage;
             // text responses retain their incremental subscription path.
-            const header = this.#responseHeader(method, response.status, response.statusText, [...response.headers], headers);
+            const header = responseHeader(method, response.status, response.statusText, [...response.headers], headers);
             await subscription.notifyChunk("header", header, "text/plain");
             const bodyMime = responseMime;
             if (response.body === null) {
@@ -146,19 +137,23 @@ export default class HttpRequester {
                     await subscription.notifyChunk(BODY, "", bodyMime);
                     throw error;
                 }
-                const stored = await ctx.entries.write(pathname, { channels: {
-                    body: { content: "", bytes: projected.bytes, mimetype: bodyMime, state: "active" },
-                    header: { content: header, mimetype: "text/plain", state: "active" },
-                    ...(projected.readable === null ? {} : { readable: {
-                        content: projected.readable.content, mimetype: projected.readable.mimetype, state: "active" as const,
-                    } }),
-                } });
+                const stored = await ctx.entries.write(pathname, {
+                    channels: {
+                        body: { content: "", bytes: projected.bytes, mimetype: bodyMime, state: "active" },
+                        header: { content: header, mimetype: "text/plain", state: "active" },
+                        ...(projected.readable === null ? {} : {
+                            readable: {
+                                content: projected.readable.content, mimetype: projected.readable.mimetype, state: "active" as const,
+                            },
+                        }),
+                    },
+                });
                 if (Results.isErrorStatus(stored.status)) {
-                    const result = this.#passthrough(stored);
+                    const result = httpPassthrough(stored);
                     await subscription.close(result, result.problem?.detail);
                     return result;
                 }
-                await this.#writeProjectionIdentity(subscription, projected.projectionIdentity);
+                await writeProjectionIdentity(subscription, projected.projectionIdentity);
                 await subscription.close({ status: 200 }, `HTTP ${response.status}; ${projected.bytes.byteLength} bytes`);
                 return { shape: "passthrough", status: 102 };
             }
@@ -188,21 +183,19 @@ export default class HttpRequester {
             }
             const aborted = local.signal.aborted;
             if (aborted) {
-                const result = this.#cancelled(url, method);
+                const result = httpCancelled(url, method);
                 await subscription.close(result, result.problem?.detail);
                 return result;
             }
             if (err instanceof WebMaterializationError) {
-                const result = this.#materializationFailure(url, method, err);
+                const result = httpMaterializationFailure(url, method, err);
                 await subscription.close(result, result.problem?.detail);
                 return result;
             }
             console.error("HTTP acquisition failed", { method, url, err });
-            const cause = ErrorDetail.preview(err);
+            const cause = errorDetail.preview(err);
             const reason = `HTTP ${method} ${url} failed: ${cause}`;
-            // The remaining catch owns acquisition failure; cancellation and
-            // typed materialization failures settled above.
-            const result = this.#bad(
+            const result = httpBad(
                 502,
                 "http",
                 "fetch-failed",
@@ -221,5 +214,4 @@ export default class HttpRequester {
             subscription.removeEventListener("abort", onAbort);
         }
     }
-
 }

@@ -5,9 +5,5 @@ export { default as Http } from "./Http.ts";
 // The registered WebSocket handler {§ws-lifecycle}.
 export { default as Ws } from "./Ws.ts";
 
-// Automatic entry-acquisition primitive {§prefetch} and its URL check.
+// Automatic entry-acquisition primitive {§prefetch}.
 export { default as WebFetcher } from "./WebFetcher.ts";
-export { default as MaterializerRegistry, type HttpMaterializer, type MaterializerResult } from "./Materializer.ts";
-export { PROJECTION_ID_HEADER, WebMaterializationError } from "./WebFetcher.ts";
-export type { WebFetchResult, WebMaterializedResult } from "./WebFetcher.ts";
-export { default as Guard, GuardBlockedError } from "./Guard.ts";

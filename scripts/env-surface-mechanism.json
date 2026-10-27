@@ -25,7 +25,7 @@
     "plurnk-providers/src/ModelRequestBody.ts:MANUAL_REASONING_MINIMUM": "the provider protocol's own minimum reasoning allowance",
     "plurnk-providers/src/capacity.ts:WIRE_FLEX_MARGIN": "safety margin of the flexed-allowance arithmetic; the budgets it protects are provider knobs",
     "plurnk-schedule/src/Scheduler.ts:DIAGNOSTIC_LIMIT": "length of a diagnostic excerpt inside a delivery Problem",
-    "plurnk-schemes-http/src/Http.ts:DELTA_SECONDS_LIMIT": "RFC 9111's delta-seconds ceiling (2^31)",
+    "plurnk-schemes-http/src/HttpCache.ts:DELTA_SECONDS_LIMIT": "RFC 9111's delta-seconds ceiling (2^31)",
     "plurnk-schemes-http/src/HttpGet.ts:LLMS_TEXT_ATTEMPT_TTL_MS": "negative cache of an origin's llms.txt probe; courtesy pacing, not acquisition policy",
     "plurnk-skills/src/SkillSource.ts:TOOL_OUTPUT_BYTES": "child-process output buffer ceiling; the fetch's deadline is PLURNK_SKILLS_FETCH_TIMEOUT_MS"
 }

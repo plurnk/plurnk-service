@@ -1,72 +1,53 @@
 // The GET path of the http scheme: the fetch, event-stream opening, and the llms.txt piggyback. Split out of Http.
-import type { SchemeCtx, SubscriptionHandle, StreamSubscription, ChannelProducerResult, PassthroughResult, RepresentationPreparationResult, UrlPath, EntryData, StoredEntryData, SchemeResult, ProjectionCaps } from "@plurnk/plurnk-schemes";
+import type {
+    EntryData,
+    PassthroughResult,
+    RepresentationPreparationResult,
+    SchemeCtx,
+    StoredEntryData,
+    SubscriptionHandle,
+    UrlPath,
+} from "@plurnk/plurnk-schemes";
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
+import {
+    fresh,
+    materializerIdentity,
+    refreshAfter304,
+    requestMethod,
+    reusableGetRepresentation,
+    revalidationCorresponds,
+    sourceMimetype,
+    validators,
+} from "./HttpCache.ts";
+import {
+    BODY,
+    HEADER,
+    LiveAcquisitions,
+    httpAddress,
+    httpBad,
+    httpCancelled,
+    httpMaterializationFailure,
+    httpPassthrough,
+    parseRequestHeaders,
+    requireFlagEnv,
+    seedEntry,
+    settleEventStream,
+} from "./HttpShared.ts";
 import WebFetcher, { WebMaterializationError, type WebFetchResult } from "./WebFetcher.ts";
-import { BODY, HEADER } from "./http-names.ts";
-import LiveAcquisitions from "./LiveAcquisitions.ts";
-import { requireFlagEnv } from "./Config.ts";
 
 const LLMS_TEXT_ATTEMPT_TTL_MS = 3_600_000;
 
 export default class HttpGet {
     readonly #webFetcher: WebFetcher;
-    readonly #address: (target: UrlPath) => NetworkAddress | PassthroughResult;
-    readonly #requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
-    readonly #passthrough: (result: SchemeResult) => PassthroughResult & ChannelProducerResult;
-    readonly #requestMethod: (priorHeader: string) => string | undefined;
-    readonly #reusableGetRepresentation: (entry: StoredEntryData, requestHeaders: ReadonlyArray<readonly [string, string]>, projection: ProjectionCaps) => Promise<boolean>;
-    readonly #materializerIdentity: (priorHeader: string) => string | undefined;
-    readonly #validators: (priorHeader: string) => Array<[string, string]>;
-    readonly #materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
-    readonly #sourceMimetype: (header: string) => string;
-    readonly #fresh: (header: string, now?: number) => boolean;
-    readonly #cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
-    readonly #bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
-    readonly #revalidationCorresponds: (priorHeader: string, responseHeaders: Headers) => boolean;
-    readonly #refreshAfter304: (header: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
-    readonly #seedEntry: () => EntryData;
-    readonly #settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal }) => Promise<void>;
     readonly #llmsTextAttempts = new Map<string, number>();
-
     readonly #live: LiveAcquisitions;
-    constructor({ live, webFetcher, address, requestHeaders, passthrough, requestMethod, reusableGetRepresentation, materializerIdentity, validators, materializationFailure, sourceMimetype, fresh, cancelled, bad, revalidationCorresponds, refreshAfter304, seedEntry, settleEventStream }: {
-        webFetcher: WebFetcher;
-        address: (target: UrlPath) => NetworkAddress | PassthroughResult;
-        requestHeaders: (metadata: readonly string[] | null) => Array<[string, string]> | (PassthroughResult & ChannelProducerResult);
-        passthrough: (result: SchemeResult) => PassthroughResult & ChannelProducerResult;
-        requestMethod: (priorHeader: string) => string | undefined;
-        reusableGetRepresentation: (entry: StoredEntryData, requestHeaders: ReadonlyArray<readonly [string, string]>, projection: ProjectionCaps) => Promise<boolean>;
-        materializerIdentity: (priorHeader: string) => string | undefined;
-        validators: (priorHeader: string) => Array<[string, string]>;
-        materializationFailure: (url: string, method: string, error: WebMaterializationError) => PassthroughResult & ChannelProducerResult;
-        sourceMimetype: (header: string) => string;
-        fresh: (header: string, now?: number) => boolean;
-        cancelled: (url: string, method: string) => PassthroughResult & ChannelProducerResult;
-        bad: (status: number, scheme: string, kind: string, message: string, extensions?: Readonly<Record<string, unknown>>) => PassthroughResult & ChannelProducerResult;
-        revalidationCorresponds: (priorHeader: string, responseHeaders: Headers) => boolean;
-        refreshAfter304: (header: string, responseHeaders: ReadonlyArray<readonly [string, string]>, requestHeaders: ReadonlyArray<readonly [string, string]>) => string;
-        seedEntry: () => EntryData;
-        settleEventStream: (subscription: StreamSubscription, response: Response, options: { url: string; method: string; signal: AbortSignal }) => Promise<void>;
+
+    constructor({ live, webFetcher }: {
         live: LiveAcquisitions;
+        webFetcher: WebFetcher;
     }) {
         this.#live = live;
         this.#webFetcher = webFetcher;
-        this.#address = address;
-        this.#requestHeaders = requestHeaders;
-        this.#passthrough = passthrough;
-        this.#requestMethod = requestMethod;
-        this.#reusableGetRepresentation = reusableGetRepresentation;
-        this.#materializerIdentity = materializerIdentity;
-        this.#validators = validators;
-        this.#materializationFailure = materializationFailure;
-        this.#sourceMimetype = sourceMimetype;
-        this.#fresh = fresh;
-        this.#cancelled = cancelled;
-        this.#bad = bad;
-        this.#revalidationCorresponds = revalidationCorresponds;
-        this.#refreshAfter304 = refreshAfter304;
-        this.#seedEntry = seedEntry;
-        this.#settleEventStream = settleEventStream;
     }
 
     async prepareGet(
@@ -75,39 +56,39 @@ export default class HttpGet {
         pathname: string,
         ctx: SchemeCtx,
     ): Promise<RepresentationPreparationResult> {
-        const address = this.#address(target);
+        const address = httpAddress(target);
         if (!(address instanceof NetworkAddress)) return address;
         const { url } = address;
-        const requestHeaders = this.#requestHeaders(metadata);
+        const requestHeaders = parseRequestHeaders(metadata);
         if (!Array.isArray(requestHeaders)) return requestHeaders;
         let cached: StoredEntryData | undefined;
         const conditional: Array<[string, string]> = [];
         const prior = await ctx.entries.read(pathname);
         if (Results.isErrorStatus(prior.status) && prior.status !== 404) {
-            return this.#passthrough(prior);
+            return httpPassthrough(prior);
         }
         const priorBody = prior.entry?.channels[BODY];
         const priorHeader = prior.entry?.channels[HEADER];
-        if (prior.entry !== null && this.#requestMethod(priorHeader?.content ?? "") === undefined) {
+        if (prior.entry !== null && requestMethod(priorHeader?.content ?? "") === undefined) {
             return { status: 200 };
         }
         if (prior.entry !== null && priorBody !== undefined && priorHeader !== undefined) {
             try {
-                if (await this.#reusableGetRepresentation(prior.entry, requestHeaders, ctx.projection)) {
+                if (await reusableGetRepresentation(prior.entry, requestHeaders, ctx.projection)) {
                     cached = prior.entry;
-                    if (this.#materializerIdentity(priorHeader.content) === undefined) {
-                        conditional.push(...this.#validators(priorHeader.content));
+                    if (materializerIdentity(priorHeader.content) === undefined) {
+                        conditional.push(...validators(priorHeader.content));
                     }
                 }
             } catch (cause) {
-                return this.#materializationFailure(
+                return httpMaterializationFailure(
                     url,
                     "GET",
-                    new WebMaterializationError(this.#sourceMimetype(priorHeader.content), cause),
+                    new WebMaterializationError(sourceMimetype(priorHeader.content), cause),
                 );
             }
         }
-        if (cached !== undefined && this.#fresh(cached.channels[HEADER].content)) {
+        if (cached !== undefined && fresh(cached.channels[HEADER].content)) {
             return { status: 200 };
         }
 
@@ -128,7 +109,7 @@ export default class HttpGet {
                 preserveUnavailable: true,
             });
             if (fetched === null) {
-                return this.#bad(
+                return httpBad(
                     404,
                     "http",
                     "not-materialized",
@@ -143,7 +124,7 @@ export default class HttpGet {
 
             if (fetched.status === 304) {
                 if (cached === undefined) {
-                    return this.#bad(
+                    return httpBad(
                         502,
                         "http",
                         "fetch-failed",
@@ -157,8 +138,8 @@ export default class HttpGet {
                     );
                 }
                 const cachedHeader = cached.channels[HEADER].content;
-                if (this.#materializerIdentity(cachedHeader) !== undefined) {
-                    return this.#bad(
+                if (materializerIdentity(cachedHeader) !== undefined) {
+                    return httpBad(
                         502,
                         "http",
                         "fetch-failed",
@@ -172,7 +153,7 @@ export default class HttpGet {
                     );
                 }
                 const responseHeaders = fetched.responseHeaders ?? [];
-                if (this.#revalidationCorresponds(
+                if (revalidationCorresponds(
                     cachedHeader,
                     new Headers(responseHeaders.map(([name, value]) => [name, value])),
                 )) {
@@ -180,13 +161,13 @@ export default class HttpGet {
                         ...cached.channels,
                         [HEADER]: {
                             ...cached.channels[HEADER],
-                            content: this.#refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
+                            content: refreshAfter304(cachedHeader, responseHeaders, requestHeaders),
                         },
                     };
                     const written = await ctx.entries.write(pathname, {
                         channels,
                     });
-                    if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
+                    if (Results.isErrorStatus(written.status)) return httpPassthrough(written);
                     return { status: 200 };
                 }
                 // {§revalidation}: reacquire once without conditionals when
@@ -199,7 +180,7 @@ export default class HttpGet {
                     preserveUnavailable: true,
                 });
                 if (fetched === null) {
-                    return this.#bad(
+                    return httpBad(
                         404,
                         "http",
                         "not-materialized",
@@ -212,7 +193,7 @@ export default class HttpGet {
                     );
                 }
                 if (fetched.status === 304) {
-                    return this.#bad(
+                    return httpBad(
                         502,
                         "http",
                         "fetch-failed",
@@ -238,21 +219,20 @@ export default class HttpGet {
             const written = await ctx.entries.write(pathname, {
                 channels: WebFetcher.materializedChannels(materialized, { url, method: "GET" }),
             });
-            if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
+            if (Results.isErrorStatus(written.status)) return httpPassthrough(written);
             await this.#piggybackLlmsText(address, ctx);
             return { status: 200 };
         } catch (error) {
             const cause = error instanceof WebMaterializationError ? error.cause : error;
-            if (signal.aborted && cause === signal.reason) return this.#cancelled(url, "GET");
+            if (signal.aborted && cause === signal.reason) return httpCancelled(url, "GET");
             if (error instanceof WebMaterializationError) {
-                return this.#materializationFailure(url, "GET", error);
+                return httpMaterializationFailure(url, "GET", error);
             }
             throw error;
         } finally {
             release();
         }
     }
-
 
     async #openEventStream(
         address: NetworkAddress,
@@ -272,13 +252,13 @@ export default class HttpGet {
         };
         // {§revalidation} — the open stream stays cancellable by a KILL of its address until it settles.
         const releaseStream = this.#live.track(LiveAcquisitions.key(ctx.workspaceId, address.url), local);
-        const written = await ctx.entries.write(address.pathname, this.#seedEntry());
-        if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
+        const written = await ctx.entries.write(address.pathname, seedEntry());
+        if (Results.isErrorStatus(written.status)) return httpPassthrough(written);
         const subscription = await ctx.subscriptions.open(address.pathname, handle);
         if (fetched.header !== undefined) {
             await subscription.notifyChunk(HEADER, fetched.header, "text/plain");
         }
-        void this.#settleEventStream(subscription, response, {
+        void settleEventStream(subscription, response, {
             url: address.url,
             method: "GET",
             signal: local.signal,
@@ -287,7 +267,6 @@ export default class HttpGet {
         }).finally(() => releaseStream());
         return { shape: "passthrough", status: 102 };
     }
-
 
     // {§http-lifecycle} — after a successful generic GET materialization,
     // acquire <origin>/llms.txt once per TTL window and materialize it as its
@@ -324,5 +303,4 @@ export default class HttpGet {
             // Quiet by contract: 404, guard rejection, network error, binary.
         }
     }
-
 }

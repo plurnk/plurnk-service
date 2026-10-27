@@ -26,7 +26,7 @@ import type {
 import { NetworkAddress, Results } from "@plurnk/plurnk-schemes";
 import { syncAmbientHttp } from "@plurnk/plurnk-meta";
 import { readFile } from "node:fs/promises";
-import HostPolicy from "./HostPolicy.ts";
+import { HostPolicy } from "./Guard.ts";
 
 // The inbound-frame channel - every message the origin pushes streams here.
 const MESSAGES = "messages";

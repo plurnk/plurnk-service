@@ -16,20 +16,32 @@ import {
 } from "@plurnk/plurnk-schemes";
 import { formatJsonDocument } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
-import Guard, { GuardBlockedError } from "./Guard.ts";
-import { responseMimetype } from "./ContentType.ts";
+import Guard, { GuardBlockedError, HostPolicy } from "./Guard.ts";
 import MaterializerRegistry, { type HttpMaterializer } from "./Materializer.ts";
-import { requirePositiveIntegerEnv, requireTextEnv } from "./Config.ts";
-import ErrorDetail from "./ErrorDetail.ts";
-import HostPolicy from "./HostPolicy.ts";
+import {
+    CACHE_VARIANT_HEADER,
+    MATERIALIZER_ID_HEADER,
+    PROJECTION_ID_HEADER,
+    cacheVariantEvidence,
+    classifyCacheVariant,
+    errorDetail,
+    requirePositiveIntegerEnv,
+    responseMimetype,
+    webUserAgent,
+    type CacheVariant,
+} from "./HttpShared.ts";
 
-// {§operator-config-precedence} — which identity a request presents is the operator's choice, and a
-// browser impersonation least of all belongs buried in code.
-export const webUserAgent = (): string => requireTextEnv("PLURNK_SCHEMES_HTTP_USER_AGENT");
+export {
+    CACHE_VARIANT_HEADER,
+    MATERIALIZER_ID_HEADER,
+    PROJECTION_ID_HEADER,
+    cacheVariantEvidence,
+    classifyCacheVariant,
+    webUserAgent,
+    type CacheVariant,
+};
+
 export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";
-export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
-export const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
-export const MATERIALIZER_ID_HEADER = "x-plurnk-materializer-id";
 // The operator's materializer selection ({§http-lifecycle}): a
 // discovered materializer id; unset/empty means the built-in local projection
 // is the only body producer.
@@ -37,19 +49,6 @@ export const MATERIALIZER_ENV = "PLURNK_SCHEMES_HTTP_MATERIALIZER";
 const ORIGIN_MARKDOWN_MATERIALIZER_ID = "origin-markdown:v1";
 const LOCAL_UNCONFIGURED_MATERIALIZER_ID = "local-projection:v1:unconfigured";
 const LOCAL_INELIGIBLE_MATERIALIZER_ID = "local-projection:v1:ineligible";
-
-export type CacheVariant = "default" | "bypass";
-
-export const classifyCacheVariant = (
-    requestHeaders: ReadonlyArray<readonly [string, string]>,
-    responseHeaders: ReadonlyArray<readonly [string, string]>,
-): CacheVariant => requestHeaders.length === 0
-    && !responseHeaders.some(([name]) => name.toLowerCase() === "vary")
-    ? "default"
-    : "bypass";
-
-export const cacheVariantEvidence = (variant: CacheVariant): string =>
-    `${CACHE_VARIANT_HEADER}: ${variant}`;
 
 const rewriteAcquisitionTarget = (url: string): string => {
     const gh = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/.exec(url);
@@ -115,7 +114,7 @@ export default class WebFetcher implements WebMaterializer {
     }
 
     static unavailable(url: string, cause: unknown, allowConfiguredMaterializer: boolean): WebFetchResult {
-        const detail = ErrorDetail.preview(cause);
+        const detail = errorDetail.preview(cause);
         const originFailure = {
             status: 502,
             code: "fetch-failed",
