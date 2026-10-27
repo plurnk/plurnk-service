@@ -33,7 +33,7 @@ export default class Digest {
     }
 
     static #runSettled(opts: DigestOptions): void {
-        // {§digest-programmatic-surface}: refuse the destination before opening evidence.
+        // {§share-packet-names}: refuse the destination before opening evidence.
         const { dbPath, digestDir } = digestPaths(opts);
         // {§share}: the digest never deletes; a caller reusing a folder removes it first.
         if (existsSync(digestDir) && (!statSync(digestDir).isDirectory() || readdirSync(digestDir).length > 0)) {
@@ -65,7 +65,7 @@ export default class Digest {
             derivation_artifacts_building: derivationState.building,
         };
 
-        // {§digest-programmatic-surface} — optional session/workspace selectors narrow the
+        // {§share-packet-names} — optional session/workspace selectors narrow the
         // kept session graph and its dependent evidence rather than emitting the whole DB.
         if (opts.sessionId !== undefined) sessions = sessions.filter((r) => r.id === opts.sessionId);
         if (opts.workspaceId !== undefined) sessions = sessions.filter((r) => r.workspace_id === opts.workspaceId);

@@ -37,7 +37,7 @@ test("{§agent-skills-directory} validates the standard discovery fields", () =>
     assert.throws(() => parse(`---\nname: sample\ndescription: ${"x".repeat(1025)}\n---\n`), /description exceeds 1024/);
 });
 
-test("{§agent-skills-name} accepts standard Unicode names without rewriting identity", () => {
+test("{§agent-skills-directory} accepts standard Unicode names without rewriting identity", () => {
     for (const name of ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "skill", "𐐨".repeat(64)]) {
         const raw = `---\nname: ${name}\ndescription: ${"🔍".repeat(1024)}\n---\nRead guide.md.\n`;
         const doc = parseSkill(`/skills/${name}/SKILL.md`, name, raw);

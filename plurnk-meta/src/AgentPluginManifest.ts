@@ -12,7 +12,7 @@ export interface PluginAuthor {
     readonly url?: string;
 }
 
-// {§agent-plugins-manifest} The permitted fields of a 1.0.0 manifest; unknown fields never survive validation.
+// {§agent-plugins-roots} The permitted fields of a 1.0.0 manifest; unknown fields never survive validation.
 export interface PluginManifest {
     readonly $schema: typeof PLUGIN_SCHEMA;
     readonly name: string;
@@ -35,7 +35,7 @@ const STRINGS = ["version", "description", "homepage", "repository", "license"] 
 const AUTHOR = new Set(["name", "email", "url"]);
 const NAME = /^(?!.*(?:--|\.\.))[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/u;
 
-// {§agent-plugins-manifest} Unknown fields and a non-object `extensions` are the only non-fatal violations.
+// {§agent-plugins-roots} Unknown fields and a non-object `extensions` are the only non-fatal violations.
 export const validateManifest = (value: unknown): ManifestResult => {
     if (!isObject(value)) return { rejected: { section: "5.2", message: "plugin.json must contain a top-level JSON object" }, ignored: [] };
     const ignored: Finding[] = Object.keys(value).filter((key) => !FIELDS.has(key))

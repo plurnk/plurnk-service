@@ -729,7 +729,7 @@ test("{§mcp-setup} environment resolution cannot open a connection after produc
 });
 
 for (const phase of ["environment", "directory", "catalog"] as const) {
-    test(`{§functionality-preparation-cancellation} MCP cancellation during ${phase} retains no candidate`, async (t) => {
+    test(`{§functionality-adapter} MCP cancellation during ${phase} retains no candidate`, async (t) => {
         const h = harness();
         const lifetime = new AbortController();
         const entered = Promise.withResolvers<void>();
@@ -767,7 +767,7 @@ for (const phase of ["environment", "directory", "catalog"] as const) {
     });
 }
 
-test("{§functionality-preparation-cancellation} MCP cancellation preserves candidate cleanup failure", async (t) => {
+test("{§functionality-adapter} MCP cancellation preserves candidate cleanup failure", async (t) => {
     const h = harness();
     const lifetime = new AbortController();
     const reason = new DOMException("fixture stopping", "AbortError");
@@ -790,7 +790,7 @@ test("{§functionality-preparation-cancellation} MCP cancellation preserves cand
 });
 
 for (const cleanupFails of [false, true]) {
-    test(`{§functionality-preparation-cancellation} parallel cancellation joins every candidate and preserves later cleanup failures (${cleanupFails})`, async (t) => {
+    test(`{§functionality-adapter} parallel cancellation joins every candidate and preserves later cleanup failures (${cleanupFails})`, async (t) => {
         const h = harness();
         const lifetime = new AbortController();
         const entered = Promise.withResolvers<void>();
@@ -1732,7 +1732,7 @@ test("{§mcp-module} a failing registry is a Problem, never an empty result", as
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-module} {§functionality-discovery-inputs} with no registry the family declares no discovery", async () => {
+test("{§mcp-module} {§functionality-adapter} with no registry the family declares no discovery", async () => {
     const h = harness({ PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "5" });
     await h.setup();
     try {
@@ -1742,7 +1742,7 @@ test("{§mcp-module} {§functionality-discovery-inputs} with no registry the fam
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-module} {§module-contained-configuration} an invalid registry setting withholds discovery alone and is reported", async () => {
+test("{§mcp-module} {§module-contract} an invalid registry setting withholds discovery alone and is reported", async () => {
     for (const [env, key] of [
         [{ PLURNK_MCP_REGISTRY_URL: "file:///registry", PLURNK_MCP_REGISTRY_LIMIT: "5" }, "PLURNK_MCP_REGISTRY_URL"],
         [{ PLURNK_MCP_REGISTRY_URL: "https://registry.example", PLURNK_MCP_REGISTRY_LIMIT: "0" }, "PLURNK_MCP_REGISTRY_LIMIT"],

@@ -1,182 +1,42 @@
 # Plurnk skills specification
 
-## Module
+## §skills-module 1. Module, Workspace Family, and Configuration
 
-§skills-module **Skills load through ordinary daemon module discovery.**
-The package registers its Functionality family and read-only resource tree during setup.
-It opens no ingress and owns no producers to drain. Core supplies workspace paths, admitted
-subprocess environment, operational storage, plugin components and host-composed reference trees
-through published module seams. Invalid configuration leaves the family inspectable but unavailable
-under {§configuration-repair-path}; the module reports it for offline validation too.
+`@plurnk/plurnk-skills` loads through daemon module discovery, registering the `skills` Functionality family ({§functionality-coordinator}) and its read-only `skill://` resource tree during `setup` (no ingress, no producers to drain). Invalid configuration leaves the family inspectable but unavailable under {§configuration-repair-path} and fails offline validation.
 
-The durable namespace is `@plurnk/plurnk-skills`.
-
-## Workspace family
-
-<!-- map -->
-| Tag | Promise |
+| Layer (low to high) | Definition source & contract |
 | --- | --- |
-| {§skills-functionality} | Agent Skills are one workspace Functionality family. |
-| {§skills-configuration} | Skills use the shared definition cascade. |
-| {§skills-sources} | A source is a git remote, a folder, or a file, read with standard tools. |
-| {§skills-resources} | A skill is a resource tree, not a rewritten document. |
-| {§skills-remove} | `remove` forgets the workspace binding, not the source. |
-| {§skills-hotload} | Skills placed out of band are admitted at the next turn |
-<!-- /map -->
+| Service | Host-provided trees (`ProvidedSkillsSeam`, omitting `source`). |
+| Standard locations | Every `<root>/<name>/SKILL.md` under global, plurnk, then project roots ({§functionality-inspection}), nearer roots shadowing farther ones and all shadowing host-provided trees by name. Standard roots are read-only configuration inputs; Plurnk neither installs into nor deletes from them. |
+| Cascading environment | `PLURNK_SKILLS_<name>={"name":"<name>","source":"…","ref"?:"…"}` replaces the complete definition; `PLURNK_SKILLS_ENABLED` and `<name>_ENABLED` control enabledness ({§env-knob}). Decoded alias must equal `name` ({§agent-skills-directory}, including digit-leading and Unicode names). Validates shape, names, remote URLs, and Git-only `ref` without fetching; `commit` is service-recorded and refused as input. |
+| Live workspace | ```` ```plurnk (skills) ```` `add` creates and `replace` assigns `{ alias, definition }` (`alias = name`, requiring `source`) ({§functionality-replacement}). `discover { source }` inertly lists standard skills in `source`. |
 
-§skills-functionality **Agent Skills are one workspace Functionality family.**
-The discovered skills module registers the `skills` family with the coordinator ({§functionality-coordinator});
-its adapter owns protocol truth for standard Agent Skills and nothing else. A
-definition is `SkillDefinition`: the standard skill `name`, its `source`, and
-optional Git `ref`/resolved `commit` ({§skills-sources}). Only a host-provided
-resource tree omits `source`. Source location is not mutation ownership: standard
-project/global roots are read-only configuration inputs; live changes belong to
-the workspace. Plurnk neither installs into nor deletes from those roots.
+- **Admission & preparation**: Relative sources require a project root (recorded as absolute paths); git sources resolve `ref` (or default branch) via `git ls-remote` at admission to record `commit`. Local folders and `SKILL.md` files remain live references; Git/archive sources materialize inside {§module-seam-slices}, isolated per workspace and complete definition, and stay pinned across enable, cooling, and restart until the definition changes. Each admitted skill requires matching `name` and `description` frontmatter; a bad skill is `unavailable` with its exact Problem without failing the family ({§functionality-model-projection}).
 
-*Available definitions.* The filesystem is the only truth about installation:
-every `<root>/<name>/SKILL.md` directory under the project, plurnk, then global
-root is one service-origin definition, a nearer root shadowing a farther one and
-all of them shadowing host-provided trees by name. Each filesystem definition
-names its actual source directory. The workspace's durable state owns
-enablement ({§functionality-coordinator}); a disabled skill stays client-visible and
-leaves no model-facing trace.
+## §skills-sources 2. Sources and Resource Tree
 
-§skills-configuration **Skills use the shared definition cascade.**
-
-| Layer, low to high | Definition source |
-|---|---|
-| Service | Host-provided trees |
-| Standard locations | Global, plurnk, then project roots selected by {§functionality-inspection} |
-| Cascading environment | `PLURNK_SKILLS_<name>={"name":"<name>","source":"…","ref"?:"…"}` replaces the complete definition |
-| Live workspace | `plurnk (skills)` `add` creates a workspace definition; `replace` assigns a complete named definition through {§functionality-replacement} |
-
-`PLURNK_SKILLS_ENABLED` supplies default enabledness; `<name>_ENABLED` overrides
-it independently ({§resource-environment}). The decoded environment alias must
-equal the standard skill name, including digit-leading and Unicode names.
-Blank definitions are invalid; controls may precede a definition. Environment
-validation checks shape, names, remote URL rules, and Git-only `ref` without
-fetching or opening a source; `commit` is service-recorded, not an input.
-
-*Discovery is inert.* `source` is the family's one discovery input
-({§functionality-replacement}): `discover {source}` lists the standard
-skills one source carries, each a candidate with `source` provenance and the exact
-definition to add; it never installs, persists, or enables.
-
-*Admission.* `add` and `replace` take `{alias, definition}`, requiring `alias = name` and a `source`;
-the workspace definition may shadow a service skill of the same name. Relative
-sources require a project root; absolute sources work in headless workspaces.
-A local source is recorded as its absolute path.
-A git source records the `commit` its `ref` names at admission, or its default
-branch's when no `ref` is given; `ref` belongs to git sources, and a supplied
-`commit` is refused because the service records it. The family's aliases use
-the standard skill-name grammar ({§agent-skills-name}), including digit-leading
-and Unicode names, rather than the coordinator's generic default.
-
-*Preparation.* For each enabled alias the adapter selects the host-provided
-tree or resolves the complete source definition ({§skills-sources}). Local
-folders and their `SKILL.md` files remain live references, including supporting
-resources and symlink retargeting. Git/archive sources are materialized only
-inside {§module-workspace-directory}; different workspaces and complete source
-definitions cannot reuse each other's materializations accidentally.
-The first fetched Git/archive copy remains stable across enable, cooling, and
-restart until the complete source definition changes. In particular, an
-operator-configured symbolic Git ref is not an implicit update subscription.
-Each admitted skill requires standard `name` and `description` frontmatter
-with `name` matching its directory. A missing, uninstallable, or invalid skill
-is `unavailable` with its exact Problem ({§problems-skills}) under the
-coordinator's failure policy ({§functionality-model-projection}); one bad skill
-never fails the family.
-
-Removal follows {§skills-remove}.
-
-§skills-sources **A source is a git remote, a folder, or a file, read with standard tools.**
-Fetching runs nothing it fetched. Materialized copies cannot contain references
-outside their skill; live resources retain {§agent-skills-directory} containment.
-
-| Source | How it is read |
-|---|---|
-| Git remote: a full `https://` or `ssh://` URL, or `user@host:path` | `git ls-remote` resolves the ref at admission; preparation shallow-clones it with hooks and submodules off, and a checkout at any other commit is 409 `source-moved` |
-| Folder: absolute, `~/`, or relative to the project root | Live reference; standard directory/name matching applies |
-| A file named `SKILL.md` | Live reference to its skill directory and supporting resources |
-| A `.zip`, `.tar`, `.tgz`, `.tar.gz`, `.tar.bz2`, `.tar.xz`, or `.tar.zst` archive | Unpacked into private staging with `unzip` or `tar`; a lone top-level directory is the source's root |
-
-Any other scheme, plain `http`, and an https URL carrying credentials are refused
-with `source-invalid`: a recorded source is listed to every client. Git runs with the
-operator's configuration, credentials, and SSH agent, never plurnk's secrets, and
-never prompts; `PLURNK_SKILLS_FETCH_TIMEOUT_MS` bounds each fetch.
-
-A source's skills are the directories holding a `SKILL.md`, found by walking
-from its root without entering `.git` or a skill already found. A fetched skill at
-the root is named by its frontmatter ({§agent-skills-name}); local references and
-directories below the root use the standard folder rule. A source with `plugin.json` at its root is an
-Agent Plugin and is refused with 422 `source-is-plugin`, so its skills keep the
-plugin's identity. Materialization copies the named skill beside its workspace-owned destination
-and renames it to `<root>/<name>`; a copy that holds a link out of the skill, or
-anything but files, directories, and inward links, is refused with 422
-`source-unsafe` and leaves nothing behind.
-
-§skills-resources **A skill is a resource tree, not a rewritten document.**
-The family exposes enabled, available {§agent-skills-tree} sources through
-`skill://<name>/` using {§resource-tree-scheme}. The source owns its bytes; commons entries are demand-loaded
-projections, not writable installations. Filesystem skills retain their original
-directories; service-provided trees need no generated filesystem directory.
-The authority is the name's WHATWG URI representation, including percent-encoding
-for non-ASCII names. Installation names remain unchanged; a raw spelling and its
-serialized URI address the same resource, not separate skill identities.
-
-| Operation | Contract |
+| Source / Operation | Contract |
 | --- | --- |
-| Turn0 `FIND (skill://*/SKILL.md)` | One ordinary resource catalog: name, address, and standard frontmatter description via {§mimetype-channel-selection}. No synthetic index, body injection, or execution. |
-| `READ (skill://<name>/SKILL.md)` | Original frontmatter and Markdown, unchanged; relative links remain relative to the source layout. |
-| `READ` / `FIND` below the authority | References, scripts, and assets retain their source paths and ordinary pattern, channel, byte, and multimodal semantics. Acquisition observes current source contents, including disappearance. |
-| ```` ```runtime (skill://<name>/scripts/program.ext) ```` | Ordinary resource execution and proposal policy; preserve the native file and its siblings under {§exec-target-routing}. Discovery and READ never execute scripts. |
-| Model mutation | Read-only; no EDIT, SEND, or KILL of skill resources. Manage definitions and enablement through ```` ```plurnk (skills) ````. |
-| Disable / unavailable / remove | Withdraw the authority from new resource access and discovery. Existing log receipts remain historical evidence. |
-| WORK / FORK | Use the same workspace Functionality, not copied definitions or resource caches. |
+| Git remote (`https://`, `ssh://`, `user@host:path`) | Resolved via `git ls-remote` at admission; shallow-cloned at preparation with hooks and submodules off (`PLURNK_SKILLS_FETCH_TIMEOUT_MS` bounds each fetch, using operator git config/credentials/SSH agent and never prompting). Checkout at any other commit fails `409 source-moved`. Plain `http`, other schemes, or `https://` with credentials fail `400 source-invalid`. |
+| Folder or `SKILL.md` file | Live reference (`~/`, absolute, or project-relative) with {§agent-skills-directory} containment. |
+| Archive (`.zip`, `.tar`, `.tgz`, `.tar.gz`, `.tar.bz2`, `.tar.xz`, `.tar.zst`) | Unpacked into private staging with `unzip` or `tar`; a lone top-level directory is the source's root. |
+| Source walking & safety | Walks from root without entering `.git` or an already-found skill directory. A root skill in a fetched source is named by frontmatter; sub-skills and local folders use directory name. A root `plugin.json` is refused with `422 source-is-plugin`. Materialized copies containing outward links or non-file/dir/inward-link entries fail `422 source-unsafe`. |
+| `skill://<name>/` resource tree | Exposes enabled, available {§provided-skills-module-slice} trees via {§resource-tree-scheme} (WHATWG URI percent-encoding for non-ASCII names). Turn0 `FIND (skill://*/SKILL.md)` lists catalog metadata via {§mimetype-channel-selection}; `READ` and `FIND` below the authority observe live bytes and paths; ```` ```runtime (skill://<name>/scripts/program.ext) ```` executes preserving native file and siblings ({§exec-target-routing}); read-only to model mutation (`EDIT`, `SEND`, `KILL` refused). Disabling or removing withdraws authority while keeping historical log receipts; `WORK`/`FORK` share workspace Functionality. |
 
-Explicit skill URIs address these resources; bare operation paths still address
-project files, with no implicit current-skill directory. Source resolution follows
-{§agent-skills-directory}, including symlinked skill directories and containment of references.
-An uninstalled Git skill is not manufactured by repository detection.
+## §skills-hotload 3. Removal, Hotload, and Problems
 
-§skills-remove **`remove` forgets the workspace binding, not the source.**
-It withdraws that definition and restores any inherited definition and enabledness
-({§functionality-coordinator}). External folders are never deleted. Fetched
-materializations remain workspace-owned operational state, reusable only for the
-same complete definition; they confer no availability without a definition.
-Inherited definitions cannot be removed here; their enabledness can be overridden.
+- **Removal (`remove`)**: Forgets the workspace binding and restores any inherited definition and enabledness ({§functionality-coordinator}) without deleting external folders. Fetched materializations remain in workspace state for reuse only by the identical complete definition.
+- **Hotload**: The family keeps a per-resident-workspace signature of discovered roots, configured definitions, source locations, and `SKILL.md` sources. Turn admission recomputes it under the workspace gate before packet assembly and republishes only when the signature or effective published skill set changes ({§functionality-inspection}).
 
-§skills-hotload **Skills placed out of band are admitted at the next turn** ({§functionality-inspection}). The
-family keeps one signature of the discovered roots, configured definitions, source locations, and `SKILL.md` sources
-per resident workspace, read before a publication loads the skills it describes. Turn admission
-recomputes it under the workspace gate before packet assembly: a changed signature republishes the
-family, and an unchanged one republishes only when the skills the coordinator would publish differ
-from the published ones. A skill installed, edited or removed by any other tool is therefore
-discoverable in the first subsequent model turn, while an unchanged set dispatches nothing. The model manages skills
-only through the generated ```` ```plurnk (skills) ```` tool
-({§functionality-model-projection}); it is never taught a package manager.
-
-## Problems
-
-§problems-skills **Agent Skills source and setup Problems.** Shared coordination failures use
-{§operation-results}. Placeholders below describe the failing source or definition.
-
-| code | status | contract |
-|---|---:|---|
+| Problem code | Status | Contract |
+| --- | --- | --- |
 | `definition-invalid` | 400 | The Agent Skill definition is invalid; a supplied commit must be a ref instead, and refs require Git sources. |
-| `source-invalid` | 400 | '*source*' is not a valid git remote URL; an https source carries no credentials (git's credential helper supplies them); is not a source: a git remote is a full https or ssh URL; is relative, and this workspace has no project root to resolve it against; or is neither a folder, a SKILL.md, nor a zip or tar archive. |
-| `source-missing` | 404 | No folder or file is at '*source*'. |
-| `source-unreadable` | 422 | '*source*' cannot be read: *cause*; or '*path*' could not be unpacked: *reason*. |
-| `source-unreachable` | 502 | git could not reach '*remote*', or fetch it (at '*ref*'): *reason*. |
-| `ref-missing` | 404 | '*remote*' has no branch or tag '*ref*', or names no default branch. |
-| `source-moved` | 409 | '*source*' *ref* now names *current*; this skill was added at *commit*. Recovery: Use `plurnk (skills)` `replace` with the complete source definition to take the current commit. |
-| `source-is-plugin` | 422 | '*source*' is an Agent Plugin, not a skill. |
-| `source-unsafe` | 422 | '*path*' links outside its skill, or is neither a file, a directory, nor an inward link. |
-| `skill-not-found` | 404 | '*source*' carries no Agent Skill named '*name*'. |
-| `skill-ambiguous` | 409 | '*source*' carries *count* skills named '*name*'. |
+| `source-invalid` | 400 | '*source*' is not a valid git remote URL, carries https credentials, is relative without a project root, or is neither a folder, a SKILL.md, nor a zip/tar archive. |
 | `alias-mismatch` | 400 | Alias '*alias*' must equal the skill name '*name*'. |
 | `source-required` | 400 | Adding '*alias*' requires the source that provides it. |
+| `source-missing` / `ref-missing` | 404 | No folder or file is at '*source*'; or '*remote*' has no branch/tag '*ref*' or default branch. |
+| `skill-not-found` / `skill-missing` / `entry-not-found` | 404 | '*source*' carries no Agent Skill named '*name*'; skill '*alias*' is not provided by this service; or no skill resource exists at the requested address. |
+| `source-moved` / `skill-ambiguous` | 409 | '*source*' *ref* now names *current* (added at *commit*; use `replace` to update); or '*source*' carries *count* skills named '*name*'. |
+| `source-unreadable` / `source-is-plugin` / `source-unsafe` / `skill-invalid` | 422 | Unreadable/unpackable source; root is an Agent Plugin; outward link or special file in skill; or invalid standard skill frontmatter. |
 | `install-failed` | 500 | Agent Skill '*name*' could not be placed under *root*: *cause*. |
-| `skill-missing` | 404 | Agent Skill '*alias*' is not provided by this service. |
-| `skill-invalid` | 422 | Agent Skill '*alias*' is not a valid standard skill: *cause*. |
-| `entry-not-found` | 404 | No skill resource exists at the requested address. |
+| `source-unreachable` | 502 | git could not reach '*remote*' or fetch it (at '*ref*'): *reason*. |

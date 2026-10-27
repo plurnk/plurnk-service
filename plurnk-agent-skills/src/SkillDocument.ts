@@ -33,7 +33,7 @@ const nameOf = (file: string, fields: Record<string, unknown>): string => {
     return name;
 };
 
-// {§agent-skills-name} A consumer that names the directory itself — a skill at the root of a
+// {§agent-skills-directory} A consumer that names the directory itself — a skill at the root of a
 // fetched source — reads the name first; the folder rule then holds by construction.
 export const skillName = (file: string, source: string): string => nameOf(file, frontmatter(file, source).fields);
 

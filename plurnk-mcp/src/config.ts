@@ -58,7 +58,7 @@ const configuration = (environ: NodeJS.ProcessEnv) => {
     return { resources, tools };
 };
 
-// Settings are validated even before their resource exists ({§resource-environment}).
+// Settings are validated even before their resource exists ({§env-knob}).
 export const serverSettings = (alias: string, environ: NodeJS.ProcessEnv = process.env): ToolPolicy => ({
     tools: configuration(environ).tools.get(alias) ?? null,
 });

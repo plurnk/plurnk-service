@@ -27,7 +27,7 @@ test("{§configuration-repair-path} lifecycle and discovery share source identif
     assert.deepEqual(Validator.assertFunctionalityDiscoverResult(discovery), discovery);
 });
 
-test("{§agent-skills-name}: wire definitions admit Unicode and digit-leading names with exact identity", () => {
+test("{§agent-skills-directory}: wire definitions admit Unicode and digit-leading names with exact identity", () => {
     for (const name of ["3d-models", "café", "分析", "𐐨-demo", "ⅳ", "ｓｋｉｌｌ", "𐐨".repeat(64)]) {
         const definition = { name, source: "example/skills" };
         assert.deepEqual(Validator.assertSkillDefinition(definition), definition);

@@ -116,7 +116,7 @@ const family = (name: string, overrides: Partial<HostFunctionalityAdapter> = {})
 
 for (const phase of ["resolution", "preparation", "publication"] as const) {
     for (const cleanupFails of phase === "preparation" ? [false, true] : [false]) {
-        test(`{§functionality-preparation-cancellation} stop during ${phase}, cleanup fails=${cleanupFails}`, async () => {
+        test(`{§functionality-adapter} stop during ${phase}, cleanup fails=${cleanupFails}`, async () => {
             const lifetime = new AbortController();
             const entered = Promise.withResolvers<void>();
             const release = Promise.withResolvers<void>();
@@ -190,7 +190,7 @@ for (const phase of ["resolution", "preparation", "publication"] as const) {
 }
 
 for (const scope of ["workspace", "session"] as const) {
-    test(`{§functionality-admission-preparation} ${scope} admission data reaches only its candidate preparation`, async () => {
+    test(`{§functionality-adapter} ${scope} admission data reaches only its candidate preparation`, async () => {
         let provider!: WorkspaceCapabilityProvider;
         let state: unknown = null;
         let refuse = false;
@@ -321,7 +321,7 @@ test("{§functionality-replacement} the shared schema check refuses an input the
     assert.deepEqual(received, [{ source: "here" }]);
 });
 
-test("{§functionality-discovery-inputs} registration refuses an empty, repeated or unknown input, and discovery without discover or the reverse", () => {
+test("{§functionality-adapter} registration refuses an empty, repeated or unknown input, and discovery without discover or the reverse", () => {
     const discover = async () => [];
     const refused: Array<[string, Partial<HostFunctionalityAdapter>]> = [
         ["empty", { discovery: { inputs: [] }, discover }],

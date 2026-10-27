@@ -22,7 +22,7 @@ import type { PackageAttributions, ExtensionAttribution } from "@plurnk/plurnk-m
 // `packageName` and registers `new mod.default()` — exactly as the consumer
 // loads executor packages from plurnk-execs' ExecInfo.
 //
-// {§extension-trust-boundary} PLURNK_EXTENSIONS_TRUSTED_ONLY filters the scan:
+// {§extension-discovery} PLURNK_EXTENSIONS_TRUSTED_ONLY filters the scan:
 // when on, an untrusted third-party package is discovered but withheld from
 // `schemes` and returned in `skipped` for the consumer's Notice.
 
@@ -68,7 +68,7 @@ export default class SchemeDiscovery {
             // Host extension-trust gate: an untrusted third-party package is
             // discovered but not surfaced for registration — recorded, never
             // crashed on. Validation of declaration fields and attribution follows
-            // this package-level gate ({§extension-trust-boundary}).
+            // this package-level gate ({§extension-discovery}).
             if (!Meta.isTrusted(manifest.packageName)) { skipped.add(manifest.packageName); continue; }
             const tags = Meta.normalizeAttribution(manifest.plurnk.attribution, manifest.packageName);
             const infos = SchemeDiscovery.#readSchemeInfos(manifest);
@@ -95,7 +95,7 @@ export default class SchemeDiscovery {
 
     // Host extension-trust gate, read from PLURNK_EXTENSIONS_TRUSTED_ONLY — the SAME
     // env var the host decides once and every scope-agnostic discovery
-    // surface enforces through the shared Meta contract ({§extension-trust-boundary}):
+    // surface enforces through the shared Meta contract ({§extension-discovery}):
     //   unset / "" / "0" → OFF: every installed package trusted (no regression).
     //   any value        → ON:  `@plurnk/*` always trusted, plus a comma-separated
     //                           allowlist of additionally-trusted package names.
@@ -110,7 +110,7 @@ export default class SchemeDiscovery {
         return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
-    // The inert manifest for a package declaring plurnk.kind:"scheme" ({§extension-manifest-read});
+    // The inert manifest for a package declaring plurnk.kind:"scheme" ({§extension-discovery});
     // null for anything else, including an unnamed package. Declaration field validation happens
     // only after the package trust gate. An abort surfaces (locality of error).
     static async #readSchemeManifest(dir: string, signal?: AbortSignal): Promise<SchemePackage | null> {

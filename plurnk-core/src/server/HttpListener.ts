@@ -1,7 +1,7 @@
 // {§http-host} — the daemon's one HTTP listener. Core binds it before it admits durable state
 // ({§startup-admission}); exterior adapters mount routes on it at start() and never open
 // a socket of their own (#641). Until the daemon admits it, after every module has started
-// ({§module-http-mounts}), every request is answered 503; after that each request goes to the
+// ({§module-contract}), every request is answered 503; after that each request goes to the
 // longest mounted prefix, or receives 404 when no mounted prefix claims it.
 import { STATUS_CODES, createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
@@ -82,7 +82,7 @@ export default class HttpListener implements HttpHost {
             .toSorted((a, b) => b.prefix.length - a.prefix.length);
     }
 
-    // {§module-http-mounts} — the daemon admits the listener once every module has started, so
+    // {§module-contract} — the daemon admits the listener once every module has started, so
     // readiness never depends on the order modules mounted in.
     admit(): void {
         this.#admitted = true;

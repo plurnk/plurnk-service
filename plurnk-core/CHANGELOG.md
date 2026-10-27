@@ -174,7 +174,7 @@
   runtime named without a target answers with every enabled target's fence
   ({§executor-discovery}).
 - 93c0d87: `instanceof ConfigurationError` recognizes a configuration error from any copy of
-  the package by its name and key ({§configuration-error-identity}), so a module
+  the package by its name and key ({§env-knob}), so a module
   loaded from its own plugin root reports its configuration errors as its
   diagnostic instead of aborting daemon boot.
 - 8760da7: A READ of a file on disk that a members exclusion covers names the exclusion and

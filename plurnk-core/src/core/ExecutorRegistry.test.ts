@@ -259,7 +259,7 @@ test("{§executor-results} ExecutorRegistry consumes discovery attribution witho
     );
 });
 
-test("{§extension-trust-boundary}: build() notes untrusted packages that discovery withheld", async () => {
+test("{§extension-discovery}: build() notes untrusted packages that discovery withheld", async () => {
     const warnings: string[] = [];
     const origWarn = console.warn;
     console.warn = (msg: string): void => { warnings.push(msg); };

@@ -6,7 +6,7 @@ interface EnvironmentValue {
     readonly value: string;
 }
 
-// {§resource-environment}: syntax and independent controls only. Families own definition schemas.
+// {§env-knob}: syntax and independent controls only. Families own definition schemas.
 export default class ResourceEnvironment {
     readonly definitions: ReadonlyMap<string, EnvironmentValue>;
     readonly #settings = new Map<string, Map<string, EnvironmentValue>>();

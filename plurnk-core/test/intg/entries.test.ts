@@ -404,7 +404,7 @@ test("{§mimetype-error-policy} entry_channels: the stored line count mirrors Te
 });
 
 describe("Digest.edit-census", () => {
-// {§digest-edit-census} — every model EDIT counted by the form it authored, how it landed, and
+// {§digest-forensic-fidelity} — every model EDIT counted by the form it authored, how it landed, and
 // whether it came back to a path within two model turns.
 
 
@@ -445,7 +445,7 @@ const insertEdit = async (db: Db, fixture: EditFixture): Promise<number> => {
     return row.id;
 };
 
-test("{§digest-edit-census}: the form is read from the authored marker and pattern", () => {
+test("{§digest-forensic-fidelity}: the form is read from the authored marker and pattern", () => {
     const form = (marker: string | null, pattern: string | null = null): string => DigestRender.editForm({ line_marker: marker, pattern });
     assert.equal(form('{"marks":["@abcde"]}'), "hash");
     assert.equal(form('{"marks":[42]}'), "line");
@@ -462,7 +462,7 @@ test("{§digest-edit-census}: the form is read from the authored marker and patt
     assert.equal(form(null), "whole");
 });
 
-test("{§digest-edit-census}: a session's EDITs are counted by form, refusal and revisit, on the summary and in digest.json", async () => {
+test("{§digest-forensic-fidelity}: a session's EDITs are counted by form, refusal and revisit, on the summary and in digest.json", async () => {
     const dbPath = join(TMP_DIR, `edit-census-${crypto.randomUUID()}.db`);
     const db = await openMigrated(dbPath);
     const ids: Record<string, number> = {};

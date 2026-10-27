@@ -409,7 +409,7 @@ export interface ProviderGenerateArgs {
 
 export interface Provider {
     // Optional package-authored folksonomy evaluated by the consumer immediately
-    // before a provider emission attempt ({§extension-attribution}).
+    // before a provider emission attempt ({§extension-discovery}).
     attributions?(context: ExtensionAttributionContext): ExtensionAttribution;
     // `grammar` is an optional GBNF string, the operator's own file read by the consumer.
     // Backends that support grammar-constrained sampling attach it verbatim; all others

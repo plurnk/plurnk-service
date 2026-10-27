@@ -1037,8 +1037,8 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             scheme };
     }
 
-    // {§http-host} {§module-http-mounts} — a module mounts on the daemon's one listener exactly what it claimed;
-    // the modules' owner keeps the claims. {§module-action-registration}: a module's actions, registered, listed and invoked.
+    // {§http-host} {§module-contract} — a module mounts on the daemon's one listener exactly what it claimed;
+    // the modules' owner keeps the claims. {§module-seam-slices}: a module's actions, registered, listed and invoked.
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
         this.#modules.registerHttpRoute(prefix, handler);
     }
@@ -1070,7 +1070,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#residency.registerProvider(namespaceOwner, provider);
     }
 
-    // {§module-functionality-adapter}
+    // {§module-seam-slices}
     registerFunctionalityAdapter(adapter: HostFunctionalityAdapter): FunctionalityFamilyHandle {
         return this.#functionality.register(adapter);
     }

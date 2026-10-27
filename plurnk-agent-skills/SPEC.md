@@ -1,54 +1,24 @@
 # Agent Skills loader
 
-## §agent-skills-tree Resource tree
+## §provided-skills-module-slice 1. Resource Tree and Host-Provided Skills
 
-`SkillTree` supplies standard `SKILL.md` metadata, resource names, and the
-original bytes through {§scheme-operation-dispatch}. A filesystem directory and a
-consumer-composed tree implement the same contract. Listing does not read
-supporting bodies; resources without native files do not acquire synthetic ones.
-The consumer owns composition, activation, and publication, not this loader.
+- **`SkillTree` contract**: Supplies standard `SKILL.md` metadata, resource names, and original bytes through {§scheme-operation-dispatch}. A filesystem directory and a consumer-composed tree implement the same contract; listing does not read supporting bodies, and resources without native files do not acquire synthetic ones.
+- **`ProvidedSkillsSeam`**: `ProvidedSkillsSeam.readProvidedSkills()` supplies host-composed trees keyed by standard skill name. The host owns composition; the skills family subjects them to ordinary definition precedence, enablement, and resource publication ({§skills-module}) without creating filesystem copies.
 
-### §provided-skills-module-slice Host-provided trees
+## §agent-skills-directory 2. Source Directory and Discovery Identity
 
-`ProvidedSkillsSeam.readProvidedSkills()` supplies the host-composed trees keyed
-by standard skill name. The host owns their composition; the skills family
-subjects them to ordinary definition precedence, enablement, and resource
-publication ({§skills-configuration}). Reading the set neither publishes nor
-enables it and does not create filesystem copies.
+The loader consumes the standard [Agent Skills directory format](https://agentskills.io/specification) without installing skills or granting execution authority.
 
-## §agent-skills-directory Source directory
-
-The loader consumes the standard [Agent Skills directory format](https://agentskills.io/specification).
-Installation, workspace enablement, proposals, and resource addressing belong to the
-consumer; this package neither installs skills nor grants execution authority.
-
-| Input | Contract |
-|-------|----------|
-| Skill root | A directory, including an installer-created symlink. Its canonical filesystem location is the base for bundled scripts and relative resources. |
-| `SKILL.md` | Required YAML `name` and `description`, with the name matching the supplied directory name. Preserve the original source, body, and all frontmatter fields. |
-| Supporting files | Arbitrary nested references, scripts, and assets. Read original bytes on demand; do not flatten paths, rewrite prose, or execute discovery content. |
-| Resource paths | Relative to the skill root. Neither lexical traversal nor a resolved symlink may escape that root. |
-| Filesystem changes | Subsequent reads and listings observe the source directly; changing a supporting file does not require changing `SKILL.md`. |
-| Failures | Preserve filesystem errors. Report invalid frontmatter, root escapes, cycles, and non-file resources at the boundary that detects them. |
-
-### §agent-skills-name Discovery identity
-
-| Field | Admission |
+| Input / Field | Contract |
 | --- | --- |
-| `name` | 1–64 Unicode code points: lowercase or uncased letters, numbers and single internal hyphens. Exact directory-name match; no case folding or Unicode normalization. |
-| `description` | Nonblank string, at most 1024 Unicode code points. |
-| Other frontmatter | Preserve without interpreting or enforcing unused authoring constraints. Unknown fields, ordinary YAML aliases and flow mappings remain available in the original source. |
+| Skill root | A directory (including an installer-created symlink); its canonical filesystem location is the base for bundled scripts and relative resources. |
+| `SKILL.md` | Required YAML `name` and `description` with `name` matching the supplied directory name (`skillName` reads and admits `name` alone for a skill at the root of a fetched source). Preserves original source, body, and all frontmatter fields. |
+| `name` admission | 1–64 Unicode code points: lowercase or uncased letters, numbers, and single internal hyphens; exact directory-name match without case folding or NFKC Unicode normalization. |
+| `description` admission | Nonblank string, at most 1024 Unicode code points. |
+| Other frontmatter | Preserved without enforcing unused authoring constraints; unknown fields, ordinary YAML aliases, and flow mappings remain available in the original source (no `skill.md` lowercase fallback or StrictYAML restrictions). |
+| Supporting files & paths | Arbitrary nested references, scripts, and assets relative to the skill root, read on demand. Neither lexical traversal nor a resolved symlink may escape the skill root; subsequent reads and listings observe live filesystem changes directly. |
+| Failures | Preserves filesystem errors; reports invalid frontmatter, root escapes, cycles, and non-file resources at the detecting boundary. |
 
-`skillName` reads and admits `name` alone, for a consumer that names the directory itself: a
-skill at the root of a fetched source. The directory-name match then holds by construction.
+## §agent-skills-disclosure 3. Progressive Disclosure
 
-The loader is not an authoring linter. The `skills-ref` demonstration's NFKC
-rewriting, lowercase `skill.md` fallback, unknown-field rejection and StrictYAML
-restrictions do not replace the source-preserving contract above.
-
-## §agent-skills-disclosure Progressive disclosure
-
-Loading a skill reads only `SKILL.md`. Listing resources walks filenames, not
-file contents. Reading a resource returns its bytes without assigning a content
-type or presentation; the consumer's normal content machinery owns those facts.
-No support-file body is added to a model packet merely because the skill exists.
+Loading a skill reads only `SKILL.md`. Listing resources walks filenames, not file contents. Reading a resource returns its bytes without assigning a content type or presentation (owned by the consumer's content machinery), and no support-file body is added to a model packet merely because the skill exists.

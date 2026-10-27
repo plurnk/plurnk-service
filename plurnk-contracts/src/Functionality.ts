@@ -15,7 +15,7 @@ export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
     readonly scope?: "workspace" | "session";
 }
 
-// {§functionality-discovery-inputs} — one input of the shared discovery query a family may serve.
+// {§functionality-adapter} — one input of the shared discovery query a family may serve.
 export type FunctionalityDiscoverInput = keyof FunctionalityDiscoverQuery;
 
 // Who invoked a verb: a client action, or the model's execution ({§functionality-model-projection}).
@@ -62,7 +62,7 @@ export interface FunctionalityDocument {
 
 // `Definition` and `Snapshot` are the family's own ({§functionality-adapter}).
 export interface FunctionalityPreparation<Definition extends object = object, Snapshot = unknown> extends WorkspaceCapabilityIdentity {
-    // {§functionality-preparation-cancellation} The host's lifetime; cancellation still joins cleanup.
+    // {§functionality-adapter} The host's lifetime; cancellation still joins cleanup.
     readonly signal: AbortSignal;
     // The enabled definitions to prepare, in alias order.
     readonly enabled: ReadonlyMap<string, FunctionalityPreparedDefinition<Definition>>;

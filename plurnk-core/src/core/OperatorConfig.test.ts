@@ -513,7 +513,7 @@ describe("env-defaults", () => {
 
 
 // These fixtures are third-party packages, so this file exercises the operator who admitted them
-// ({§extension-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
+// ({§extension-discovery}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
 // state their own value below and override this one.
 process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 

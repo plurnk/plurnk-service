@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Digest from "./Digest.ts";
 import type { DigestEvidence } from "./evidence.ts";
+import DigestRender from "./DigestRender.ts";
+import Share from "./Share.ts";
 
+// ─── Digest.test.ts ───
+{
 test("{§digest-evidence-reader}: reports consume an independent reader without opening SQL or loading a daemon", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-independent-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -45,7 +49,7 @@ test("{§digest-evidence-reader}: reports consume an independent reader without 
     assert.equal(opened, 1, "a refused destination never opens evidence");
 });
 
-test("{§digest-programmatic-surface}: a workspace selected alone is the digest's workspace though it holds no session", async (t) => {
+test("{§share-packet-names}: a workspace selected alone is the digest's workspace though it holds no session", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-empty-workspace-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const unexpected = (): never => { throw new Error("an empty workspace has no heavy evidence"); };
@@ -73,8 +77,8 @@ test("{§digest-programmatic-surface}: a workspace selected alone is the digest'
     assert.deepEqual(report.sessions, []);
 });
 
-// {§digest-capacity-evidence} — the capacity contract's 413 rows never make a win degenerate (#1096).
-test("{§digest-capacity-evidence}: a loop that concluded under a binding budget is CLEAN; one refusal beside its 413s is DEGENERATE-WIN with a count of one", async (t) => {
+// {§digest-forensic-fidelity} — the capacity contract's 413 rows never make a win degenerate (#1096).
+test("{§digest-forensic-fidelity}: a loop that concluded under a binding budget is CLEAN; one refusal beside its 413s is DEGENERATE-WIN with a count of one", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-digest-capacity-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const problem = (type: string, status: number, detail: string) => JSON.stringify({ status, problem: { type: `https://problems.plurnk.xyz/${type}`, title: detail, status, detail } });
@@ -119,3 +123,65 @@ test("{§digest-capacity-evidence}: a loop that concluded under a binding budget
     assert.match(degenerate, /^Health:\s+0 clean · ⚠ 1 degenerate-win · 0 failed/mu, "one refusal of the model's own statement still counts");
     assert.match(degenerate, /^#### Loop 1 \(id=1, status=200\) — ⚠ DEGENERATE-WIN \(1 errors, 0 error-items\)$/mu, "the counts leave the 413s out");
 });
+}
+
+// ─── DigestRender.test.ts ───
+{
+test("{§share-packet-names}: readable requests retain roles, order and complete nested bodies", () => {
+    const messages = [
+        { role: "system" as const, content: "Rules\n" },
+        { role: "user" as const, content: "## Log\n\n1: ## 3. assistant" },
+        { role: "assistant" as const, content: "````EDIT (a.md)\n```NOTE\nLiteral nested example\n```\n````" },
+        { role: "user" as const, content: "## Session\n{}" },
+    ];
+    const rendered = DigestRender.request(messages);
+    assert.match(rendered, /system → user → assistant → user/u);
+    const blocks = [...rendered.matchAll(/^(`{3,})text\n([\s\S]*?)\n\1$/gmu)];
+    assert.deepEqual(blocks.map((match) => match[2]), messages.map(({ content }) => content));
+    assert.deepEqual([...rendered.matchAll(/^### \d+\. (system|user|assistant)$/gmu)].map((match) => match[1]), messages.map(({ role }) => role));
+    assert.match(rendered, /not a transport capture/u);
+});
+
+// {§execution-output-identity} — a spawn's row carries the environment it received; the waterfall names every
+// value's provenance so a run's commands can never be misread as having run under the host's shell.
+// {§provider-failure-normalization} — an empty emission is read from what the wire carried.
+test("{§provider-failure-normalization} the digest reads a blank emission from the wire record", () => {
+    const line = DigestRender.wireLine({
+        content: "", reasoning: "Let me read it.",
+        wire: {
+            chunks: 8, emptyChunks: 4, fields: { reasoning_content: 1, tool_calls: 2, refusal: 1 }, channels: { refusal: "no" },
+            toolCalls: [{ index: 0, id: "call-1", type: "function", name: "READ", arguments: "{\"path\": \"django/views/debug.py\"}" }],
+            finishReasons: ["stop"],
+        },
+    });
+    assert.equal(line, "  ↳ wire: 8 chunks, 4 carried nothing, reasoning_content×1, tool_calls×2, refusal×1, tool call READ({\"path\": \"django/views/debug.py\"}), refusal: no");
+    assert.equal(DigestRender.wireLine({ content: "" }), null, "a record without a wire says nothing about it");
+    assert.equal(DigestRender.wireLine({ wire: { chunks: 1, unmappedChunks: [{ type: "message", content: [] }] } }),
+        "  ↳ wire: 1 chunks, 1 unmapped frames retained", "unmapped native envelopes are not reported as empty");
+});
+
+test("{§execution-output-identity} the digest names a spawn's environment with each value's provenance", () => {
+    const line = DigestRender.envLine({
+        PATH: { source: "host", value: "/usr/bin" },
+        HOME: { source: "host", value: "/home/x" },
+        CARGO_TARGET_DIR: { source: "session", value: "/tmp/shared" },
+        TOOLCHAIN: { source: "session", from: "alice", value: "stable" },
+        CI: { source: "masked" },
+        NO_COLOR: { source: "masked", from: "alice" },
+        NODE_ENV: { source: "workspace", value: "production" },
+    });
+    assert.equal(line, "env: host HOME,PATH · CARGO_TARGET_DIR=/tmp/shared (session) · CI (masked) · NO_COLOR (masked by alice) · NODE_ENV=production (workspace) · TOOLCHAIN=stable (from alice)");
+    assert.equal(DigestRender.envLine({}), "env: (empty)", "an empty environment is a fact, not an absence");
+    assert.equal(DigestRender.envLine(undefined), null, "an output without a recorded environment renders none");
+});
+}
+
+// ─── Share.test.ts ───
+{
+test("{§share} a missing database is named, and nothing is read or written", async () => {
+    await assert.rejects(Share.write({
+        dbPath: "/nonexistent/plurnk.db", folder: "/tmp/never",
+        openEvidence: () => { throw new Error("a missing source must not open a reader"); },
+    }), { message: "no database at /nonexistent/plurnk.db" });
+});
+}

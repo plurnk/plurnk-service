@@ -162,7 +162,7 @@ Additional framework helpers:
 
 ## §scheme-discovery Third-party discovery
 
-`SchemeDiscovery.discover({ cwd? })` scans `node_modules` via `@plurnk/plurnk-meta` (`{§extension-kind}`, `{§extension-trust-boundary}`, `{§extension-attribution}`) for packages declaring `plurnk.kind === "scheme"` (`plurnk.schemes: [{ name, export }]` or `plurnk.name`), failing hard on duplicate scheme prefixes or malformed declarations and returning `{ schemes, packageAttributions, skipped }` descriptors without importing handler modules.
+`SchemeDiscovery.discover({ cwd? })` scans `node_modules` via `@plurnk/plurnk-meta` (`{§extension-discovery}`, `{§extension-discovery}`, `{§extension-discovery}`) for packages declaring `plurnk.kind === "scheme"` (`plurnk.schemes: [{ name, export }]` or `plurnk.name`), failing hard on duplicate scheme prefixes or malformed declarations and returning `{ schemes, packageAttributions, skipped }` descriptors without importing handler modules.
 
 ## §message-source-scheme Message sources
 

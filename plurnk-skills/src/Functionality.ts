@@ -1,4 +1,4 @@
-// {§skills-functionality} — standard Agent Skills as one workspace Functionality
+// {§skills-module} — standard Agent Skills as one workspace Functionality
 // family. Configuration roots are inputs; live references and fetched sources
 // belong to workspace definitions, never to an installation scope.
 import { createHash } from "node:crypto";
@@ -274,7 +274,7 @@ export default class SkillsFunctionality implements FunctionalityAdapter<never, 
             ...(definition.ref === undefined ? {} : { ref: definition.ref }),
             ...(definition.commit === undefined ? {} : { commit: definition.commit }),
         });
-        // {§functionality-preparation-cancellation} Disposal preserves both cancellation and a cleanup failure.
+        // {§functionality-adapter} Disposal preserves both cancellation and a cleanup failure.
         await using cleanup = new AsyncDisposableStack();
         cleanup.defer(() => opened.close());
         signal.throwIfAborted();

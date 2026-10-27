@@ -52,7 +52,7 @@ test("{§functionality-model-projection} a failed publication reacquires the tur
     available.release();
 });
 
-test("{§functionality-preparation-cancellation} cancelling a queued publisher neither releases another owner nor publishes later", async () => {
+test("{§functionality-adapter} cancelling a queued publisher neither releases another owner nor publishes later", async () => {
     const gate = new WorkspaceGate(async () => false);
     const first = gate.requestExclusive(1);
     await first.acquired;

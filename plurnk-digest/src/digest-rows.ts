@@ -130,7 +130,7 @@ export interface LogRow {
 export interface EmissionRow { session_id: number; coordinate: string; content: string; active: 0 | 1 }
 // {§turn-source-resources} — one landed reasoning row: its row's coordinate, its frozen text, whether it is live.
 export interface ReasoningRow { session_id: number; coordinate: string; content: string; active: 0 | 1 }
-// {§digest-edit-census} — one model-authored EDIT: the scope it authored (the log row's lineMarker
+// {§digest-forensic-fidelity} — one model-authored EDIT: the scope it authored (the log row's lineMarker
 // JSON), the pattern its durable statement carried, and the status it landed with.
 export interface EditRow {
     id: number; session_id: number; loop_id: number; turn_id: number; sequence: number;
@@ -241,14 +241,14 @@ export interface DigestModel {
     };
 }
 
-// {§digest-cache-ledger} — provider counters and a separate, loop-local prefix estimate.
+// {§digest-forensic-fidelity} — provider counters and a separate, loop-local prefix estimate.
 export interface CacheLedgerEntry {
     adjacentPrefixTokensEstimate: number | null;
     cachedTokens: number | null;
     inputTokens: number | null;
 }
 
-// Programmatic entry options ({§digest-programmatic-surface}).
+// Programmatic entry options ({§share-packet-names}).
 // dbPath is required; digestDir defaults to the bin's test/digest; an optional
 // sessionId/workspaceId narrows the digest to one scope instead of the whole DB.
 export interface DigestOptions {

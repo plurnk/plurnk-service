@@ -30,7 +30,7 @@ export default class DaemonModules {
     readonly #residency: WorkspaceResidency;
     readonly #workspaceGate: WorkspaceGate;
     #modules: RegisteredModule[] = [];
-    // {§module-http-mounts} — each claimed prefix's owner, and the claims mounted at start.
+    // {§module-contract} — each claimed prefix's owner, and the claims mounted at start.
     readonly #mountClaims = new Map<string, string>();
     readonly #mounted = new Set<string>();
     #lifetimes: StartedModule[] = [];
@@ -73,7 +73,7 @@ export default class DaemonModules {
         for (const { module, owner } of discoveredModules.modules) {
             this.#modules.push({ module, owner });
         }
-        // {§module-http-mounts} — a daemon without a listener has nothing to serve a mount on: it
+        // {§module-contract} — a daemon without a listener has nothing to serve a mount on: it
         // leaves out every module that declares one, and says so.
         if (this.#http === null) {
             this.#modules = this.#modules.filter(({ module, owner }) => {
@@ -83,7 +83,7 @@ export default class DaemonModules {
                 return false;
             });
         }
-        // {§module-contained-configuration} — what a module contained is its own configuration diagnostic.
+        // {§module-contract} — what a module contained is its own configuration diagnostic.
         for (const { module, owner } of this.#modules) {
             for (const { key, message } of module.contained ?? []) this.#configuration.record(`module:${owner}`, new ConfigurationError(key, message));
         }
@@ -105,7 +105,7 @@ export default class DaemonModules {
         }
     }
 
-    // {§module-http-mounts} — every prefix is claimed before any module sets up: one owner per
+    // {§module-contract} — every prefix is claimed before any module sets up: one owner per
     // prefix, including the optional root mount.
     #claimMounts(): void {
         for (const { module, owner } of this.#modules) {
@@ -120,7 +120,7 @@ export default class DaemonModules {
         }
     }
 
-    // {§module-http-mounts} — the listener is admitted once every module has started and every
+    // {§module-contract} — the listener is admitted once every module has started and every
     // claim is mounted, so readiness never depends on registration order.
     admitMounts(): void {
         if (this.#http === null) return;
@@ -134,7 +134,7 @@ export default class DaemonModules {
     // daemon never opens a second transport, and a daemon without a listener says so.
     registerHttpRoute(prefix: string, handler: HttpRouteHandler): void {
         if (this.#http === null) throw new Error(`registerHttpRoute: this daemon has no HTTP listener to mount '${prefix}' on`);
-        // {§module-http-mounts} — a module mounts exactly what it claimed.
+        // {§module-contract} — a module mounts exactly what it claimed.
         if (!this.#mountClaims.has(prefix)) throw new Error(`registerHttpRoute: no module declared '${prefix}' among its mounts`);
         this.#http.registerHttpRoute(prefix, handler);
         this.#mounted.add(prefix);
@@ -142,7 +142,7 @@ export default class DaemonModules {
 
     registerHttpUpgrade(prefix: string, handler: HttpUpgradeHandler): void {
         if (this.#http === null) throw new Error(`registerHttpUpgrade: this daemon has no HTTP listener to mount '${prefix}' on`);
-        // {§module-http-mounts} — a module mounts exactly what it claimed.
+        // {§module-contract} — a module mounts exactly what it claimed.
         if (!this.#mountClaims.has(prefix)) throw new Error(`registerHttpUpgrade: no module declared '${prefix}' among its mounts`);
         this.#http.registerHttpUpgrade(prefix, handler);
         this.#mounted.add(prefix);

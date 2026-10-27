@@ -281,7 +281,7 @@ test("{§functionality-model-projection} concurrent configuration bypasses occup
     assert.deepEqual(listed.definitions.map(({ alias, state }) => [alias, state]), [["first", "active"], ["second", "active"], ["svc", "active"]]);
 });
 
-test("{§functionality-preparation-cancellation} cancelling an operation joins preparation and leaves no later publication", { timeout: 15_000 }, async (t) => {
+test("{§functionality-adapter} cancelling an operation joins preparation and leaves no later publication", { timeout: 15_000 }, async (t) => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const preparing = Promise.withResolvers<void>();

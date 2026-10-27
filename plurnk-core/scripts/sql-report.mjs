@@ -10,7 +10,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 usage(import.meta, `
 usage: npm run report:sql -- <database.db> [specimens.json]   (from plurnk-core)
 Workload query report over a consistent snapshot of the named database: plans the registry's statements and reports what the workload exercised ({§db-durability}). On demand, never a gate.
-Reads: the named database, copied under {§share-snapshot}.
+Reads: the named database, copied under {§share-packet-names}.
 Writes: the report to stdout.
 `);
 

@@ -1,4 +1,4 @@
--- {§module-workspace-directory} — one atomic allocation; opening a second module
+-- {§module-seam-slices} — one atomic allocation; opening a second module
 -- or racing the first lookup cannot replace the workspace's existing identity.
 -- PREP: workspace_storage_key
 INSERT INTO workspace_module_state (workspace_id, namespace_owner, state)

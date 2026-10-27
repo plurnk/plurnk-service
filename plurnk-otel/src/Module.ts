@@ -36,7 +36,7 @@ const exporterNames = (value: string | undefined): string[] => [
         .filter((name) => name.length > 0 && name !== "none")),
 ];
 
-// {§otel-contained} A name that is neither `otlp`, `console` nor `none` is a configuration error naming its variable.
+// {§otel-module} A name that is neither `otlp`, `console` nor `none` is a configuration error naming its variable.
 const selectExporters = (env: Env, signal: SignalName): ExporterName[] => exporterNames(env[signal]).map((name) => {
     if (name === "otlp" || name === "console") return name;
     throw new ConfigurationError(signal,
@@ -61,7 +61,7 @@ export const select = (env: Env): Selection | null => {
 };
 
 // {§otel-module} Construct the selected exporters and providers and register them as the process's globals; a global
-// another owner already holds fails the registration, which is unwound ({§otel-shutdown}) before its cause is thrown.
+// another owner already holds fails the registration, which is unwound ({§otel-module}) before its cause is thrown.
 const register = async (selection: Selection): Promise<Registration> => {
     syncAmbientHttp();
     const [{ context, metrics, trace }, { resourceFromAttributes }] = await Promise.all([
@@ -75,7 +75,7 @@ const register = async (selection: Selection): Promise<Registration> => {
     let traceRegistered = false;
     let metricsRegistered = false;
 
-    // {§otel-shutdown} Release every registered global, then join every provider's shutdown, keeping every failure.
+    // {§otel-module} Release every registered global, then join every provider's shutdown, keeping every failure.
     const shutdown = async (): Promise<void> => {
         const failures: unknown[] = [];
         if (metricsRegistered) {
@@ -160,12 +160,12 @@ const register = async (selection: Selection): Promise<Registration> => {
 };
 
 export default class Module implements DaemonModule<ModuleSetupSeam, unknown> {
-    // {§module-contained-configuration} An unsupported exporter name, with the module registering nothing.
+    // {§module-contract} An unsupported exporter name, with the module registering nothing.
     readonly contained?: readonly ContainedConfiguration[];
     readonly #selection: Selection | null;
     #registration: Registration | null = null;
 
-    // {§module-self-activation} {§otel-contained} The factory reads `OTEL_*`; an unsupported name is contained, not thrown.
+    // {§module-contract} {§otel-module} The factory reads `OTEL_*`; an unsupported name is contained, not thrown.
     static init(env: Env = process.env): Module {
         try {
             return new Module(select(env));
@@ -192,7 +192,7 @@ export default class Module implements DaemonModule<ModuleSetupSeam, unknown> {
         this.#registration = await register(this.#selection);
     }
 
-    // {§otel-shutdown} Stopping releases the globals and shuts the providers down; a second stop is a no-op.
+    // {§otel-module} Stopping releases the globals and shuts the providers down; a second stop is a no-op.
     async stop(): Promise<void> {
         const registration = this.#registration;
         this.#registration = null;

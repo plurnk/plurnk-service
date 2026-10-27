@@ -201,7 +201,7 @@ test("{§lint-gate} package graph policy enforces layered acyclic stability", as
     assert.deepEqual(packageGraphViolations(entries), []);
 });
 
-test("{§module-compatibility} a module peers on the contract; only the host depends on it", () => {
+test("{§module-seam-slices} a module peers on the contract; only the host depends on it", () => {
     const entry = (name, sections, importsContract = true) => ({ file: `${name}/package.json`, manifest: { name: `@plurnk/${name}`, ...sections }, importsContract });
     const contract = { "@plurnk/plurnk-modules": "^1.29.0" };
     assert.deepEqual(moduleContractViolations([
@@ -210,8 +210,8 @@ test("{§module-compatibility} a module peers on the contract; only the host dep
         entry("plurnk-unrelated", {}, false),
     ]), []);
     assert.deepEqual(moduleContractViolations([entry("plurnk-direct", { dependencies: contract })]), [
-        "plurnk-direct/package.json: a module declares @plurnk/plurnk-modules as a peer dependency ({§module-compatibility})",
-        "plurnk-direct/package.json: dependencies.@plurnk/plurnk-modules must be a peer dependency ({§module-compatibility})",
+        "plurnk-direct/package.json: a module declares @plurnk/plurnk-modules as a peer dependency ({§module-seam-slices})",
+        "plurnk-direct/package.json: dependencies.@plurnk/plurnk-modules must be a peer dependency ({§module-seam-slices})",
     ]);
 });
 

@@ -383,7 +383,7 @@ const migratedDb = resolve(sandbox, "test.db");
 const mig = runBin(["migrate"], { PLURNK_SERVICE_DB_PATH: migratedDb });
 ok(mig.code === 0 && /migrated:/.test(mig.stdout), "`migrate` boots the DB from installed dist (packaged SQL)");
 
-// {§digest-programmatic-surface}: exercise the package export from the clean
+// {§share-packet-names}: exercise the package export from the clean
 // consumer, not the workspace source condition. A successful run proves the
 // packed evidence/digest.sql resolved beside the core reader and the independent reporter ran.
 const packedDigestDir = resolve(sandbox, "packed-digest");

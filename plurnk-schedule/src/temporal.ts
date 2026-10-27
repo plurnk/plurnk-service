@@ -1,4 +1,4 @@
-// {§schedule-zone} — the runtime's Temporal object (Node 26 ships it globally). TypeScript's
+// {§schedule-rule} — the runtime's Temporal object (Node 26 ships it globally). TypeScript's
 // libraries do not declare it yet, so the package types it through the recurrence library's own
 // Temporal surface and refuses to load on a runtime without it.
 import type { TemporalImplementation, TemporalZonedDateTime } from "rrule-temporal";

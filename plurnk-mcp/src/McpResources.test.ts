@@ -208,7 +208,7 @@ test("{§mcp-model-projection} the resource facet refuses a malformed encoded ad
     }
 });
 
-test("{§error-detail-bound} MCP resource failures bound third-party diagnostics", async () => {
+test("{§env-knob} MCP resource failures bound third-party diagnostics", async () => {
     const prior = process.env[ERROR_DETAIL_LIMIT];
     process.env[ERROR_DETAIL_LIMIT] = "4";
     try {

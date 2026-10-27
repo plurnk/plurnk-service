@@ -44,7 +44,7 @@ const strings = (value: unknown): value is Record<string, string> =>
     isObject(value) && Object.values(value).every((item) => typeof item === "string");
 const problem = (section: string, message: string): Finding => ({ section, message });
 
-// {§agent-plugins-mcp-entries} A stdio command is one token, bare or `./`, and is never expanded.
+// {§agent-plugins-containment} A stdio command is one token, bare or `./`, and is never expanded.
 const stdioProblem = ({ command, args, env, cwd }: Record<string, unknown>): Finding | null => {
     if (typeof command !== "string" || command.length === 0) return problem("7.2.1", "command must be a non-empty string");
     if (WHITESPACE.test(command)) return problem("7.2.1", `command ${JSON.stringify(command)} is not a single executable token`);
@@ -74,7 +74,7 @@ const urlProblem = (raw: string): string | null => {
     return null;
 };
 
-// {§agent-plugins-mcp-entries} A remote endpoint is an absolute URL, HTTPS off loopback, with literal headers.
+// {§agent-plugins-containment} A remote endpoint is an absolute URL, HTTPS off loopback, with literal headers.
 const remoteProblem = ({ url, headers }: Record<string, unknown>): Finding | null => {
     if (typeof url !== "string" || url.length === 0) return problem("7.2.1", "url must be a non-empty string");
     const invalid = urlProblem(url);
@@ -104,7 +104,7 @@ const entryProblem = (entry: unknown): Finding | null => {
     return type === "stdio" ? stdioProblem(entry) : remoteProblem(entry);
 };
 
-// {§agent-plugins-components} A top-level fault disables MCP for the plugin; an entry fault skips that entry alone.
+// {§agent-plugins-containment} A top-level fault disables MCP for the plugin; an entry fault skips that entry alone.
 export const validateMcpConfiguration = (value: unknown): McpConfigurationResult => {
     if (!isObject(value)) return { disabled: problem("7.2.1", "mcp.json must contain a top-level JSON object") };
     const { $schema, mcpServers } = value;

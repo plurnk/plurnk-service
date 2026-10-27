@@ -1,4 +1,4 @@
-// {§plugin-set-module-slice} — what a daemon module reads from the host's plugin hosting: a
+// {§agent-plugins-expansion} — what a daemon module reads from the host's plugin hosting: a
 // workspace's installed Agent Plugins. The base module contract is `@plurnk/plurnk-modules`
 // ({§module-seam-slices}).
 import type { DiscoveredPlugin } from "./PluginRoots.ts";

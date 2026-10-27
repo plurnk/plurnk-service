@@ -176,9 +176,9 @@ exact string `plurnk.kind === "mimetype"`, returning
 before importing handler code.
 
 - **Scope-agnostic.** Publish under your own scope and the host's scan finds it like a first-party handler — no bundle membership, no registration.
-- **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§extension-trust-boundary}).
+- **Trust gate.** Discovery enforces the metaproject's shared pre-import predicate and preserves withheld package names in `skipped` for the consumer to present ({§extension-discovery}).
 - **Failure boundary.** Non-mimetype packages are ignored; malformed trusted declarations and registered handler load failures throw `MimetypeExtensionError` with extension identity and causal evidence ({§mimetype-discovery}).
-- **Attribution.** An admitted package may declare always-on `plurnk.attribution`; an already-loaded handler may decide per provider attempt whether its synchronous `attributions(context)` hook returns additional opaque tags ({§extension-attribution}). Attribution collection never forces a lazy handler to load.
+- **Attribution.** An admitted package may declare always-on `plurnk.attribution`; an already-loaded handler may decide per provider attempt whether its synchronous `attributions(context)` hook returns additional opaque tags ({§extension-discovery}). Attribution collection never forces a lazy handler to load.
 - **Default ordering.** Third-party packages are sorted first and `@plurnk` packages last; later declarations win, so the default scan protects the standard handlers from shadowing.
 - **Explicit ordering.** `packageDirs` bypasses default enumeration and preserves caller order; later declarations still win.
 

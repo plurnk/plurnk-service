@@ -125,9 +125,9 @@ export default class Service {
         Daemon.validateConfiguration();
         Daemon.validateWorkspaceConfiguration();
         await ServiceModules.validateConfiguration(workspacePaths(Service.#hostPaths, process.cwd()).configurationRoots.map(({ directory }) => directory));
-        // {§module-self-activation} — a discovered module validates its own configuration as its factory
+        // {§module-contract} — a discovered module validates its own configuration as its factory
         // constructs it; the offline check constructs every one, starts none, and fails on what any
-        // contained ({§module-contained-configuration}).
+        // contained ({§module-contract}).
         const { modules, configurationErrors } = await discoverDaemonModules({ cwd: dirname(Service.#installedNodeModules()), hostPaths: Service.#hostPaths });
         const causes = [
             ...configurationErrors.map(({ cause }) => cause),

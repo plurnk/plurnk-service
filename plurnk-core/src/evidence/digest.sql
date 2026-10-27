@@ -156,7 +156,7 @@ WHERE json_extract(le.attrs, '$.kind') = 'reasoning'
 ORDER BY le.id;
 
 -- PREP: digest_edit_statements
--- {§digest-edit-census}: every model-authored EDIT with the scope it authored, the pattern the
+-- {§digest-forensic-fidelity}: every model-authored EDIT with the scope it authored, the pattern the
 -- durable statement carried, and how it landed. tx is the statement (application/json).
 SELECT id, session_id, loop_id, turn_id, sequence, pathname, status_rx,
        lineMarker AS line_marker,
@@ -208,12 +208,12 @@ FROM entries e
 WHERE e.output = 1 AND json_type(e.attributes, '$.env') = 'object';
 
 -- PREP: digest_storage
--- {§digest-storage} The file's health: its size, the free pages it holds, and its vacuum mode.
+-- {§share-packet-names} The file's health: its size, the free pages it holds, and its vacuum mode.
 SELECT pc.page_count * ps.page_size AS bytes,
        fc.freelist_count * ps.page_size AS free_bytes,
        av.auto_vacuum AS auto_vacuum
 FROM pragma_page_count() pc, pragma_page_size() ps, pragma_freelist_count() fc, pragma_auto_vacuum() av;
 
 -- PREP: digest_storage_tables
--- {§digest-storage} The largest tables and indexes by allocated bytes.
+-- {§share-packet-names} The largest tables and indexes by allocated bytes.
 SELECT name, SUM(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY bytes DESC LIMIT 6;

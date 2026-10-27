@@ -13,7 +13,7 @@ export interface EvidencePacket {
     readonly assistantRaw: unknown;
     readonly attributions: readonly string[];
     readonly attachments: readonly unknown[];
-    // {§digest-room-line}: the request's measured weight, and the budget its gauge showed (null without one).
+    // {§digest-forensic-fidelity}: the request's measured weight, and the budget its gauge showed (null without one).
     readonly weight: number;
     readonly budget: number | null;
     slot(name: "system" | "user"): string;

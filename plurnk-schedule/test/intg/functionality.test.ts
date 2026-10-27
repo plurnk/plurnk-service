@@ -1,15 +1,31 @@
-// {§schedule-family} — the adapter's truth against fake time: the environment's rules, discovery
-// that tells the time ({§schedule-clock}), admission that canonicalizes and bounds a rule,
-// preparation outcomes, timers that deliver through the port ({§schedule-delivery}), failures that
-// hold until enable, and residency across teardown ({§schedule-residency}).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { setImmediate as nextTick } from "node:timers/promises";
-import { MAX_TIMER_MS } from "@plurnk/plurnk-contracts";
-import type { FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
+import { setImmediate as nextTick, setTimeout as sleep } from "node:timers/promises";
+import { MAX_TIMER_MS, type FunctionalityFamilyHandle } from "@plurnk/plurnk-contracts";
 import ScheduleFunctionality, { ScheduleFunctionalityError } from "../../src/Functionality.ts";
 import type { ScheduleDefinition } from "../../src/definition.ts";
 import type { DeliveryPort, SchedulerTimers } from "../../src/Scheduler.ts";
+import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { Mock } from "@plurnk/plurnk-providers";
+import Module from "../../src/Module.ts";
+import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
+
+// ─── functionality.test.ts ───
+{
+// {§schedule-family} — the adapter's truth against fake time: the environment's rules, discovery
+// that tells the time ({§schedule-rule}), admission that canonicalizes and bounds a rule,
+// preparation outcomes, timers that deliver through the port ({§schedule-delivery}), failures that
+// hold until enable, and residency across teardown ({§schedule-residency}).
+
+
+
+
+
+
+
 
 // 2026-09-16 12:30:15.250 UTC.
 const NOW = Date.UTC(2026, 8, 16, 12, 30, 15, 250);
@@ -192,7 +208,7 @@ test("{§functionality-coordinator} aborting an enable retry preserves the sched
     assert.deepEqual(port.deliveries, [{ workspaceId: 1, sessionId: 7, prompt: "Beat.", source: "schedule://beat" }]);
 });
 
-test("{§schedule-first-arming} identical replacement cannot replay an occurrence delivered during preparation", async (t) => {
+test("{§schedule-delivery} identical replacement cannot replay an occurrence delivered during preparation", async (t) => {
     const time = new FakeTime();
     const adapter = family(time);
     const port = new FakePort();
@@ -242,7 +258,7 @@ test("{§functionality-replacement} schedule replacement publishes the new targe
     assert.deepEqual(port.deliveries[2], port.deliveries[1]);
 });
 
-test("{§schedule-environment} environment definitions are the service baseline with PLURNK_SCHEDULE_ENABLED as the newborn default", async () => {
+test("{§schedule-residency} environment definitions are the service baseline with PLURNK_SCHEDULE_ENABLED as the newborn default", async () => {
     const adapter = family(new FakeTime(), {
         PLURNK_SCHEDULE_heartbeat: JSON.stringify(HEARTBEAT),
         PLURNK_SCHEDULE_nightly: JSON.stringify({ rule: "FREQ=DAILY", target: "session://janitor", prompt: "Tidy." }),
@@ -256,7 +272,7 @@ test("{§schedule-environment} environment definitions are the service baseline 
     await assert.rejects(new ScheduleFunctionality({}).available(), /TZ is unset/u);
 });
 
-test("{§schedule-discovery-preview} the panel says how many occurrences a reading previews, and it is never a rule", async () => {
+test("{§schedule-rule} the panel says how many occurrences a reading previews, and it is never a rule", async () => {
     const one = family(new FakeTime(), { PLURNK_SCHEDULE_PREVIEW_OCCURRENCES: "1" });
     const [daily] = await one.discover({ source: "FREQ=DAILY" }, { workspaceId: 1 });
     assert.match(String(daily.summary), /; next 2026-09-16T12:30:16\+00:00\[UTC\]; unbounded/u, "one occurrence, not three");
@@ -269,7 +285,7 @@ test("{§schedule-discovery-preview} the panel says how many occurrences a readi
     );
 });
 
-test("{§schedule-clock} discovery tells the time beside the rule it reads, in the effective zone, and persists nothing", async () => {
+test("{§schedule-rule} discovery tells the time beside the rule it reads, in the effective zone, and persists nothing", async () => {
     const adapter = family(new FakeTime());
     assert.deepEqual(await adapter.discover({ source: "FREQ=HOURLY;COUNT=2" }, { workspaceId: 1 }), [{
         alias: "hourly",
@@ -286,7 +302,7 @@ test("{§schedule-clock} discovery tells the time beside the rule it reads, in t
     assert.equal((await problemOf(() => adapter.discover({ source: "FREQ=DAILY;BOGUS=1" }, { workspaceId: 1 }))).type, "https://problems.plurnk.xyz/schedule/functionality/rule-invalid");
 });
 
-test("{§schedule-bound} admission canonicalizes the rule in the workspace's zone and refuses an unbounded one", async () => {
+test("{§schedule-rule} admission canonicalizes the rule in the workspace's zone and refuses an unbounded one", async () => {
     const adapter = family(new FakeTime());
     attached(adapter, "Europe/Paris");
     assert.deepEqual(await adapter.admit({ alias: "beat", definition: { rule: "FREQ=HOURLY;COUNT=2", target: "session://bot", prompt: "Beat." } }, { workspaceId: 1 }), {
@@ -389,7 +405,7 @@ test("{§schedule-delivery} an occurrence delivers the message to the target ses
     await adapter.scheduler.close();
 });
 
-test("{§schedule-bound} {§schedule-first-arming} an occurrence past before add is exhausted; a bare rule starts from add", async () => {
+test("{§schedule-rule} {§schedule-delivery} an occurrence past before add is exhausted; a bare rule starts from add", async () => {
     const time = new FakeTime();
     const adapter = family(time);
     const port = new FakePort();
@@ -422,7 +438,7 @@ test("{§schedule-bound} {§schedule-first-arming} an occurrence past before add
     } finally { await adapter.scheduler.close(); }
 });
 
-test("{§schedule-first-arming} a single occurrence that passes between add and its arming still arms, fires at once, and delivers once", async () => {
+test("{§schedule-delivery} a single occurrence that passes between add and its arming still arms, fires at once, and delivers once", async () => {
     const time = new FakeTime();
     const adapter = family(time);
     const port = new FakePort();
@@ -498,7 +514,7 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     assert.equal(outcome.state, "unavailable");
     assert.equal(outcome.problem.type, "https://problems.plurnk.xyz/schedule/delivery/target-missing");
     assert.equal(outcome.problem.status, 404);
-    assert.equal(outcome.problem.detail, "No session named 'bot' exists in this workspace."); // {§problems-schedule}
+    assert.equal(outcome.problem.detail, "No session named 'bot' exists in this workspace."); // {§schedule-residency}
     held.publish(); await held.commit();
     assert.deepEqual(adapter.scheduler.armed(1), [], "republishing does not retry on its own");
 
@@ -522,3 +538,108 @@ test("{§schedule-delivery} a failed delivery holds the rule unavailable with it
     assert.deepEqual(adapter.scheduler.armed(1), ["beat"]);
     await adapter.scheduler.close();
 });
+}
+
+// ─── delivery.test.ts ───
+{
+// {§schedule-delivery} — the module inside a real daemon: a session adds a rule through the family
+// action, the occurrence fires, and the target session's log carries the message as an arrival row
+// from `schedule://<alias>` ({§message-arrival}); the family's list names the next occurrence.
+
+
+
+
+
+
+
+
+
+
+
+const SERVICE = resolve(import.meta.dirname, "../../../plurnk-core");
+const NOW = Date.UTC(2026, 8, 16, 12, 30, 15, 250);
+const FIRST = Date.UTC(2026, 8, 16, 12, 30, 16);
+
+interface LogRow { readonly op: string; readonly origin: string; readonly source: string | null; readonly attrs: string }
+
+const assertDelivery = async (sessionName: string): Promise<void> => {
+    await import(join(SERVICE, "test/setup.ts"));
+    const [{ default: Daemon }, { makeMockResponse }, { openMigrated, insertWorkspace, insertSession, rootWorkspace }] = await Promise.all([
+        import(join(SERVICE, "src/server/Daemon.ts")),
+        import(join(SERVICE, "test/intg/_mock.ts")),
+        import(join(SERVICE, "test/intg/_db.ts")),
+    ]);
+    const provider = new Mock({
+        contextWindow: 32768,
+        responses: [makeMockResponse("````SEND\nBeat taken.\n````", 10)],
+    });
+    // {§test-artifact-retention} — this lane's run directory, beside every other harness's.
+    const db = await openMigrated(join(await testArtifactDirectory("schedule"), `db-${crypto.randomUUID()}.db`));
+    const root = await mkdtemp(join(tmpdir(), "plurnk-schedule-"));
+    const workspaceId = await insertWorkspace(db, "scheduled");
+    await rootWorkspace(db, workspaceId, root);
+    const sessionId = await insertSession(db, workspaceId, null, sessionName, "model");
+
+    let now = NOW;
+    const armed = new Map<number, () => void>();
+    let nextTimer = 1;
+    const timers: SchedulerTimers = {
+        set: (callback) => { const id = nextTimer++; armed.set(id, callback); return id; },
+        clear: (id) => { armed.delete(id as number); },
+    };
+    const module = Module.init({ env: { ...process.env, TZ: "UTC", PLURNK_SCHEDULE_ENABLED: "1" }, clock: () => now, timers });
+    let port: ApplicationPort | null = null;
+    const daemon = new Daemon({ db, provider, nodeModulesPath: join(SERVICE, "node_modules") });
+    daemon.registerModule({
+        setup: (seam: Parameters<Module["setup"]>[0]) => { module.setup(seam); },
+        start: async (seam: ApplicationPort) => { port = seam; await module.start(seam); },
+        stop: () => module.stop(),
+    }, "@plurnk/plurnk-schedule");
+    await daemon.start();
+    try {
+        const application = port as unknown as ApplicationPort;
+        const terminated = new Promise<void>((resolveTerminated) => {
+            application.subscribeToEvents((_workspaceId, method) => { if (method === "loop/terminated") resolveTerminated(); });
+        });
+        const added = await application.invokeModuleAction("workspace.schedule.add", {
+            alias: "beat",
+            definition: { rule: "FREQ=HOURLY;COUNT=2", target: `session://${sessionName}`, prompt: "Take the beat." },
+        }, { scope: "workspace", workspaceId }) as { status: number; alias: string; definition?: { state: string; detail?: { next: string | null; rule: string } } };
+        assert.equal(added.status, 201);
+        assert.equal(added.alias, "beat");
+        assert.equal(added.definition?.state, "active");
+        assert.equal(added.definition?.detail?.rule, "DTSTART;TZID=UTC:20260916T123016\nRRULE:FREQ=HOURLY;COUNT=2", "the stored rule is canonical");
+        assert.equal(added.definition?.detail?.next, "2026-09-16T12:30:16+00:00[UTC]");
+        assert.equal(armed.size, 1, "one occurrence armed");
+
+        now = FIRST;
+        for (const callback of [...armed.values()]) callback();
+        await terminated;
+
+        const rows = await db.test_log_entries_by_loop.all({ loop_id: (await db.test_all_loops.all() as Array<{ id: number; session_id: number }>).find((loop) => loop.session_id === sessionId)!.id }) as LogRow[];
+        const arrivals = rows.filter((row) => row.op === "SEND" && row.origin === "_plurnk" && (JSON.parse(row.attrs) as { kind?: string }).kind === "message");
+        assert.equal(arrivals.length, 1, "the delivery published exactly one arrival row");
+        assert.equal(arrivals[0].source, "schedule://beat", "the arrival names the schedule as its causal source");
+
+        const deadline = Date.now() + 10_000;
+        let next: string | null | undefined;
+        while (Date.now() < deadline) {
+            const listing = await application.invokeModuleAction("workspace.schedule.list", {}, { scope: "workspace", workspaceId }) as { definitions: Array<{ alias: string; detail?: { next: string | null } }> };
+            next = listing.definitions.find(({ alias }) => alias === "beat")?.detail?.next;
+            if (next === "2026-09-16T13:30:16+00:00[UTC]") break;
+            await sleep(50);
+        }
+        assert.equal(next, "2026-09-16T13:30:16+00:00[UTC]", "after the fire the family lists the following occurrence");
+    } finally {
+        await daemon.stop();
+        await db.close();
+        await rm(root, { recursive: true, force: true });
+    }
+};
+
+for (const sessionName of ["recipient", "Approach_A"]) {
+    test(`{§schedule-delivery} a scheduled message reaches ${sessionName} as an arrival from schedule://<alias>`, { timeout: 60_000 }, async () => {
+        await assertDelivery(sessionName);
+    });
+}
+}

@@ -857,7 +857,7 @@ SELECT COUNT(*) AS n, SUM(length(content)) AS bytes FROM contents;
 -- PREP: test_loop_termination_events
 SELECT rx FROM ambient_events WHERE kind = 'loop_termination' AND recipient_session_id = $recipient_session_id ORDER BY id;
 -- PREP: test_edit_rows_by_session
--- {§digest-edit-census}: a session's model-authored EDITs with the scope and pattern they authored.
+-- {§digest-forensic-fidelity}: a session's model-authored EDITs with the scope and pattern they authored.
 SELECT id, pathname, status_rx, lineMarker AS line_marker,
        CASE WHEN json_valid(tx) THEN json_extract(tx, '$.matcher.raw') END AS pattern
 FROM log_entries WHERE session_id = $session_id AND op = 'EDIT' AND origin = 'model' ORDER BY id;

@@ -98,7 +98,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 
 ## §executor-discovery Discovery, declarations, invocation, tool registries, and documents
 
-`discover(options?)` scans every scoped and unscoped package under `node_modules` for `plurnk.kind === "exec"`, returning `{ registry, packageAttributions, skipped, disabled }` ({§extension-attribution}). Tag collisions across packages fail hard naming both packages.
+`discover(options?)` scans every scoped and unscoped package under `node_modules` for `plurnk.kind === "exec"`, returning `{ registry, packageAttributions, skipped, disabled }` ({§extension-discovery}). Tag collisions across packages fail hard naming both packages.
 
 | Package state | Effective policy and probe | Runtime result |
 | --- | --- | --- |

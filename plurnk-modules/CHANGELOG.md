@@ -14,7 +14,7 @@
 
 - 1f3568a: A module's `close` returns once the work its routes admitted has settled: the host
   releases what that work reaches once every `close` has returned, so nothing a module
-  admitted reaches it afterward ({§module-route-settlement}).
+  admitted reaches it afterward ({§module-contract}).
 - Updated dependencies [cfa2be9]
 - Updated dependencies [ff99f76]
 - Updated dependencies [a8200fb]

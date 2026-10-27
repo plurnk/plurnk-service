@@ -13257,9 +13257,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §module-contract for undefined (#1271)."
                 },
                 "module-http-mounts": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13269,9 +13269,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 5,
                     "testCitations": 4,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-contract",
+                    "reason": "Folded sub-tag §module-http-mounts into section heading tag §module-contract (#1271)."
                 },
                 "module-phases": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13281,9 +13281,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-contract",
+                    "reason": "Folded sub-tag §module-phases into section heading tag §module-contract (#1271)."
                 },
                 "module-route-settlement": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13293,9 +13293,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-contract",
+                    "reason": "Folded sub-tag §module-route-settlement into section heading tag §module-contract (#1271)."
                 },
                 "module-self-activation": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13305,9 +13305,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 7,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-contract",
+                    "reason": "Folded sub-tag §module-self-activation into section heading tag §module-contract (#1271)."
                 },
                 "module-contained-configuration": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13317,9 +13317,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 5,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-contract",
+                    "reason": "Folded sub-tag §module-contained-configuration into section heading tag §module-contract (#1271)."
                 },
                 "module-failure": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13329,9 +13329,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-contract",
+                    "reason": "Folded sub-tag §module-failure into section heading tag §module-contract (#1271)."
                 },
                 "module-seam-slices": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13341,9 +13341,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 9,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §module-seam-slices for undefined (#1271)."
                 },
                 "module-compatibility": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13353,9 +13353,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-seam-slices",
+                    "reason": "Folded sub-tag §module-compatibility into section heading tag §module-seam-slices (#1271)."
                 },
                 "module-workspace-paths": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13365,9 +13365,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-seam-slices",
+                    "reason": "Folded sub-tag §module-workspace-paths into section heading tag §module-seam-slices (#1271)."
                 },
                 "module-workspace-directory": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13377,9 +13377,9 @@
                     "liveShape": "table",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-seam-slices",
+                    "reason": "Folded sub-tag §module-workspace-directory into section heading tag §module-seam-slices (#1271)."
                 },
                 "module-action-registration": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13389,9 +13389,9 @@
                     "liveShape": "table",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-seam-slices",
+                    "reason": "Folded sub-tag §module-action-registration into section heading tag §module-seam-slices (#1271)."
                 },
                 "module-functionality-adapter": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13401,9 +13401,9 @@
                     "liveShape": "table",
                     "codeCitations": 2,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "module-seam-slices",
+                    "reason": "Folded sub-tag §module-functionality-adapter into section heading tag §module-seam-slices (#1271)."
                 },
                 "functionality-adapter": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13413,9 +13413,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 5,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §functionality-adapter for undefined (#1271)."
                 },
                 "functionality-preparation-cancellation": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13425,9 +13425,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 6,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "functionality-adapter",
+                    "reason": "Folded sub-tag §functionality-preparation-cancellation into section heading tag §functionality-adapter (#1271)."
                 },
                 "functionality-admission-preparation": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13437,9 +13437,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "functionality-adapter",
+                    "reason": "Folded sub-tag §functionality-admission-preparation into section heading tag §functionality-adapter (#1271)."
                 },
                 "functionality-discovery-inputs": {
                     "spec": "plurnk-modules/SPEC.md",
@@ -13449,9 +13449,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "functionality-adapter",
+                    "reason": "Folded sub-tag §functionality-discovery-inputs into section heading tag §functionality-adapter (#1271)."
                 },
                 "teaching-corpus": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13461,9 +13461,9 @@
                     "liveShape": "heading",
                     "codeCitations": 4,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §teaching-corpus for undefined (#1271)."
                 },
                 "skills-installation-boundary": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13473,9 +13473,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "teaching-corpus",
+                    "reason": "Folded sub-tag §skills-installation-boundary into section heading tag §teaching-corpus (#1271)."
                 },
                 "extension-discovery": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13485,9 +13485,9 @@
                     "liveShape": "heading",
                     "codeCitations": 4,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §extension-discovery for undefined (#1271)."
                 },
                 "extension-kind": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13497,9 +13497,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "extension-discovery",
+                    "reason": "Folded sub-tag §extension-kind into section heading tag §extension-discovery (#1271)."
                 },
                 "env-knob": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13509,9 +13509,9 @@
                     "liveShape": "heading",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §env-knob for undefined (#1271)."
                 },
                 "configuration-error-identity": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13521,9 +13521,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "env-knob",
+                    "reason": "Folded sub-tag §configuration-error-identity into section heading tag §env-knob (#1271)."
                 },
                 "resource-environment": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13533,9 +13533,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "env-knob",
+                    "reason": "Folded sub-tag §resource-environment into section heading tag §env-knob (#1271)."
                 },
                 "error-detail-bound": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13545,9 +13545,9 @@
                     "liveShape": "heading",
                     "codeCitations": 5,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "env-knob",
+                    "reason": "Folded sub-tag §error-detail-bound into section heading tag §env-knob (#1271)."
                 },
                 "extension-manifest-read": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13557,9 +13557,9 @@
                     "liveShape": "heading",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "extension-discovery",
+                    "reason": "Folded sub-tag §extension-manifest-read into section heading tag §extension-discovery (#1271)."
                 },
                 "extension-attribution": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13569,9 +13569,9 @@
                     "liveShape": "heading",
                     "codeCitations": 6,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "extension-discovery",
+                    "reason": "Folded sub-tag §extension-attribution into section heading tag §extension-discovery (#1271)."
                 },
                 "extension-trust-boundary": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13581,9 +13581,9 @@
                     "liveShape": "heading",
                     "codeCitations": 5,
                     "testCitations": 7,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "extension-discovery",
+                    "reason": "Folded sub-tag §extension-trust-boundary into section heading tag §extension-discovery (#1271)."
                 },
                 "observed-span": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13593,9 +13593,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §observed-span for undefined (#1271)."
                 },
                 "ambient-http-transport": {
                     "spec": "plurnk-meta/SPEC.md",
@@ -13605,9 +13605,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §ambient-http-transport for undefined (#1271)."
                 },
                 "digest-evidence-reader": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13617,9 +13617,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §digest-evidence-reader for undefined (#1271)."
                 },
                 "digest-proposal-decisions": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13629,9 +13629,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-evidence-reader",
+                    "reason": "Folded sub-tag §digest-proposal-decisions into section heading tag §digest-evidence-reader (#1271)."
                 },
                 "digest-storage": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13641,9 +13641,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "share-packet-names",
+                    "reason": "Folded sub-tag §digest-storage into section heading tag §share-packet-names (#1271)."
                 },
                 "digest-turn-artifact-identity": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13653,9 +13653,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "share-packet-names",
+                    "reason": "Folded sub-tag §digest-turn-artifact-identity into section heading tag §share-packet-names (#1271)."
                 },
                 "share-packet-names": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13665,9 +13665,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 4,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §share-packet-names for undefined (#1271)."
                 },
                 "digest-navigation": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13677,9 +13677,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "share-packet-names",
+                    "reason": "Folded sub-tag §digest-navigation into section heading tag §share-packet-names (#1271)."
                 },
                 "share-snapshot": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13689,9 +13689,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "share-packet-names",
+                    "reason": "Folded sub-tag §share-snapshot into section heading tag §share-packet-names (#1271)."
                 },
                 "digest-programmatic-surface": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13701,9 +13701,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 5,
                     "testCitations": 4,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "share-packet-names",
+                    "reason": "Folded sub-tag §digest-programmatic-surface into section heading tag §share-packet-names (#1271)."
                 },
                 "digest-cost-kind": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13713,9 +13713,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-forensic-fidelity",
+                    "reason": "Folded sub-tag §digest-cost-kind into section heading tag §digest-forensic-fidelity (#1271)."
                 },
                 "digest-wire-line": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13725,9 +13725,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-forensic-fidelity",
+                    "reason": "Folded sub-tag §digest-wire-line into section heading tag §digest-forensic-fidelity (#1271)."
                 },
                 "digest-room-line": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13737,9 +13737,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-forensic-fidelity",
+                    "reason": "Folded sub-tag §digest-room-line into section heading tag §digest-forensic-fidelity (#1271)."
                 },
                 "digest-cache-ledger": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13749,9 +13749,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-forensic-fidelity",
+                    "reason": "Folded sub-tag §digest-cache-ledger into section heading tag §digest-forensic-fidelity (#1271)."
                 },
                 "digest-edit-census": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13761,9 +13761,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-forensic-fidelity",
+                    "reason": "Folded sub-tag §digest-edit-census into section heading tag §digest-forensic-fidelity (#1271)."
                 },
                 "digest-forensic-fidelity": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13773,9 +13773,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 6,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §digest-forensic-fidelity for undefined (#1271)."
                 },
                 "digest-executor-evidence": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13785,9 +13785,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-forensic-fidelity",
+                    "reason": "Folded sub-tag §digest-executor-evidence into section heading tag §digest-forensic-fidelity (#1271)."
                 },
                 "digest-capacity-evidence": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13797,9 +13797,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-forensic-fidelity",
+                    "reason": "Folded sub-tag §digest-capacity-evidence into section heading tag §digest-forensic-fidelity (#1271)."
                 },
                 "digest-requiem": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13809,9 +13809,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 4,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §digest-requiem for undefined (#1271)."
                 },
                 "digest-requiem-evidence-budget": {
                     "spec": "plurnk-digest/SPEC.md",
@@ -13821,9 +13821,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "digest-requiem",
+                    "reason": "Folded sub-tag §digest-requiem-evidence-budget into section heading tag §digest-requiem (#1271)."
                 },
                 "schedule-family": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13833,9 +13833,9 @@
                     "liveShape": "heading",
                     "codeCitations": 3,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §schedule-family for undefined (#1271)."
                 },
                 "schedule-module": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13845,9 +13845,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-family",
+                    "reason": "Folded sub-tag §schedule-module into section heading tag §schedule-family (#1271)."
                 },
                 "schedule-rule": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13857,9 +13857,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §schedule-rule for undefined (#1271)."
                 },
                 "schedule-bound": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13869,9 +13869,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-rule",
+                    "reason": "Folded sub-tag §schedule-bound into section heading tag §schedule-rule (#1271)."
                 },
                 "schedule-zone": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13881,9 +13881,9 @@
                     "liveShape": "heading",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-rule",
+                    "reason": "Folded sub-tag §schedule-zone into section heading tag §schedule-rule (#1271)."
                 },
                 "schedule-clock": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13893,9 +13893,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-rule",
+                    "reason": "Folded sub-tag §schedule-clock into section heading tag §schedule-rule (#1271)."
                 },
                 "schedule-discovery-preview": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13905,9 +13905,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-rule",
+                    "reason": "Folded sub-tag §schedule-discovery-preview into section heading tag §schedule-rule (#1271)."
                 },
                 "schedule-delivery": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13917,9 +13917,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 4,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §schedule-delivery for undefined (#1271)."
                 },
                 "schedule-first-arming": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13929,9 +13929,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-delivery",
+                    "reason": "Folded sub-tag §schedule-first-arming into section heading tag §schedule-delivery (#1271)."
                 },
                 "schedule-residency": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13941,9 +13941,9 @@
                     "liveShape": "heading",
                     "codeCitations": 3,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §schedule-residency for undefined (#1271)."
                 },
                 "schedule-environment": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13953,9 +13953,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-residency",
+                    "reason": "Folded sub-tag §schedule-environment into section heading tag §schedule-residency (#1271)."
                 },
                 "problems-schedule": {
                     "spec": "plurnk-schedule/SPEC.md",
@@ -13965,9 +13965,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "schedule-residency",
+                    "reason": "Folded sub-tag §problems-schedule into section heading tag §schedule-residency (#1271)."
                 },
                 "skills-module": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -13977,9 +13977,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §skills-module for undefined (#1271)."
                 },
                 "skills-functionality": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -13989,9 +13989,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "skills-module",
+                    "reason": "Folded sub-tag §skills-functionality into section heading tag §skills-module (#1271)."
                 },
                 "skills-configuration": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -14001,9 +14001,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "skills-module",
+                    "reason": "Folded sub-tag §skills-configuration into section heading tag §skills-module (#1271)."
                 },
                 "skills-sources": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -14013,9 +14013,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §skills-sources for undefined (#1271)."
                 },
                 "skills-resources": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -14025,9 +14025,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "skills-sources",
+                    "reason": "Folded sub-tag §skills-resources into section heading tag §skills-sources (#1271)."
                 },
                 "skills-remove": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -14037,9 +14037,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "skills-hotload",
+                    "reason": "Folded sub-tag §skills-remove into section heading tag §skills-hotload (#1271)."
                 },
                 "skills-hotload": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -14049,9 +14049,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §skills-hotload for undefined (#1271)."
                 },
                 "problems-skills": {
                     "spec": "plurnk-skills/SPEC.md",
@@ -14061,9 +14061,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "skills-hotload",
+                    "reason": "Folded sub-tag §problems-skills into section heading tag §skills-hotload (#1271)."
                 },
                 "agent-skills-tree": {
                     "spec": "plurnk-agent-skills/SPEC.md",
@@ -14073,9 +14073,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "provided-skills-module-slice",
+                    "reason": "Folded sub-tag §agent-skills-tree into section heading tag §provided-skills-module-slice (#1271)."
                 },
                 "provided-skills-module-slice": {
                     "spec": "plurnk-agent-skills/SPEC.md",
@@ -14085,9 +14085,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §provided-skills-module-slice for undefined (#1271)."
                 },
                 "agent-skills-directory": {
                     "spec": "plurnk-agent-skills/SPEC.md",
@@ -14097,9 +14097,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §agent-skills-directory for undefined (#1271)."
                 },
                 "agent-skills-name": {
                     "spec": "plurnk-agent-skills/SPEC.md",
@@ -14109,9 +14109,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-skills-directory",
+                    "reason": "Folded sub-tag §agent-skills-name into section heading tag §agent-skills-directory (#1271)."
                 },
                 "agent-skills-disclosure": {
                     "spec": "plurnk-agent-skills/SPEC.md",
@@ -14121,9 +14121,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §agent-skills-disclosure for undefined (#1271)."
                 },
                 "agent-plugins-scope": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14133,9 +14133,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-plugins-roots",
+                    "reason": "Folded sub-tag §agent-plugins-scope into section heading tag §agent-plugins-roots (#1271)."
                 },
                 "agent-plugins-roots": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14145,9 +14145,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §agent-plugins-roots for undefined (#1271)."
                 },
                 "agent-plugins-manifest": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14157,9 +14157,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-plugins-roots",
+                    "reason": "Folded sub-tag §agent-plugins-manifest into section heading tag §agent-plugins-roots (#1271)."
                 },
                 "agent-plugins-containment": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14169,9 +14169,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §agent-plugins-containment for undefined (#1271)."
                 },
                 "agent-plugins-components": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14181,9 +14181,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-plugins-containment",
+                    "reason": "Folded sub-tag §agent-plugins-components into section heading tag §agent-plugins-containment (#1271)."
                 },
                 "agent-plugins-mcp-entries": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14193,9 +14193,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-plugins-containment",
+                    "reason": "Folded sub-tag §agent-plugins-mcp-entries into section heading tag §agent-plugins-containment (#1271)."
                 },
                 "agent-plugins-expansion": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14205,9 +14205,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §agent-plugins-expansion for undefined (#1271)."
                 },
                 "agent-plugins-reports": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14217,9 +14217,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-plugins-expansion",
+                    "reason": "Folded sub-tag §agent-plugins-reports into section heading tag §agent-plugins-expansion (#1271)."
                 },
                 "plugin-set-module-slice": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14229,9 +14229,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-plugins-expansion",
+                    "reason": "Folded sub-tag §plugin-set-module-slice into section heading tag §agent-plugins-expansion (#1271)."
                 },
                 "agent-plugins-conformance": {
                     "spec": "plurnk-agent-plugins/SPEC.md",
@@ -14241,9 +14241,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "agent-plugins-expansion",
+                    "reason": "Folded sub-tag §agent-plugins-conformance into section heading tag §agent-plugins-expansion (#1271)."
                 },
                 "hooks-command-delivery": {
                     "spec": "plurnk-hooks/SPEC.md",
@@ -14253,9 +14253,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "hooks-event-projection",
+                    "reason": "Folded sub-tag §hooks-command-delivery into section heading tag §hooks-event-projection (#1271)."
                 },
                 "hooks-selection": {
                     "spec": "plurnk-hooks/SPEC.md",
@@ -14265,9 +14265,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "hooks-event-projection",
+                    "reason": "Folded sub-tag §hooks-selection into section heading tag §hooks-event-projection (#1271)."
                 },
                 "hooks-event-projection": {
                     "spec": "plurnk-hooks/SPEC.md",
@@ -14277,9 +14277,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 3,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §hooks-event-projection for undefined (#1271)."
                 },
                 "hooks-bounded-delivery": {
                     "spec": "plurnk-hooks/SPEC.md",
@@ -14289,9 +14289,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "hooks-module",
+                    "reason": "Folded sub-tag §hooks-bounded-delivery into section heading tag §hooks-module (#1271)."
                 },
                 "hooks-module": {
                     "spec": "plurnk-hooks/SPEC.md",
@@ -14301,9 +14301,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §hooks-module for undefined (#1271)."
                 },
                 "hooks-failure-isolation": {
                     "spec": "plurnk-hooks/SPEC.md",
@@ -14313,9 +14313,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "hooks-module",
+                    "reason": "Folded sub-tag §hooks-failure-isolation into section heading tag §hooks-module (#1271)."
                 },
                 "hooks-config": {
                     "spec": "plurnk-hooks/SPEC.md",
@@ -14325,9 +14325,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "hooks-module",
+                    "reason": "Folded sub-tag §hooks-config into section heading tag §hooks-module (#1271)."
                 },
                 "otel-module": {
                     "spec": "plurnk-otel/SPEC.md",
@@ -14337,9 +14337,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained section heading tag §otel-module for undefined (#1271)."
                 },
                 "otel-contained": {
                     "spec": "plurnk-otel/SPEC.md",
@@ -14349,9 +14349,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "otel-module",
+                    "reason": "Folded sub-tag §otel-contained into section heading tag §otel-module (#1271)."
                 },
                 "otel-shutdown": {
                     "spec": "plurnk-otel/SPEC.md",
@@ -14361,9 +14361,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "otel-module",
+                    "reason": "Folded sub-tag §otel-shutdown into section heading tag §otel-module (#1271)."
                 }
             },
             "tests": {
@@ -14378,9 +14378,9 @@
                     "citedTags": [
                         "digest-evidence-reader"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.boundary.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.cache-ledger.test.ts": {
                     "tier": "intg",
@@ -14393,9 +14393,9 @@
                     "citedTags": [
                         "digest-cache-ledger"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.cache-ledger.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.cardinality.test.ts": {
                     "tier": "intg",
@@ -14408,9 +14408,9 @@
                     "citedTags": [
                         "digest-forensic-fidelity"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.cardinality.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.executor-evidence.test.ts": {
                     "tier": "intg",
@@ -14423,9 +14423,9 @@
                     "citedTags": [
                         "digest-executor-evidence"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.executor-evidence.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.failed-request.test.ts": {
                     "tier": "intg",
@@ -14438,9 +14438,9 @@
                     "citedTags": [
                         "provider-request-evidence"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.failed-request.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.memory.test.ts": {
                     "tier": "intg",
@@ -14453,9 +14453,9 @@
                     "citedTags": [
                         "digest-forensic-fidelity"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.memory.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.output.test.ts": {
                     "tier": "intg",
@@ -14468,9 +14468,9 @@
                     "citedTags": [
                         "digest-programmatic-surface"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.request-states.test.ts": {
                     "tier": "intg",
@@ -14483,9 +14483,9 @@
                     "citedTags": [
                         "digest-navigation"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.request-states.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.requiem-evidence-budget.test.ts": {
                     "tier": "intg",
@@ -14498,9 +14498,9 @@
                     "citedTags": [
                         "digest-requiem-evidence-budget"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.requiem-evidence-budget.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.requiem-identity.test.ts": {
                     "tier": "intg",
@@ -14513,9 +14513,9 @@
                     "citedTags": [
                         "digest-requiem"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.requiem-identity.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.resources.test.ts": {
                     "tier": "intg",
@@ -14529,9 +14529,9 @@
                         "digest-programmatic-surface",
                         "digest-requiem"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.resources.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.room-line.test.ts": {
                     "tier": "intg",
@@ -14544,9 +14544,9 @@
                     "citedTags": [
                         "digest-room-line"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.room-line.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.usageless-requests.test.ts": {
                     "tier": "intg",
@@ -14559,9 +14559,9 @@
                     "citedTags": [
                         "digest-forensic-fidelity"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.usageless-requests.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/Digest.workspace-names.test.ts": {
                     "tier": "intg",
@@ -14574,9 +14574,9 @@
                     "citedTags": [
                         "share-packet-names"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/Digest.output.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/Digest.workspace-names.test.ts into plurnk-core/test/intg/Digest.output.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/WorkspaceStorage.test.ts": {
                     "tier": "intg",
@@ -14589,9 +14589,9 @@
                     "citedTags": [
                         "module-workspace-directory"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-core/test/intg/WorkspaceStorage.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/backup-restore.test.ts": {
                     "tier": "intg",
@@ -14604,9 +14604,9 @@
                     "citedTags": [
                         "share-snapshot"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/WorkspaceStorage.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/backup-restore.test.ts into plurnk-core/test/intg/WorkspaceStorage.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/caps-assembly.test.ts": {
                     "tier": "intg",
@@ -14619,9 +14619,9 @@
                     "citedTags": [
                         "capability-ctx"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/WorkspaceStorage.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/caps-assembly.test.ts into plurnk-core/test/intg/WorkspaceStorage.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/caps-channels-tags.test.ts": {
                     "tier": "intg",
@@ -14634,9 +14634,9 @@
                     "citedTags": [
                         "capability-ctx"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/WorkspaceStorage.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/caps-channels-tags.test.ts into plurnk-core/test/intg/WorkspaceStorage.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/functionality-environment.test.ts": {
                     "tier": "intg",
@@ -14649,9 +14649,9 @@
                     "citedTags": [
                         "resource-environment"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/WorkspaceStorage.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/functionality-environment.test.ts into plurnk-core/test/intg/WorkspaceStorage.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/schedule-discovery.test.ts": {
                     "tier": "intg",
@@ -14664,9 +14664,9 @@
                     "citedTags": [
                         "schedule-module"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-core/test/intg/WorkspaceStorage.test.ts",
+                    "reason": "Merged plurnk-core/test/intg/schedule-discovery.test.ts into plurnk-core/test/intg/WorkspaceStorage.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/skills-exec.test.ts": {
                     "tier": "intg",
@@ -14679,9 +14679,9 @@
                     "citedTags": [
                         "skills-hotload"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-core/test/intg/skills-exec.test.ts (#1271)."
                 },
                 "plurnk-core/test/intg/teaching-corpus.test.ts": {
                     "tier": "intg",
@@ -14694,9 +14694,9 @@
                     "citedTags": [
                         "teaching-corpus"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-core/test/intg/teaching-corpus.test.ts (#1271)."
                 },
                 "plurnk-agent-plugins/src/AgentPlugins.test.ts": {
                     "tier": "unit",
@@ -14710,9 +14710,9 @@
                         "agent-plugins-expansion",
                         "agent-plugins-manifest"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-agent-plugins/src/AgentPlugins.test.ts (#1271)."
                 },
                 "plurnk-agent-plugins/src/PluginDirectory.test.ts": {
                     "tier": "unit",
@@ -14729,9 +14729,9 @@
                         "agent-plugins-reports",
                         "agent-plugins-scope"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-agent-plugins/src/AgentPlugins.test.ts",
+                    "reason": "Merged plurnk-agent-plugins/src/PluginDirectory.test.ts into plurnk-agent-plugins/src/AgentPlugins.test.ts (#1271)."
                 },
                 "plurnk-agent-plugins/src/PluginRoots.test.ts": {
                     "tier": "unit",
@@ -14744,9 +14744,9 @@
                     "citedTags": [
                         "agent-plugins-roots"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-agent-plugins/src/AgentPlugins.test.ts",
+                    "reason": "Merged plurnk-agent-plugins/src/PluginRoots.test.ts into plurnk-agent-plugins/src/AgentPlugins.test.ts (#1271)."
                 },
                 "plurnk-agent-skills/src/SkillDirectory.test.ts": {
                     "tier": "unit",
@@ -14761,9 +14761,9 @@
                         "agent-skills-disclosure",
                         "agent-skills-name"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-agent-skills/src/SkillDirectory.test.ts (#1271)."
                 },
                 "plurnk-digest/src/Digest.test.ts": {
                     "tier": "unit",
@@ -14778,9 +14778,9 @@
                         "digest-evidence-reader",
                         "digest-programmatic-surface"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-digest/src/Digest.test.ts (#1271)."
                 },
                 "plurnk-digest/src/DigestRender.test.ts": {
                     "tier": "unit",
@@ -14795,9 +14795,9 @@
                         "provider-wire-emission",
                         "share-packet-names"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-digest/src/Digest.test.ts",
+                    "reason": "Merged plurnk-digest/src/DigestRender.test.ts into plurnk-digest/src/Digest.test.ts (#1271)."
                 },
                 "plurnk-digest/src/Share.test.ts": {
                     "tier": "unit",
@@ -14810,9 +14810,9 @@
                     "citedTags": [
                         "share"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-digest/src/Digest.test.ts",
+                    "reason": "Merged plurnk-digest/src/Share.test.ts into plurnk-digest/src/Digest.test.ts (#1271)."
                 },
                 "plurnk-hooks/src/EventProjection.test.ts": {
                     "tier": "unit",
@@ -14825,9 +14825,9 @@
                     "citedTags": [
                         "hooks-event-projection"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-hooks/src/Module.test.ts",
+                    "reason": "Merged plurnk-hooks/src/EventProjection.test.ts into plurnk-hooks/src/Module.test.ts (#1271)."
                 },
                 "plurnk-hooks/src/Module.test.ts": {
                     "tier": "unit",
@@ -14844,9 +14844,9 @@
                         "hooks-failure-isolation",
                         "hooks-module"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-hooks/src/Module.test.ts (#1271)."
                 },
                 "plurnk-hooks/src/config.test.ts": {
                     "tier": "unit",
@@ -14860,9 +14860,9 @@
                         "hooks-config",
                         "hooks-selection"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-hooks/src/Module.test.ts",
+                    "reason": "Merged plurnk-hooks/src/config.test.ts into plurnk-hooks/src/Module.test.ts (#1271)."
                 },
                 "plurnk-meta/src/ConfigurationError.test.ts": {
                     "tier": "unit",
@@ -14875,9 +14875,9 @@
                     "citedTags": [
                         "configuration-error-identity"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-meta/src/index.test.ts",
+                    "reason": "Merged plurnk-meta/src/ConfigurationError.test.ts into plurnk-meta/src/index.test.ts (#1271)."
                 },
                 "plurnk-meta/src/ErrorDetail.test.ts": {
                     "tier": "unit",
@@ -14890,9 +14890,9 @@
                     "citedTags": [
                         "error-detail-bound"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-meta/src/index.test.ts",
+                    "reason": "Merged plurnk-meta/src/ErrorDetail.test.ts into plurnk-meta/src/index.test.ts (#1271)."
                 },
                 "plurnk-meta/src/Knob.test.ts": {
                     "tier": "unit",
@@ -14905,9 +14905,9 @@
                     "citedTags": [
                         "env-knob"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-meta/src/index.test.ts",
+                    "reason": "Merged plurnk-meta/src/Knob.test.ts into plurnk-meta/src/index.test.ts (#1271)."
                 },
                 "plurnk-meta/src/ResourceEnvironment.test.ts": {
                     "tier": "unit",
@@ -14920,9 +14920,9 @@
                     "citedTags": [
                         "resource-environment"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-meta/src/index.test.ts",
+                    "reason": "Merged plurnk-meta/src/ResourceEnvironment.test.ts into plurnk-meta/src/index.test.ts (#1271)."
                 },
                 "plurnk-meta/src/index.test.ts": {
                     "tier": "unit",
@@ -14942,9 +14942,9 @@
                         "operator-config-only-home",
                         "teaching-corpus"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-meta/src/index.test.ts (#1271)."
                 },
                 "plurnk-meta/src/observe.test.ts": {
                     "tier": "unit",
@@ -14957,9 +14957,9 @@
                     "citedTags": [
                         "observed-span"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-meta/src/observe.test.ts (#1271)."
                 },
                 "plurnk-meta/src/outbound-http.test.ts": {
                     "tier": "unit",
@@ -14972,9 +14972,9 @@
                     "citedTags": [
                         "ambient-http-transport"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-meta/src/outbound-http.test.ts (#1271)."
                 },
                 "plurnk-modules/src/index.test.ts": {
                     "tier": "unit",
@@ -14988,9 +14988,9 @@
                         "module-contract",
                         "module-seam-slices"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-modules/src/index.test.ts (#1271)."
                 },
                 "plurnk-otel/src/Module.test.ts": {
                     "tier": "unit",
@@ -15005,9 +15005,9 @@
                         "otel-module",
                         "otel-shutdown"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-otel/src/Module.test.ts (#1271)."
                 },
                 "plurnk-schedule/src/config.test.ts": {
                     "tier": "unit",
@@ -15022,9 +15022,9 @@
                         "schedule-discovery-preview",
                         "schedule-environment"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-schedule/src/rules.test.ts",
+                    "reason": "Merged plurnk-schedule/src/config.test.ts into plurnk-schedule/src/rules.test.ts (#1271)."
                 },
                 "plurnk-schedule/src/definition.test.ts": {
                     "tier": "unit",
@@ -15037,9 +15037,9 @@
                     "citedTags": [
                         "schedule-family"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-schedule/src/rules.test.ts",
+                    "reason": "Merged plurnk-schedule/src/definition.test.ts into plurnk-schedule/src/rules.test.ts (#1271)."
                 },
                 "plurnk-schedule/src/rules.test.ts": {
                     "tier": "unit",
@@ -15055,9 +15055,9 @@
                         "schedule-rule",
                         "schedule-zone"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-schedule/src/rules.test.ts (#1271)."
                 },
                 "plurnk-schedule/test/intg/delivery.test.ts": {
                     "tier": "intg",
@@ -15072,9 +15072,9 @@
                         "schedule-delivery",
                         "test-artifact-retention"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-schedule/test/intg/functionality.test.ts",
+                    "reason": "Merged plurnk-schedule/test/intg/delivery.test.ts into plurnk-schedule/test/intg/functionality.test.ts (#1271)."
                 },
                 "plurnk-schedule/test/intg/functionality.test.ts": {
                     "tier": "intg",
@@ -15097,9 +15097,9 @@
                         "schedule-first-arming",
                         "schedule-residency"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-schedule/test/intg/functionality.test.ts (#1271)."
                 },
                 "plurnk-skills/src/Functionality.test.ts": {
                     "tier": "unit",
@@ -15115,9 +15115,9 @@
                         "module-workspace-paths",
                         "skills-configuration"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained canonical test suite plurnk-skills/src/Functionality.test.ts (#1271)."
                 },
                 "plurnk-skills/src/Module.test.ts": {
                     "tier": "unit",
@@ -15131,9 +15131,9 @@
                         "skills-module",
                         "skills-resources"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-skills/src/Functionality.test.ts",
+                    "reason": "Merged plurnk-skills/src/Module.test.ts into plurnk-skills/src/Functionality.test.ts (#1271)."
                 },
                 "plurnk-skills/src/SkillSource.test.ts": {
                     "tier": "unit",
@@ -15148,9 +15148,9 @@
                         "functionality-preparation-cancellation",
                         "skills-sources"
                     ],
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "merge-into",
+                    "target": "plurnk-skills/src/Functionality.test.ts",
+                    "reason": "Merged plurnk-skills/src/SkillSource.test.ts into plurnk-skills/src/Functionality.test.ts (#1271)."
                 }
             }
         },

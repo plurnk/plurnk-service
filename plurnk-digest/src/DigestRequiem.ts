@@ -180,7 +180,7 @@ export default class DigestRequiem {
                     failure: attempt.failure,
                     parseErrors: attempt.parseErrors,
                 })));
-            // {§digest-requiem-evidence-budget} (#448): quoted evidence fits the witness
+            // {§digest-requiem} (#448): quoted evidence fits the witness
             // window or the oldest attempts elide behind an explicit marker — never a
             // silent drop, never an unbudgeted multi-megabyte interview that 400s at the
             // capacity gate and censors the testimony. chars/2 is the gate's own estimator.

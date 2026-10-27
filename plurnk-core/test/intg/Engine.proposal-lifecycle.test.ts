@@ -201,7 +201,7 @@ test("{§proposal}: an unrecordable approval cannot execute", async (t) => {
     } finally { await db.close(); }
 });
 
-test("{§digest-proposal-decisions}: curation retains original approval in the report until its history is deleted", async () => {
+test("{§digest-evidence-reader}: curation retains original approval in the report until its history is deleted", async () => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-proposal-evidence-"));
     const dbPath = join(directory, "plurnk.db");
     const db = await openMigrated(dbPath);

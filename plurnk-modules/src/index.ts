@@ -29,7 +29,7 @@ export type ModuleActionHandler = (
     context: ModuleActionContext,
 ) => unknown;
 
-// {§module-action-registration}
+// {§module-seam-slices}
 export interface ModuleActionRegistration {
     readonly name: string;
     readonly scope: ModuleActionScope;
@@ -41,7 +41,7 @@ export interface ModuleActionRegistration {
 
 export type ModuleActionDescriptor = ApplicationActionDescriptor;
 
-// {§functionality-discovery-inputs} — the discovery a family serves: the shared query's inputs it reads,
+// {§functionality-adapter} — the discovery a family serves: the shared query's inputs it reads,
 // and whether a request naming none lists everything. The coordinator advertises exactly these.
 export interface FunctionalityDiscovery {
     readonly inputs: readonly FunctionalityDiscoverInput[];
@@ -118,7 +118,7 @@ export interface FunctionalityAdapter<Runtime = never, SchemeFacet = never, Defi
     refreshIfChanged?(identity: WorkspaceCapabilityIdentity): Promise<void>;
 }
 
-// {§module-workspace-paths} — host placement, not a module-owned discovery cascade.
+// {§module-seam-slices} — host placement, not a module-owned discovery cascade.
 export interface WorkspacePaths {
     readonly home: string;
     readonly projectRoot: string | null;
@@ -130,7 +130,7 @@ export interface WorkspacePaths {
 
 // {§module-seam-slices} — the base setup slice: what every host offers every module.
 export interface ModuleSetupSeam {
-    // {§module-workspace-paths}
+    // {§module-seam-slices}
     workspacePaths(workspaceId: number): Promise<WorkspacePaths>;
     // {§mcp-module} Ambient launch base, before the module's explicit bindings:
     // excludes reserved names ({§execution-output-identity}) without applying the model-command ceiling.
@@ -140,19 +140,19 @@ export interface ModuleSetupSeam {
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§execution-output-identity} The same layers with the Session's own overrides on top ({§functionality-coordinator}).
     readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    // {§module-workspace-directory} The host owns placement; the module owns the contents.
+    // {§module-seam-slices} The host owns placement; the module owns the contents.
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;
     registerModuleAction(registration: ModuleActionRegistration): void;
 }
 
-// {§module-functionality-adapter} — registers one family beneath the host's coordinator.
+// {§module-seam-slices} — registers one family beneath the host's coordinator.
 export interface FunctionalitySeam<Runtime = never, SchemeFacet = never> {
     registerFunctionalityAdapter<Definition extends object = object, Snapshot = unknown>(
         adapter: FunctionalityAdapter<Runtime, SchemeFacet, Definition, Snapshot>,
     ): FunctionalityFamilyHandle;
 }
 
-// {§module-contained-configuration} One setting a module contained: it withheld the part the setting
+// {§module-contract} One setting a module contained: it withheld the part the setting
 // configures and kept the rest working.
 export interface ContainedConfiguration {
     readonly key: string;
@@ -168,10 +168,10 @@ export interface StartedModule {
 // {§module-contract} `setup` establishes every capability the host may demand during recovery;
 // `start` opens exterior ingress only after durable recovery is complete ({§module-lifecycle}).
 export interface DaemonModule<SetupSeam = ModuleSetupSeam, StartSeam = ApplicationPort> extends StartedModule {
-    // {§module-http-mounts} The HTTP route prefixes this module mounts at `start`, claimed before any
+    // {§module-contract} The HTTP route prefixes this module mounts at `start`, claimed before any
     // module sets up.
     readonly mounts?: readonly string[];
-    // {§module-contained-configuration} Settings this module contained, read by the host at registration.
+    // {§module-contract} Settings this module contained, read by the host at registration.
     readonly contained?: readonly ContainedConfiguration[];
     setup?(seam: SetupSeam): void | Promise<void>;
     start?(seam: StartSeam): void | StartedModule | Promise<void | StartedModule>;

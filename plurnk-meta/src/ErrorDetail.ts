@@ -1,6 +1,6 @@
 import Knob from "./Knob.ts";
 
-// {§error-detail-bound} — a package's model-facing diagnostic detail is bounded by that package's
+// {§env-knob} — a package's model-facing diagnostic detail is bounded by that package's
 // knob, read through the one reader: an unset or invalid bound crashes by name, never degrades.
 export default class ErrorDetail {
     readonly #knob: string;

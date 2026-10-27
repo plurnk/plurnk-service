@@ -36,7 +36,7 @@ import { mcpFixture, stdioEntry } from "./_mcp-config.ts";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 
 describe("Skills", () => {
-// {§skills-functionality} {§skills-sources} — standard Agent Skills through the shared workspace
+// {§skills-module} {§skills-sources} — standard Agent Skills through the shared workspace
 // Functionality lifecycle: source roots are inputs, workspace bindings own
 // enablement, discovery is inert, and only fetched sources are materialized.
 
@@ -138,7 +138,7 @@ const zip = (entries: ReadonlyArray<readonly [string, string]>): Buffer => {
     return Buffer.concat([...parts, directory, end]);
 };
 
-test("{§agent-skills-name} {§skills-resources}: discovery, installation and URI reads preserve skill identities", async (t) => {
+test("{§agent-skills-directory} {§skills-sources}: discovery, installation and URI reads preserve skill identities", async (t) => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-skills-names-"));
     const home = join(base, "home");
     const project = join(base, "project");
@@ -247,7 +247,7 @@ test("{§module-workspace-residency}: a busy workspace refuses skill binding cha
     }
 });
 
-test("{§skills-functionality} {§skills-remove} discovered roots are inputs, add binds, remove reveals inheritance, discovery stays inert", async () => {
+test("{§skills-module} {§skills-hotload} discovered roots are inputs, add binds, remove reveals inheritance, discovery stays inert", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-skills-family-"));
     const home = join(base, "home");
     const project = join(base, "project");
@@ -353,7 +353,7 @@ test("{§skills-functionality} {§skills-remove} discovered roots are inputs, ad
         assert.equal(repeated.definition.state, "active");
         assert.equal((await rejectedProblem(() => invoke("add", { alias: "alpha", definition: { name: "alpha", source: join(source, "alpha") } }))).type, "https://problems.plurnk.xyz/functionality/alias-exists");
 
-        // {§skills-remove}
+        // {§skills-hotload}
         const shadow = await invoke<{ definition: { origin: string; detail: { description: string } } }>("add", { alias: "review", definition: { name: "review", source } });
         assert.equal(shadow.definition.origin, "workspace");
         assert.equal(shadow.definition.detail.description, "Review, project edition");
@@ -397,7 +397,7 @@ test("{§skills-functionality} {§skills-remove} discovered roots are inputs, ad
     }
 });
 
-test("{§skills-functionality} a headless workspace accepts absolute local references; relative sources require a project", async () => {
+test("{§skills-module} a headless workspace accepts absolute local references; relative sources require a project", async () => {
     const base = await mkdtemp(join(tmpdir(), "plurnk-skills-headless-"));
     const home = join(base, "home");
     await mkdir(home, { recursive: true });
@@ -493,7 +493,7 @@ const skillsWorkspace = async (t: test.TestContext, label: string) => {
 
 const PROBLEM = "https://problems.plurnk.xyz/skills/functionality/";
 
-test("{§skills-functionality} nearer roots shadow farther roots; adding a reference writes to neither", async (t) => {
+test("{§skills-module} nearer roots shadow farther roots; adding a reference writes to neither", async (t) => {
     const s = await skillsWorkspace(t, "plurnk-root");
     await writeSkill(s.hostPaths.plurnkSkillsDir, "grep", "Find text, plurnk edition");
     await writeSkill(s.hostPaths.globalSkillsDir, "grep", "Find text everywhere");
@@ -570,7 +570,7 @@ test("{§skills-sources} a git source is fetched at its ref, its commit is recor
         "replacement follows the recovery without removing the definition first");
 });
 
-test("{§skills-configuration} a configured Git snapshot survives enable and restart; changing its definition fetches a separate revision", async (t) => {
+test("{§skills-module} a configured Git snapshot survives enable and restart; changing its definition fetches a separate revision", async (t) => {
     const s = await skillsWorkspace(t, "git-configured");
     const repository = join(s.base, "repository");
     await git(s.base, "init", "-q", "-b", "main", repository);
@@ -612,7 +612,7 @@ test("{§skills-configuration} a configured Git snapshot survives enable and res
     assert.equal(await exists(s.projectSkills), false);
 });
 
-test("{§skills-configuration} an archive snapshot survives source changes and removal; a new source definition materializes new content", async (t) => {
+test("{§skills-module} an archive snapshot survives source changes and removal; a new source definition materializes new content", async (t) => {
     const s = await skillsWorkspace(t, "archive-configured");
     const source = join(s.base, "first.zip");
     const replacement = join(s.base, "second.zip");
@@ -2067,7 +2067,7 @@ test("{§functionality-inspection} plugin skills follow source precedence and wo
     assert.equal(await readFile(join(pluginSkill, "SKILL.md"), "utf8"), document("Project plugin"));
 });
 
-test("{§skills-functionality} local additions are live, workspace-owned references; removing them preserves every source", async (t) => {
+test("{§skills-module} local additions are live, workspace-owned references; removing them preserves every source", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-references-"));
     const project = join(root, "project");
     const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });
@@ -2122,7 +2122,7 @@ test("{§skills-functionality} local additions are live, workspace-owned referen
         { kind: "file", source: join(sources[0], "SKILL.md") });
 });
 
-test("{§skills-configuration} environment definitions replace standard roots; independent controls and workspace removal preserve inheritance", async (t) => {
+test("{§skills-module} environment definitions replace standard roots; independent controls and workspace removal preserve inheritance", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skills-cascade-"));
     const project = join(root, "project");
     const hostPaths = new HostPaths({ home: join(root, "home"), env: {} });

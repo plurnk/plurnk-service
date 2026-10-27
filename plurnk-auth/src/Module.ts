@@ -38,7 +38,7 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
         if (this.#started) throw new Error("Cannot call setup() on an already-started Auth Module.");
         this.#listener = () => seam.httpAddress();
         // {§auth-oauth} {§credential-authority} — publish the authority's issuing face at setup so
-        // every module may read the issuer from its start on ({§module-phases}).
+        // every module may read the issuer from its start on ({§module-contract}).
         if (this.#opts.authenticates) {
             this.#oauth ??= new OAuthServer({ credentials: seam.credentials, opts: this.#opts, issuer: (req) => this.#origin(req) });
             seam.credentials.publish({ issuer: (req) => this.#origin(req) });

@@ -435,7 +435,7 @@ the submitter the owner of the shared runtime.
 | Project bytes and Git membership        | The project filesystem and repository; database entries are the agent-visible projection.             |
 | Active session drains, wakes, cancellation | Process-local `DrainSupervisor` state reconciled against durable state; see `{§session-loop-lifecycle}`. |
 | A session's model, effort and spawn model | `SessionModels` owns the durable selection and the loop's immutable route snapshot ({§session-model-selection}). |
-| Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-lifecycle}, {§module-http-mounts}). |
+| Composed modules and their mounts | `DaemonModules` owns registration, discovery, mount claims and the setup/start/stop/close phases ({§module-lifecycle}, {§module-contract}). |
 | A person's client operations in flight | `ClientOperations` owns each operation's loop, cancellation scope and settlement, and the shutdown scope they all descend from ({§connection-lifecycle}, {§session-causal-admission}). |
 | A message's delivery to a session | `MessageDelivery` resolves the session's model and effort, prepares the message and its source, and injects it into the drain that starts or continues the loop ({§methods}, {§machine-processes}). |
 | Provider calls and process teardown       | `Engine` owns provider-call state; `Daemon` owns reverse-order process teardown.                       |
@@ -459,9 +459,9 @@ of the surrounding filesystem or external services.
 | Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |
 | Native attachment snapshots | READ, message and packet references retain bytes independently of curation or source deletion. Publication protects in-flight captures; only unreferenced snapshots are collected ({§content-store}). |
 | Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§file-snapshot-revision}, {§file-snapshot-revision}). Internal commit serialization is not a session reservation or exclusion of external writers ({§file-snapshot-revision}, {§file-snapshot-revision}). SQLite commits and backups do not include project files. |
-| Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-coordinator}, {§schedule-residency}, {§schedule-first-arming}, {§oauth-continuation}). |
+| Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-coordinator}, {§schedule-residency}, {§schedule-delivery}, {§oauth-continuation}). |
 | Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§session-causal-admission}, {§operation-results}). |
-| Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share}, {§share-snapshot}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |
+| Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share}, {§share-packet-names}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |
 
 Audit claims name the evidence retained and its limits. Logical immutability through Plurnk's APIs
 and database guards is not tamper evidence against a host administrator. Session and owner addresses

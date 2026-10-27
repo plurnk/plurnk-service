@@ -570,7 +570,7 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
     });
 });
 
-describe("{§extension-trust-boundary} extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY", () => {
+describe("{§extension-discovery} extension trust gate PLURNK_EXTENSIONS_TRUSTED_ONLY", () => {
     async function buildNm(root: string) {
         const nm = path.join(root, "node_modules");
         await makePackage(nm, "@plurnk/plurnk-mimetypes-text-plain", {
@@ -688,7 +688,7 @@ async function makePackage(
     return dir;
 }
 
-describe("{§extension-attribution} discover attribution", () => {
+describe("{§extension-discovery} discover attribution", () => {
     let tmpRoot: string;
 
     before(async () => {
@@ -801,7 +801,7 @@ describe("{§extension-attribution} discover attribution", () => {
 
 // ─── attributions.test.ts ───
 {
-// {§extension-attribution}
+// {§extension-discovery}
 
 
 
@@ -843,7 +843,7 @@ class AttributingHandler extends BaseHandler {
     }
 }
 
-test("{§extension-attribution} Mimetypes composes static tags with hooks from already-loaded handlers only", async () => {
+test("{§extension-discovery} Mimetypes composes static tags with hooks from already-loaded handlers only", async () => {
     const mimetypes = new Mimetypes({
         discovery,
         loader: async () => ({ default: AttributingHandler }),

@@ -7,7 +7,7 @@
 //   - Knob:               the ONE environment reader: the panel's value by name, or a
 //                         crash by name ({§env-knob}).
 //   - ErrorDetail:        the ONE diagnostic-preview bound, per package knob
-//                         ({§error-detail-bound}).
+//                         ({§env-knob}).
 //   - isTrusted:          THE trust rule. One implementation; a second definition
 //                         of membership trust anywhere in the packages is a bug.
 //   - normalizeAttribution:
@@ -48,7 +48,7 @@ export interface PackageCandidate {
 const EXTENSION_KINDS = ["exec", "mimetype", "provider", "scheme", "http-materializer", "module"] as const;
 export type ExtensionKind = typeof EXTENSION_KINDS[number];
 
-// {§extension-manifest-read} — one extension declaration, projected to its owning kind.
+// {§extension-discovery} — one extension declaration, projected to its owning kind.
 export interface ExtensionManifest {
     readonly manifestPath: string;
     // `name` when it is a non-empty string; the caller decides what an unnamed package is.
@@ -113,7 +113,7 @@ export default class Meta {
         return (manifest as { kind?: unknown }).kind === kind;
     }
 
-    // {§extension-manifest-read} — null for a missing or malformed package.json, a non-object,
+    // {§extension-discovery} — null for a missing or malformed package.json, a non-object,
     // no `plurnk` object, or another kind: none of those is a package of this kind, and
     // discovery skips them without a word. An abort is the caller's contract and surfaces.
     static async readManifest(dir: string, kind?: ExtensionKind, { signal }: { signal?: AbortSignal } = {}): Promise<ExtensionManifest | null> {
@@ -153,7 +153,7 @@ export default class Meta {
         return { manifestPath: path.join(dir, "package.json"), packageName, plurnk };
     }
 
-    // {§extension-manifest-read} Framework loaders resolve their own file declarations through this boundary.
+    // {§extension-discovery} Framework loaders resolve their own file declarations through this boundary.
     static async moduleFile(manifest: ExtensionManifest, relative: string): Promise<string> {
         const dir = path.dirname(manifest.manifestPath);
         if (path.basename(manifest.manifestPath) !== "plugin.json") return path.resolve(dir, relative);
@@ -236,7 +236,7 @@ export default class Meta {
         return Object.freeze(tags);
     }
 
-    // {§extension-attribution} — one synchronous runtime pull with the same shape
+    // {§extension-discovery} — one synchronous runtime pull with the same shape
     // and sole namespace reservation as the static declaration. Tags remain
     // opaque; this boundary validates structure, not meaning.
     static runtimeAttribution(

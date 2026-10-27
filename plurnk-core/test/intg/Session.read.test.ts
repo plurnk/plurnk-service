@@ -1648,7 +1648,7 @@ const turn = (ops: string, terminal = false) => ({
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 
-test("{§skills-resources} concurrent operations of independent people discover the shared skill tree", async (t) => {
+test("{§skills-sources} concurrent operations of independent people discover the shared skill tree", async (t) => {
     await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (_db, daemon, addr) => {
         const ws = await connect(addr);
         t.after(() => ws.close());
@@ -1667,7 +1667,7 @@ test("{§skills-resources} concurrent operations of independent people discover 
     });
 });
 
-test("{§skills-resources} live trees preserve authority isolation, pattern composition, withdrawal and read-only ownership", async (t) => {
+test("{§skills-sources} live trees preserve authority isolation, pattern composition, withdrawal and read-only ownership", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-lifecycle-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     for (const name of ["alpha", "beta"]) {
@@ -1750,7 +1750,7 @@ test("{§skills-resources} live trees preserve authority isolation, pattern comp
 for (const [proposals, withOptions] of [
     ["accept", false], ["accept", true], ["reject", false], ["reject", true],
 ] as const) {
-    test(`{§skills-resources} native skill execution preserves siblings and cwd, options=${withOptions}, behind ${proposals} proposal policy`, async (t) => {
+    test(`{§skills-sources} native skill execution preserves siblings and cwd, options=${withOptions}, behind ${proposals} proposal policy`, async (t) => {
         serverProposals(t, proposals);
         const root = await mkdtemp(join(tmpdir(), "plurnk-skill-exec-"));
         t.after(() => rm(root, { recursive: true, force: true }));
@@ -1797,7 +1797,7 @@ for (const [proposals, withOptions] of [
     });
 }
 
-test("{§skills-resources} {§log-wire-format} a sliced skill asset READ retains its complete native image", async (t) => {
+test("{§skills-sources} {§log-wire-format} a sliced skill asset READ retains its complete native image", async (t) => {
     serverProposals(t, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-image-"));
     t.after(() => rm(root, { recursive: true, force: true }));
@@ -1827,7 +1827,7 @@ test("{§skills-resources} {§log-wire-format} a sliced skill asset READ retains
     assert.match(userText(provider.received[1]), /1:89\n2:50\n3:4e/);
 });
 
-test("{§skills-functionality} a model discovers a skill and reads its original tree through the skill authority", async (t) => {
+test("{§skills-module} a model discovers a skill and reads its original tree through the skill authority", async (t) => {
     serverProposals(t, "accept");
     const previous = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";

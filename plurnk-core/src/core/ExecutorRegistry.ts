@@ -200,7 +200,7 @@ export default class ExecutorRegistry {
         }
     }
 
-    // {§extension-attribution} Package-owned executor objects participate once by
+    // {§extension-discovery} Package-owned executor objects participate once by
     // identity even when one object is registered under several runtime tags.
     attributions(context: ExtensionAttributionContext): ExtensionAttribution {
         const packageSources = new Map<string, Set<Executor>>();
@@ -237,7 +237,7 @@ export default class ExecutorRegistry {
             skipped = [],
         } = await (discoverFn ?? (() => discover({ cwd })))();
 
-        // {§extension-trust-boundary} discover() skips untrusted third-party packages
+        // {§extension-discovery} discover() skips untrusted third-party packages
         // (PLURNK_EXTENSIONS_TRUSTED_ONLY) and reports them here — note each, mirror
         // of SchemeRegistry's untrusted-scheme warning. Discovered, not loaded.
         for (const name of skipped) {

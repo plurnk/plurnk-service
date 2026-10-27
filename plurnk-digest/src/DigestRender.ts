@@ -1,4 +1,4 @@
-// Digest renderers ({§digest-programmatic-surface}): the markdown, JSON, reasoning, and packet
+// Digest renderers ({§share-packet-names}): the markdown, JSON, reasoning, and packet
 // artifacts of one DigestModel, reading heavy evidence on demand through DigestEvidence.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
@@ -226,7 +226,7 @@ export default class DigestRender {
     // vs whether it still concluded. A green that limped across on 16 errors is a FAILING artifact
     // wearing a passing badge; the digest must make that impossible to miss. errors = ≥400 op rows;
     // errorItems = minted op='error' rows (truncation/budget/steer/cycle — the strike signals).
-    // {§digest-executor-evidence} (#436) — a failed command's completion rows carry the
+    // {§digest-forensic-fidelity} (#436) — a failed command's completion rows carry the
     // executor's problem identity; a red test run is the loop's normal work, not a
     // defect. They stay visible but never count as errors in health or the errs
     // badge — the digest mirror of the strike rail's exemption (#425 F1).
@@ -237,7 +237,7 @@ export default class DigestRender {
         return typeof problem?.type === "string" && problem.type.startsWith("https://problems.plurnk.xyz/executor/");
     }
 
-    // {§digest-capacity-evidence} (#1096) — a 413 is the capacity contract working: a result that did
+    // {§digest-forensic-fidelity} (#1096) — a 413 is the capacity contract working: a result that did
     // not fit, the over-budget mandate, a limit met. It renders like any row and never counts as an
     // error, an error item or in the errs badge; a loop that concluded under a binding budget is CLEAN.
     static #isCapacityEvidence(le: LogRow): boolean {
@@ -248,7 +248,7 @@ export default class DigestRender {
         return le.status_rx >= 400 && !DigestRender.#isExecutorEvidence(le) && !DigestRender.#isCapacityEvidence(le);
     }
 
-    // {§digest-storage} — size, free pages, vacuum mode and the largest tables, one line.
+    // {§share-packet-names} — size, free pages, vacuum mode and the largest tables, one line.
     static #storageLine(storage: DigestModel["storage"]): string {
         const mb = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
         const mode = ["off", "full", "incremental"][storage.auto_vacuum] ?? String(storage.auto_vacuum);
@@ -264,7 +264,7 @@ export default class DigestRender {
         return `Claimed: ${loop.claimed_at} · first model turn +${seconds.toFixed(1)} s`;
     }
 
-    // {§digest-cache-ledger} — the reconstructed text envelope, each role above its content,
+    // {§digest-forensic-fidelity} — the reconstructed text envelope, each role above its content,
     // as `.wire.json` holds it ({§share-packet-names}); null when no valid packet is stored.
     static #promptText(turn: TurnRow, m: DigestModel): string | null {
         const { packet } = m.evidence.packet(turn);
@@ -283,7 +283,7 @@ export default class DigestRender {
         return n;
     }
 
-    // {§digest-edit-census}: the form an EDIT authored, read from its stored marker and pattern.
+    // {§digest-forensic-fidelity}: the form an EDIT authored, read from its stored marker and pattern.
     static editForm(row: Pick<EditRow, "line_marker" | "pattern">): EditForm {
         if (row.pattern !== null) return "pattern";
         if (row.line_marker === null) return "whole";
@@ -304,7 +304,7 @@ export default class DigestRender {
 
     static #editCensusCache = new WeakMap<DigestModel, { bySession: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> }>();
 
-    // {§digest-edit-census}: per session, every model EDIT by authored form and status, and the
+    // {§digest-forensic-fidelity}: per session, every model EDIT by authored form and status, and the
     // revisits — an EDIT of a path the same session edited within its previous two model turns.
     static #editCensus(m: DigestModel): { bySession: Map<number, EditCensus>; formById: Map<number, EditForm>; revisitById: Set<number> } {
         const cached = DigestRender.#editCensusCache.get(m);
@@ -356,7 +356,7 @@ export default class DigestRender {
 
     static #cacheLedgerCache = new WeakMap<DigestModel, Map<number, CacheLedgerEntry>>();
 
-    // {§digest-cache-ledger} — estimate adjacent prefixes with at most two prompts resident per loop.
+    // {§digest-forensic-fidelity} — estimate adjacent prefixes with at most two prompts resident per loop.
     static cacheLedger(m: DigestModel): Map<number, CacheLedgerEntry> {
         const cached = DigestRender.#cacheLedgerCache.get(m);
         if (cached !== undefined) return cached;
@@ -403,7 +403,7 @@ export default class DigestRender {
         return requests.map((request) => ledger.get(request.id)!);
     }
 
-    // {§digest-cache-ledger} — sum each provider-reported counter; one absent quantity makes that sum unknown.
+    // {§digest-forensic-fidelity} — sum each provider-reported counter; one absent quantity makes that sum unknown.
     static #cacheBadge(turn: TurnRow, m: DigestModel): string {
         const entries = DigestRender.#cacheEntries(m.requestsByTurn.get(turn.id) ?? [], m);
         if (entries.length === 0) return "";
@@ -413,7 +413,7 @@ export default class DigestRender {
         return ` cache=${sum(entries.map((entry) => entry.cachedTokens))}/${sum(entries.map((entry) => entry.inputTokens))}`;
     }
 
-    // {§digest-cache-ledger} — one workspace line; unreported requests are named and left out of the percentage.
+    // {§digest-forensic-fidelity} — one workspace line; unreported requests are named and left out of the percentage.
     static #cacheLine(requests: readonly ProviderRequestRow[], m: DigestModel): string {
         const entries = DigestRender.#cacheEntries(requests, m);
         const reported = entries.filter((entry) => entry.cachedTokens !== null && entry.inputTokens !== null);
@@ -558,7 +558,7 @@ export default class DigestRender {
         const usagelessStr = usageless > 0
             ? ` (+${usageless} usage-less request${usageless === 1 ? "" : "s"} — server-side spend unrecorded)`
             : "";
-        // {§digest-cost-kind} (#473): a dollar figure without its basis reads as billed
+        // {§digest-forensic-fidelity} (#473): a dollar figure without its basis reads as billed
         // truth; carry the kind so an estimate can never impersonate a charge.
         const kinds = new Set(requests
             .filter((row) => row.state === "settled" && row.cost_kind !== null)
@@ -570,7 +570,7 @@ export default class DigestRender {
                 : kinds.has("charged")
                     ? " (charged)"
                     : "";
-        // {§digest-wire-line} (#473): provider-level errors are absorbed by retries below
+        // {§digest-forensic-fidelity} (#473): provider-level errors are absorbed by retries below
         // the packet stream, so only an aggregate line makes a rate-limit storm visible.
         const wireErrors = requests.filter((row) => row.outcome === "error").length;
         const wireStr = requests.length === 0
@@ -591,7 +591,7 @@ export default class DigestRender {
         ].join("\n");
     }
 
-    // {§digest-room-line} — the room in provider tokens: the largest budget the model was shown, at its
+    // {§digest-forensic-fidelity} — the room in provider tokens: the largest budget the model was shown, at its
     // request's own ratio, against the capacity; the wall's estimate against the provider's count; and the
     // requests the estimate put under the wall while the count was over it.
     static #renderRoom(session: SessionRow, m: DigestModel): string {
@@ -816,7 +816,7 @@ export default class DigestRender {
             ...blocks, ""].join("\n\n");
     }
 
-    // {§digest-navigation}: navigation surrounds evidence; channel files stay verbatim.
+    // {§share-packet-names}: navigation surrounds evidence; channel files stay verbatim.
     static #requestPreamble(m: DigestModel, turn: TurnRow): string[] {
         const stems = DigestRender.packetStems(m);
         const stem = stems.get(turn.id)!;

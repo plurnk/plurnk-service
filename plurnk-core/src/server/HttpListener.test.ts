@@ -15,7 +15,7 @@ const get = async (port: number, pathname: string): Promise<{ status: number; bo
     return { status: response.status, body: await response.text() };
 };
 
-test("{§module-http-mounts} until the daemon admits the listener every request answers 503 service-starting, never 404", async () => {
+test("{§module-contract} until the daemon admits the listener every request answers 503 service-starting, never 404", async () => {
     const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
     try {
         const { port } = listener.httpAddress();
@@ -243,7 +243,7 @@ const acceptUpgrade = (label: string) => (_req: unknown, socket: { end(data: str
     socket.end(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n${label}`);
 };
 
-test("{§http-host} {§module-http-mounts} upgrades answer 503 before admission, route to the longest prefix, and never fall through a child prefix without an upgrade handler", async () => {
+test("{§http-host} {§module-contract} upgrades answer 503 before admission, route to the longest prefix, and never fall through a child prefix without an upgrade handler", async () => {
     const listener = await HttpListener.bind({ host: "127.0.0.1", port: 0 });
     try {
         const { port } = listener.httpAddress();

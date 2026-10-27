@@ -434,7 +434,7 @@ test("{§whitespace-contract} {§outside-text}: unfenced executor calls draw the
 });
 
 describe("Digest.programmatic", () => {
-// {§digest-programmatic-surface}: the package subpath is a pure import and its
+// {§share-packet-names}: the package subpath is a pure import and its
 // selectors prune complete forensic graphs, not implementation-private arrays.
 
 
@@ -675,7 +675,7 @@ const seedBareEvidence = async (
     });
 };
 
-test("{§digest-programmatic-surface}: importing the public subpath performs no process or filesystem action", async () => {
+test("{§share-packet-names}: importing the public subpath performs no process or filesystem action", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-import-"));
     const packageRoot = resolve(import.meta.dirname, "../..");
     try {
@@ -712,7 +712,7 @@ test("{§digest-programmatic-surface}: importing the public subpath performs no 
     }
 });
 
-test("{§digest-programmatic-surface}: selectors prune emitted evidence and each selection writes its own folder", async () => {
+test("{§share-packet-names}: selectors prune emitted evidence and each selection writes its own folder", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-digest-programmatic-"));
     const dbPath = join(dir, "plurnk.db");
     const db = await openMigrated(dbPath);
@@ -751,7 +751,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
 
     try {
         const session = await run("session", { sessionId: a1.sessionId });
-        // {§digest-programmatic-surface}: a turn line names its own artifact and the model's own
+        // {§share-packet-names}: a turn line names its own artifact and the model's own
         // count, so a reader never subtracts harness turns or counts packet files by hand.
         assert.match(session.markdown, /^T\d+ \(model turn \d+ · session-a1-1-1\): producer=model/m);
         assert.match(session.markdown, new RegExp(`^T\\d+ \\(model turn \\d+ · session-a1-1-1\\): producer=model.* outside=${contentWeight("outside-a1")} tok`, "m"),

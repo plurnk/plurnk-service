@@ -155,10 +155,10 @@ notices, or RFC 9457 failure normalization.
 The manifest may declare always-on `plurnk.attribution`. The default export may
 also implement synchronous `attributions(context)` and decide per provider
 attempt whether to return no, one, or many additional opaque tags
-({§extension-attribution}).
+({§extension-discovery}).
 
 Discovery is scope-agnostic and rejects duplicate names.
-Third-party discovery uses the shared pre-import trust contract ({§extension-trust-boundary}).
+Third-party discovery uses the shared pre-import trust contract ({§extension-discovery}).
 
 ## Local endpoints
 

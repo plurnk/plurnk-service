@@ -484,7 +484,7 @@ export default class SchemeRegistry {
         }
     }
 
-    // {§extension-attribution} — static declarations are always-on; each admitted
+    // {§extension-discovery} — static declarations are always-on; each admitted
     // external handler may add or omit opaque tags for this exact attempt.
     attributions(context: ExtensionAttributionContext): ExtensionAttribution {
         const lists: ExtensionAttribution[] = [...this.#packageAttributions.values()];

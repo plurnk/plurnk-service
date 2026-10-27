@@ -1,4 +1,4 @@
-// {§digest-edit-census} (#893) — the recorded-packet replay. The fixture is run6's T13 packet from
+// {§digest-forensic-fidelity} (#893) — the recorded-packet replay. The fixture is run6's T13 packet from
 // the django-15819 K3 rollout (the packet on which K3 picked the hash of line 136 for line 135),
 // sent as recorded, with one arrival appended asking for exactly the edit the model made. Every
 // READ row is re-rendered under one of the row forms below before sending; today's row form is F.

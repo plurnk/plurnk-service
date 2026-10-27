@@ -12,7 +12,7 @@ import { discoverDaemonModules } from "./module-discovery.ts";
 import HostPaths from "../core/HostPaths.ts";
 
 // These fixtures are third-party packages, so this file exercises the operator who admitted them
-// ({§extension-trust-boundary}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
+// ({§extension-discovery}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself
 // state their own value below and override this one.
 process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
@@ -204,7 +204,7 @@ test("{§module-lifecycle}: a package names its entry as an export subpath, reso
     assert.match(found.configurationErrors[1].cause.message, /@acme\/unexported: plurnk.module '\.\/missing' does not resolve through the package's exports/u);
 });
 
-test("{§module-self-activation}: a module's own configuration error is attributed to that module", async (t) => {
+test("{§module-contract}: a module's own configuration error is attributed to that module", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-module-config-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const meta = import.meta.resolve("@plurnk/plurnk-meta");

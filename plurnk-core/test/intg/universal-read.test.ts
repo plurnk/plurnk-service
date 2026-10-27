@@ -1322,7 +1322,7 @@ test("{§tools-resource-materialization} the discoverable COPY/MOVE chapter prov
     });
 });
 
-test("{§skills-installation-boundary} {§tools-resource-materialization} defaults are the operator catalog through ordinary READ and Session enablement", async (t) => {
+test("{§teaching-corpus} {§tools-resource-materialization} defaults are the operator catalog through ordinary READ and Session enablement", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-own-skill-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     await withDaemon(new Mock({ contextWindow: 32768, responses: [] }), async (db, daemon, addr) => {

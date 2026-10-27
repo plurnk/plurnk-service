@@ -44,7 +44,7 @@ const parseJson = async (path: string): Promise<{ value: unknown } | null> => {
     }
 };
 
-// {§agent-plugins-scope} One plugin directory: its manifest, then each supported component type in isolation.
+// {§agent-plugins-roots} One plugin directory: its manifest, then each supported component type in isolation.
 export default class PluginDirectory {
     static async load(directory: string): Promise<PluginLoad> {
         const reports: PluginReport[] = [];
@@ -76,7 +76,7 @@ export default class PluginDirectory {
         return result.manifest;
     }
 
-    // {§agent-plugins-components} Immediate children of `skills/` whose SKILL.md resolves to a regular file.
+    // {§agent-plugins-containment} Immediate children of `skills/` whose SKILL.md resolves to a regular file.
     static async #skills(root: string, report: Report): Promise<SkillDirectory[]> {
         const location = join(root, "skills");
         const real = await resolved(location);

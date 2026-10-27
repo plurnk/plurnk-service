@@ -13,7 +13,7 @@ import Meta from "@plurnk/plurnk-meta";
 // built-in projection remains the fallback for recoverable outcomes.
 //
 // Discovery mirrors the exec framework's ({§extension-discovery}): scope-agnostic
-// package scan, trust gate ({§extension-trust-boundary}), one flat id namespace —
+// package scan, trust gate ({§extension-discovery}), one flat id namespace —
 // two packages claiming one id fail hard, never silently shadow.
 
 export type MaterializerEvidence = ReadonlyArray<{ readonly name: string; readonly value: string }>;

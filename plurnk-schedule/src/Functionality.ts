@@ -1,6 +1,6 @@
 // {§schedule-family} — scheduled messages as one workspace Functionality family named `schedule`.
 // The adapter owns the family's truth: the environment's rules, inert discovery that reads a rule
-// and tells the time ({§schedule-clock}), admission that canonicalizes and bounds a rule, and the
+// and tells the time ({§schedule-rule}), admission that canonicalizes and bounds a rule, and the
 // outcomes the timers stand behind ({§schedule-delivery}, {§schedule-residency}).
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
@@ -93,7 +93,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     readonly #env: NodeJS.ProcessEnv;
     readonly #scheduler: Scheduler;
     readonly #report: (message: string, cause: unknown) => void;
-    // {§schedule-environment} — lazily validate without moving the service rules' DTSTART epoch.
+    // {§schedule-residency} — lazily validate without moving the service rules' DTSTART epoch.
     #service: ReturnType<typeof validateConfiguration> | null = null;
     readonly #readAt: number;
     #handle: FunctionalityFamilyHandle | null = null;
@@ -125,7 +125,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         return [...this.#service].map(([alias, entry]) => ({ alias, ...entry }));
     }
 
-    // {§schedule-clock} — the one place the time is told: on demand, beside the rule it reads.
+    // {§schedule-rule} — the one place the time is told: on demand, beside the rule it reads.
     async discover(query: FunctionalityDiscoverQuery, identity: FunctionalityIdentity): Promise<readonly FunctionalityCandidate[]> {
         const source = query.source!;
         const zone = await this.#zone(identity);
@@ -157,9 +157,9 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
         }
         const now = this.#scheduler.now();
         const parsed = this.#read(definition.rule, await this.#zone(identity), now);
-        // {§schedule-bound}
+        // {§schedule-rule}
         if (!parsed.bounded) throw failure("rule-unbounded", 400, "A workspace rule ends: give the RRULE a COUNT or an UNTIL.", { retryable: false });
-        // {§schedule-first-arming} — the rule was read now; its first arming is judged from now.
+        // {§schedule-delivery} — the rule was read now; its first arming is judged from now.
         return { alias: params.alias, definition: { ...definition, rule: parsed.text }, preparation: now };
     }
 
@@ -230,7 +230,7 @@ export default class ScheduleFunctionality implements FunctionalityAdapter<never
     // leaves its timers armed.
     async teardown(_snapshot: Snapshot, _identity: WorkspaceCapabilityIdentity): Promise<void> {}
 
-    // {§schedule-zone} — the zone a rule is read in: the invoking Session's environment (its
+    // {§schedule-rule} — the zone a rule is read in: the invoking Session's environment (its
     // overrides over the workspace layer over the service's), else the workspace's.
     async #zone(identity: FunctionalityIdentity): Promise<string> {
         const environment = this.#environment === null

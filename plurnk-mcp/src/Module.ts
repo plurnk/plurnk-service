@@ -333,7 +333,7 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #env: NodeJS.ProcessEnv;
     // {§mcp-module} The registry `discover` searches, read at construction; without one the
     // family serves no discovery. An invalid setting withholds discovery alone
-    // ({§module-contained-configuration}).
+    // ({§module-contract}).
     readonly #registry: Registry | null;
     readonly contained: readonly ContainedConfiguration[];
     #workspaceEnvironment!: SetupSeam["readWorkspaceEnvironment"];

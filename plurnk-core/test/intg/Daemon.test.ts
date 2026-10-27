@@ -211,7 +211,7 @@ test("{§mimetype} Daemon boot reports mimetype packages withheld by the shared 
     }
 });
 
-test("{§module-action-registration} Daemon: module actions register once during setup and invoke through ApplicationPort", async () => {
+test("{§module-seam-slices} Daemon: module actions register once during setup and invoke through ApplicationPort", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const calls: Array<{
@@ -317,7 +317,7 @@ test("{§module-action-registration} Daemon: module actions register once during
     }
 });
 
-test("{§module-action-registration} passive scoped actions validate identities without activating capabilities", async (t) => {
+test("{§module-seam-slices} passive scoped actions validate identities without activating capabilities", async (t) => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     let calls = 0;
@@ -2070,7 +2070,7 @@ test("{§module-shutdown-order}: every shutdown owner shares the absolute stop d
     }
 });
 
-test("{§module-failure} a module that acquires resources during setup is closed when later setup fails", async () => {
+test("{§module-contract} a module that acquires resources during setup is closed when later setup fails", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({
         db,

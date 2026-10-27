@@ -81,13 +81,13 @@ flowchart LR
 
 ### §observability-boundary Observability and package boundaries
 
-OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on ACP. Reusable packages and the daemon depend on the OTel API only; `@plurnk/plurnk-otel` constructs configured trace and metric providers from standard `OTEL_*` variables ({§otel-module}, {§otel-contained}), while unconfigured or disabled processes keep no-op behavior and OTel Logs have no provider path. Telemetry shutdown runs at module `stop` ({§module-shutdown-order}); exporter failure never alters product results.
+OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on ACP. Reusable packages and the daemon depend on the OTel API only; `@plurnk/plurnk-otel` constructs configured trace and metric providers from standard `OTEL_*` variables ({§otel-module}, {§otel-module}), while unconfigured or disabled processes keep no-op behavior and OTel Logs have no provider path. Telemetry shutdown runs at module `stop` ({§module-shutdown-order}); exporter failure never alters product results.
 
 | Surface | Contract |
 |---|---|
 | HTTP & general spans | HTTP spans carry only an ACP-owned bounded route class (never pathname/query); other spans carry high-cardinality IDs while metric labels stay low-cardinality; prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads are never recorded by default. |
 | GenAI convention projection | Provider request spans follow the GenAI registry (`c88d504` on core v1.44.0): a `CLIENT` `chat {model}` span with `gen_ai.operation.name="chat"`, `gen_ai.provider.name` (constructed route provider ID, or `other`), `gen_ai.request.model`, settled `gen_ai.usage.input_tokens`/`output_tokens` ({§tokenomics}), `gen_ai.response.finish_reasons`, and failure `error.type` alongside Plurnk attempt/kind/status/loop/turn attributes. |
-| Service session composition | Both the service launcher and live/demo workspace helper discover ACP, MCP, Schedule, and command hooks ({§module-lifecycle}); management families and reference docs exist even with no enabled definitions, governed by workspace capability policy and {§operator-config-precedence}. The launcher binds the one listener ({§http-host}); the helper binds none ({§module-http-mounts}). |
+| Service session composition | Both the service launcher and live/demo workspace helper discover ACP, MCP, Schedule, and command hooks ({§module-lifecycle}); management families and reference docs exist even with no enabled definitions, governed by workspace capability policy and {§operator-config-precedence}. The launcher binds the one listener ({§http-host}); the helper binds none ({§module-contract}). |
 | Package export surface | `@plurnk/plurnk-service` exports only `./launch` ({§startup-admission}), `./evidence` ({§digest-evidence-reader}), and `./package.json`. |
 
 ### §startup-admission Startup, listener admission, and service commands
@@ -106,7 +106,7 @@ flowchart LR
 ```
 
 - **Runtime floor**: Before any other module of `plurnk-service` evaluates, it checks `process.versions.node` against `engines.node`; below the floor it writes one stderr line naming both versions and exits `1` before binding a listener or touching durable state.
-- **Listener and admission order**: The production service binds its listener ({§http-host}) before creating, opening, migrating, or mutating anything in the durable data directory; losing the bind race leaves storage byte-identical. Core answers `503 service-starting` until database admission and all module starts complete ({§module-http-mounts}). Startup validates model selectors without provider I/O; provider construction and endpoint verification happen on session selection or first use. Any startup failure closes started resources in reverse order (`daemon`, `observability`, `database`, `listener`).
+- **Listener and admission order**: The production service binds its listener ({§http-host}) before creating, opening, migrating, or mutating anything in the durable data directory; losing the bind race leaves storage byte-identical. Core answers `503 service-starting` until database admission and all module starts complete ({§module-contract}). Startup validates model selectors without provider I/O; provider construction and endpoint verification happen on session selection or first use. Any startup failure closes started resources in reverse order (`daemon`, `observability`, `database`, `listener`).
 - **Readiness line**: Once admitted, the service prints one stdout line `plurnk-service acp=<url> db=<json string> route=<json string>` (with IPv6 hosts bracketed and `db`/`route` JSON-encoded). After readiness, `discover` distinguishes this daemon from any other listener.
 - **Daemon launcher (`@plurnk/plurnk-service/launch`)**: Spawns a daemon argv with caller-supplied `readyTimeoutMs` and `stopGraceMs` ({§host-path-layout}), resolving on the readiness line with `{ acpUrl, dbPath, route, logFile, stop }`. Failed starts stop and await the child before throwing with both output streams. `"private"` lifetime pipes streams to the parent and terminates with it; `"shared"` runs in its own process group, appends streams to `logFile` (default `<state dir>/service.log`), reads readiness from that file, and unrefs the child.
 - **`plurnk-service stop`**: Reads the owning PID from the database lock, sends `SIGTERM`, and returns `0` once the process exits ({§module-shutdown-order}); an unlocked database reports not running and exits `0`.
@@ -119,12 +119,12 @@ Core binds one HTTP listener on `PLURNK_HOST:PLURNK_PORT` and exposes `registerH
 | Aspect | Rule |
 |---|---|
 | Prefix matching | Absolute pathnames claiming themselves and their subtree (`/` is root); longest mounted prefix with the matching handler kind (`route` vs `upgrade`) wins without falling through to a shorter prefix. |
-| Admission & errors | Before activation every request gets `503 service-starting`; unparsable targets get `400 request-target-invalid`; unmatched paths get `404 route-not-found`; throwing handlers return `500 route-failed` (or abort in-flight streams) without crashing the listener ({§module-http-mounts}). |
+| Admission & errors | Before activation every request gets `503 service-starting`; unparsable targets get `400 request-target-invalid`; unmatched paths get `404 route-not-found`; throwing handlers return `500 route-failed` (or abort in-flight streams) without crashing the listener ({§module-contract}). |
 | Request origin | `requestOrigin` is the configured public origin, else the request's `Host` over HTTP, else the listener's own address. Every advertised URL (including OAuth issuer, {§auth-oauth}) uses `requestOrigin`, and no request is refused for the hostname it used. |
 
 ### §credential-authority Credential authority
 
-Every credential presented to the listener is an opaque in-memory token (`access`, `refresh`, or browser `session`) issued by the daemon's `credentials` authority ({§application-session-observation}) with subject, client, scopes, family, and expiry. Restart revokes all credentials; revoking a family revokes its access, refresh, and browser session tokens together, and replaying a consumed refresh token revokes its family. The issuing module publishes `{ issuer }` at setup ({§module-phases}, {§acp-http-authorization}, {§auth-oauth}).
+Every credential presented to the listener is an opaque in-memory token (`access`, `refresh`, or browser `session`) issued by the daemon's `credentials` authority ({§application-session-observation}) with subject, client, scopes, family, and expiry. Restart revokes all credentials; revoking a family revokes its access, refresh, and browser session tokens together, and replaying a consumed refresh token revokes its family. The issuing module publishes `{ issuer }` at setup ({§module-contract}, {§acp-http-authorization}, {§auth-oauth}).
 
 | Surface | Rule |
 |---|---|
@@ -163,7 +163,7 @@ Every session has one durable workspace-scoped approval owner (`session_owners`)
 Workspace reference documents and projected instructions are materialized into `workspace:///_plurnk/` through `_plurnk` maintenance turns whose loops are excluded from `work_loops` ({§application-session-observation}, {§application-session-observation}) and emit no ambient broadcasts.
 
 - **Project instructions**: When `<projectRoot>/AGENTS.md` exists, LoopDocs materializes `workspace:///_plurnk/AGENTS.md` and turn 0 foists a `READ` of it (global XDG `AGENTS.md` stays in the system prompt, {§packet-inject}). When root `<projectRoot>/AGENTS.local.md` exists (regardless of git ignore status, unless excluded), LoopDocs materializes `workspace:///_plurnk/AGENTS.local.md` and turn 0 foists its `READ` immediately after. Absent files produce no entry and no `404`.
-- **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys in order: `skill://*/SKILL.md` (`<1,-1>`, {§skills-resources}), `workspace:///_plurnk/plurnk/*.md` (`<1,-1>`), `workspace:///_plurnk/tools/*.md` (`<1,-1>`, {§tools-resource-materialization}), `workspace:///_plurnk/members/*.md` (`<1,-1>`, {§tools-resource-materialization}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes and surveys selecting zero items are omitted before recording.
+- **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys in order: `skill://*/SKILL.md` (`<1,-1>`, {§skills-sources}), `workspace:///_plurnk/plurnk/*.md` (`<1,-1>`), `workspace:///_plurnk/tools/*.md` (`<1,-1>`, {§tools-resource-materialization}), `workspace:///_plurnk/members/*.md` (`<1,-1>`, {§tools-resource-materialization}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes and surveys selecting zero items are omitted before recording.
 - **Turn-0 execution**: A model session's first loop starts with one packetless `{ producer="_plurnk", kind="initialization" }` turn (`init` rows) submitted through {§turn-record} and {§op-methods-op-dispatch}, framed by opening and closing `<!-- plan -->` `NOTE`s when any survey runs, with no fabricated emission row ({§turn-source-resources}). Initial messages arrive in the first model turn (sequence `2`, {§message-arrival}).
 
 ### §machine-processes Session topology, fork, and hiding
@@ -188,7 +188,7 @@ flowchart TB
 
 ### §session-scheme Session scheme addressing, delegation, and collection
 
-- **Authority & scratch scope**: `session://<name>/<path>` keys workspace entries by literal `authority = <name>` (`workspace:///<path>` has `authority = ""`; `session:///<path>` is refused with `400 named-session-required` pointing to `workspace:///`). Any session in the workspace can `READ`, `FIND`, `EDIT`, `COPY`, `MOVE`, or `KILL` any `session://<name>/<path>` entry without ancestry checks ({§execution-output-identity}, {§scheme-address}), and entries outlive their namesake session. `workspace:///_plurnk/` is ordinary shared workspace scratch reconciled by `_plurnk` ({§tools-resource-materialization}, {§skills-resources}).
+- **Authority & scratch scope**: `session://<name>/<path>` keys workspace entries by literal `authority = <name>` (`workspace:///<path>` has `authority = ""`; `session:///<path>` is refused with `400 named-session-required` pointing to `workspace:///`). Any session in the workspace can `READ`, `FIND`, `EDIT`, `COPY`, `MOVE`, or `KILL` any `session://<name>/<path>` entry without ancestry checks ({§execution-output-identity}, {§scheme-address}), and entries outlive their namesake session. `workspace:///_plurnk/` is ordinary shared workspace scratch reconciled by `_plurnk` ({§tools-resource-materialization}, {§skills-sources}).
 - **Minting & control addressing**: Minted session names must match `SESSION_NAME` ({§path-syntax}, `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`, case-sensitive; `_plurnk` is unmintable, though readable by `readLog` / {§methods-workspace-create}). Session control addresses (`WORK`, `FORK`, `SEND`, `READ`, `KILL`) must be authority-only `session://<name>` with no userinfo, port, pathname, query, or fragment (`400 control-address-invalid`), `~` is never an alias, and `EDIT (session://<name>)` fails with `400 session-entity-not-editable`.
 - **Delegation (`WORK`, `FORK`) and messaging (`SEND`, `KILL`)**:
   - `WORK (session://<name>)` spawns a fresh child if `<name>` is unused ({§connection-lifecycle}), or delivers its non-empty body as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `(session://<name>)` auto-allocates an 8-hex-character name ({§execution-output-identity}). Passing a non-`session://` resource path on `WORK (<path>)` reads that resource whole (`<1,-1>`) as the prompt (composed with any inline body, {§bare-prompt-composition}) and auto-names the child.
@@ -340,7 +340,7 @@ An emission attempt parses `assistant.content` as the operational turn program a
 | Admitted response | Admitted when (a) `assistant.content` contains no fabricated log heading (`### log:///` outside a fenced block) and (b) either `parseStatements(assistant.content)` has no unparsed tail boundary ({§parse-recovery}), at least one closed statement precedes the lost boundary, or `finishReason === "length"` ({§outside-text}). Admitted statements execute in source order; bounded parse errors record `400` log rows without resampling. |
 | Private retry (`PLURNK_SERVICE_EMISSION_ATTEMPTS`) | When the entire emission is rejected before any statement closes (or fabricates a `### log:///` heading), core records `accepted = 0` on `turn_attempts` and re-invokes `generate` with the exact same `messages` up to `PLURNK_SERVICE_EMISSION_ATTEMPTS` (default `3`), keeping prompt caches warm. |
 | Exhaustion & recovery turn | Exhausting private attempts completes the turn at `102` without fabricating an `error` log row, records a durable body-suppressed `_plurnk` `emissionAttempt` row, and scores one contract strike ({§session-loop-lifecycle}). If the strike rail does not terminate the loop, the next turn projects the latest rejected text and parser diagnostic once in `notices`. |
-| Attribution & client metadata | Each attempt queries `attributions(context)` across schemes, executors, mimetypes, and the provider ({§extension-attribution}), passing the deduplicated sorted tags on `generate` and persisting them on `turn_attempts`. Workspace `settings.client` (`1..128` printable ASCII chars) is stored on `workspaces.settings` and never sent to providers. |
+| Attribution & client metadata | Each attempt queries `attributions(context)` across schemes, executors, mimetypes, and the provider ({§extension-discovery}), passing the deduplicated sorted tags on `generate` and persisting them on `turn_attempts`. Workspace `settings.client` (`1..128` printable ASCII chars) is stored on `workspaces.settings` and never sent to providers. |
 
 ### §provider-instantiation Provider Instantiation and Operator Grammar
 
@@ -747,7 +747,7 @@ Streams are static content at turn boundaries: chunks accumulate as they arrive 
 
 ### §db-durability Connection durability and SqlRite persistence
 
-Every daemon database access goes through package-owned SqlRite statements (`node:sqlite` in WAL mode with `STRICT` tables; direct `node:sqlite` imports are restricted by {§lint-gate} to closed-DB catalog witnesses). `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` (`FULL`, `EXTRA`, `NORMAL`, `OFF`) applies to writer and read pool before migrations or `INIT`; invalid values fail `config check` and database admission. `report:sql <database.db> [specimens.json]` plans `PREP` statements and measures read specimens against a private snapshot ({§share-snapshot}) without migrating or mutating the source DB. SQL owns render queries, path-collision guards, model-call/provider-request lifecycle constraints, 1-based sequence issuance, and entry-vs-log integrity; TypeScript owns status bubbling, tokenization ({§tokenomics}), provider dispatch/accounting, scheme/stream execution, and extension loading ({§extension-discovery}).
+Every daemon database access goes through package-owned SqlRite statements (`node:sqlite` in WAL mode with `STRICT` tables; direct `node:sqlite` imports are restricted by {§lint-gate} to closed-DB catalog witnesses). `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` (`FULL`, `EXTRA`, `NORMAL`, `OFF`) applies to writer and read pool before migrations or `INIT`; invalid values fail `config check` and database admission. `report:sql <database.db> [specimens.json]` plans `PREP` statements and measures read specimens against a private snapshot ({§share-packet-names}) without migrating or mutating the source DB. SQL owns render queries, path-collision guards, model-call/provider-request lifecycle constraints, 1-based sequence issuance, and entry-vs-log integrity; TypeScript owns status bubbling, tokenization ({§tokenomics}), provider dispatch/accounting, scheme/stream execution, and extension loading ({§extension-discovery}).
 
 ### §db-migrations Schema baseline, migrations, and validation topology
 
@@ -796,7 +796,7 @@ On XDG-compatible hosts, artifact semantics select the default location. An unse
 |---|---|---|
 | Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, `plurnk/mcp.json`, `plurnk/skills/<name>/SKILL.md`, `plurnk/plugins/<plugin>/` |
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars; `plurnk/plugins/<plugin>/` (`PLUGIN_DATA`) |
-| Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}) |
+| Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-seam-slices}) |
 | Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§startup-admission}); created on explicit update |
 | Shared global roots | User home | `.agents/skills/<name>/SKILL.md`, `.agents/mcp.json`, `.agents/plugins/<plugin>/` ({§functionality-inspection}) |
 
@@ -808,7 +808,7 @@ Higher-priority sources preserve or replace values supplied by lower sources:
 
 | Priority | Source | Ordering |
 |---:|---|---|
-| 1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key (`@plurnk/*`, `package.json#plurnk`, or winning daemon-wide Agent Plugin `ai.plurnk/.env.defaults` under {§extension-trust-boundary}). |
+| 1 | Assembled package `.env.defaults` | Set-if-unset floor; one owner per key (`@plurnk/*`, `package.json#plurnk`, or winning daemon-wide Agent Plugin `ai.plurnk/.env.defaults` under {§extension-discovery}). |
 | 2 | `$XDG_CONFIG_HOME/plurnk/.env` | User-level ambient configuration. |
 | 3 | `--config=<path>` | Singular service-owned explicit file. |
 | 4 | `--env-file*` | Repeatable explicit files; later selected files win; `--env-file-if-exists` skips absent files. |
@@ -859,17 +859,17 @@ flowchart LR
     start --> admit["Listener admitted"]
 ```
 
-Every registered module's `setup` runs in registration order before any module's `start` ({§module-phases}). Persisted workspaces with no durable work stay passive until first demand. Modules and `start` return values may implement idempotent `stop()` (reject new ingress, settle producers while keeping observer subscriptions alive) and `close()` (unsubscribe observers and release resources).
+Every registered module's `setup` runs in registration order before any module's `start` ({§module-contract}). Persisted workspaces with no durable work stay passive until first demand. Modules and `start` return values may implement idempotent `stop()` (reject new ingress, settle producers while keeping observer subscriptions alive) and `close()` (unsubscribe observers and release resources).
 
-Daemon modules are discovered from trusted extension packages (`package.json#plurnk` with `kind: "module"`) and daemon-wide Agent Plugins (`plugin.json#extensions.ai.plurnk` with `kind: "module"`). Standard bundles follow {§functionality-inspection} source order, then package-name order; explicitly registered module owners are not rediscovered; modules declaring HTTP mounts are omitted when no listener is bound ({§module-http-mounts}). Invalid declarations or module config errors are diagnosed under `extensions` or `module:<package>` without breaking healthy siblings.
+Daemon modules are discovered from trusted extension packages (`package.json#plurnk` with `kind: "module"`) and daemon-wide Agent Plugins (`plugin.json#extensions.ai.plurnk` with `kind: "module"`). Standard bundles follow {§functionality-inspection} source order, then package-name order; explicitly registered module owners are not rediscovered; modules declaring HTTP mounts are omitted when no listener is bound ({§module-contract}). Invalid declarations or module config errors are diagnosed under `extensions` or `module:<package>` without breaking healthy siblings.
 
-Core's setup seam also exposes host capabilities for the Functionality coordinator and witnesses: `credentials` ({§credential-authority}), `httpAddress()`, `registerRuntimes(...)`, `registerWorkspaceCapabilityProvider(namespaceOwner, provider)`, `readWorkspaceModuleState(workspaceId, namespaceOwner)` (and `session_module_state`), and atomic `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })`. Each {§module-workspace-directory} is lazily allocated with a stable random key in `workspace_module_state` (`0700`) and preserved across cooling and shutdown.
+Core's setup seam also exposes host capabilities for the Functionality coordinator and witnesses: `credentials` ({§credential-authority}), `httpAddress()`, `registerRuntimes(...)`, `registerWorkspaceCapabilityProvider(namespaceOwner, provider)`, `readWorkspaceModuleState(workspaceId, namespaceOwner)` (and `session_module_state`), and atomic `replaceWorkspaceCapabilities({ workspaceId, namespaceOwner, state, runtimes })`. Each {§module-seam-slices} is lazily allocated with a stable random key in `workspace_module_state` (`0700`) and preserved across cooling and shutdown.
 
 ### §module-shutdown-order Module shutdown and deadline
 
 `Daemon.stop()` runs four phases under one shared deadline (`PLURNK_SERVICE_STOP_TIMEOUT_MS`):
 
-1. Reject new capability demand, cancel preparation ({§functionality-preparation-cancellation}), and abort proposals, branches, derivations, and session scopes.
+1. Reject new capability demand, cancel preparation ({§functionality-adapter}), and abort proposals, branches, derivations, and session scopes.
 2. Begin module `stop()` calls in reverse registration order concurrently.
 3. Settle drains, workspace activation/cooling transitions, capability publications, module producers, streaming producers, derivations, mimetypes, schemes, and session cancellation/wake tasks while observers remain subscribed.
 4. Join module `close()` calls in reverse order, then maintain and close the database and listener.
@@ -912,7 +912,7 @@ An adapter declares `scopes` (default `["workspace"]`, e.g. Skills, MCP, members
 
 ### §configuration-repair-path Definition resolution, provenance, and repair path
 
-Named definitions replace whole from the highest-precedence source or scope without field-level inheritance; `ENABLED` controls resolve independently ({§resource-environment}). Provenance reports only the winning definition's source (`environment` key, `SKILL.md` path, or `mcp.json` path + JSON Pointer) and is derived on inspection.
+Named definitions replace whole from the highest-precedence source or scope without field-level inheritance; `ENABLED` controls resolve independently ({§env-knob}). Provenance reports only the winning definition's source (`environment` key, `SKILL.md` path, or `mcp.json` path + JSON Pointer) and is derived on inspection.
 
 Invalid optional configuration never removes the agent's repair environment:
 

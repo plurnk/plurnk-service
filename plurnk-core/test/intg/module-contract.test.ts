@@ -46,7 +46,7 @@ describe("module-contract", () => {
 
 
 
-// The witness reads its own knob and stays inert without it ({§module-self-activation}); configured,
+// The witness reads its own knob and stays inert without it ({§module-contract}); configured,
 // it claims its route, mounts it at start and traces every lifecycle member.
 const witness = (owner: string, knob: string, trace: string): string => `
 import { appendFile } from "node:fs/promises";
@@ -129,7 +129,7 @@ const boot = async (t: TestContext) => {
     return { daemon, get, lines, stop };
 };
 
-test("{§module-phases} discovered modules in both distributions run every setup before any start, then stop before close", async (t) => {
+test("{§module-contract} discovered modules in both distributions run every setup before any start, then stop before close", async (t) => {
     environment(t, { ACME_PACKAGE_ROUTE: "/package", ACME_BUNDLE_ROUTE: "/bundle" });
     const { daemon, get, lines, stop } = await boot(t);
     await daemon.start();
@@ -140,14 +140,14 @@ test("{§module-phases} discovered modules in both distributions run every setup
     assert.deepEqual(phases, ["setup", "setup", "start", "start", "stop", "stop", "close", "close"], (await lines()).join("\n"));
 });
 
-test("{§module-http-mounts} a discovered module's mount conflict fails boot naming both owners", async (t) => {
+test("{§module-contract} a discovered module's mount conflict fails boot naming both owners", async (t) => {
     environment(t, { ACME_PACKAGE_ROUTE: "/same", ACME_BUNDLE_ROUTE: "/same" });
     const { daemon, lines } = await boot(t);
     await assert.rejects(daemon.start(), /HTTP mount '\/same' is claimed by both '(witness-bundle|@acme\/witness-package)' and '(@acme\/witness-package|witness-bundle)'/u);
     assert.deepEqual(await lines(), [], "boot fails before any module sets up");
 });
 
-test("{§module-http-mounts} a discovered module serves its own route without a root owner", async (t) => {
+test("{§module-contract} a discovered module serves its own route without a root owner", async (t) => {
     environment(t, { ACME_PACKAGE_ROUTE: "/package" });
     await writeFile(trace, "");
     const db = await openMigrated();
@@ -161,7 +161,7 @@ test("{§module-http-mounts} a discovered module serves its own route without a 
     assert.equal((await fetch(`${origin}/`)).status, 404);
 });
 
-test("{§module-http-mounts} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
+test("{§module-contract} a daemon without a listener leaves out every module that declares mounts, and says so", async (t) => {
     environment(t, { ACME_PACKAGE_ROUTE: "/package" });
     await writeFile(trace, "");
     const db = await openMigrated();
@@ -176,7 +176,7 @@ test("{§module-http-mounts} a daemon without a listener leaves out every module
     assert.ok(daemon.listModuleActions().some(({ name }) => name === "workspace.mcp.list"), "a module without mounts still composes");
 });
 
-test("{§module-self-activation} an unconfigured module is inert: it claims nothing and runs nothing", async (t) => {
+test("{§module-contract} an unconfigured module is inert: it claims nothing and runs nothing", async (t) => {
     environment(t, {});
     const { daemon, get, lines } = await boot(t);
     await daemon.start();
@@ -184,7 +184,7 @@ test("{§module-self-activation} an unconfigured module is inert: it claims noth
     assert.match(await get("/package"), /route-not-found/u, "the HTTP host answers what no module claimed");
 });
 
-test("{§module-workspace-paths} a module receives the bound project and ordered input roots, independent of private state placement", async (t) => {
+test("{§module-seam-slices} a module receives the bound project and ordered input roots, independent of private state placement", async (t) => {
     environment(t, { PLURNK_SERVICE_ROOTS: "global,project,plurnk" });
     const paths = new HostPaths({ home: root, env: {
         XDG_CONFIG_HOME: join(root, "config"),
@@ -216,7 +216,7 @@ test("{§module-workspace-paths} a module receives the bound project and ordered
     });
 });
 
-test("{§module-contained-configuration} a contained setting is the module's own notice, and the rest of the module works", async (t) => {
+test("{§module-contract} a contained setting is the module's own notice, and the rest of the module works", async (t) => {
     environment(t, {});
     const { daemon } = await boot(t);
     let setUp = false;
@@ -263,7 +263,7 @@ test("{§module-lifecycle} an untrusted module is skipped and reported, never im
     }
 });
 
-// {§module-failure} — registered modules make the failure order observable.
+// {§module-contract} — registered modules make the failure order observable.
 const traced = (log: string[], name: string, fail?: "setup" | "start") => ({
     setup: () => { log.push(`${name} setup`); if (fail === "setup") throw new Error(`${name} setup failed`); },
     start: (_port: ApplicationPort) => { log.push(`${name} start`); if (fail === "start") throw new Error(`${name} start failed`); },
@@ -272,7 +272,7 @@ const traced = (log: string[], name: string, fail?: "setup" | "start") => ({
 });
 
 for (const phase of ["setup", "start"] as const) {
-    test(`{§module-failure} a ${phase} failure fails boot; stopping releases what was tracked, the failing module included, in reverse`, async (t) => {
+    test(`{§module-contract} a ${phase} failure fails boot; stopping releases what was tracked, the failing module included, in reverse`, async (t) => {
         environment(t, {});
         const db = await openMigrated();
         const daemon = new Daemon({ db, hostPaths, nodeModulesPath: nodeModules, provider: new Mock({ contextWindow: 32_768, responses: [] }) });
@@ -307,7 +307,7 @@ describe("Daemon.module-discovery", () => {
 
 
 // A third-party module is exactly what this file composes, so it states the operator who admitted it
-// ({§extension-trust-boundary}); the shipped panel admits only `@plurnk/*`.
+// ({§extension-discovery}); the shipped panel admits only `@plurnk/*`.
 process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
 test("{§module-lifecycle}: a discovered third-party module composes through daemon boot", async () => {
@@ -430,7 +430,7 @@ export default () => ({
     assert.equal(await readFile(trace, "utf8"), "stopped\nclosed\n");
 });
 
-test("{§configuration-error-identity} {§module-lifecycle} a plugin root's own copy of plurnk-meta reports its configuration error, and the daemon boots", async (t) => {
+test("{§env-knob} {§module-lifecycle} a plugin root's own copy of plurnk-meta reports its configuration error, and the daemon boots", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-copy-boot-"));
     const paths = new HostPaths({ home: root, env: {} });
     const plugin = join(paths.globalPluginsDir, "copied");
@@ -1039,7 +1039,7 @@ describe("default-modules", () => {
 
 const VERBS = ["add", "disable", "discover", "enable", "list", "remove", "replace"];
 
-test("{§mcp-module} {§schedule-module} a bare daemon discovers the MCP and schedule families", async (t) => {
+test("{§mcp-module} {§schedule-family} a bare daemon discovers the MCP and schedule families", async (t) => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     t.after(async () => { await daemon.stop(); await db.close(); });
@@ -1096,7 +1096,7 @@ test("{§functionality-replacement} each family's discover advertises exactly th
     }
 });
 
-test("{§acp-daemon-client} {§module-http-mounts} a bare daemon with a listener discovers the client interface at /acp", async (t) => {
+test("{§acp-daemon-client} {§module-contract} a bare daemon with a listener discovers the client interface at /acp", async (t) => {
     const db = await openMigrated();
     const http = await bindListener();
     const daemon = new Daemon({ db, provider: null, http });
@@ -1155,7 +1155,7 @@ test("{§acp-daemon-client} {§module-http-mounts} a bare daemon with a listener
     assert.ok(rpc?.result?.actions !== undefined, "the discovered client interface answers discover");
 });
 
-test("{§mcp-module} {§module-contained-configuration} an invalid registry setting is reported and MCP management keeps working", async (t) => {
+test("{§mcp-module} {§module-contract} an invalid registry setting is reported and MCP management keeps working", async (t) => {
     const prior = process.env.PLURNK_MCP_REGISTRY_URL;
     process.env.PLURNK_MCP_REGISTRY_URL = "ftp://example";
     t.after(() => { if (prior === undefined) delete process.env.PLURNK_MCP_REGISTRY_URL; else process.env.PLURNK_MCP_REGISTRY_URL = prior; });
@@ -1246,7 +1246,7 @@ test("{§module-shutdown-order} command hooks receive real loop cancellation bef
 });
 
 for (const outcome of ["success", "failure", "delegation"] as const) {
-    test(`{§hooks-command-delivery} real ${outcome} events retain their full payload and owning coordinates`, { timeout: 20_000 }, async (t) => {
+    test(`{§hooks-event-projection} real ${outcome} events retain their full payload and owning coordinates`, { timeout: 20_000 }, async (t) => {
     serverProposals(t, "accept");
         const db = await openMigrated();
         const provider = new Mock({ contextWindow: viableWindow() * 4, responses: (outcome === "delegation" ? [
@@ -1490,7 +1490,7 @@ test("{§hooks-module} the discovered hooks module delivers once the operator co
 });
 
 describe("module-mounts", () => {
-// {§module-http-mounts} — modules claim their HTTP prefixes before any module sets up; a claim has
+// {§module-contract} — modules claim their HTTP prefixes before any module sets up; a claim has
 // one owner, the root is optional, a module mounts exactly what it
 // claimed, and the listener is admitted only after every module has started.
 
@@ -1536,7 +1536,7 @@ const fixture = async (t: TestContext, client: Parameters<Daemon["registerModule
     return { daemon, get, port };
 };
 
-test("{§module-http-mounts} a prefix claimed by two modules fails boot naming both owners", async (t) => {
+test("{§module-contract} a prefix claimed by two modules fails boot naming both owners", async (t) => {
     const { daemon } = await fixture(t);
     daemon.registerModule(serving(["/"]), "@acme/root");
     daemon.registerModule(serving(["/shared"]), "@acme/first");
@@ -1544,7 +1544,7 @@ test("{§module-http-mounts} a prefix claimed by two modules fails boot naming b
     await assert.rejects(daemon.start(), /HTTP mount '\/shared' is claimed by both '@acme\/first' and '@acme\/second'/u);
 });
 
-test("{§module-http-mounts} a daemon with a listener needs no root owner", async (t) => {
+test("{§module-contract} a daemon with a listener needs no root owner", async (t) => {
     const { daemon, get } = await fixture(t);
     daemon.registerModule(serving(["/only"]), "@acme/only");
     await daemon.start();
@@ -1612,7 +1612,7 @@ test("{§auth-oauth} an authenticating AuthModule claims its authorization serve
     assert.match(acpRefused.headers.get("www-authenticate") ?? "", /^Bearer realm="plurnk", resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource"$/u);
 });
 
-test("{§module-http-mounts} an independent root module coexists with ACP", async (t) => {
+test("{§module-contract} an independent root module coexists with ACP", async (t) => {
     const { daemon, get } = await fixture(t, AcpModule.create());
     daemon.registerModule(serving(["/"]), "@acme/web");
     await daemon.start();
@@ -1623,14 +1623,14 @@ test("{§module-http-mounts} an independent root module coexists with ACP", asyn
     assert.equal(JSON.parse(acp.body).type, "https://problems.plurnk.xyz/acp/http/route-not-found");
 });
 
-test("{§module-http-mounts} a declared mount that is not an absolute pathname prefix names its module", async (t) => {
+test("{§module-contract} a declared mount that is not an absolute pathname prefix names its module", async (t) => {
     const { daemon } = await fixture(t);
     daemon.registerModule(serving(["/"]), "@acme/root");
     daemon.registerModule(serving(["relative"]), "@acme/sloppy");
     await assert.rejects(daemon.start(), /module '@acme\/sloppy' declares HTTP mount 'relative', which is not an absolute pathname prefix/u);
 });
 
-test("{§module-http-mounts} a module mounts exactly what it claimed", async (t) => {
+test("{§module-contract} a module mounts exactly what it claimed", async (t) => {
     const unclaimed = await fixture(t);
     unclaimed.daemon.registerModule(serving(["/"], ["/", "/stray"]), "@acme/root");
     await assert.rejects(unclaimed.daemon.start(), /no module declared '\/stray' among its mounts/u);
@@ -1650,7 +1650,7 @@ test("{§module-http-mounts} a module mounts exactly what it claimed", async (t)
     await assert.rejects(unclaimedUpgrade.daemon.start(), /no module declared '\/stray' among its mounts/u);
 });
 
-test("{§module-http-mounts} the listener is admitted after every module started, whatever order they mounted in", async (t) => {
+test("{§module-contract} the listener is admitted after every module started, whatever order they mounted in", async (t) => {
     const { daemon, get } = await fixture(t);
     let release!: () => void;
     const gate = new Promise<void>((res) => { release = res; });

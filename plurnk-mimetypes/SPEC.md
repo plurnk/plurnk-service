@@ -65,16 +65,16 @@ A package declares one or more handlers in `package.json` under `"plurnk"`:
 
 | Manifest / `HandlerDecl` field | Type | Required | Contract |
 |---|---|---|---|
-| `plurnk.kind` | `"mimetype"` | yes | Selects the mimetype extension kind ({§extension-kind}). Containing `package.json` `name` must be a valid npm package name. |
+| `plurnk.kind` | `"mimetype"` | yes | Selects the mimetype extension kind ({§extension-discovery}). Containing `package.json` `name` must be a valid npm package name. |
 | `plurnk.binary` | boolean | no | `true` when every handler entry consumes `Uint8Array`; default `false`. |
-| `plurnk.attribution` | string \| string[] | no | Normalized once into `Discovery.packageAttributions` for packages represented by at least one final package-sourced handler ({§extension-kind}); lazy handlers may also implement the synchronous attempt-time hook. |
+| `plurnk.attribution` | string \| string[] | no | Normalized once into `Discovery.packageAttributions` for packages represented by at least one final package-sourced handler ({§extension-discovery}); lazy handlers may also implement the synchronous attempt-time hook. |
 | `plurnk.handlers` | `HandlerDecl[]` | yes | Non-empty array of peer handler entries. |
 | `handlers[].name` | string | yes | RFC 6838 restricted `type/subtype` syntax; each registered name produces its own handler instance with its own metadata and preserves variant identity in `ProcessResult.mimetype` (e.g., `application/json` vs `application/jsonc`). |
 | `handlers[].revision` | string | yes | Non-empty handler-owned projection revision ({§mimetype-lifecycle}). |
 | `handlers[].glyph` | string | no | Opaque client presentation glyph (defaults to `""` in discovery; Core projects `""` as absence via {§mcp-module}). |
 | `handlers[].extensions` | string[] | no | Dotted entries are case-insensitive extensions (`.py`); bare entries are case-sensitive filenames (`Dockerfile`). |
 
-- **Discovery order & trust boundary:** When `packageDirs` is omitted, `discover()` enumerates `node_modules` packages (third-party sorted, then `@plurnk` sorted). The trust predicate runs before importing handler code; untrusted packages are recorded in `skipped` ({§extension-kind}). Later claims win on collision; a package claim for a Tree-sitter mimetype suppresses that built-in entry, and unclaimed Tree-sitter entries fill only unclaimed extension/filename keys.
+- **Discovery order & trust boundary:** When `packageDirs` is omitted, `discover()` enumerates `node_modules` packages (third-party sorted, then `@plurnk` sorted). The trust predicate runs before importing handler code; untrusted packages are recorded in `skipped` ({§extension-discovery}). Later claims win on collision; a package claim for a Tree-sitter mimetype suppresses that built-in entry, and unclaimed Tree-sitter entries fill only unclaimed extension/filename keys.
 - **Extension & resolution failures:** Missing manifests or non-mimetype packages are ignored. A trusted claim with a malformed declaration, or a registered handler's import, construction, or structural validation failure, throws `MimetypeExtensionError` with package and mimetype identity and original cause. Default loading resolves from `DiscoverOptions.cwd` (or `process.cwd()`) under the process's active Node conditions (`import`-only conditional roots are not resolved automatically unless a `HandlerLoader` is injected).
 - **Naming conventions:** Prefer IANA names when accurate; retain established ecosystem names (`text/x-{language}`, `application/jsonc`, `application/jsonl`, `audio/aiff`, `text/typescript`, `text/tsx`, `text/stream`, and SQL dialects `text/x-sqlite`, `text/x-pgsql`, `text/x-mysql`, `text/x-tsql`, `text/x-plsql`, plus dialect-agnostic `application/sql`). Do not invent `-sql`, `-cli`, or `-script` suffixes.
 

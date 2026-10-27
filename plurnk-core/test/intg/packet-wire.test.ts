@@ -2276,7 +2276,7 @@ test("{§share}: a folder that already holds files, the database's own included,
     assert.ok(existsSync(dbPath));
 });
 
-test("{§share-snapshot}: a snapshot of an open WAL database keeps the commits a byte copy drops; an existing copy is refused", async (t) => {
+test("{§share-packet-names}: a snapshot of an open WAL database keeps the commits a byte copy drops; an existing copy is refused", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-share-snapshot-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const dbPath = join(root, "plurnk.db");
@@ -2441,7 +2441,7 @@ test("{§log-history-projection}: digest retains programs after all source READ 
     }
 });
 
-test("{§digest-turn-artifact-identity}: digest preserves source channels without fabricating provider participation", async () => {
+test("{§share-packet-names}: digest preserves source channels without fabricating provider participation", async () => {
     // The surveys are the initialization program; with the preview off there is none, so this witness turns it on.
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -2532,7 +2532,7 @@ test("{§digest-turn-artifact-identity}: digest preserves source channels withou
     }
 });
 
-test("{§digest-turn-artifact-identity} Digest: operation and request-only turns remain visibly distinct", async () => {
+test("{§share-packet-names} Digest: operation and request-only turns remain visibly distinct", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-packet-algebra-"));
     const dbPath = join(dir, "plurnk.db");
     const digestDir = join(dir, "digest");

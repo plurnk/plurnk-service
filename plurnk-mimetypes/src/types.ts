@@ -113,7 +113,7 @@ export interface DiscoverOptions {
     // (only @plurnk handler discovery, no tree-sitter defaults) pass
     // false. Production code should leave it default.
     includeTreeSitter?: boolean;
-    // Injectable trust environment ({§extension-trust-boundary}); defaults to
+    // Injectable trust environment ({§extension-discovery}); defaults to
     // process.env.
     env?: Record<string, string | undefined>;
 }

@@ -7,7 +7,7 @@ import type {
 import type { GrammarStyle } from "./AiSdkProvider.ts";
 
 // Scope-agnostic discovery of installed AI SDK provider packages
-// ({§extension-kind}).
+// ({§extension-discovery}).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
 // under `<cwd>/node_modules` — scoped (`@scope/name`) and unscoped — and keep
 // the ones declaring `plurnk.kind === "provider"`. Scope-agnostic so a THIRD
@@ -21,7 +21,7 @@ import type { GrammarStyle } from "./AiSdkProvider.ts";
 //
 // Cataloged and operator-declared providers resolve before this scan.
 //
-// {§extension-trust-boundary} Host extension trust gate (PLURNK_EXTENSIONS_TRUSTED_ONLY)
+// {§extension-discovery} Host extension trust gate (PLURNK_EXTENSIONS_TRUSTED_ONLY)
 // — enforced uniformly across the four scope-agnostic kinds. An untrusted
 // package is discovered-but-declined (recorded in `skipped`, never registered,
 // never thrown), so the consumer can name it in a precise error.
@@ -82,7 +82,7 @@ const defaultPackageDirs = async (cwd: string): Promise<string[]> => {
 
 // One inert manifest record for a provider package, or null for anything that
 // isn't one. Attribution remains unknown until trust admission, then the shared
-// {§extension-attribution} boundary validates it.
+// {§extension-discovery} boundary validates it.
 type ProviderInfo = { name: string; packageName: string; attribution: unknown; grammarStyle: GrammarStyle };
 
 const readProviderInfo = async (dir: string): Promise<ProviderInfo | null> => {

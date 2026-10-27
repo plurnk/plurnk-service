@@ -271,7 +271,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         await Promise.allSettled(closingPeers.map((peer) => peer.closeWithProblem(stopping)));
         await this.#acpServer.close();
         await new Promise<void>((resolve) => this.#wss.close(() => resolve()));
-        // {§module-route-settlement} Join admitted route work before returning from close().
+        // {§module-contract} Join admitted route work before returning from close().
         while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
     }
 

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Db } from "../core/Db.ts";
 import type HostPaths from "../core/HostPaths.ts";
 
-// {§module-workspace-directory}
+// {§module-seam-slices}
 export default class WorkspaceStorage {
     readonly #db: Db;
     readonly #paths: HostPaths;

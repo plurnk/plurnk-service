@@ -1,4 +1,4 @@
-// {§otel-module} {§otel-contained} {§otel-shutdown} — the module's default and configured behaviour. Each test file runs
+// {§otel-module} {§otel-module} {§otel-module} — the module's default and configured behaviour. Each test file runs
 // in its own process, so the one-per-process SDK registration stays isolated here.
 
 import test from "node:test";
@@ -90,7 +90,7 @@ test("{§otel-module} exporter names `none` select nothing", () => {
     assert.equal(Module.init({ OTEL_TRACES_EXPORTER: "none", OTEL_METRICS_EXPORTER: "none" }).selection, null);
 });
 
-test("{§otel-contained} an unsupported exporter name is contained, names its variable, and registers nothing", async () => {
+test("{§otel-module} an unsupported exporter name is contained, names its variable, and registers nothing", async () => {
     const module = Module.init({ OTEL_TRACES_EXPORTER: "otlp,jager" });
     assert.equal(module.contained?.length, 1);
     assert.equal(module.contained?.[0].key, "OTEL_TRACES_EXPORTER");
@@ -121,7 +121,7 @@ test("{§otel-module} a configured console trace exporter registers a recording 
         console.dir = dir;
         await module.stop();
     }
-    // {§otel-shutdown} Stopped: the globals are released and spans are no-ops again; a second stop is a no-op.
+    // {§otel-module} Stopped: the globals are released and spans are no-ops again; a second stop is a no-op.
     assert.equal(module.registered, false);
     assert.equal(tracer().startSpan("after").isRecording(), false, "stop released the tracer provider");
     await module.stop();

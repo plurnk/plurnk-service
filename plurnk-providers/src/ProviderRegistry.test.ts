@@ -645,13 +645,13 @@ test("{§executor-policy} discover: an untrusted malformed attribution is withhe
     assert.equal(result.packageAttributions.size, 0);
 });
 
-test("{§extension-trust-boundary} discover: missing node_modules yields an empty registry, not an error", async (t) => {
+test("{§extension-discovery} discover: missing node_modules yields an empty registry, not an error", async (t) => {
     const root = await tempDir(t, "providers-empty-");
     const { registry } = await discover({ cwd: root });
     assert.equal(registry.size, 0);
 });
 
-// — trust gate ({§extension-trust-boundary}) —
+// — trust gate ({§extension-discovery}) —
 
 const trustFixture = (t: TestContext) => buildModules(t, {
     "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },

@@ -72,7 +72,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 - Every knob in `PROVIDERS_KNOBS` is documented in `plurnk-providers/.env.defaults` and supports case-insensitive per-alias suffix scoping (`<KNOB>_<ALIAS>`) via `scopeEnvToAlias(env, alias)`.
 - `generationEnvelopeFromEnv` resolves `PLURNK_PROVIDERS_OUTPUT_BUDGET`, `PLURNK_PROVIDERS_OUTPUT_FLOOR`, and optional `PLURNK_PROVIDERS_REASONING_BUDGET` (as `<pct>%` of `min(contextWindow, maxOutputTokens)` or positive integer tokens), requiring `reasoningBudget < outputBudget < contextWindow` and clamping `outputFloor` to `outputBudget`.
 - Sampling knobs (`TEMPERATURE`, `TOP_P`, `TOP_K`, `PRESENCE_PENALTY`, `FREQUENCY_PENALTY`, `SEED`, `REPEAT_PENALTY`, `REPEAT_LAST_N`, `DRY_MULTIPLIER`, `DRY_BASE`, `DRY_ALLOWED_LENGTH`) validate at construction; caller `sampling` overrides configured defaults on a per-call basis, and `DRY_MULTIPLIER=0` suppresses all DRY fields.
-- `instantiateProvider` resolves cataloged providers and `ollama` in-framework before scanning `node_modules` for third-party provider extensions (gated by `PLURNK_EXTENSIONS_TRUSTED_ONLY`, `{§extension-trust-boundary}`). `providerReadiness(provider, env)` reports missing credentials or endpoint configuration without exposing secret values.
+- `instantiateProvider` resolves cataloged providers and `ollama` in-framework before scanning `node_modules` for third-party provider extensions (gated by `PLURNK_EXTENSIONS_TRUSTED_ONLY`, `{§extension-discovery}`). `providerReadiness(provider, env)` reports missing credentials or endpoint configuration without exposing secret values.
 
 ## §model-fact-resolution Route facts and local probes
 

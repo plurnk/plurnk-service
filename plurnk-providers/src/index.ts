@@ -50,7 +50,7 @@ export {
 export { providerReadiness } from "./sdkModels.ts";
 export { catalogEfforts } from "./catalogProvider.ts";
 
-// Scope-agnostic extension discovery ({§extension-kind}).
+// Scope-agnostic extension discovery ({§extension-discovery}).
 export { discover } from "./discover.ts";
 export type { DiscoverOptions, Discovery } from "./discover.ts";
 

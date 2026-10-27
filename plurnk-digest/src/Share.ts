@@ -18,7 +18,7 @@ export interface ShareOptions {
 
 // {§share}: a share is the digest of a consistent copy of the database.
 export default class Share {
-    // {§share-snapshot}: a live or WAL-mode database is copied by SQLite, never by the filesystem.
+    // {§share-packet-names}: a live or WAL-mode database is copied by SQLite, never by the filesystem.
     static snapshot(dbPath: string, copy: string): void {
         const source = resolve(dbPath);
         if (!existsSync(source)) throw new Error(`no database at ${source}`);

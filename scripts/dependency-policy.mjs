@@ -102,15 +102,15 @@ export const packageGraphViolations = (entries) => {
     return violations;
 };
 
-// {§module-compatibility} — a module states its compatibility with the contract as a peer range; the
+// {§module-seam-slices} — a module states its compatibility with the contract as a peer range; the
 // host, which implements the contract, is the one package that depends on it.
 const MODULE_CONTRACT = "@plurnk/plurnk-modules";
 const MODULE_HOST = "@plurnk/plurnk-service";
 export const moduleContractViolations = (entries) => entries
     .filter(({ manifest, importsContract }) => importsContract && manifest.name !== MODULE_HOST && manifest.name !== MODULE_CONTRACT)
     .flatMap(({ file, manifest }) => [
-        ...(Object.hasOwn(manifest.peerDependencies ?? {}, MODULE_CONTRACT) ? [] : [`${file}: a module declares ${MODULE_CONTRACT} as a peer dependency ({§module-compatibility})`]),
-        ...(Object.hasOwn(manifest.dependencies ?? {}, MODULE_CONTRACT) ? [`${file}: dependencies.${MODULE_CONTRACT} must be a peer dependency ({§module-compatibility})`] : []),
+        ...(Object.hasOwn(manifest.peerDependencies ?? {}, MODULE_CONTRACT) ? [] : [`${file}: a module declares ${MODULE_CONTRACT} as a peer dependency ({§module-seam-slices})`]),
+        ...(Object.hasOwn(manifest.dependencies ?? {}, MODULE_CONTRACT) ? [`${file}: dependencies.${MODULE_CONTRACT} must be a peer dependency ({§module-seam-slices})`] : []),
     ]);
 
 const importsModuleContract = async (dir) => {

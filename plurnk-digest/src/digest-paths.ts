@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { DigestOptions } from "./digest-rows.ts";
 
-// {§digest-programmatic-surface}: the input database must exist and the output folder must be named. A
+// {§share-packet-names}: the input database must exist and the output folder must be named. A
 // writer never deletes: the digest refuses a folder that already holds files ({§share}).
 export const digestPaths = (opts: DigestOptions): { dbPath: string; digestDir: string } => {
     const dbPath = resolve(opts.dbPath);

@@ -7,185 +7,57 @@ Package principles). The service hosts modules: it discovers them ({§module-lif
 drives their lifecycle ({§module-lifecycle}, {§module-shutdown-order}) and implements every
 seam slice.
 
-## §module-contract Module contract
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§module-http-mounts} | A module declares the HTTP prefixes it serves. |
-| {§module-phases} | Every module's `setup` completes before any module's `start`. |
-| {§module-route-settlement} | A module's `close` returns once the work its routes admitted has settled. |
-| {§module-self-activation} | A module configures itself. |
-| {§module-contained-configuration} | A module contains a setting it cannot use. |
-| {§module-failure} | A `setup` or `start` failure fails boot, and stopping releases exactly what was acquired. |
-<!-- /map -->
+## §module-contract 1. Module Contract and Lifecycle
 
 A module is a `DaemonModule<SetupSeam, StartSeam>`. Every member is optional, and each seam
-type names only what the module uses.
+type names only what the module uses. The host passes one object implementing every slice; seams are typed for clarity, not enforced at runtime.
 
 | Member | Receives | Contract |
 | --- | --- | --- |
-| `setup` | Its setup seam | Establishes every capability the host may demand during recovery. |
-| `start` | A slice of {§application-session-observation} | Opens exterior ingress only after durable recovery; may return a distinct lifetime object. |
+| `setup` | Its setup seam | Establishes every capability the host may demand during recovery (Functionality adapters, schemes, module actions). |
+| `start` | A `Pick` slice of {§application-session-observation} | Opens exterior ingress only after the host readies schemes, publishes capabilities, and recovers durable lifecycle; may return a distinct lifetime object. |
 | `stop` | Nothing | Rejects new ingress and settles owned producers while observers stay subscribed. |
-| `close` | Nothing | Releases observers and remaining resources after producers settle, and returns once the work its routes admitted has settled ({§module-route-settlement}). |
-| `mounts` | Declared, not called | The HTTP route prefixes the module mounts at `start` ({§module-http-mounts}). |
-| `contained` | Declared, not called | Settings the module contained: each withheld the part it configures ({§module-contained-configuration}). |
+| `close` | Nothing | Releases observers and remaining resources after producers settle, and returns once the work its routes admitted has settled. |
+| `mounts` | Declared, not called | Absolute HTTP pathname prefixes ({§http-host}) the module mounts at `start`. |
+| `contained` | Declared, not called | Invalid settings `{ key, message }` the module contained by withholding only the part each configures. |
 
-§module-http-mounts **A module declares the HTTP prefixes it serves.** `mounts` lists absolute
-pathname prefixes ({§http-host}). The host claims every module's mounts before any module sets
-up: one prefix claimed twice fails boot naming both owners. The root `/` is optional and obeys
-the same ownership rule as any other prefix. At `start` a module mounts exactly its claims through
-`registerHttpRoute` and/or `registerHttpUpgrade`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The
-listener answers `503 service-starting` until every module has started, so readiness never
-depends on registration order; afterwards an unclaimed path answers `404 route-not-found`.
-A host without a listener has nothing to serve a mount on:
-before any module sets up, it leaves out every module that declares mounts, registered or
-discovered, with an info notice owned by `module:<package>`.
+| Invariant | Contract |
+| --- | --- |
+| HTTP mounts | The host claims every module's `mounts` before any module sets up: one prefix (including optional root `/`) claimed twice fails boot naming both owners. At `start` a module mounts its exact claims via `registerHttpRoute` and/or `registerHttpUpgrade`: an unclaimed prefix is refused, and a claim left unmounted fails boot. The listener answers `503 service-starting` until every module has started, and `404 route-not-found` for unclaimed paths afterwards. Without a listener, the host leaves out every module declaring mounts before setup with an info notice owned by `module:<package>`. |
+| Phase order | Every module's `setup` completes before any module's `start`, and stopping runs every `stop` before any `close`. Registration order is not part of the contract and none is inferred from discovery. |
+| Route settlement | A request a mounted route admitted, and work started for it, may call the host until it settles; `close` joins that work so nothing a module admitted reaches the host after `close` returns ({§module-shutdown-order}). |
+| Self-activation | A discovered module's export is an object or zero-arg factory ({§module-lifecycle}) reading its own knobs from its documented environment. An unconfigured module is inert (no mounts, no registrations). |
+| Contained configuration | When a setting is invalid, a module withholds only that part and lists `{ key, message }` in `contained`. The host reports each as a configuration Notice owned by `module:<package>` ({§configuration-repair-path}), and offline checks fail on it. A module that cannot work at all throws from its factory ({§module-lifecycle}). |
+| Failure & unwind | The host tracks a module with `stop`/`close` before `setup`, plus any distinct lifetime object returned by `start`. A `setup` or `start` failure leaves later modules unrun for that phase, fails boot, and stops/closes every tracked module (including the failing one) in reverse registration order ({§module-shutdown-order}) into one shutdown aggregate. |
 
-§module-phases **Every module's `setup` completes before any module's `start`.** `setup`
-registers what the host may demand during recovery: Functionality adapters, schemes and module
-actions. The host then readies schemes, publishes capabilities and recovers durable lifecycle,
-and only then does any `start` bring up a face. Stopping runs every `stop` before any `close`.
-These phases are the only order a module may rely on: registration order is not part of the
-contract, and none is inferred from discovery.
+## §module-seam-slices 2. Seam Slices and Base Setup Functions
 
-§module-route-settlement **A module's `close` returns once the work its routes admitted has
-settled.** A request a mounted route admitted, and the work the module started for it, may call
-the host until it settles, and the host releases what those calls reach once every `close` has
-returned ({§module-shutdown-order}). `close` therefore joins that work rather than abandoning it:
-nothing a module admitted reaches the host after its `close`.
+A module's setup seam is the intersection of the slices it uses; each framework owns its kind's slice and contribution types. A module declares `@plurnk/plurnk-modules` and each framework whose slice it uses as npm `peerDependencies` (there is no manifest version field).
 
-§module-self-activation **A module configures itself.** A discovered module's export is an object
-or a factory taking no arguments ({§module-lifecycle}), so it reads its own knobs from the
-environment its package documents. An unconfigured module is inert: it claims no mounts and
-registers nothing. The host decides nothing on a discovered module's behalf beyond leaving out
-what it cannot host ({§module-http-mounts}).
-
-§module-contained-configuration **A module contains a setting it cannot use.** When one of its
-own settings is invalid, a module withholds only the part that setting configures, keeps the rest
-working, and lists the setting in `contained`: its key and the exact message. The host reads the
-list when the module registers and reports each entry as a configuration Notice owned by
-`module:<package>` ({§configuration-repair-path}), and the offline check fails on it. The report
-is declared, like `mounts`, because the host passes every module one seam object and cannot
-attribute a call to a module. A module that cannot work at all throws from its factory instead
-({§module-lifecycle}).
-
-§module-failure **A `setup` or `start` failure fails boot, and stopping releases exactly what was
-acquired.** The host tracks a module that has `stop` or `close` before its `setup`, and a distinct
-lifetime object when `start` returns one. A setup failure leaves later modules neither set up nor
-started; a start failure leaves later modules unstarted. Stopping the daemon then stops and closes
-every tracked module, the failing one included, in reverse registration order
-({§module-shutdown-order}). A phase failure does not skip later phases and joins one shutdown
-aggregate.
-
-The host passes one object implementing every slice. Seams are typed for clarity, not enforced
-at runtime: a module's declared slices are the coupling the compiler checks, and anything else
-the host object carries is not contract.
-
-## Seam slices
-
-§module-seam-slices **A module's setup seam is the intersection of the slices it uses, and each
-framework owns the slice for what modules contribute to its kind.** A kind's slice and its
-contribution types live in its framework's package, so this package never depends on a less stable one.
-
-| Slice | Owner | Offers |
+| Slice / Base Function | Owner | Contract |
 | --- | --- | --- |
-| `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Workspace paths; operator, workspace and session environment; the workspace state directory; module actions |
-| `FunctionalitySeam<Runtime, SchemeFacet>` | `@plurnk/plurnk-modules` | `registerFunctionalityAdapter` |
-| `SchemeRegistrationSeam`, `ResourceTreeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§resource-tree-scheme}) | Scheme and read-only tree registration, and the facet a runtime or a family manager exposes |
-| `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-role}) | The runtimes a resident family prepares |
-| `WorkspacePluginsSeam`, `WorkspacePluginSet` | `@plurnk/plurnk-agent-plugins` ({§plugin-set-module-slice}) | `readWorkspacePlugins` |
-| `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills` |
+| `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Workspace paths, environments, workspace state directory, and module actions. |
+| `FunctionalitySeam<Runtime, SchemeFacet>` | `@plurnk/plurnk-modules` | `registerFunctionalityAdapter(adapter)` beneath the host's shared coordinator ({§functionality-coordinator}), returning its family handle. |
+| `SchemeRegistrationSeam`, `ResourceTreeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§resource-tree-scheme}) | Scheme and read-only tree registration, and the facet a runtime or family manager exposes. |
+| `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-role}) | Runtimes a resident family prepares. |
+| `WorkspacePluginsSeam`, `WorkspacePluginSet` | `@plurnk/plurnk-agent-plugins` ({§agent-plugins-expansion}) | `readWorkspacePlugins(workspaceId)`. |
+| `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills()`. |
+| `workspacePaths(workspaceId)` | `ModuleSetupSeam` | Returns absolute `home`, bound `projectRoot` (`null` for folderless workspaces), and read-only `configurationRoots` (`{ directory, scope }`) in highest-precedence-first order ({§functionality-inspection}). Modules append their format's paths and interleave within the same scope without reconstructing root order. |
+| `operatorEnvironment()` | `ModuleSetupSeam` | Ambient launch base: operator environment without Plurnk configuration or provider credentials ({§execution-output-identity}). Explicit bindings belong to the consuming module ({§mcp-module}). |
+| `readWorkspaceEnvironment(workspaceId)` | `ModuleSetupSeam` | Captures the workspace env layer ({§execution-output-identity}) and returns its composer (using admitted host values when called with no argument, or a supplied reference-resolution context), applying captured values and masks without session overrides. |
+| `readSessionEnvironment(workspaceId, sessionId)` | `ModuleSetupSeam` | Workspace environment layers with the session's own overrides on top ({§functionality-coordinator}). |
+| `workspaceStateDirectory(workspaceId, namespaceOwner)` | `ModuleSetupSeam` | Returns and creates the module's absolute operational-state directory under the daemon's XDG state home; survives workspace renames and restarts, and isolates distinct workspaces/databases. |
+| `registerModuleAction({ name, scope, residency, inputSchema, outputSchema, handler })` | `ModuleSetupSeam` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is `'daemon' \| 'workspace' \| 'session'`; `residency` is `'required' \| 'none'` (`'daemon'` requires `'none'`; `'required'` acquires workspace capabilities and reconciles session documents). Scoped contexts carry trusted bound identifiers, never client parameters. |
 
-A start seam is a `Pick` of {§application-session-observation} naming the calls the module makes.
+## §functionality-adapter 3. Functionality Adapters
 
-§module-compatibility **A module states its compatibility as npm peer ranges.** It declares this
-package, and each framework whose slice it uses, as peer dependencies; the host that implements the
-contract is the one package that depends on it directly. There is no manifest version field.
+An adapter owns protocol truth: it declares its `family`, `namespaceOwner`, `definitionSchema`, contributed defaults, optional `discovery`, `admit`, `prepare`, teardown, and optional alias grammar (when not the shared lowercase-hyphen one). Shared shapes live in `plurnk-contracts`. `FunctionalityAdapter` is generic over prepared runtime, scheme facet, admitted definition, and committed snapshot.
 
-## Base setup functions
-
-<!-- map -->
-| Tag | Promise |
+| Aspect | Contract |
 | --- | --- |
-| {§module-workspace-paths} | `workspacePaths(workspaceId)` — Returns the host's absolute `home`, the bound `projectRoot` (null for a… |
-| {§module-workspace-directory} | `workspaceStateDirectory(workspaceId, namespaceOwner)` — Returns and creates the module's absolute… |
-| {§module-action-registration} | `registerModuleAction({ name, scope, residency, inputSchema, outputSchema, handler })` — Adds one non-empty,… |
-| {§module-functionality-adapter} | `registerFunctionalityAdapter(adapter)` — Registers one family beneath the host's shared coordinator… |
-<!-- /map -->
-
-| Function | Contract |
-| --- | --- |
-| §module-workspace-paths `workspacePaths(workspaceId)` | Returns the host's absolute `home`, the bound `projectRoot` (null for a folderless workspace), and selected read-only `configurationRoots` in highest-precedence-first order ({§functionality-inspection}). Each root has a `directory` and an opaque `scope` shared with plugin discovery. Modules append their own format's paths and can interleave sources within the same scope; they never reconstruct the host's root selection or order. Configuration inputs do not move with operational state. |
-| `operatorEnvironment()` | Returns the ambient launch base: the operator's environment without Plurnk configuration or provider credentials ({§execution-output-identity}), not the model's command ceiling. Explicit bindings belong to the consuming module ({§mcp-module}). |
-| `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§execution-output-identity}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without session overrides. |
-| `readSessionEnvironment(workspaceId, sessionId)` | The same layers with the session's own overrides on top ({§functionality-coordinator}): what a command of that session runs under. |
-| §module-workspace-directory `workspaceStateDirectory(workspaceId, namespaceOwner)` | Returns and creates the module's absolute operational-state directory under the daemon's XDG state home. The host owns placement: the directory survives workspace renames and daemon restarts, and independently created workspaces, including in other databases, receive different directories. The module owns its contents and child-directory lifetimes. |
-| §module-action-registration `registerModuleAction({ name, scope, residency, inputSchema, outputSchema, handler })` | Adds one non-empty, extension-unique action with resolvable JSON Schemas. `scope` is exactly `daemon`, `workspace`, or `session`; the handler receives schema-validated params and a separate matching context. `residency` is explicitly `required` or `none`: only the former acquires workspace capabilities and reconciles session documents. Daemon actions require `none`. Scoped contexts contain trusted bound identifiers, never client parameters. A client-interface module decides whether and how the name becomes public, validates successful output, and owns collisions with its built-ins. |
-| §module-functionality-adapter `registerFunctionalityAdapter(adapter)` | Registers one family beneath the host's shared coordinator ({§functionality-coordinator}) and returns its family handle. |
-
-## Functionality adapters
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§functionality-adapter} | An adapter owns protocol truth. |
-| {§functionality-preparation-cancellation} | Preparation belongs to its invoking lifetime. |
-| {§functionality-admission-preparation} | Admission data belongs to one attempt. |
-| {§functionality-discovery-inputs} | An adapter declares the discovery inputs it serves. |
-<!-- /map -->
-
-§functionality-adapter **An adapter owns protocol truth.** It declares its family, namespace owner, definition schema, contributed defaults, discovery ({§functionality-discovery-inputs}), admission, preparation, and teardown, and its alias grammar when that is not the shared lowercase-hyphen one. The seam's shapes — the identity a verb acts under, its options, the discovery inputs, definition sources, outcomes, preparation, the prepared result and the family handle — are declared once in `plurnk-contracts`. `FunctionalityAdapter` is generic over the runtime a resident family prepares and the scheme facet its manager may expose; both default to none, and the frameworks that own those types name them ({§module-seam-slices}). It is generic too over the definition its `definitionSchema` admits and the snapshot its preparation commits, which the family names itself: `available`, `admit` and `forget` carry its definitions, preparation receives its enabled definitions and its own previous snapshot, and teardown its own committed snapshot. The coordinator holds every adapter at the defaults, any object and an unknown snapshot, and hands a family back only definitions that family produced or that its `definitionSchema` admitted when the coordinator read them back, and only the snapshot its last committed preparation returned.
-
-| Declaration | Rule |
-| --- | --- |
-| The alias grammar | the coordinator enforces whichever grammar the family declares, at admission, in the service projection, and on persisted state, so an environment variable's name is an alias exactly as a skill name is |
-| Addressing ({§functionality-replacement}) | a family whose definitions are named by their own content declares the inputs of `add` and of the select verbs, and how a select input names its alias; its `admit` then returns one admission per definition an `add` names |
-| Admission | distinguishes explicit client actions from model operations where the family contract requires it ({§tools-resource-materialization}) |
-| Preparation | receives each complete definition with optional adapter-owned interpretation context, and returns runtimes, documents, per-alias outcomes, and a snapshot with `publish`/`commit`/`abort`; successful publication publishes, then commits; failure aborts; cooling tears down; protocol continuations remain ordinary module actions |
-| Context | source semantics, not policy or provenance; it participates in runtime identity and hot-load comparisons, is never projected as configuration or persisted into a workspace override, and cannot survive replacement by a local definition; removing that override restores the current inherited definition and context together; descriptive provenance alone does not change runtime identity |
-| `forget` (optional) | releases an installed or provisioned definition before removal; failure rejects removal |
-| `configurationNotices` (optional) | current partial-source notices that join the ordinary workspace diagnostics without preventing independently valid definitions from preparing |
-
-§functionality-preparation-cancellation **Preparation belongs to its invoking lifetime.**
-The host supplies `preparation.signal`, aborted when workspace Functionality stops
-or the invoking operation is cancelled. An accepted operation waiting for workspace
-exclusivity is removed from that queue on cancellation, without publishing later.
-Adapters pass it to cancellable preparation I/O and check it before starting further work.
-Cancellation is not an unavailable definition: it rejects with the signal's reason, after
-releasing candidate resources. Cleanup failures remain failures, including alongside cancellation.
-The host never abandons a preparation promise merely because its signal was aborted.
-
-| Cancellation reaches the attempt | Settlement |
-| --- | --- |
-| Before preparation | Do not call the adapter. |
-| During preparation | Signal cancellation and join preparation, including candidate cleanup. |
-| Candidate returned, publication not begun | Abort the candidate; preserve the preceding publication. |
-| Publication begun | Finish commit or rollback and its cleanup; do not interrupt atomic settlement. |
-
-Module producer stop may run concurrently with cancelled preparation. Resource and database
-disposal follows joined preparation and cooling under {§module-shutdown-order}; the existing
-absolute deadline ({§module-shutdown-order}) bounds non-cooperative work.
-
-§functionality-admission-preparation **Admission data belongs to one attempt.**
-`admit` returns `{ alias, definition, preparation? }`, or one such admission per definition an
-addressing family's `add` names ({§functionality-replacement}); the coordinator passes them to
-that mutation's `prepare` as `admissions`. The optional `preparation`
-payload is adapter-owned, not configuration: it is never persisted, projected,
-used as definition identity, or carried into later refreshes. Admission and
-preparation must not change the preceding publication's live state. Candidate
-state becomes live at `publish`: synchronous, without I/O, inside the coordinator's
-registry commit, returning the undo that restores the preceding live state if that
-commit rolls back. `commit` settles what the published state entails, after
-publication; `abort` discards only an unpublished candidate
-({§functionality-coordinator}).
-
-§functionality-discovery-inputs **An adapter declares the discovery inputs it serves.**
-`discovery` names `inputs`, keys of the shared discovery query (`FunctionalityDiscoverInput`:
-`query`, `source`, `configuration`); `emptyListsAll` when a request naming none of them lists
-everything; and optional `details`, the family's own `discover` teaching. An adapter declares
-`discovery` exactly when it implements `discover`, which receives only a query that declaration
-admits. Registration refuses an empty, repeated or unknown input, and either half without the
-other. Without `discovery` a family serves no discovery and has no `discover` verb
-({§functionality-replacement}).
+| Alias grammar & addressing ({§functionality-replacement}) | The coordinator enforces the family's declared alias grammar at admission, in the service projection, and on persisted state. Content-named families declare the inputs of `add` and select verbs and how a select input names its alias; `admit` returns one admission per definition `add` names. |
+| Admission (`admit`) | Distinguishes explicit client actions from model operations where required ({§tools-resource-materialization}). Returns `{ alias, definition, preparation? }` (or an array for addressing families), passed to that mutation's `prepare` as `admissions`. The optional `preparation` payload belongs to one attempt: never persisted, projected, used as identity, or carried into later refreshes. |
+| Preparation & publication (`prepare`) | Receives each complete enabled definition with optional adapter-owned `context` (source semantics participating in runtime identity and hot-load comparisons, never projected as configuration or persisted into a workspace override; removing a local override restores the inherited definition and context together) and the previous committed snapshot. Returns runtimes, documents, per-alias outcomes, and a snapshot with synchronous I/O-free `publish` (returning an undo callback inside the registry commit), post-publication `commit`, and candidate-only `abort` ({§functionality-coordinator}). |
+| Cancellation (`preparation.signal`) | Aborted when workspace Functionality stops or the invoking operation is cancelled (removing queued waiting operations before preparation). Before preparation: do not call adapter. During preparation: signal cancellation and join preparation including candidate cleanup (rejecting with the signal's reason, never recording an unavailable definition). Candidate returned before publication: `abort` candidate and preserve preceding publication. Publication begun: finish atomic commit or rollback and cleanup ({§module-shutdown-order}). |
+| `forget` & `configurationNotices` | Optional `forget` releases an installed/provisioned definition before removal (failure rejects removal). Optional `configurationNotices` joins partial-source notices to workspace diagnostics without blocking valid definitions. |
+| Discovery (`discovery` / `discover`) | Declares non-empty, unique `inputs` from `FunctionalityDiscoverInput` (`'query' \| 'source' \| 'configuration'`), `emptyListsAll`, and optional `details` teaching. Declared if and only if `discover` is implemented; without `discovery`, the family has no `discover` verb ({§functionality-replacement}). |

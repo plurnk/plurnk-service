@@ -199,7 +199,7 @@ export default class Mimetypes {
             .toSorted((a, b) => a.mimetype.localeCompare(b.mimetype));
     }
 
-    // {§extension-attribution} Static package tags remain always-on. Runtime
+    // {§extension-discovery} Static package tags remain always-on. Runtime
     // collection consults only handler objects already loaded by ordinary
     // mimetype work, preserving the framework's lazy-loading contract.
     async attributions(context: ExtensionAttributionContext): Promise<ExtensionAttribution> {

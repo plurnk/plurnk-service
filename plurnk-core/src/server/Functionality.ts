@@ -216,7 +216,7 @@ export default class Functionality {
         if (scopes.length === 0 || new Set(scopes).size !== scopes.length || scopes.some((scope) => scope !== "workspace" && scope !== "session")) {
             throw new Error(`Functionality family '${family}' declares invalid scopes.`);
         }
-        // {§functionality-discovery-inputs}
+        // {§functionality-adapter}
         const { discovery } = adapter;
         if ((discovery === undefined) !== (adapter.discover === undefined)) {
             throw new Error(`Functionality family '${family}' must declare discovery exactly when it implements discover.`);
@@ -706,7 +706,7 @@ export default class Functionality {
     }
 
     async #discover(adapter: HostFunctionalityAdapter, query: Record<string, unknown>, identity: WorkspaceCapabilityIdentity): Promise<FunctionalityDiscoverResult> {
-        // Registration pairs a declared discovery with its implementation ({§functionality-discovery-inputs}).
+        // Registration pairs a declared discovery with its implementation ({§functionality-adapter}).
         const candidates = await adapter.discover!(query, identity);
         return Validator.assertFunctionalityDiscoverResult({ family: adapter.family, candidates: [...candidates] });
     }
@@ -1169,7 +1169,7 @@ export default class Functionality {
         return { outcomes };
     }
 
-    // {§functionality-preparation-cancellation} Join the adapter; abort a returned candidate before publication.
+    // {§functionality-adapter} Join the adapter; abort a returned candidate before publication.
     async #prepare(adapter: HostFunctionalityAdapter, preparation: Omit<FunctionalityPreparation, "signal">, signal = this.#host.signal): Promise<FunctionalityPrepared<RuntimeRegistration>> {
         signal.throwIfAborted();
         const prepared = await adapter.prepare({ ...preparation, signal });

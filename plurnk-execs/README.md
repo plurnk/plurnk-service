@@ -114,7 +114,7 @@ returns `{ registry, packageAttributions, skipped, disabled }`. Tag collisions
 fail hard. Static attribution is normalized once per represented package; an
 executor may additionally decide per provider attempt whether its synchronous
 `attributions(context)` hook returns no, one, or many opaque tags
-({§extension-attribution}).
+({§extension-discovery}).
 
 | Policy                              | Result                                        |
 | ----------------------------------- | --------------------------------------------- |

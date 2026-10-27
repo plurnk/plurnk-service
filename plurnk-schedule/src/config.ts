@@ -1,4 +1,4 @@
-// {§schedule-environment}
+// {§schedule-residency}
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityProvenance } from "@plurnk/plurnk-contracts";
 import { readDefinition, DefinitionError, type ScheduleDefinition } from "./definition.ts";
@@ -15,7 +15,7 @@ const parseJson = (key: string, value: string): unknown => {
     }
 };
 
-// {§schedule-discovery-preview} — how many upcoming occurrences a reading of rule text shows.
+// {§schedule-rule} — how many upcoming occurrences a reading of rule text shows.
 export const previewOccurrences = (env: NodeJS.ProcessEnv): number => Knob.integer(PREVIEW_OCCURRENCES, 1, env);
 
 export const serviceDefinitions = (env: NodeJS.ProcessEnv): ReadonlyMap<string, { readonly definition: ScheduleDefinition; readonly enabled: boolean; readonly provenance: FunctionalityProvenance }> => {

@@ -1,8 +1,8 @@
 // {§schedule-rule} — a rule is RFC 5545 text: an optional DTSTART line and one RRULE line (bare
 // `FREQ=…` parts are the RRULE line), with EXDATE/RDATE lines admitted. The recurrence library
 // owns the grammar and the expansion; this module owns what the library is lenient about — unknown
-// RRULE parts, extra lines, a DTSTART the effective zone must stamp ({§schedule-zone}) — and the
-// bound a workspace rule must carry ({§schedule-bound}).
+// RRULE parts, extra lines, a DTSTART the effective zone must stamp ({§schedule-rule}) — and the
+// bound a workspace rule must carry ({§schedule-rule}).
 import { RRuleTemporal, type TemporalZonedDateTime } from "rrule-temporal";
 import { toText } from "rrule-temporal/totext";
 import { zoned } from "./temporal.ts";

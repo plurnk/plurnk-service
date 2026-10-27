@@ -86,7 +86,7 @@ export default class Discover {
         return (await Meta.packageDirs(nm)).map((c) => c.dir).toSorted();
     }
 
-    // The manifest of a declared executor package ({§extension-manifest-read}); discover() silently
+    // The manifest of a declared executor package ({§extension-discovery}); discover() silently
     // skips everything else (not "skipped by trust", just not an exec package).
     static async #readExecManifest(dir: string): Promise<ExecManifest | null> {
         const manifest = await Meta.readManifest(dir, "exec");

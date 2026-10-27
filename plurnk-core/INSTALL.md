@@ -62,7 +62,7 @@ the table above; `PLURNK_SERVICE_DB_PATH` overrides it, and
 database, not a different client's default.
 
 Use SQLite's consistent-copy operation while the daemon is running **or** stopped
-({§share-snapshot}). Copying only a live `.db` can omit committed data still in
+({§share-packet-names}). Copying only a live `.db` can omit committed data still in
 its `-wal` file; copying those files separately is not a consistent snapshot.
 This example uses Node, already required by Plurnk, and the default XDG path.
 Choose a new destination for each backup:
@@ -94,7 +94,7 @@ Do not overwrite a live database or pair a restored file with old sidecars.
 | --- | --- |
 | Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects ({§session-causal-admission}). |
 | Project files and service configuration | Restore separately. Current files remain authoritative; startup reads the current configuration, not an earlier ambient environment captured in history. |
-| Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed ({§schedule-residency}, {§schedule-first-arming}). |
+| Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed ({§schedule-residency}, {§schedule-delivery}). |
 | Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup ({§oauth-continuation}). |
 
 Retention controls expire packet compositions and call payloads, including physical-request

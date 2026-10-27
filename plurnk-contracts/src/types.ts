@@ -80,7 +80,7 @@ export const PROPOSAL_POLICIES = Object.freeze(
 // Minting predicate only; URL ingestion deliberately remains permissive. {§path-syntax}
 export const SESSION_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
 
-// {§agent-skills-name} Discovery and registration share the wire schema's grammar.
+// {§agent-skills-directory} Discovery and registration share the wire schema's grammar.
 export const SKILL_NAME = new RegExp(skillDefinitionSchema.properties.name.pattern, "u");
 
 // Structurally synthesized statements have no parsed source point. {§parse-recovery}
