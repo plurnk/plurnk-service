@@ -46,7 +46,7 @@ export const excludesFile = (env: NodeJS.ProcessEnv = process.env): string => {
 
 // `trusted` is the repository the daemon was pointed at, pinned as `safe.directory`: git's ownership
 // check otherwise refuses a repository another account owns, which is exactly the shape when the
-// model's commands own the workspace ({§executor-spawn-account}). The daemon trusts the root it
+// model's commands own the workspace ({§executor-policy}). The daemon trusts the root it
 // was given, nothing wider; the blanked global and system configuration cannot grant it.
 export const hermeticGitEnv = (trusted: string | null = null): NodeJS.ProcessEnv => {
     const kept: ReadonlyArray<readonly [string, string]> = [...PINNED_CONFIG, ["core.excludesFile", excludesFile()]];

@@ -21,10 +21,10 @@ export class OAuthSetupError extends Error {
     }
 }
 
-// {§oauth-grant} What a sign-in leaves for its alias's later connections: the client registered and the tokens issued,
+// {§oauth-continuation} What a sign-in leaves for its alias's later connections: the client registered and the tokens issued,
 // per authorization server, with the redirect the registration names. Each connection's provider reads and writes the one
 // grant, so a refreshed or rotated token serves every connection after it.
-// {§oauth-grant} What `list` shows of a grant; never a token.
+// {§oauth-continuation} What `list` shows of a grant; never a token.
 export interface OAuthGrantSummary {
     readonly issuer: string;
     // As the authorization server stated it.
@@ -193,7 +193,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
     }
 
     redirectToAuthorization(authorizationUrl: URL): void {
-        // {§oauth-grant} A sign-in starts only where a client waits at the redirect: one the definition configures, or the
+        // {§oauth-continuation} A sign-in starts only where a client waits at the redirect: one the definition configures, or the
         // callback a client bound to begin this grant. Elsewhere the grant no longer answers, and the alias awaits a sign-in.
         if (!this.#redirectConfigured && this.grant.accepted) {
             this.#authorization = {};
@@ -231,7 +231,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
 
     saveDiscoveryState(state: OAuthDiscoveryState): void {
         if (state.authorizationServerMetadata === undefined) {
-            // {§oauth-issuer} Without a configured issuer, naming one is the working form.
+            // {§oauth-continuation} Without a configured issuer, naming one is the working form.
             throw new OAuthSetupError("oauth-metadata-unavailable",
                 "MCP OAuth requires validated authorization-server metadata, and the server provided none.",
                 this.#issuer === undefined ? "Name the authorization server as the definition's authorization.issuer." : undefined,
@@ -245,7 +245,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
             this.#presentedToken = false;
             this.#discoveryState = undefined;
         }
-        // {§oauth-issuer} A configured issuer is where discovery starts, whatever the resource publishes.
+        // {§oauth-continuation} A configured issuer is where discovery starts, whatever the resource publishes.
         return this.#discoveryState ?? (this.#issuer === undefined ? undefined : { authorizationServerUrl: this.#issuer });
     }
 

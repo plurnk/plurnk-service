@@ -223,7 +223,7 @@ test("{§exec-stream} a failed execution with output on both channels is one fai
     });
 });
 
-test("{§executor-exit-code} {§exec-stream} a nonzero exit reaches the model as the command's answer on its terminal READs", async (approvalContext) => {
+test("{§executor-results} {§exec-stream} a nonzero exit reaches the model as the command's answer on its terminal READs", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf 'partial output\\n'; printf 'compile diagnostic\\n' >&2; exit 3\n````\n\n````WAIT\nwaiting\n````", 10),

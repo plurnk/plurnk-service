@@ -3,14 +3,24 @@ import test from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import {
     acceptedContent,
+    fromJsonSchema,
     inputRequired,
     McpServer,
     createMcpHandler,
     type McpHttpHandler,
 } from "@modelcontextprotocol/server";
+import type { JSONRPCMessage, Tool, Transport } from "@modelcontextprotocol/client";
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
+import { wireRequest } from "../test/task-fixture.ts";
 import ServerConnection, { AuthorizationRequiredError, McpRedirectError } from "./client.ts";
+import ExtensionChannel from "./extensionChannel.ts";
+import {
+    HeaderDeclarationError,
+    assertHeaderDeclarations,
+    mcpParamHeaders,
+    mcpRoutingHeaderValue,
+} from "./protocolHeaders.ts";
 import {
     MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
     MCP_PROTOCOL_VERSION,
@@ -23,7 +33,7 @@ const floor = {
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
-test("{§mcp-connection-shutdown} closing a connection interrupts unfinished negotiation", { timeout: 5_000 }, async (t) => {
+test("{§mcp-setup} closing a connection interrupts unfinished negotiation", { timeout: 5_000 }, async (t) => {
     const negotiating = Promise.withResolvers<void>();
     const served = await serveMcpHttp(t, handler(), async (request) => {
         const message = await request.clone().json() as { method?: string };
@@ -176,7 +186,7 @@ test("{§mcp-transports} Streamable HTTP carries the current envelope and ordina
     }
 });
 
-test("{§mcp-redirect-refused} a redirected endpoint fails naming its target, and no configured header reaches the other origin", async (t) => {
+test("{§mcp-transports} a redirected endpoint fails naming its target, and no configured header reaches the other origin", async (t) => {
     const elsewhere = await serveMcpHttp(t, handler());
     const moved = await serveMcpHttp(t, handler(), () => new Response(null, { status: 307, headers: { location: elsewhere.url } }));
     const connection = new ServerConnection(httpServer("moved", moved.url, { "x-api-key": "KEY" }), floor);
@@ -192,7 +202,7 @@ test("{§mcp-redirect-refused} a redirected endpoint fails naming its target, an
     assert.equal(elsewhere.requests.length, 0, "the other origin received nothing, the configured header included");
 });
 
-test("{§mcp-server-settings} HTTP bearer credentials expand only while preparing a connection", async (t) => {
+test("{§mcp-configuration} HTTP bearer credentials expand only while preparing a connection", async (t) => {
     const served = await serveMcpHttp(t, handler(), (request) =>
         request.headers.get("authorization") === "Bearer secret"
             ? null
@@ -341,7 +351,7 @@ test("{§oauth-client-credentials} a declared issuer withholds the credential fr
     assert.equal(tokenPosts, 0, "the credential never reached a token endpoint");
 });
 
-test("{§mcp-endpoint-security} HTTP transport does not permit non-TLS OAuth token exchange", async (t) => {
+test("{§mcp-transports} HTTP transport does not permit non-TLS OAuth token exchange", async (t) => {
     let origin = "";
     const served = await serveMcpHttp(t, handler(), (request) => {
         const url = new URL(request.url);
@@ -408,7 +418,7 @@ test("{§mcp-transports} HTTP progress and stream cancellation settle the same r
     );
 });
 
-test("{§mcp-core-matrix} Streamable HTTP retries MRTR with a fresh ID and exact private continuation state", async (t) => {
+test("{§mcp-authority} Streamable HTTP retries MRTR with a fresh ID and exact private continuation state", async (t) => {
     const served = await serveMcpHttp(t, interactionHandler());
     const connection = new ServerConnection(httpServer("interaction", served.url), floor);
     t.after(() => connection.close());
@@ -449,7 +459,7 @@ test("{§mcp-core-matrix} Streamable HTTP retries MRTR with a fresh ID and exact
     });
 });
 
-test("{§mcp-core-matrix} interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding", async (t) => {
+test("{§mcp-authority} interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding", async (t) => {
     let origin = "";
     const tokenRequests: URLSearchParams[] = [];
     const served = await serveMcpHttp(t, handler(), (request) => {
@@ -548,7 +558,7 @@ test("{§mcp-core-matrix} interactive HTTP OAuth preserves discovery, PKCE, stat
     assert.equal(tokenRequest.get("resource"), `${origin}/mcp`);
 });
 
-test("{§oauth-lifetime} an expired access token refreshes with the stored grant without user interaction", async (t) => {
+test("{§oauth-continuation} an expired access token refreshes with the stored grant without user interaction", async (t) => {
     let origin = "";
     let issuedAt = Number.POSITIVE_INFINITY;
     const tokenRequests: URLSearchParams[] = [];
@@ -653,7 +663,7 @@ test("{§oauth-lifetime} an expired access token refreshes with the stored grant
     assert.equal(refreshRequest.get("refresh_token"), "refresh-token-1");
 });
 
-test("{§mcp-exclusions} unavailable deprecated DCR is attributed without probing it", async (t) => {
+test("{§mcp-authority} unavailable deprecated DCR is attributed without probing it", async (t) => {
     let origin = "";
     let registrationRequests = 0;
     const served = await serveMcpHttp(t, handler(), (request) => {
@@ -702,7 +712,7 @@ test("{§mcp-exclusions} unavailable deprecated DCR is attributed without probin
     assert.equal(registrationRequests, 0);
 });
 
-test("{§mcp-exclusions} OAuth rejects legacy endpoint inference without metadata", async (t) => {
+test("{§mcp-authority} OAuth rejects legacy endpoint inference without metadata", async (t) => {
     let origin = "";
     const legacyEndpointRequests: string[] = [];
     const served = await serveMcpHttp(t, handler(), (request) => {
@@ -743,7 +753,7 @@ test("{§mcp-exclusions} OAuth rejects legacy endpoint inference without metadat
     assert.deepEqual(legacyEndpointRequests, []);
 });
 
-// {§mcp-catalog-convergence} — the SDK stops its aggregating walk silently when a server repeats a
+// {§mcp-authority} — the SDK stops its aggregating walk silently when a server repeats a
 // cursor and would cache the partial catalog as complete; this client refuses the repeated page.
 const pagedHandler = (pages: Array<{ tools: string[]; nextCursor?: string }>): McpHttpHandler => createMcpHandler(() => {
     const server = new McpServer({ name: "paged-fixture", version: "1.0.0" });
@@ -761,7 +771,7 @@ const pagedHandler = (pages: Array<{ tools: string[]; nextCursor?: string }>): M
     return server;
 }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
 
-test("{§mcp-catalog-convergence} a catalog whose pagination never converges is an error, never a partial listing", async (t) => {
+test("{§mcp-authority} a catalog whose pagination never converges is an error, never a partial listing", async (t) => {
     const served = await serveMcpHttp(t, pagedHandler([
         { tools: ["page_0"], nextCursor: "1" },
         { tools: ["page_1"], nextCursor: "1" },
@@ -774,7 +784,7 @@ test("{§mcp-catalog-convergence} a catalog whose pagination never converges is 
     });
 });
 
-test("{§mcp-catalog-convergence} a converging paginated catalog aggregates every page", async (t) => {
+test("{§mcp-authority} a converging paginated catalog aggregates every page", async (t) => {
     const served = await serveMcpHttp(t, pagedHandler([
         { tools: ["page_0"], nextCursor: "1" },
         { tools: ["page_1"], nextCursor: "2" },
@@ -784,4 +794,194 @@ test("{§mcp-catalog-convergence} a converging paginated catalog aggregates ever
     t.after(() => connection.close());
     const catalog = await connection.catalog();
     assert.deepEqual(catalog.tools.map(({ name }) => name), ["page_0", "page_1", "page_2"]);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Header Declarations & Protocol Headers ({§mcp-transports}, {§mcp-transports})
+// ─────────────────────────────────────────────────────────────────────────────
+
+const invalidNumberHeader = { type: "object", properties: { score: { type: "number", "x-mcp-header": "Score" } }, required: ["score"] } as const;
+const validRegionHeader = { type: "object", properties: { region: { type: "string", "x-mcp-header": "Region" } }, required: ["region"] } as const;
+
+const headerDeclServer = (tasks: boolean) => createMcpHandler(() => {
+    const instance = new McpServer(
+        { name: tasks ? "tasks-leg" : "direct-leg", version: "1.0.0" },
+        tasks ? { capabilities: { extensions: { [MCP_TASKS_EXTENSION_ID]: {} } } } : {},
+    );
+    instance.registerTool("valid_tool", { inputSchema: fromJsonSchema(validRegionHeader) }, async () => ({ content: [{ type: "text", text: "valid called" }] }));
+    instance.registerTool("invalid_number_header", { inputSchema: fromJsonSchema(invalidNumberHeader) }, async () => ({ content: [{ type: "text", text: "must never run" }] }));
+    return instance;
+}, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 });
+
+for (const [leg, tasks] of [["direct", false], ["tasks", true]] as const) {
+    test(`{§mcp-transports} on the ${leg} leg an invalid x-mcp-header declaration is refused before any request is sent`, async (t) => {
+        const { url, requests } = await serveMcpHttp(t, headerDeclServer(tasks));
+        const connection = new ServerConnection({ name: `${leg}-leg`, type: "streamable-http", url }, floor);
+        try {
+            const tools = await connection.tools();
+            const invalid = tools.find((tool) => tool.name === "invalid_number_header");
+            assert.ok(invalid, "the listing carries the invalid definition; the refusal is the call's");
+            for (const definition of [invalid, undefined]) {
+                await assert.rejects(
+                    connection.callTool("invalid_number_header", { score: 1 }, undefined, undefined, undefined, definition),
+                    (error: unknown) => {
+                        assert.ok(error instanceof HeaderDeclarationError);
+                        assert.equal(error.tool, "invalid_number_header");
+                        assert.equal(error.declaration, "score: x-mcp-header 'Score' on type number; permitted on string, integer and boolean");
+                        return true;
+                    },
+                    definition === undefined ? "the listing supplies the definition when the caller does not" : "the caller's definition is scanned",
+                );
+            }
+            const calls = requests.filter((request) => wireRequest(request).method === "tools/call");
+            assert.equal(calls.length, 0, "no tools/call reached the transport");
+            if (!tasks) {
+                const result = await connection.callTool("valid_tool", { region: "us-west1" }) as { content: Array<{ text: string }> };
+                assert.equal(result.content[0]?.text, "valid called", "a valid tool on the same server is still called");
+                const valid = requests.filter((request) => wireRequest(request).method === "tools/call");
+                assert.equal(valid.length, 1);
+                assert.equal(valid[0]?.headers.get("mcp-param-region"), "us-west1", "its declared parameter is mirrored");
+            }
+        } finally {
+            await connection.close();
+        }
+    });
+}
+
+test("{§mcp-transports} MCP routing header values preserve safe ASCII and encode ambiguous values", () => {
+    assert.equal(mcpRoutingHeaderValue("task-42"), "task-42");
+    assert.equal(
+        mcpRoutingHeaderValue(" task-α"),
+        `=?base64?${Buffer.from(" task-α", "utf8").toString("base64")}?=`,
+    );
+    assert.equal(
+        mcpRoutingHeaderValue("=?base64?already?="),
+        `=?base64?${Buffer.from("=?base64?already?=", "utf8").toString("base64")}?=`,
+    );
+});
+
+test("{§mcp-transports} task-aware raw tool calls mirror declared primitive routing parameters", () => {
+    const tool = {
+        name: "defer",
+        inputSchema: {
+            type: "object",
+            properties: {
+                tenant: { type: "string", "x-mcp-header": "Tenant" },
+                verbose: { type: "boolean", "x-mcp-header": "Verbose" },
+                nested: {
+                    type: "object",
+                    properties: {
+                        priority: { type: "integer", "x-mcp-header": "Priority" },
+                    },
+                },
+                ignored: { type: "array", items: { type: "string" } },
+            },
+        },
+    } satisfies Tool;
+    assert.deepEqual(mcpParamHeaders(tool, {
+        tenant: "α",
+        verbose: false,
+        nested: { priority: 3 },
+        ignored: ["not-a-header"],
+    }), {
+        "Mcp-Param-Tenant": `=?base64?${Buffer.from("α", "utf8").toString("base64")}?=`,
+        "Mcp-Param-Verbose": "false",
+        "Mcp-Param-Priority": "3",
+    });
+    assert.deepEqual(mcpParamHeaders(tool, { nested: { priority: 2.5 }, tenant: null }), {}, "a non-integer never mirrors an integer declaration");
+});
+
+test("{§mcp-transports} every declaration form SEP-2243 forbids is refused naming the tool and the declaration", () => {
+    type PropertySchema = NonNullable<Tool["inputSchema"]["properties"]>[string];
+    const property = (schema: PropertySchema): Tool["inputSchema"] => ({ type: "object", properties: { field: schema } });
+    const cases: Array<{ name: string; inputSchema: Tool["inputSchema"]; declaration: RegExp }> = [
+        { name: "root", inputSchema: { type: "object", "x-mcp-header": "Root" }, declaration: /^\(root\): x-mcp-header outside a chain of properties$/u },
+        { name: "under-items", inputSchema: { type: "object", properties: { list: { type: "array", items: { type: "string", "x-mcp-header": "Item" } } } }, declaration: /^list\.<items>: x-mcp-header outside a chain of properties$/u },
+        { name: "under-additional", inputSchema: { type: "object", additionalProperties: { type: "string", "x-mcp-header": "Extra" } }, declaration: /^<additionalProperties>: /u },
+        { name: "under-one-of", inputSchema: { type: "object", oneOf: [{ type: "object", properties: { a: { type: "string", "x-mcp-header": "A" } } }] }, declaration: /^<oneOf>\.a: x-mcp-header outside/u },
+        { name: "under-if", inputSchema: { type: "object", if: { properties: { a: { type: "string", "x-mcp-header": "A" } } } }, declaration: /^<if>\.a: /u },
+        { name: "under-defs", inputSchema: { type: "object", $defs: { shared: { type: "string", "x-mcp-header": "Shared" } } }, declaration: /^<\$defs>: /u },
+        { name: "empty", inputSchema: property({ type: "string", "x-mcp-header": "" }), declaration: /^field: x-mcp-header is not a non-empty string$/u },
+        { name: "not-a-string", inputSchema: property({ type: "string", "x-mcp-header": 7 }), declaration: /is not a non-empty string$/u },
+        { name: "space", inputSchema: property({ type: "string", "x-mcp-header": "Bad Name" }), declaration: /'Bad Name' is not an RFC 9110 token$/u },
+        { name: "colon", inputSchema: property({ type: "string", "x-mcp-header": "Bad:Name" }), declaration: /is not an RFC 9110 token$/u },
+        { name: "non-ascii", inputSchema: property({ type: "string", "x-mcp-header": "Région" }), declaration: /is not an RFC 9110 token$/u },
+        { name: "control", inputSchema: property({ type: "string", "x-mcp-header": "Bad\nName" }), declaration: /is not an RFC 9110 token$/u },
+        { name: "number", inputSchema: property({ type: "number", "x-mcp-header": "Score" }), declaration: /^field: x-mcp-header 'Score' on type number; permitted on string, integer and boolean$/u },
+        { name: "object", inputSchema: property({ type: "object", "x-mcp-header": "Obj" }), declaration: /on type object;/u },
+        { name: "array", inputSchema: property({ type: "array", "x-mcp-header": "Arr" }), declaration: /on type array;/u },
+        { name: "null", inputSchema: property({ type: "null", "x-mcp-header": "Nil" }), declaration: /on type null;/u },
+        { name: "untyped", inputSchema: property({ "x-mcp-header": "Untyped" }), declaration: /on type \(none\);/u },
+        { name: "duplicate", inputSchema: { type: "object", properties: { a: { type: "string", "x-mcp-header": "Region" }, b: { type: "string", "x-mcp-header": "Region" } } }, declaration: /^b: x-mcp-header 'Region' repeats 'Region'$/u },
+        { name: "duplicate-case", inputSchema: { type: "object", properties: { a: { type: "string", "x-mcp-header": "Region" }, b: { type: "integer", "x-mcp-header": "REGION" } } }, declaration: /^b: x-mcp-header 'REGION' repeats 'Region'$/u },
+    ];
+    for (const specimen of cases) {
+        const tool = { name: `invalid_${specimen.name}`, inputSchema: specimen.inputSchema } satisfies Tool;
+        assert.throws(() => assertHeaderDeclarations(tool), (error: unknown) => {
+            assert.ok(error instanceof HeaderDeclarationError, specimen.name);
+            assert.equal(error.tool, tool.name, specimen.name);
+            assert.match(error.declaration, specimen.declaration, specimen.name);
+            return true;
+        }, specimen.name);
+    }
+    assert.doesNotThrow(() => assertHeaderDeclarations({
+        name: "valid_tool",
+        inputSchema: {
+            type: "object",
+            properties: {
+                region: { type: "string", "x-mcp-header": "Region" },
+                plain: { type: "number" },
+                nested: { type: "object", properties: { priority: { type: "integer", "x-mcp-header": "Priority" } } },
+                list: { type: "array", items: { type: "string" } },
+            },
+        },
+    } satisfies Tool), "a plain number and an undeclared array are not declarations");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Extension Channel ({§mcp-authority})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-authority} coalesced core progress is delivered before its response settles", async () => {
+    const observed: string[] = [];
+    let pending = true;
+    const transport: Transport = {
+        start: async () => undefined,
+        send: async () => undefined,
+        close: async () => undefined,
+        onmessage: (message) => {
+            if ("method" in message && message.method === "notifications/progress") {
+                queueMicrotask(() => {
+                    if (pending) observed.push("progress");
+                });
+                return;
+            }
+            pending = false;
+            observed.push("response");
+        },
+    };
+    const channel = new ExtensionChannel(transport, {
+        protocolVersion: "2026-07-28",
+        clientInfo: { name: "test", version: "1.0.0" },
+        clientCapabilities: {},
+        cancelRequest: async () => undefined,
+    });
+    const progress: JSONRPCMessage = {
+        jsonrpc: "2.0",
+        method: "notifications/progress",
+        params: { progressToken: 1, progress: 1 },
+    };
+    const response: JSONRPCMessage = {
+        jsonrpc: "2.0",
+        id: 1,
+        result: {},
+    };
+
+    transport.onmessage?.(progress);
+    transport.onmessage?.(response);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepEqual(observed, ["progress", "response"]);
+    channel.close();
 });

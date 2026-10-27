@@ -339,7 +339,7 @@ export default class McpResources {
                 return preparationEntryFailure(error);
             }
             if (error instanceof AuthorizationRequiredError) {
-                // {§mcp-request-unauthorized} — the alias now awaits a sign-in.
+                // {§mcp-host-composition} — the alias now awaits a sign-in.
                 return preparationFailure(this.#server, "authorization-required", 401, awaitsSignIn(this.#server), { retryable: false });
             }
             const invalidAddress = error instanceof ResourceAddressError;

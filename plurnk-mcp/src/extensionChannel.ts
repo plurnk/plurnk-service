@@ -223,7 +223,7 @@ export default class ExtensionChannel {
             }
         }
         if (record.id !== undefined && ("result" in record || "error" in record)) {
-            // {§mcp-core-matrix} The SDK defers notification callbacks but
+            // {§mcp-authority} The SDK defers notification callbacks but
             // settles responses synchronously. A microtask checkpoint keeps
             // coalesced notification/response frames in their wire order.
             queueMicrotask(() => {

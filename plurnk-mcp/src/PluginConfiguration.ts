@@ -19,7 +19,7 @@ export interface ResolvedStdioPlugin {
     readonly env: Readonly<Record<string, string>>;
 }
 
-// {§mcp-plugin-configuration} Interpretation belongs to the complete source definition, not provenance.
+// {§mcp-configuration} Interpretation belongs to the complete source definition, not provenance.
 export default class PluginConfiguration {
     static resolve(source: StdioDefinition, context: PluginContext): ResolvedStdioPlugin {
         const expand = (value: string): string => expandPlaceholders(value, context);

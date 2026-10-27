@@ -782,7 +782,7 @@ test("{§engine-rails} the shipped empty default is indefinite — a stopped wor
 });
 
 describe("mcp-storage-composition", () => {
-// {§mcp-launch-directory}
+// {§mcp-configuration}
 
 
 
@@ -807,7 +807,7 @@ const projectDirectory = async (t: TestContext): Promise<string> => {
     return project;
 };
 
-test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and writes nothing into the project", { timeout: 30000 }, async (t) => {
+test("{§mcp-configuration} a stdio tool runs in retained workspace state and writes nothing into the project", { timeout: 30000 }, async (t) => {
     const project = await projectDirectory(t);
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_WHERE: "1" }) });
     const db = await openMigrated();
@@ -836,7 +836,7 @@ test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and
     }
 });
 
-test("{§mcp-launch-directory} an inaccessible state directory leaves the server unavailable and never falls back to the project", { timeout: 15000 }, async (t) => {
+test("{§mcp-configuration} an inaccessible state directory leaves the server unavailable and never falls back to the project", { timeout: 15000 }, async (t) => {
     const project = await projectDirectory(t);
     const marker = join(dirname(project), "starts.txt");
     const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_START_MARKER: marker }) });

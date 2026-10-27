@@ -1401,7 +1401,7 @@ test("{§membership} automatic inspection refuses a supplied repository declarin
     }
 });
 
-test("{§membership} {§executor-spawn-account}: the daemon trusts the repository it was pointed at by path, and nothing wider", () => {
+test("{§membership} {§executor-policy}: the daemon trusts the repository it was pointed at by path, and nothing wider", () => {
     const pins = (env: NodeJS.ProcessEnv): Record<string, string | undefined> => Object.fromEntries(Array.from({ length: Number(env.GIT_CONFIG_COUNT) },
         (_, index) => [env[`GIT_CONFIG_KEY_${index}`], env[`GIT_CONFIG_VALUE_${index}`]]));
     const kept = { "core.fsmonitor": "false", "core.hooksPath": "/dev/null", "core.excludesFile": excludesFile() };

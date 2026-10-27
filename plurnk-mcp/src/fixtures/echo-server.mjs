@@ -77,7 +77,7 @@ const factory = () => {
         }),
     );
     if (process.env.PLURNK_MCP_TEST_WHERE === "1") {
-        // {§mcp-launch-directory}
+        // {§mcp-configuration}
         server.registerTool(
             "where",
             { description: "Report the working directory.", inputSchema: fromJsonSchema({ type: "object", additionalProperties: false }) },

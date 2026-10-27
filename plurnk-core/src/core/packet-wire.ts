@@ -801,7 +801,7 @@ export default class PacketWire {
                 }
                 meta.exitCode = rx.exitCode;
             }
-            // {§executor-page-receipt} — a producer's full-page fact survives projection as written.
+            // {§executor-results} — a producer's full-page fact survives projection as written.
             if (Object.hasOwn(rx, "page")) {
                 const page = rx.page;
                 if (!isRecord(page) || !isSafeInteger(page.size) || !isSafeInteger(page.returned)) {

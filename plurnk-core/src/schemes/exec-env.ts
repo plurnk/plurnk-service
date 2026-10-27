@@ -1,5 +1,5 @@
 // {§execution-output-identity} Ambient admission and ordinary env-name reservation.
-// Explicit capability bindings belong to their module ({§mcp-launch-environment}).
+// Explicit capability bindings belong to their module ({§mcp-module}).
 import { providerCredentialEnvNames } from "@plurnk/plurnk-models";
 import type HostPaths from "../core/HostPaths.ts";
 
@@ -18,7 +18,7 @@ export default class ExecEnv {
         return raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
     }
 
-    // {§mcp-launch-environment} Module-owned launches start with this ambient base,
+    // {§mcp-module} Module-owned launches start with this ambient base,
     // not the model-command ceiling; their explicit bindings are a separate input.
     static withoutOwnSecrets(env: NodeJS.ProcessEnv = process.env, hostPaths?: HostPaths): NodeJS.ProcessEnv {
         const source = hostPaths === undefined ? env : hostPaths.projectEnvironment(env);

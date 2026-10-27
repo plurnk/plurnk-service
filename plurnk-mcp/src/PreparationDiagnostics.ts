@@ -5,7 +5,7 @@ export interface PreparationDiagnostic {
     readonly stderr?: string;
 }
 
-// {§mcp-preparation-diagnostics} One bounded observation of the public transport.
+// {§mcp-module} One bounded observation of the public transport.
 export default class PreparationDiagnostics {
     readonly #limit: number;
     readonly #values: readonly string[];

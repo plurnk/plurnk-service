@@ -63,7 +63,7 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
     }
 
     // Channels this executor writes to. The consuming scheme seeds the exec
-    // entry from this declaration ({§executor-channels}): subprocess runtimes
+    // entry from this declaration ({§executor-contract}): subprocess runtimes
     // declare `{ stdout, stderr }`; structured runtimes declare `{ results }`.
     // Implemented as a getter so executors may branch on `this.runtime` when a
     // tag dictates a different shape; most return a constant map.
@@ -95,14 +95,14 @@ export default abstract class BaseExecutor implements SchemeHandler, Executor {
     // override that spawns a child (or opens a connection) MUST hand it to that
     // child so a resolved or timed-out probe REAPS it at once — otherwise an
     // in-flight `--version` write can EPIPE after the host tears down
-    // ({§executor-probe}). Optional and ignore-safe: a probe that spawns nothing
+    // ({§executor-results}). Optional and ignore-safe: a probe that spawns nothing
     // needs nothing.
     async probe(_signal?: AbortSignal): Promise<RuntimeAvailability> {
         return { available: true };
     }
 
     // Side-effect class of an invocation against the consumer-canonical logical
-    // target ({§executor-effect}). It is normally the same value run() receives;
+    // target ({§executor-results}). It is normally the same value run() receives;
     // a consumer that later materializes an addressed source may supply a stable,
     // opaque target-present identity instead. MUST be pure, synchronous, and
     // cheap: classify the target only, NEVER authored command text. Default

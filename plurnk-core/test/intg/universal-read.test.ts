@@ -743,7 +743,7 @@ describe("mcp-management-composition", () => {
 type Event = Record<string, unknown>;
 type ActionResult = { ok: boolean; result?: Record<string, unknown>; problem?: ProblemDetails };
 
-// {§mcp-configuration} {§mcp-server-settings}
+// {§mcp-configuration} {§mcp-configuration}
 const setup = async (
     t: TestContext,
     servers: Readonly<Record<string, object>>,
@@ -862,7 +862,7 @@ const setup = async (
     return { provider, post, action, hostPaths };
 };
 
-test("{§mcp-preparation-diagnostics}: ACP exposes the same unavailable preparation evidence through Functionality list", { timeout: 20000 }, async (t) => {
+test("{§mcp-module}: ACP exposes the same unavailable preparation evidence through Functionality list", { timeout: 20000 }, async (t) => {
     const { action, provider } = await setup(t, { broken: stdioEntry("preparation-failure.mjs", {
         FIXTURE_SECRET: "${FIXTURE_SECRET}",
     }) }, [], { FIXTURE_SECRET: "fixture-private-value" });
@@ -891,7 +891,7 @@ test("{§mcp-preparation-diagnostics}: ACP exposes the same unavailable preparat
     assert.equal(provider.received.length, 0);
 });
 
-test("{§mcp-management-actions}: ACP completion preserves prompt and resource arguments and workspace binding", { timeout: 20000 }, async (t) => {
+test("{§mcp-module}: ACP completion preserves prompt and resource arguments and workspace binding", { timeout: 20000 }, async (t) => {
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "completion", version: "1.0.0" });
         server.registerPrompt("summarize", { argsSchema: z.object({
@@ -1154,7 +1154,7 @@ for (const mode of ["rejected grant", "wrong issuer"] as const) {
         const definitions = listed.result?.definitions as { alias: string; state: string; problem?: { type: string } }[] | undefined;
         assert.deepEqual(definitions?.map(({ alias, state, problem }) => ({ alias, state, type: problem?.type })),
             [{ alias: "fixture", state: "unavailable", type: "https://problems.plurnk.xyz/mcp/management/oauth-client-credentials-failed" }],
-            "failed preparation publishes no attachment; the configured server stays listed as unavailable ({§mcp-activation-isolation})");
+            "failed preparation publishes no attachment; the configured server stays listed as unavailable ({§mcp-configuration})");
         assert.doesNotMatch(JSON.stringify(listed), /fixture-app-secret|fixture-provider-detail|fixture-app-access-/);
         assert.equal(served.calls(), 0);
         assert.equal(provider.received.length, 0);

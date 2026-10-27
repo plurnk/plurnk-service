@@ -145,12 +145,12 @@ describe("exec-abort", () => {
 // it reads `reason.signal` (overrideSignal) and `reason.housekeeping`/`reason.graceMs`
 // (housekeepingGrace). A drift here silently defaults the executor to its SIGHUP polite-ask.
 
-test("{§executor-cancellation} killReason: a numeric override delivers exactly that signal (the executor wire contract)", () => {
+test("{§executor-subprocess} killReason: a numeric override delivers exactly that signal (the executor wire contract)", () => {
     assert.deepEqual(ExecAbort.killReason(9), { signal: 9 });   // SIGKILL
     assert.deepEqual(ExecAbort.killReason(15), { signal: 15 }); // SIGTERM
 });
 
-test("{§executor-cancellation} killReason: KILL without a signal override (null) carries no override — the executor's SIGHUP polite default", () => {
+test("{§executor-subprocess} killReason: KILL without a signal override (null) carries no override — the executor's SIGHUP polite default", () => {
     assert.deepEqual(ExecAbort.killReason(null), { signal: null });
 });
 

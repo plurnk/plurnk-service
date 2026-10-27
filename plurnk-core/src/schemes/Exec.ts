@@ -44,8 +44,8 @@ type ApplyOutcome = SchemeResultBase & { outcome?: string; body?: string; result
 
 interface ExecAttrs {
     runtime: string;        // "" (default shell), "sh", "js", "python3", etc.
-    cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-sinks})
-    target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-sinks})
+    cwd: string | null;     // the working directory the command runs in: project root, or the shell's own cwd when the workspace has none ({§executor-contract})
+    target: string | null;  // consumer-routed execution target; each executor owns its mapping ({§executor-contract})
     body: string;           // the fence body
     pathname: string;       // workspace output claim ({§execution-output-identity})
     coordinate?: StreamCoordinate;
@@ -289,7 +289,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
         const lifetime = Exec.#readReservedMetadata(statement, runtime);
         if ("status" in lifetime) return lifetime;
-        // {§executor-metadata} Options belong to the invoked executor for every source kind.
+        // {§executor-contract} Options belong to the invoked executor for every source kind.
         const prepared = await Exec.#prepareInvocation(resolved.executor, statement, { runtime, body, target: resourceSource ?? target, cwd });
         if ("status" in prepared) return prepared;
         ({ cwd } = prepared);
@@ -315,7 +315,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             ? resolved.executor.effectForInvocation(effectTarget, body, core.workspaceId)
             : resolved.executor.effect(effectTarget);
         // cwd is the workspace project_root unless target routing selected a
-        // directory override. {§exec-target-routing}, {§executor-sinks}
+        // directory override. {§exec-target-routing}, {§executor-contract}
         // The log writer claims the workspace output address before proposal application.
         // {§exec-lifetime} — how long the spawn may live is the metadata's one field; the scope slot
         // is text coordinates, which an execution has none of.
@@ -392,7 +392,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const registeredTool = registry?.tools.find((tool) => tool.target === exactTarget);
         if (registry !== null && registeredTool === undefined) {
             const availableTargets = registry.tools.map((tool) => tool.target);
-            // {§executor-blank-invocation} No target: every enabled target's fence. An unknown one: the document listing them.
+            // {§executor-discovery} No target: every enabled target's fence. An unknown one: the document listing them.
             const recovery = availableTargets.length === 0 ? {}
                 : exactTarget === null ? { recovery: registry.tools.map((tool) => ToolResources.fence(runtime, tool.invocation, tool.target)).join("\n\n") }
                     : { recovery: `Select a target from workspace://${ToolResources.documentPath(runtime, resolved.resourcesPath)}.` };
@@ -415,7 +415,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return registeredTool?.invocation ?? resolved.invocation;
     }
 
-    // The fence's body and target against the invocation's declaration, refused by name. {§executor-blank-invocation} An
+    // The fence's body and target against the invocation's declaration, refused by name. {§executor-discovery} An
     // absent input is answered with the invocation's own fence.
     static #checkInvocationShape(invocation: RuntimeInvocationDecl, runtime: string, exactTarget: string | undefined, hasBody: boolean, hasTarget: boolean): ExecResult | null {
         const fence = (): string => ToolResources.fence(runtime, invocation, exactTarget);
@@ -549,7 +549,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // {§exec-lifetime} — the service's reserved key, read before the executor's options so
         // an unreadable lifetime is refused by name rather than spawning under a wrong bound. A block
         // that is not the option-array shape carries no lifetime for the service to read: it is the
-        // invoked executor's to accept or refuse ({§executor-metadata}).
+        // invoked executor's to accept or refuse ({§executor-contract}).
         const read = MetadataOptions.parse(statement.metadata, "scheme:exec", { runtime });
         const lifetime = parseExecLifetime("failure" in read ? undefined : read.lifetime);
         if ("invalid" in lifetime) {
@@ -560,7 +560,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return lifetime;
     }
 
-    // {§executor-metadata} The executor's preparation of its own options: the working directory it chose;
+    // {§executor-contract} The executor's preparation of its own options: the working directory it chose;
     // metadata without a preparer is refused.
     static async #prepareInvocation(executor: Executor, statement: ExecStatement, args: {
         runtime: string; body: string; target: string | null; cwd: string | null;
@@ -779,7 +779,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     }
 
     // Resolve the runtime's executor from the boot registry, then seed the stream entry's channels from its
-    // declared topology ({§executor-channels}): each executor declares its own shape (subprocess → stdout/stderr;
+    // declared topology ({§executor-contract}): each executor declares its own shape (subprocess → stdout/stderr;
     // search → results; etc.).
     static async #openStreamEntry(core: PlurnkSchemeContext, runtime: string, pathname: string): Promise<{ resolved: RegistryEntry; entryId: number } | ApplyOutcome> {
         if (core.executors === undefined) {
@@ -789,7 +789,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (resolved === undefined || !resolved.available) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its proposal.`);
         }
-        // {§executor-effect}, {§exec-lifetime}, #107: the admitted
+        // {§executor-results}, {§exec-lifetime}, #107: the admitted
         // effect fact rides the hold predicate unchanged through application.
         const seedChannels: EntryData["channels"] = {};
         for (const [name, decl] of Object.entries(resolved.executor.channels)) {
@@ -1001,7 +1001,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                 const reported: ExecutorResult = await executor.run({
                     runtime, body, cwd, target, metadata, signal,
                     entry: sink.entry,
-                    // {§executor-interaction-sink} — the executor's signal narrows the execution's, never replaces it.
+                    // {§executor-contract} — the executor's signal narrows the execution's, never replaces it.
                     interact: (request, interactionSignal) => {
                         if (ctx.requestInteraction === undefined) {
                             throw new Error("The execution's client interaction capability is unavailable.");

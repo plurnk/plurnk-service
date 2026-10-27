@@ -1,7 +1,9 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import BaseExecutor from "./BaseExecutor.ts";
-import type { ChannelDecl, ExecArgs, ExecResult } from "./types.ts";
+import InvocationMetadata from "./InvocationMetadata.ts";
+import SubprocessExecutor from "./SubprocessExecutor.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecResult } from "./types.ts";
 import type { Notice } from "./Notice.ts";
 
 // Minimal concrete executor exercising the contract: declares a single
@@ -44,23 +46,23 @@ test("{§executor-contract} BaseExecutor: constructor binds runtime tag and glyp
     assert.equal(ex.glyph, "📰");
 });
 
-test("{§executor-channels} BaseExecutor: declares its own channel topology", () => {
+test("{§executor-contract} BaseExecutor: declares its own channel topology", () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     assert.deepEqual(ex.channels, { results: { mimetype: "application/json" } });
 });
 
-test("{§executor-effect} BaseExecutor: default effect is the conservative `host`", () => {
+test("{§executor-results} BaseExecutor: default effect is the conservative `host`", () => {
     const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
     assert.equal(ex.effect(null), "host");
     assert.equal(ex.effect("/some/path"), "host");
 });
 
-test("{§executor-probe} BaseExecutor: default probe is available", async () => {
+test("{§executor-results} BaseExecutor: default probe is available", async () => {
     const ex = new EchoExecutor({ runtime: "x", glyph: "•" });
     assert.deepEqual(await ex.probe(), { available: true });
 });
 
-test("{§executor-sinks} BaseExecutor.run: writes to declared channel and closes it", async () => {
+test("{§executor-contract} BaseExecutor.run: writes to declared channel and closes it", async () => {
     const ex = new EchoExecutor({ runtime: "search", glyph: "🔎" });
     const h = harness();
     const result = await ex.run(h.args({ runtime: "search", body: "pie recipes" }));
@@ -97,7 +99,7 @@ test("{§executor-output-address} BaseExecutor: scheme manifest derives from the
     assert.equal(m.volatile, true);
 });
 
-test("{§executor-channels} BaseExecutor: defaultChannel is the first declared channel, overridable", () => {
+test("{§executor-contract} BaseExecutor: defaultChannel is the first declared channel, overridable", () => {
     class Subproc extends BaseExecutor {
         get channels(): Readonly<Record<string, ChannelDecl>> {
             return { stdout: { mimetype: "text/stream" }, stderr: { mimetype: "text/stream" } };
@@ -110,7 +112,7 @@ test("{§executor-channels} BaseExecutor: defaultChannel is the first declared c
     assert.equal(new Custom({ runtime: "sh", glyph: "🐚" }).defaultChannel, "stderr");
 });
 
-test("{§executor-sinks} ExecArgs.write: an executor stamps the real per-call output mimetype", async () => {
+test("{§executor-contract} ExecArgs.write: an executor stamps the real per-call output mimetype", async () => {
     class TypedExec extends BaseExecutor {
         get channels(): Readonly<Record<string, ChannelDecl>> {
             return { results: { mimetype: "application/json" } };
@@ -126,8 +128,75 @@ test("{§executor-sinks} ExecArgs.write: an executor stamps the real per-call ou
     assert.deepEqual(h.writes[0], { channel: "results", chunk: "[1,2,3]", mimetype: "application/json" });
 });
 
-test("{§executor-sinks} ExecArgs.write: mimetype is optional — omitting it leaves no stamp", async () => {
+test("{§executor-contract} ExecArgs.write: mimetype is optional — omitting it leaves no stamp", async () => {
     const h = harness();
     await new EchoExecutor({ runtime: "x", glyph: "" }).run(h.args());
     assert.equal(h.writes[0].mimetype, undefined);
+});
+
+const metaInput = (metadata: readonly string[] | null, overrides: Partial<ExecInput> = {}): ExecInput => ({
+    runtime: "js", body: "--help 'two words'", target: "script.mjs", cwd: process.cwd(), metadata, ...overrides,
+});
+const metaExecutor = new SubprocessExecutor({ runtime: "js", glyph: "j" });
+
+test("{§executor-contract} empty or service-only metadata preserves cwd", async () => {
+    const request = metaInput(null);
+    const preparation = await metaExecutor.prepare(request);
+    assert.equal(preparation.status, 200);
+    assert.equal(preparation.cwd, request.cwd);
+    assert.deepEqual(InvocationMetadata.parse(request), { options: {} });
+});
+
+for (const [blocks, code] of [
+    [['{"flag": "yes"}'], "metadata-unsupported"],
+    [['{"lifetime": "5s"}', '{"lifetime": "5s"}'], "metadata-repeated"],
+    [["--help"], "metadata-invalid"],
+    [["42"], "metadata-invalid"],
+    [['"a string"'], "metadata-invalid"],
+] as const) {
+    test(`{§executor-contract} rejects ${JSON.stringify(blocks)} as ${code}`, async () => {
+        const result = await metaExecutor.prepare(metaInput(blocks));
+        assert.equal(result.status, 400);
+        assert.equal(result.problem?.type, `https://problems.plurnk.xyz/executor/metadata/${code}`);
+        assert.doesNotMatch(result.problem?.detail ?? "", /everything else|you meant|instead of|probably/);
+    });
+}
+
+test("{§executor-contract} an unsupported field's refusal names the run's fields and nothing more ({§diagnostic-observation})", async () => {
+    for (const field of ["timeout", "cmd"]) {
+        const refused = await metaExecutor.prepare(metaInput([JSON.stringify({ [field]: 60 })]));
+        assert.equal(refused.status, 400);
+        assert.equal(refused.problem?.detail, `Executable tool '${metaInput(null).runtime}' does not accept metadata field '${field}'.`);
+        assert.equal(refused.problem?.recovery, "Its field is `lifetime`.");
+    }
+});
+
+class Bare extends BaseExecutor {
+    get channels(): Readonly<Record<string, ChannelDecl>> { return {}; }
+    async run(_a: ExecArgs): Promise<ExecResult> { return { status: 200 }; }
+}
+
+class Bin extends SubprocessExecutor {
+    #bin: string;
+    constructor(bin: string) { super({ runtime: bin, glyph: "•" }); this.#bin = bin; }
+    protected override get binary(): string { return this.#bin; }
+}
+
+test("{§executor-results} C2: effect() is synchronous (not a Promise) and subprocess runtimes are always host", () => {
+    const out: Effect = new Bare({ runtime: "x", glyph: "•" }).effect(null);
+    assert.equal(typeof out, "string");
+    assert.equal(out, "host");
+    const ex = new SubprocessExecutor({ runtime: "sh", glyph: "🐚" });
+    assert.equal(ex.effect(null), "host");
+    assert.equal(ex.effect("/work/dir"), "host");
+});
+
+test("{§executor-results} C2-C4: external binary present vs missing on PATH settles cleanly", async () => {
+    const r = await new Bin("node").probe();
+    assert.equal(r.available, true);
+    assert.match(String(r.detail), /^v?\d+\./);
+
+    const miss = await new Bin("definitely-not-a-real-binary-xyz").probe();
+    assert.equal(miss.available, false);
+    assert.match(String(miss.detail), /not found on PATH/);
 });

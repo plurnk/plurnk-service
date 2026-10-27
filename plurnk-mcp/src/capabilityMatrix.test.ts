@@ -8,7 +8,7 @@ import {
 } from "./capabilityMatrix.ts";
 import { MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID } from "./protocol.ts";
 
-test("{§mcp-capability-matrix} every row carries a stable unique identity and one disposition", () => {
+test("{§mcp-authority} every row carries a stable unique identity and one disposition", () => {
     const ids = new Set<string>();
     for (const row of CAPABILITY_MATRIX) {
         assert.ok(!ids.has(row.id), `row id '${row.id}' is duplicated`);
@@ -19,7 +19,7 @@ test("{§mcp-capability-matrix} every row carries a stable unique identity and o
     }
 });
 
-test("{§mcp-capability-matrix} advertisement is reserved for supported rows and never claims an exclusion", () => {
+test("{§mcp-authority} advertisement is reserved for supported rows and never claims an exclusion", () => {
     for (const row of CAPABILITY_MATRIX) {
         if (row.advertised !== "never") {
             assert.equal(
@@ -40,7 +40,7 @@ test("{§mcp-capability-matrix} advertisement is reserved for supported rows and
     }
 });
 
-test("{§mcp-capability-matrix} supported rows cite accountable evidence and advertised rows own composed coverage", () => {
+test("{§mcp-authority} supported rows cite accountable evidence and advertised rows own composed coverage", () => {
     for (const row of CAPABILITY_MATRIX) {
         if (row.disposition === "supported" || row.disposition === "partial") {
             assert.ok(
@@ -68,7 +68,7 @@ test("{§mcp-capability-matrix} supported rows cite accountable evidence and adv
     }
 });
 
-test("{§mcp-capability-matrix} the derived wire advertisement reconciles with the matrix rows", () => {
+test("{§mcp-authority} the derived wire advertisement reconciles with the matrix rows", () => {
     const derived = staticClientCapabilities();
     assert.deepEqual(Object.keys(derived.elicitation).toSorted(), [...ADVERTISED_ELICITATION_MODES].toSorted());
     const alwaysAdvertised = CAPABILITY_MATRIX

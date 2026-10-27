@@ -53,12 +53,12 @@ tag independently. A name uses lowercase URI-scheme syntax
 one-line capability description. `invocation` defines the body and optional
 target buckets used for dispatch enforcement and a canonical example for its
 generated `workspace:///_plurnk/plurnk/<tag>.md` document. A `docs/<tag>.md` file supplies
-supplemental detail. See {§executor-runtime-declaration}.
+supplemental detail. See {§executor-discovery}.
 
 For JSON inputs, supply `invocation.inputSchema` instead of an authored example
 or signature. The shared renderer lists required top-level fields and links to
 the complete raw schema and description; nested and optional inputs stay in
-that on-demand document ({§executor-input-schema-preview}).
+that on-demand document ({§executor-discovery}).
 
 ### Implement the executor
 
@@ -68,7 +68,7 @@ that on-demand document ({§executor-input-schema-preview}).
 | Logical or in-process | `BaseExecutor`       | `channels`, `run()`, and optional `probe()` / `effect()`.                               |
 
 `run()` receives only the inputs and consumer-owned sinks in
-{§executor-sinks}. Return a universal result; expected failures carry RFC 9457
+{§executor-contract}. Return a universal result; expected failures carry RFC 9457
 Problem Details and leave affected channels `errored`. Honor `signal`, write
 only declared channels, and retain no state between runs.
 
@@ -76,7 +76,7 @@ only declared channels, and retain no state between runs.
 target. `host` is proposal-gated; `read` and `pure` are automatically accepted.
 The consumer preserves the fact rather than asking again after target
 materialization. All three then use the same background stream path—automatic
-acceptance is not a same-turn result. See {§executor-effect}.
+acceptance is not a same-turn result. See {§executor-results}.
 
 ### Understand the target
 
@@ -97,7 +97,7 @@ returns the effective cwd. `run(args)` receives that cwd and the original
 metadata, separately from the unchanged body. Source acquisition never inherits
 execution metadata. The default executor contract owns no metadata keys beyond the
 service's (`lifetime`). Override preparation for
-tool-specific options. See {§executor-metadata}.
+tool-specific options. See {§executor-contract}.
 
 ### Address output
 
@@ -123,7 +123,7 @@ executor may additionally decide per provider attempt whether its synchronous
 | `Policy.enabledAcross(tag, layers)` | Every layer must admit the tag.               |
 
 Policy is subtractive; a downstream layer cannot restore a removed tag. See
-{§executor-discovery}, {§executor-trust}, and {§executor-policy}.
+{§executor-discovery}, {§executor-policy}, and {§executor-policy}.
 
 ## Exports
 

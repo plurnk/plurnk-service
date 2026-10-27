@@ -1,5 +1,5 @@
-// {§executor-dynamic-runtimes} The common package's declarations. `sh` names the shell it runs
-// ({§executor-shell}), resolved on this host; every other declaration is fixed.
+// {§executor-discovery} The common package's declarations. `sh` names the shell it runs
+// ({§executor-subprocess}), resolved on this host; every other declaration is fixed.
 import { Shell, type RuntimeDecl } from "@plurnk/plurnk-execs";
 
 const SH: Omit<RuntimeDecl, "summary"> = {

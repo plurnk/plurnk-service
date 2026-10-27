@@ -4,9 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import Discover from "./discover.ts";
+import Policy from "./policy.ts";
 
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
-// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
 process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
@@ -42,7 +43,7 @@ const runtime = (name: string, fields: Record<string, unknown> = {}): Record<str
     ...fields,
 });
 
-test("{§executor-invocation} discovery requires and publishes each runtime invocation contract", async () => {
+test("{§executor-discovery} discovery requires and publishes each runtime invocation contract", async () => {
     const invocation = {
         body: { role: "lookup term", required: true },
         example: { body: "Plurnk agent protocol" },
@@ -64,7 +65,7 @@ test("{§executor-invocation} discovery requires and publishes each runtime invo
     );
 });
 
-test("{§executor-trust} discover: registers each runtime tag of an exec package", async () => {
+test("{§executor-policy} discover: registers each runtime tag of an exec package", async () => {
     const dir = await makePkg({
         name: "@acme/acme-execs-reference",
         plurnk: {
@@ -89,7 +90,7 @@ test("{§executor-trust} discover: registers each runtime tag of an exec package
     });
 });
 
-test("{§executor-trust} discover: details are sourced from docs/<tag>.md with the inline field as fallback", async () => {
+test("{§executor-policy} discover: details are sourced from docs/<tag>.md with the inline field as fallback", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [
@@ -107,7 +108,7 @@ test("{§executor-trust} discover: details are sourced from docs/<tag>.md with t
     assert.equal(registry.get("python3")?.details, "", "neither file nor inline → empty");
 });
 
-test("{§executor-trust} discover: normalizes attribution once per package; runtime descriptors carry no copy", async () => {
+test("{§executor-policy} discover: normalizes attribution once per package; runtime descriptors carry no copy", async () => {
     const strDir = await makePkg({
         name: "@acme/acme-execs-multi",
         plurnk: { kind: "exec", attribution: "acme-multi", runtimes: [runtime("alpha"), runtime("beta")] },
@@ -134,7 +135,7 @@ test("{§executor-trust} discover: normalizes attribution once per package; runt
     );
 });
 
-test("{§executor-dynamic-runtimes} discover: validates trusted attribution before admission, but never validates a withheld package", async () => {
+test("{§executor-discovery} discover: validates trusted attribution before admission, but never validates a withheld package", async () => {
     const invalid = await makePkg({
         name: "@acme/acme-execs-invalid",
         plurnk: { kind: "exec", attribution: ["valid", 42], runtimes: [{ name: "invalid" }] },
@@ -160,7 +161,7 @@ test("{§executor-dynamic-runtimes} discover: validates trusted attribution befo
     });
 });
 
-// {§executor-dynamic-runtimes} Materialize a package whose tags come from a
+// {§executor-discovery} Materialize a package whose tags come from a
 // dynamic runtimes function: write package.json with `plurnk.runtimesModule` and
 // an .mjs module exporting the given function source. `source` is the body of an
 // ESM module (must `export` `runtimes` or `default`).
@@ -174,7 +175,7 @@ const makeDynamicPkg = async (name: string, source: string, rel = "runtimes.mjs"
     return dir;
 };
 
-test("{§executor-trust} discover: a dynamic runtimes function materializes per-deployment tags", async () => {
+test("{§executor-policy} discover: a dynamic runtimes function materializes per-deployment tags", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export async function runtimes() {
@@ -199,7 +200,7 @@ test("{§executor-trust} discover: a dynamic runtimes function materializes per-
     });
 });
 
-test("{§executor-trust} discover: the dynamic runtimes function may be a default export with a sync return", async () => {
+test("{§executor-policy} discover: the dynamic runtimes function may be a default export with a sync return", async () => {
     const dir = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export default () => [{ name: "slack", summary: "Use Slack tools.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } } }];`,
@@ -208,7 +209,7 @@ test("{§executor-trust} discover: the dynamic runtimes function may be a defaul
     assert.deepEqual([...registry.keys()], ["slack"]);
 });
 
-test("{§executor-runtime-declaration} #105: dynamic runtime tags use canonical scheme names and reject reserved policy names", async () => {
+test("{§executor-discovery} #105: dynamic runtime tags use canonical scheme names and reject reserved policy names", async () => {
     const valid = await makeDynamicPkg(
         "@plurnk/plurnk-execs-dynamic-fixture",
         `export default () => [${JSON.stringify(runtime("prompt"))}];`,
@@ -234,7 +235,7 @@ test("{§executor-runtime-declaration} #105: dynamic runtime tags use canonical 
     );
 });
 
-test("{§executor-trust} discover: a broken dynamic runtimes function is fail-hard (trusted-package contract)", async () => {
+test("{§executor-policy} discover: a broken dynamic runtimes function is fail-hard (trusted-package contract)", async () => {
     const missing = await makeDynamicPkg("@plurnk/plurnk-execs-dynamic-fixture", "// no exports", "gone.mjs");
     // Point at a file that doesn't exist on disk → unloadable.
     await fs.rm(path.join(missing, "gone.mjs"));
@@ -250,7 +251,7 @@ test("{§executor-trust} discover: a broken dynamic runtimes function is fail-ha
     await assert.rejects(Discover.scan({ packageDirs: [nonArray] }), /runtimes function returned a non-array/);
 });
 
-test("{§executor-trust} discover: an UNTRUSTED package's dynamic runtimes function is NEVER executed (gate before import)", async () => {
+test("{§executor-policy} discover: an UNTRUSTED package's dynamic runtimes function is NEVER executed (gate before import)", async () => {
     // If the gate failed to guard the import, this function would throw and the
     // rejection would surface — proving execution. Under the gate it must be
     // skipped silently instead.
@@ -265,7 +266,7 @@ test("{§executor-trust} discover: an UNTRUSTED package's dynamic runtimes funct
     });
 });
 
-test("{§executor-trust} discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
+test("{§executor-policy} discover: static runtimes[] wins when both it and runtimesModule are declared", async () => {
     const dir = await mkTmp("execs-discover-");
     await fs.writeFile(path.join(dir, "package.json"), JSON.stringify({
         name: "@plurnk/plurnk-execs-both",
@@ -276,7 +277,7 @@ test("{§executor-trust} discover: static runtimes[] wins when both it and runti
     assert.deepEqual([...registry.keys()], ["static"], "a static array short-circuits the runtimes function");
 });
 
-test("{§executor-trust} discover: ignores non-exec packages and missing glyphs default to empty", async () => {
+test("{§executor-policy} discover: ignores non-exec packages and missing glyphs default to empty", async () => {
     const execDir = await makePkg({
         name: "@plurnk/plurnk-execs-sh",
         plurnk: { kind: "exec", runtimes: [runtime("sh")] },
@@ -296,7 +297,7 @@ test("{§executor-trust} discover: ignores non-exec packages and missing glyphs 
     });
 });
 
-test("{§executor-trust} discover: tag collision across packages is fail-hard", async () => {
+test("{§executor-policy} discover: tag collision across packages is fail-hard", async () => {
     const a = await makePkg({
         name: "@acme/acme-execs-lookup",
         plurnk: { kind: "exec", runtimes: [runtime("lookup")] },
@@ -312,7 +313,7 @@ test("{§executor-trust} discover: tag collision across packages is fail-hard", 
     );
 });
 
-test("{§executor-runtime-declaration} #105: static runtime tags are canonical, path-safe scheme names", async () => {
+test("{§executor-discovery} #105: static runtime tags are canonical, path-safe scheme names", async () => {
     const valid = await makePkg({
         name: "@acme/acme-execs-tools",
         plurnk: { kind: "exec", runtimes: [runtime("alias.tool"), runtime("tool-v2"), runtime("c++"), runtime("prompt")] },
@@ -344,7 +345,7 @@ test("{§executor-runtime-declaration} #105: static runtime tags are canonical, 
     );
 });
 
-test("{§executor-trust} discover: claimed runtime declarations with no name fail hard; unrelated malformed packages remain ignored", async () => {
+test("{§executor-policy} discover: claimed runtime declarations with no name fail hard; unrelated malformed packages remain ignored", async () => {
     for (const decl of [{ glyph: "❓" }, { name: "" }]) {
         const claimed = await makePkg({
             name: "@plurnk/plurnk-execs-invalid",
@@ -370,12 +371,12 @@ test("{§executor-trust} discover: claimed runtime declarations with no name fai
     assert.ok(registry.has("ok"));
 });
 
-test("{§executor-trust} discover: empty scan of a nonexistent node_modules yields an empty registry", async () => {
+test("{§executor-policy} discover: empty scan of a nonexistent node_modules yields an empty registry", async () => {
     const { registry } = await Discover.scan({ cwd: path.join(os.tmpdir(), "execs-no-such-root-xyz") });
     assert.equal(registry.size, 0);
 });
 
-test("{§executor-trust} discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
+test("{§executor-policy} discover: the node_modules scan is scope-agnostic — third-party scopes are found", async () => {
     // Build a real <cwd>/node_modules with packages under @plurnk, a third-party
     // scope, an unscoped name, and a non-exec package that must be ignored.
     const root = await mkTmp("execs-scan-");
@@ -395,7 +396,7 @@ test("{§executor-trust} discover: the node_modules scan is scope-agnostic — t
     assert.equal(registry.get("cobol")?.packageName, "@acme/acme-execs-cobol");
 });
 
-// {§executor-trust} PLURNK_EXTENSIONS_TRUSTED_ONLY host trust gate.
+// {§executor-policy} PLURNK_EXTENSIONS_TRUSTED_ONLY host trust gate.
 
 // Run fn with the gate env set to `value` (undefined = unset), restoring after
 // so tests don't leak the gate into one another.
@@ -409,7 +410,7 @@ const withGate = async (value: string | undefined, fn: () => Promise<void>): Pro
     }
 };
 
-test("{§executor-trust} trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
+test("{§executor-policy} trust gate ON: untrusted third-party is skipped (not registered); @plurnk stays trusted", async () => {
     const plurnk = await makePkg({ name: "@plurnk/plurnk-execs-sh", plurnk: { kind: "exec", runtimes: [runtime("sh")] } });
     const acme = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [{ name: "cobol" }] } });
     await withGate("1", async () => {
@@ -419,7 +420,7 @@ test("{§executor-trust} trust gate ON: untrusted third-party is skipped (not re
     });
 });
 
-test("{§executor-trust} trust gate ON with an allowlist: a named third-party package is trusted", async () => {
+test("{§executor-policy} trust gate ON with an allowlist: a named third-party package is trusted", async () => {
     const cobol = await makePkg({ name: "@acme/acme-execs-cobol", plurnk: { kind: "exec", runtimes: [runtime("cobol")] } });
     const fortran = await makePkg({ name: "execs-fortran", plurnk: { kind: "exec", runtimes: [{ name: "fortran" }] } });
     await withGate("@acme/acme-execs-cobol", async () => {
@@ -454,7 +455,7 @@ const withEnv = async (kv: Record<string, string | undefined>, fn: () => Promise
     }
 };
 
-test("{§executor-trust} runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest land in `disabled`", async () => {
+test("{§executor-policy} runtime policy: PLURNK_EXECS_ONLY registers only the allowlist; the rest land in `disabled`", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [runtime("search"), runtime("js"), runtime("python3")] },
@@ -478,7 +479,7 @@ test("{§executor-policy} #162: an explicitly empty ONLY registers no runtime", 
     });
 });
 
-test("{§executor-installation} configuration cannot enable an absent package, and =1 cannot re-admit what an allowlist removed", async () => {
+test("{§executor-discovery} configuration cannot enable an absent package, and =1 cannot re-admit what an allowlist removed", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [runtime("js"), runtime("sh")] },
@@ -495,7 +496,7 @@ test("{§executor-installation} configuration cannot enable an absent package, a
     });
 });
 
-test("{§executor-trust} runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
+test("{§executor-policy} runtime policy: PLURNK_EXECS_<tag>=0 removes a single tag uniformly", async () => {
     const dir = await makePkg({
         name: "@plurnk/plurnk-execs-common",
         plurnk: { kind: "exec", runtimes: [runtime("js"), runtime("sh")] },
@@ -505,4 +506,95 @@ test("{§executor-trust} runtime policy: PLURNK_EXECS_<tag>=0 removes a single t
         assert.deepEqual([...registry.keys()], ["sh"]);
         assert.deepEqual(disabled, ["js"]);
     });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Policy ({§executor-policy})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§executor-policy} #105: policy keys address canonical runtime tags and the ONLY control key", () => {
+    for (const key of [
+        "PLURNK_EXECS_SH",
+        "PLURNK_EXECS_alias.tool",
+        "plurnk_execs_TOOL-V2",
+        "PLURNK_EXECS_C++",
+        "PLURNK_EXECS_ONLY",
+        "PLURNK_EXECS_only",
+    ]) {
+        assert.equal(Policy.isKey(key), true, `${key} is an addressable runtime policy key`);
+    }
+    for (const key of [
+        "PLURNK_EXECS_",
+        "PLURNK_EXECS_2FAST",
+        "PLURNK_EXECS_ALIAS_TOOL",
+        "PLURNK_EXECS_ERROR_DETAIL_LIMIT",
+        "PLURNK_PROVIDERS_SH",
+    ]) {
+        assert.equal(Policy.isKey(key), false, `${key} is outside runtime policy-key grammar`);
+    }
+});
+
+test("{§executor-policy} isEnabled: a tag is on by default when nothing is set", () => {
+    assert.equal(Policy.isEnabled("js", {}), true);
+});
+
+test("{§executor-policy} isEnabled: PLURNK_EXECS_<TAG>=0 / =false kills one tag; any other value leaves it on", () => {
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_JS: "0" }), false);
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_JS: "false" }), false);
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_JS: "FALSE" }), false);
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_JS: "1" }), true);
+});
+
+test("{§executor-policy} isEnabled: PLURNK_EXECS_ONLY is an allowlist — everything not listed is off", () => {
+    const env = { PLURNK_EXECS_ONLY: "search, python3" };
+    assert.equal(Policy.isEnabled("search", env), true);
+    assert.equal(Policy.isEnabled("python3", env), true);
+    assert.equal(Policy.isEnabled("js", env), false, "not in the allowlist → disabled");
+});
+
+test("{§executor-policy} #162: an explicitly empty ONLY value is the empty allowlist", () => {
+    assert.equal(Policy.isEnabled("js", {}), true, "an absent allowlist imposes no constraint");
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_ONLY: "" }), false, "a present empty allowlist admits no tag");
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_only: "" }), false, "case-insensitive key lookup preserves presence");
+    assert.equal(
+        Policy.enabledAcross("js", [{}, { PLURNK_EXECS_ONLY: "" }]),
+        false,
+        "an empty downstream layer remains subtractive in the intersection",
+    );
+});
+
+test("{§executor-policy} isEnabled: the allowlist and tag match are case-insensitive", () => {
+    assert.equal(Policy.isEnabled("SEARCH", { PLURNK_EXECS_ONLY: "search" }), true);
+    assert.equal(Policy.isEnabled("search", { PLURNK_EXECS_ONLY: "SEARCH" }), true);
+});
+
+test("{§executor-policy} isEnabled: ONLY and per-tag compose — an allowlisted tag can still be individually killed", () => {
+    const env = { PLURNK_EXECS_ONLY: "search,js", PLURNK_EXECS_JS: "0" };
+    assert.equal(Policy.isEnabled("search", env), true);
+    assert.equal(Policy.isEnabled("js", env), false, "allowlisted but individually disabled");
+});
+
+test("{§executor-policy} enabledAcross: the cascade is an intersection — enabled iff on in EVERY layer", () => {
+    const service = { PLURNK_EXECS_ONLY: "search,python3" };
+    const client = { PLURNK_EXECS_ONLY: "search" };
+    assert.equal(Policy.enabledAcross("search", [service, client]), true);
+    assert.equal(Policy.enabledAcross("python3", [service, client]), false, "the client narrowed it away");
+});
+
+test("{§executor-policy} enabledAcross: the client CANNOT re-enable what the service disabled", () => {
+    const service = { PLURNK_EXECS_JS: "0" };           // service kills js
+    const client = { PLURNK_EXECS_ONLY: "js,search" };  // client tries to allow it back
+    assert.equal(Policy.enabledAcross("js", [service, client]), false, "the service disable is the ceiling");
+    assert.equal(Policy.enabledAcross("search", [service, client]), true);
+});
+
+test("{§executor-policy} isEnabled: the per-tag key is case-insensitive — lowercase behaves identically", () => {
+    assert.equal(Policy.isEnabled("sh", { PLURNK_EXECS_SH: "0" }), false, "the uppercase key");
+    assert.equal(Policy.isEnabled("sh", { PLURNK_EXECS_sh: "0" }), false, "…and the lowercase key");
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_Js: "false" }), false, "…and mixed case");
+});
+
+test("{§executor-policy} isEnabled: the PLURNK_EXECS_ONLY key is case-insensitive too", () => {
+    assert.equal(Policy.isEnabled("js", { PLURNK_EXECS_only: "search" }), false, "a lowercase ONLY key still gates");
+    assert.equal(Policy.isEnabled("search", { PLURNK_EXECS_only: "search" }), true);
 });

@@ -181,7 +181,7 @@ const wire = async (opts?: {
     resources?: boolean;
 }) => {
     // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
-    // {§executor-runtime-declaration}: one canonical runtime tag has one owner.
+    // {§executor-discovery}: one canonical runtime tag has one owner.
     const tag = opts?.tag ?? "stubsearch";
     const db = await openMigrated();
     const schemes = new SchemeRegistry(opts?.fetchWeb ? { fetchWeb: opts.fetchWeb } : undefined);

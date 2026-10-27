@@ -30,7 +30,7 @@ export interface CapabilityDenial {
 }
 
 // RuntimeTag is Lowercase<string>: a runtime the registry or a family's manager names is lowercase by
-// {§executor-runtime-declaration} and the functionality family name rule.
+// {§executor-discovery} and the functionality family name rule.
 const isLowercase = (name: string): name is RuntimeTag => name === name.toLowerCase();
 
 export default class CapabilityResolver {

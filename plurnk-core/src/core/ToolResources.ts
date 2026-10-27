@@ -157,7 +157,7 @@ const schemaDocument = (pathname: string, title: string, schema: JsonSchema, det
 };
 
 export default class ToolResources {
-    // {§executor-blank-invocation} An invocation's copyable fence: its header and input preview, as its document shows them.
+    // {§executor-discovery} An invocation's copyable fence: its header and input preview, as its document shows them.
     static fence(runtime: string, invocation: RuntimeInvocationDecl, exactTarget?: string): string {
         return ToolInputSchema.fence(runtime, invocation, { exactTarget });
     }
@@ -209,7 +209,7 @@ export default class ToolResources {
 
         // Declaration order is the taught order (a family's lifecycle verbs, a server's tools).
         const tools = source.registry.tools;
-        // {§executor-tool-catalog} — registry validation guarantees all definitions or none.
+        // {§executor-discovery} — registry validation guarantees all definitions or none.
         const catalog = tools[0].definition === undefined ? [] : [{
             pathname: `${childrenRoot}.json`,
             content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),

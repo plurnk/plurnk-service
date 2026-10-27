@@ -17,7 +17,7 @@ export interface CapabilityRow {
     readonly note: string;
 }
 
-// {§mcp-capability-matrix} — the one accountable support matrix. A row is
+// {§mcp-authority} — the one accountable support matrix. A row is
 // "supported" only when every layer its owning contract includes has real
 // coverage; advertisement derives from this file, never from ad-hoc claims.
 export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
@@ -30,7 +30,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-authority}", "{§mcp-core-matrix}", "plurnk-mcp HttpTransport 'Streamable HTTP carries the current envelope and ordinary tool calls'"],
+        evidence: ["{§mcp-authority}", "{§mcp-authority}", "plurnk-mcp HttpTransport 'Streamable HTTP carries the current envelope and ordinary tool calls'"],
         note: "Envelope is wire mechanics, not a client capability; preserved without reconstruction.",
     },
     {
@@ -42,7 +42,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-authority}", "{§mcp-core-matrix}", "plurnk-core intg 'ACP configuration cascade composes MCP discovery, execution, review, failure, and recovery'"],
+        evidence: ["{§mcp-authority}", "{§mcp-authority}", "plurnk-core intg 'ACP configuration cascade composes MCP discovery, execution, review, failure, and recovery'"],
         note: "Modern peers use server/discover; older peers use the SDK's negotiated initialization surface. No extension wire is imposed on an older peer.",
     },
     {
@@ -54,7 +54,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-tool-presentation}", "plurnk-core intg 'ACP configuration cascade composes MCP discovery, execution, review, failure, and recovery'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
+        evidence: ["{§mcp-authority}", "{§mcp-model-projection}", "plurnk-core intg 'ACP configuration cascade composes MCP discovery, execution, review, failure, and recovery'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "One operator-filtered exact Registry snapshot; only enabled names are routed. Immediate and Task results share host-composed output-schema success/rejection and tool-error coverage; malformed success is not accepted evidence or a replay instruction.",
     },
     {
@@ -66,7 +66,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-model-projection}", "plurnk-core/test/intg/Exec.scheme.test.ts", "plurnk-core/test/intg/Session.Boundary.test.ts"],
+        evidence: ["{§mcp-authority}", "{§mcp-model-projection}", "plurnk-core/test/intg/Exec.scheme.test.ts", "plurnk-core/test/intg/Session.Boundary.test.ts"],
         note: "Published through the server's resource authority into Plurnk entries; not a raw client surface.",
     },
     {
@@ -78,7 +78,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-prompt-content}", "plurnk-mcp McpResources 'prompt definitions and retrieval use the server resource authority'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-core/test/intg/mcp-prompt-composition.test.ts"],
+        evidence: ["{§mcp-authority}", "{§mcp-result-content}", "plurnk-mcp McpResources 'prompt definitions and retrieval use the server resource authority'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-core/test/intg/mcp-prompt-composition.test.ts"],
         note: "Discovery, arguments, and elicitation compose through the resource authority. Messages retain roles/order as data; typed content snapshots and lazy links share tool projection. Native modality support belongs to the core attachment/provider contract.",
     },
     {
@@ -90,7 +90,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-management-actions}", "plurnk-mcp client 'client pins the current MCP revision and exercises tools and resources'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
+        evidence: ["{§mcp-authority}", "{§mcp-module}", "plurnk-mcp client 'client pins the current MCP revision and exercises tools and resources'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "Owned by the host interaction that owns the argument; workspace.mcp.complete.",
     },
     {
@@ -102,8 +102,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-catalog-convergence}", "plurnk-mcp HttpTransport 'a catalog whose pagination never converges is an error, never a partial listing'"],
-        note: "The SDK walks the pages and caps them; the host rejects repeated cursors and tolerates first-page method-not-found only ({§mcp-catalog-list-absence}, plurnk-mcp/src/catalog.test.ts).",
+        evidence: ["{§mcp-authority}", "{§mcp-authority}", "plurnk-mcp HttpTransport 'a catalog whose pagination never converges is an error, never a partial listing'"],
+        note: "The SDK walks the pages and caps them; the host rejects repeated cursors and tolerates first-page method-not-found only ({§mcp-authority}, plurnk-mcp/src/catalog.test.ts).",
     },
     {
         id: "caching",
@@ -114,7 +114,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-catalog-refresh-in-place}", "plurnk-core/test/intg/mcp-cache-composition.test.ts", "plurnk-core/test/intg/actor-boundary.test.ts"],
+        evidence: ["{§mcp-authority}", "{§mcp-setup}", "plurnk-core/test/intg/mcp-cache-composition.test.ts", "plurnk-core/test/intg/actor-boundary.test.ts"],
         note: "SDK freshness and invalidation compose with version-aware host publication. Real daemon tests exercise overlapping catalog notifications, failed/aborted refresh, workspace authorization isolation, shared-session caching, and credential rotation through attachment restart.",
     },
     {
@@ -126,7 +126,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'a remotely ended unified subscription is re-established with a fresh request'", "plurnk-core/test/intg/actor-boundary.test.ts"],
+        evidence: ["{§mcp-authority}", "plurnk-mcp subscriptions 'a remotely ended unified subscription is re-established with a fresh request'", "plurnk-core/test/intg/actor-boundary.test.ts"],
         note: "One current filter for list changes, cached resource URIs, and active Task IDs; overlap replacement and re-listen after loss. Resource changes invalidate cache, not session history or attention.",
     },
     {
@@ -138,7 +138,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp McpExecutor 'MCP progress and cancellation remain on the owning execution lifecycle over stdio'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
+        evidence: ["{§mcp-authority}", "plurnk-mcp McpExecutor 'MCP progress and cancellation remain on the owning execution lifecycle over stdio'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "Projected onto the owning Plurnk operation. Real daemon/ACP coverage holds the tool open until progress is observed, then verifies only terminal settlement resumes inference.",
     },
     {
@@ -150,7 +150,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-connection-shutdown}", "plurnk-mcp HttpTransport 'HTTP progress and stream cancellation settle the same request'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
+        evidence: ["{§mcp-authority}", "{§mcp-setup}", "plurnk-mcp HttpTransport 'HTTP progress and stream cancellation settle the same request'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
         note: "Driven from the owning operation or connection. Real daemon tests cover cancellation and shutdown during MRTR and Task input; connection close awaits protocol cleanup.",
     },
     {
@@ -174,7 +174,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-input-deadline}", "plurnk-mcp Module 'one input_required round becomes one atomic client interaction'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
+        evidence: ["{§mcp-authority}", "{§mcp-host-composition}", "plurnk-mcp Module 'one input_required round becomes one atomic client interaction'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts"],
         note: "Opaque requestState echoed byte-for-byte; only the originating request retried with a fresh ID. Input waits retain the remaining operation budget; expiry retires the Core form and delivers the failure to the original session.",
     },
     {
@@ -186,7 +186,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-acp AcpPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'", "plurnk/test/tui/mcp-elicitation.test.ts"],
+        evidence: ["{§mcp-authority}", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-acp AcpPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'", "plurnk/test/tui/mcp-elicitation.test.ts"],
         note: "Modes form and url advertised; routed through Plurnk's client-owned interaction lifecycle. Built terminal coverage exercises batch accept/decline, cancellation, invalid-response correction, URL presentation, and successive MRTR rounds against a real SDK server.",
     },
     {
@@ -210,7 +210,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-management-actions}", "{§oauth-lifetime}", "plurnk-mcp HttpTransport 'interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
+        evidence: ["{§mcp-module}", "{§oauth-continuation}", "plurnk-mcp HttpTransport 'interactive HTTP OAuth preserves discovery, PKCE, state, issuer, and resource binding'", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "Human principals authorize workspace attachments; validated metadata, PKCE, issuer, resource indicators, refresh, bounded scope.",
     },
     {
@@ -222,8 +222,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-tasks}", "{§tasks-lifetime}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-mcp Tasks '{§tasks-lifetime} closing the owning connection abandons an in-process task instead of resuming it'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-acp AcpPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
-        note: "Advertised only when the complete in-process lifecycle is active; never core conformance. Task input routes through the general interaction owner; handles are in-process per {§tasks-lifetime}.",
+        evidence: ["{§mcp-tasks}", "{§mcp-tasks}", "plurnk-mcp Tasks 'current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing'", "plurnk-mcp Tasks '{§mcp-tasks} closing the owning connection abandons an in-process task instead of resuming it'", "plurnk-core/test/intg/mcp-interaction-composition.test.ts", "plurnk-acp AcpPlus 'client interaction projects its exact tool call, interrupt guidance, and response schema'"],
+        note: "Advertised only when the complete in-process lifecycle is active; never core conformance. Task input routes through the general interaction owner; handles are in-process per {§mcp-tasks}.",
     },
     {
         id: MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
@@ -234,7 +234,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§oauth-client-credentials}", "{§mcp-conformance}", "plurnk-mcp HttpTransport '{§oauth-client-credentials} the extension capability is advertised only on client-credentials connections'", "plurnk-mcp/test/intg/conformance.test.ts", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
+        evidence: ["{§oauth-client-credentials}", "{§mcp-model-projection}", "plurnk-mcp HttpTransport '{§oauth-client-credentials} the extension capability is advertised only on client-credentials connections'", "plurnk-mcp/test/intg/conformance.test.ts", "plurnk-core/test/intg/mcp-management-composition.test.ts"],
         note: "Application principals; conditional advertisement. Real ACP/daemon/model coverage verifies symbolic workspace credentials, resource/scope/issuer binding, token re-acquisition, grant rejection without publication or credential leakage, and no tool replay. JWT arms declined.",
     },
     {
@@ -246,7 +246,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "excluded",
         composed: false,
-        evidence: ["{§mcp-exclusions}"],
+        evidence: ["{§mcp-authority}"],
         note: "Explicit resources/tool arguments instead.",
     },
     {
@@ -258,7 +258,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "excluded",
         composed: false,
-        evidence: ["{§mcp-exclusions}"],
+        evidence: ["{§mcp-authority}"],
         note: "Plurnk's provider layer owns model access.",
     },
     {
@@ -270,7 +270,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "excluded",
         composed: false,
-        evidence: ["{§mcp-exclusions}"],
+        evidence: ["{§mcp-authority}"],
         note: "stderr/OpenTelemetry instead.",
     },
     {
@@ -282,7 +282,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "excluded",
         composed: false,
-        evidence: ["{§mcp-exclusions}"],
+        evidence: ["{§mcp-authority}"],
         note: "Streamable HTTP only.",
     },
     {
@@ -294,7 +294,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "partial",
         composed: false,
-        evidence: ["{§mcp-exclusions}", "plurnk-mcp HttpTransport '{§mcp-exclusions} unavailable deprecated DCR is attributed without probing it'"],
+        evidence: ["{§mcp-authority}", "plurnk-mcp HttpTransport '{§mcp-authority} unavailable deprecated DCR is attributed without probing it'"],
         note: "Deprecated SDK fallback, not a new adoption: pre-registration, then CIMD; DCR only via advertised registration_endpoint. Absence is tested; the fallback has no full host-composition claim.",
     },
     {
@@ -306,7 +306,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "excluded",
         composed: false,
-        evidence: ["{§mcp-exclusions}"],
+        evidence: ["{§mcp-authority}"],
         note: "Removed at the pinned revision. The SDK still owns older-peer initialization per {§mcp-authority}; the host never mixes modern extension wire into that connection.",
     },
     {
@@ -318,7 +318,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "excluded",
         composed: false,
-        evidence: ["{§mcp-exclusions}"],
+        evidence: ["{§mcp-authority}"],
         note: "Removed; subscriptions/listen and fresh request IDs instead.",
     },
     {
@@ -330,7 +330,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "excluded",
         composed: false,
-        evidence: ["{§mcp-exclusions}"],
+        evidence: ["{§mcp-authority}"],
         note: "Removed; only the negotiated final Tasks extension.",
     },
     {
@@ -354,8 +354,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "deferred",
         composed: false,
-        evidence: ["{§mcp-ema-deferral}", "https://repo.possumtech.com/plurnk/plurnk-service/issues/270"],
-        note: "Deferred ({§mcp-ema-deferral}): SSO identity acquisition, durable identity material, and org-level IdP configuration are enterprise deployment policy, not open-source host mechanics.",
+        evidence: ["{§oauth-client-credentials}", "https://repo.possumtech.com/plurnk/plurnk-service/issues/270"],
+        note: "Deferred ({§oauth-client-credentials}): SSO identity acquisition, durable identity material, and org-level IdP configuration are enterprise deployment policy, not open-source host mechanics.",
     },
     {
         id: "extension-apps",
@@ -366,8 +366,8 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: true,
         disposition: "deferred",
         composed: false,
-        evidence: ["{§mcp-apps-exclusion}", "https://repo.possumtech.com/plurnk/plurnk-service/issues/271"],
-        note: "Excluded for the current client set ({§mcp-apps-exclusion}); re-evaluate only with a sandbox-capable client and a standard ACP projection, per-client-advertised.",
+        evidence: ["{§mcp-result-content}", "https://repo.possumtech.com/plurnk/plurnk-service/issues/271"],
+        note: "Excluded for the current client set ({§mcp-result-content}); re-evaluate only with a sandbox-capable client and a standard ACP projection, per-client-advertised.",
     },
     {
         id: "extension-skills",
@@ -378,7 +378,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "deferred",
         composed: false,
-        evidence: ["{§mcp-skills-deferral}", "https://repo.possumtech.com/plurnk/plurnk-service/issues/654"],
+        evidence: ["{§mcp-result-content}", "https://repo.possumtech.com/plurnk/plurnk-service/issues/654"],
         note: "The standard is final; host adoption remains undecided. Origin-qualified identities, manifest verification, content-bound consent, and activation must compose with existing skills/resources/proposals before negotiation.",
     },
     {
@@ -413,7 +413,7 @@ export const CONDITIONAL_EXTENSION_IDS: readonly string[] = CAPABILITY_MATRIX
     .filter((row) => row.advertised === "conditional")
     .map((row) => row.id);
 
-// {§mcp-capability-matrix} — advertisement derives from the matrix by
+// {§mcp-authority} — advertisement derives from the matrix by
 // construction; an extension is on the wire only because a row says "always".
 export const staticClientCapabilities = (): {
     readonly elicitation: Record<(typeof ADVERTISED_ELICITATION_MODES)[number], Record<string, never>>;

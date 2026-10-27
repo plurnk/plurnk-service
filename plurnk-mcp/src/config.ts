@@ -77,7 +77,7 @@ export const serviceDefinitions = (environ: NodeJS.ProcessEnv = process.env): Ar
     });
 };
 
-// {§mcp-file-configuration} Files supply definitions, not installations or another lifecycle.
+// {§mcp-configuration} Files supply definitions, not installations or another lifecycle.
 export const configuredDefinitions = async (
     directories: readonly string[],
     environ: NodeJS.ProcessEnv = process.env,
@@ -167,7 +167,7 @@ export const isServerName = (name: string): boolean => SERVER_NAME.test(name);
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
     Knob.integer("PLURNK_MCP_CONNECT_TIMEOUT", 1, environ);
-// {§mcp-retry-pacing} — every retry the adapter schedules doubles its delay from the floor to the ceiling.
+// {§mcp-authority} — every retry the adapter schedules doubles its delay from the floor to the ceiling.
 export interface RetryPacing {
     readonly floorMs: number;
     readonly ceilingMs: number;
@@ -187,7 +187,7 @@ export const retryPacing = (environ: NodeJS.ProcessEnv = process.env): RetryPaci
 export const retryDelayMs = ({ floorMs, ceilingMs }: RetryPacing, attempt: number): number =>
     Math.min(floorMs * (2 ** attempt), ceilingMs);
 
-// {§mcp-registry-discovery} — the registry `discover` searches, or null when the operator names none.
+// {§mcp-module} — the registry `discover` searches, or null when the operator names none.
 export interface RegistrySettings {
     readonly url: string | null;
     readonly limit: number;

@@ -4,7 +4,7 @@
 // the coordinator and are covered where it composes with this module.
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { existsSync, mkdirSync, mkdtempSync } from "node:fs";
 import { createServer, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -30,6 +30,8 @@ import type McpResources from "./McpResources.ts";
 import type { OAuthGrantSummary } from "./oauth.ts";
 import { getDefaultEnvironment } from "@modelcontextprotocol/client/stdio";
 import Module, { closeConnections } from "./Module.ts";
+import PluginConfiguration from "./PluginConfiguration.ts";
+import { aliasOf, registryEntries, type RegistryServer } from "./registry.ts";
 import ServerConnection from "./client.ts";
 import { httpServer, stdioServer as stdio } from "../test/definitions.ts";
 import type { TestContext } from "node:test";
@@ -189,7 +191,7 @@ const harness = (env: Record<string, string> = {}, beforeRefresh: () => Promise<
         // The runtimes in service, by name.
         inService: (workspaceId: number) => (snapshots.get(workspaceId)?.prepared?.runtimes ?? [])
             .filter(({ availability }) => availability.available).map(({ decl }) => decl.name),
-        // {§mcp-unavailable-runtime} The enabled servers registered out of service, each with the reason a call is refused.
+        // {§mcp-configuration} The enabled servers registered out of service, each with the reason a call is refused.
         unavailable: (workspaceId: number) => (snapshots.get(workspaceId)?.prepared?.runtimes ?? [])
             .filter(({ availability }) => !availability.available).map(({ decl, availability }) => ({ name: decl.name, detail: availability.detail })),
     };
@@ -236,7 +238,7 @@ const oauthDefinition = (served: { url: string }): McpServerDefinition => ({
     },
 });
 
-// {§mcp-request-unauthorized} A server that answers its catalog to anyone and refuses one request kind with HTTP 401 and a
+// {§mcp-host-composition} A server that answers its catalog to anyone and refuses one request kind with HTTP 401 and a
 // JSON-RPC result body, as Google's hosted Workspace servers refuse tools/call.
 const REQUEST_KINDS = ["tools/call", "resources/read", "prompts/get", "completion/complete"] as const;
 type RequestKind = typeof REQUEST_KINDS[number];
@@ -311,7 +313,7 @@ const republished = async (h: ReturnType<typeof harness>, before: Prepared | nul
     return h.snapshots.get(1)?.prepared;
 };
 
-test("{§mcp-request-unauthorized} each request kind refused for want of a sign-in fails authorization-required and republishes its alias awaiting one, out of service", async (t) => {
+test("{§mcp-host-composition} each request kind refused for want of a sign-in fails authorization-required and republishes its alias awaiting one, out of service", async (t) => {
     for (const kind of REQUEST_KINDS) {
         await t.test(kind, async (t) => {
             const served = await serveChallenge(t, kind);
@@ -329,7 +331,7 @@ test("{§mcp-request-unauthorized} each request kind refused for want of a sign-
     }
 });
 
-test("{§mcp-request-unauthorized} a configured credential's refused request changes no state and offers no sign-in", async (t) => {
+test("{§mcp-host-composition} a configured credential's refused request changes no state and offers no sign-in", async (t) => {
     for (const kind of REQUEST_KINDS) {
         await t.test(kind, async (t) => {
             const served = await serveChallenge(t, kind);
@@ -349,7 +351,7 @@ test("{§mcp-request-unauthorized} a configured credential's refused request cha
     }
 });
 
-test("{§mcp-request-unauthorized} only a fresh connection answers the awaited sign-in, publishing what it observes", async (t) => {
+test("{§mcp-host-composition} only a fresh connection answers the awaited sign-in, publishing what it observes", async (t) => {
     const events: Readonly<Record<string, (h: ReturnType<typeof harness>, definition: McpServerDefinition) => Promise<Prepared>>> = {
         "an explicit enable": (h, definition) => h.lane(1, new Map([["gmail", definition]]), { force: "gmail" }),
         "a changed definition": (h, definition) => h.lane(1, new Map([["gmail", { ...definition, headers: { "X-Fixture": "changed" } }]])),
@@ -374,7 +376,7 @@ test("{§mcp-request-unauthorized} only a fresh connection answers the awaited s
     }
 });
 
-test("{§mcp-request-unauthorized} a signed-in grant that lapses mid-run keeps its alias, awaiting a fresh sign-in", async (t) => {
+test("{§mcp-host-composition} a signed-in grant that lapses mid-run keeps its alias, awaiting a fresh sign-in", async (t) => {
     const { origin, served, revoke } = await interactiveOAuthFixture(t);
     const definition = httpServer("oauth", served.url);
     const h = harness();
@@ -404,7 +406,7 @@ test("{§mcp-request-unauthorized} a signed-in grant that lapses mid-run keeps i
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
 });
 
-// {§oauth-begin-unchallenged} The client's sign-in to an alias awaiting one at an authorization server that consents at
+// {§oauth-continuation} The client's sign-in to an alias awaiting one at an authorization server that consents at
 // once: begin at the client's callback, the browser's consent, and the callback it returns.
 const signInAtIssuer = async (h: ReturnType<typeof harness>, alias: string): Promise<URL> => {
     const started = await h.action(1, "workspace.mcp.oauth.begin", {
@@ -422,7 +424,7 @@ const signInAtIssuer = async (h: ReturnType<typeof harness>, alias: string): Pro
     return new URL(started.authorization.url);
 };
 
-// {§oauth-issuer} {§oauth-begin-unchallenged} A pre-registered client signing in to a server that never challenges its
+// {§oauth-continuation} {§oauth-continuation} A pre-registered client signing in to a server that never challenges its
 // catalog and publishes no OAuth metadata, at the issuer its definition names.
 const issuerSignIn = async (t: TestContext, authorizationParams?: Readonly<Record<string, string>>) => {
     const client = { id: "plurnk-desktop", secret: "fixture-secret" };
@@ -446,7 +448,7 @@ const issuerSignIn = async (t: TestContext, authorizationParams?: Readonly<Recor
     return { ...servers, h, definition, url };
 };
 
-test("{§oauth-issuer} a sign-in starts at the configured issuer and carries the definition's parameters; its refresh token outlives the access token", async (t) => {
+test("{§oauth-continuation} a sign-in starts at the configured issuer and carries the definition's parameters; its refresh token outlives the access token", async (t) => {
     const { h, url, issuer, authorizations, tokenRequests, expire } = await issuerSignIn(t, { access_type: "offline", prompt: "consent" });
     try {
         assert.equal(url.origin, issuer, "discovery started at the issuer, not the resource");
@@ -462,7 +464,7 @@ test("{§oauth-issuer} a sign-in starts at the configured issuer and carries the
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§oauth-issuer} without offline access the lapsed grant awaits a fresh sign-in", async (t) => {
+test("{§oauth-continuation} without offline access the lapsed grant awaits a fresh sign-in", async (t) => {
     const { h, url, tokenRequests, expire } = await issuerSignIn(t);
     try {
         assert.equal(url.searchParams.get("access_type"), null);
@@ -474,7 +476,7 @@ test("{§oauth-issuer} without offline access the lapsed grant awaits a fresh si
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
 });
 
-test("{§oauth-begin-unchallenged} a server that publishes no OAuth metadata, with no issuer named, cannot begin a sign-in", async (t) => {
+test("{§oauth-continuation} a server that publishes no OAuth metadata, with no issuer named, cannot begin a sign-in", async (t) => {
     const client = { id: "plurnk-desktop", secret: "fixture-secret" };
     const servers = await serveIssuerOAuth(t, httpHandler(), client);
     const definition = httpServer("calendar", servers.resource);
@@ -495,7 +497,7 @@ test("{§oauth-begin-unchallenged} a server that publishes no OAuth metadata, wi
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-// {§oauth-grant} An alias signed in once, with what the test does to its grant next.
+// {§oauth-continuation} An alias signed in once, with what the test does to its grant next.
 interface SignedIn {
     readonly h: ReturnType<typeof harness>;
     readonly alias: string;
@@ -517,7 +519,7 @@ const fixtureCallback = (redirectUrl: string, authorizationUrl: string, issuer: 
     return callback.href;
 };
 
-// {§oauth-grant} The ways a sign-in reaches a server: one that challenges its catalog, at the callback a client binds or at
+// {§oauth-continuation} The ways a sign-in reaches a server: one that challenges its catalog, at the callback a client binds or at
 // the redirect its definition configures, and one that answers its catalog to anyone and refuses calls, at the issuer its
 // definition names with offline access.
 const SIGNED_IN: Readonly<Record<string, (t: TestContext) => Promise<SignedIn>>> = {
@@ -552,7 +554,7 @@ const SIGNED_IN: Readonly<Record<string, (t: TestContext) => Promise<SignedIn>>>
     },
 };
 
-// {§oauth-grant} The events that open a fresh connection for an alias once it is signed in, and whether that connection
+// {§oauth-continuation} The events that open a fresh connection for an alias once it is signed in, and whether that connection
 // presents the grant; each returns the workspace the connection serves.
 const FRESH_CONNECTIONS: Readonly<Record<string, { readonly presents: boolean; readonly open: (signedIn: SignedIn) => Promise<number> }>> = {
     "cooling and return": { presents: true, open: async ({ h, alias, definition }) => {
@@ -594,10 +596,10 @@ const settle = async (h: ReturnType<typeof harness>): Promise<void> => {
     await h.module.stop();
 };
 
-test("{§oauth-grant} an accepted sign-in outlives its connection: each later connection with its definition presents it and lists its summary, and no other", async (t) => {
+test("{§oauth-continuation} an accepted sign-in outlives its connection: each later connection with its definition presents it and lists its summary, and no other", async (t) => {
     for (const [server, signIn] of Object.entries(SIGNED_IN)) {
         for (const [event, { presents, open }] of Object.entries(FRESH_CONNECTIONS)) {
-            await t.test(`${server}: ${event}`, async (t) => {
+            await t.test(`{§oauth-continuation} ${server}: ${event}`, async (t) => {
                 const signedIn = await signIn(t);
                 try {
                     assert.deepEqual(listedGrant(signedIn.h, signedIn.alias, 1), signedIn.summary, "the accepted sign-in lists its grant");
@@ -612,7 +614,7 @@ test("{§oauth-grant} an accepted sign-in outlives its connection: each later co
     }
 });
 
-test("{§oauth-grant} a carried grant its server refuses starts a sign-in only at a redirect its definition configures", async (t) => {
+test("{§oauth-continuation} a carried grant its server refuses starts a sign-in only at a redirect its definition configures", async (t) => {
     for (const [server, signIn] of Object.entries(SIGNED_IN)) {
         await t.test(server, async (t) => {
             const { h, alias, definition, revoke } = await signIn(t);
@@ -641,7 +643,7 @@ test("{§oauth-grant} a carried grant its server refuses starts a sign-in only a
     }
 });
 
-test("{§oauth-grant} a grant ends when its authorization server rejects it, and the next accepted sign-in replaces it", async (t) => {
+test("{§oauth-continuation} a grant ends when its authorization server rejects it, and the next accepted sign-in replaces it", async (t) => {
     const { h, definition, issuer, revoke, tokenRequests, authorizations } = await issuerSignIn(t, { access_type: "offline" });
     const call = async (): Promise<number> => (await requestThrough(h, "calendar", "tools/call")).status;
     const coolAndReturn = async (): Promise<Prepared> => {
@@ -694,7 +696,7 @@ test("{§mcp-module} OAuth fixture denies missing, wrong, and replayed grants in
     assert.equal((await replay.json()).error, "invalid_grant");
 });
 
-test("{§mcp-connection-shutdown} environment resolution cannot open a connection after producer stop", async (t) => {
+test("{§mcp-setup} environment resolution cannot open a connection after producer stop", async (t) => {
     for (const operation of ["prepare"] as const) {
         await t.test(operation, async (t) => {
             let requests = 0;
@@ -836,7 +838,7 @@ for (const cleanupFails of [false, true]) {
     });
 }
 
-test("{§mcp-definitions} configured servers are inspectable without installation or connection", async () => {
+test("{§mcp-configuration} configured servers are inspectable without installation or connection", async () => {
     const echo = stdio("echo");
     const remote = httpServer("remote", "https://mcp.example.test/mcp");
     const h = harness({ PLURNK_MCP_echo: JSON.stringify(echo), PLURNK_MCP_remote: JSON.stringify(remote), PLURNK_MCP_remote_ENABLED: "0" });
@@ -864,13 +866,13 @@ test("{§functionality-inspection} changed definitions use the coordinator's com
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-server-settings} malformed controls remain inspectable after module setup and reject resolution", async () => {
+test("{§mcp-configuration} malformed controls remain inspectable after module setup and reject resolution", async () => {
     const h = harness({ PLURNK_MCP_future_TOOLS: "not json" });
     await h.setup();
     await assert.rejects(h.adapter().available(h.identity(1)), /PLURNK_MCP_future_TOOLS must be a JSON array of strings/u);
 });
 
-test("{§mcp-server-settings} a tool allowlist narrows the published tools", async () => {
+test("{§mcp-configuration} a tool allowlist narrows the published tools", async () => {
     const h = harness({ PLURNK_MCP_echo_TOOLS: JSON.stringify(["echo"]) });
     await h.setup();
     try {
@@ -899,7 +901,7 @@ test("{§mcp-setup} preparation publishes one runtime and resource facet per ena
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-activation-isolation} a failed preparation rejects under reject and publishes unavailable under publish-unavailable, isolating healthy servers", async () => {
+test("{§mcp-configuration} a failed preparation rejects under reject and publishes unavailable under publish-unavailable, isolating healthy servers", async () => {
     const h = harness();
     await h.setup();
     try {
@@ -911,7 +913,7 @@ test("{§mcp-activation-isolation} a failed preparation rejects under reject and
         const prepared = await h.lane(1, new Map([["echo", stdio("echo")], ["broken", stdio("broken", ["/nonexistent/server.mjs"])]]));
         assert.deepEqual(h.inService(1), ["echo"], "only the healthy server is in service");
         const [refused] = h.unavailable(1);
-        assert.equal(refused?.name, "broken", "{§mcp-unavailable-runtime} the failed server keeps its alias, out of service");
+        assert.equal(refused?.name, "broken", "{§mcp-configuration} the failed server keeps its alias, out of service");
         const outcome = prepared.outcomes.get("broken");
         const problem = outcome?.state === "unavailable" ? outcome.problem : undefined;
         assert.equal(refused?.detail, typeof problem?.diagnostic === "string" ? problem.diagnostic : problem?.detail,
@@ -927,7 +929,7 @@ test("{§mcp-activation-isolation} a failed preparation rejects under reject and
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-catalog-deadline} {§mcp-preparation-diagnostics} activation publishes a stalled catalog as unavailable and explicit retry restores it", { timeout: 10000 }, async (t) => {
+test("{§mcp-authority} {§mcp-module} activation publishes a stalled catalog as unavailable and explicit retry restores it", { timeout: 10000 }, async (t) => {
     let stalled = true;
     const handler = createMcpHandler(() => {
         const server = new McpServer({ name: "stall", version: "1" });
@@ -976,7 +978,7 @@ test("{§mcp-catalog-deadline} {§mcp-preparation-diagnostics} activation publis
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-preparation-diagnostics}: connection timeout reports measured preparation and its configured bound", { timeout: 10000 }, async (t) => {
+test("{§mcp-module}: connection timeout reports measured preparation and its configured bound", { timeout: 10000 }, async (t) => {
     const handler = createMcpHandler(() => new McpServer({ name: "silent", version: "1" }));
     const served = await serveMcpHttp(t, handler, async (request) => {
         await delay(1000, undefined, { signal: request.signal });
@@ -999,7 +1001,7 @@ test("{§mcp-preparation-diagnostics}: connection timeout reports measured prepa
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-preparation-diagnostics}: remote diagnostics cannot echo referenced authorization or header values", async (t) => {
+test("{§mcp-module}: remote diagnostics cannot echo referenced authorization or header values", async (t) => {
     const secret = "fixture-sensitive-authorization";
     const header = "fixture-sensitive-header";
     const handler = createMcpHandler(() => new McpServer({ name: "failed", version: "1" }));
@@ -1021,7 +1023,7 @@ test("{§mcp-preparation-diagnostics}: remote diagnostics cannot echo referenced
     } finally { await h.teardown(1); await h.module.stop(); }
 });
 
-test("{§mcp-preparation-diagnostics}: early stdio exit retains bounded session stderr and timing without inventing an exit code", async (t) => {
+test("{§mcp-module}: early stdio exit retains bounded session stderr and timing without inventing an exit code", async (t) => {
     const fixturePath = fileURLToPath(new URL("./fixtures/preparation-failure.mjs", import.meta.url));
     const h = harness({ FIXTURE_SECRET: "fixture-private-value" });
     await h.setup();
@@ -1095,7 +1097,7 @@ test("{§mcp-setup} commit closes connections the next snapshot no longer uses; 
         await attempt.abort();
         await waitForFile(marker("c"));
         assert.deepEqual(h.inService(1), ["a"]);
-        // {§mcp-catalog-refresh-in-place} — the SDK's connect probes a stdio server on a disposable
+        // {§mcp-setup} — the SDK's connect probes a stdio server on a disposable
         // sibling process; its exit writes the marker too. The committed server is the last started.
         const committedA = (await readFile(started("a"), "utf8")).trim().split("\n").at(-1)!.split(" ")[0];
         const closedA = await readFile(marker("a"), "utf8").catch(() => null);
@@ -1117,7 +1119,7 @@ test("{§oauth-continuation} a URL-only server hands authorization to the client
         assert.equal(h.leases(), 0, "no pending browser attempt before the client begins");
         assert.deepEqual(h.inService(1), []);
         assert.deepEqual(h.unavailable(1), [{ name: "oauth", detail: "it awaits the operator's sign-in" }],
-            "{§mcp-unavailable-runtime} the server keeps its alias, and a call to it names the sign-in it awaits");
+            "{§mcp-configuration} the server keeps its alias, and a call to it names the sign-in it awaits");
         const started = await h.action(1, "workspace.mcp.oauth.begin", {
             alias: "oauth", redirectUrl: "http://127.0.0.1:54321/callback",
         }) as { status: number; authorization: { url: string } };
@@ -1304,7 +1306,7 @@ test("{§oauth-continuation} removal during client preparation prevents a late a
     } finally { await h.module.stop(); }
 });
 
-test("{§oauth-lifetime} an accepted OAuth callback holds residency until ordinary catalog publication", async (t) => {
+test("{§oauth-continuation} an accepted OAuth callback holds residency until ordinary catalog publication", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const h = harness();
     await h.setup();
@@ -1427,7 +1429,7 @@ test("{§oauth-continuation} aborting publication retains the accepted grant for
     } finally { release.resolve(); await h.module.stop(); }
 });
 
-test("{§oauth-lifetime} withdrawing a server with a pending authorization clears the attempt and releases its residency", async (t) => {
+test("{§oauth-continuation} withdrawing a server with a pending authorization clears the attempt and releases its residency", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const h = harness();
     await h.setup();
@@ -1446,7 +1448,7 @@ test("{§oauth-lifetime} withdrawing a server with a pending authorization clear
     } finally { await h.module.stop(); }
 });
 
-for (const authorize of [false, true]) test(`{§oauth-lifetime} a fresh module restores definitions but not ${authorize ? "accepted credentials" : "pending sign-in"}`, async (t) => {
+for (const authorize of [false, true]) test(`{§oauth-continuation} a fresh module restores definitions but not ${authorize ? "accepted credentials" : "pending sign-in"}`, async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const definition = httpServer("oauth", served.url);
     const definitions = new Map([["oauth", definition]]);
@@ -1491,7 +1493,7 @@ for (const authorize of [false, true]) test(`{§oauth-lifetime} a fresh module r
     } finally { await restored.module.stop(); }
 });
 
-test("{§oauth-lifetime} a superseded authorization attempt cannot complete a replacement, and a changed target conflicts", async (t) => {
+test("{§oauth-continuation} a superseded authorization attempt cannot complete a replacement, and a changed target conflicts", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const h = harness();
     await h.setup();
@@ -1522,7 +1524,7 @@ test("{§oauth-lifetime} a superseded authorization attempt cannot complete a re
     } finally { await h.teardown(1).catch(() => undefined); await h.module.stop(); }
 });
 
-test("{§oauth-lifetime} a replacement without authorization discards the pending credential flow", async (t) => {
+test("{§oauth-continuation} a replacement without authorization discards the pending credential flow", async (t) => {
     const { origin, served } = await interactiveOAuthFixture(t);
     const h = harness();
     await h.setup();
@@ -1574,7 +1576,7 @@ test("{§mcp-setup} shutdown closes every connection and aggregates failures", a
 });
 
 
-test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on the connection the alias holds: one process, nothing closed (#429)", async (t) => {
+test("{§mcp-setup} a catalog change rebuilds the executor on the connection the alias holds: one process, nothing closed (#429)", async (t) => {
     const temp = await mkdtemp(join(tmpdir(), "plurnk-mcp-refresh-"));
     t.after(() => rm(temp, { recursive: true, force: true }));
     const marker = join(temp, "a.closed");
@@ -1623,7 +1625,7 @@ test("{§mcp-catalog-refresh-in-place} a catalog change rebuilds the executor on
     }
 });
 
-test("{§mcp-catalog-refresh-in-place} withdrawing an attachment retires its pending catalog retry", async (t) => {
+test("{§mcp-setup} withdrawing an attachment retires its pending catalog retry", async (t) => {
     let failListing = false;
     let lists = 0;
     const handler = httpHandler();
@@ -1651,7 +1653,7 @@ test("{§mcp-catalog-refresh-in-place} withdrawing an attachment retires its pen
     assert.deepEqual(h.inService(1), []);
 });
 
-test("{§mcp-launch-directory} direct servers use workspace-owned state and retain their exact definitions", async () => {
+test("{§mcp-configuration} direct servers use workspace-owned state and retain their exact definitions", async () => {
     const h = harness();
     await h.setup();
     try {
@@ -1697,7 +1699,7 @@ const serveRegistry = async (t: { after(fn: () => unknown): void }, listener: Re
     return `http://127.0.0.1:${(registry.address() as AddressInfo).port}`;
 };
 
-test("{§mcp-registry-discovery} discover searches the registry by query and offers each server's entries as complete workspace definitions", async (t) => {
+test("{§mcp-module} discover searches the registry by query and offers each server's entries as complete workspace definitions", async (t) => {
     const requests: string[] = [];
     const url = await serveRegistry(t, (request, response) => {
         requests.push(request.url ?? "");
@@ -1721,7 +1723,7 @@ test("{§mcp-registry-discovery} discover searches the registry by query and off
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-registry-discovery} a failing registry is a Problem, never an empty result", async (t) => {
+test("{§mcp-module} a failing registry is a Problem, never an empty result", async (t) => {
     const url = await serveRegistry(t, (_request, response) => { response.writeHead(500).end(); });
     const h = harness({ PLURNK_MCP_REGISTRY_URL: url, PLURNK_MCP_REGISTRY_LIMIT: "5" });
     await h.setup();
@@ -1730,7 +1732,7 @@ test("{§mcp-registry-discovery} a failing registry is a Problem, never an empty
     } finally { await h.module.stop(); }
 });
 
-test("{§mcp-registry-discovery} {§functionality-discovery-inputs} with no registry the family declares no discovery", async () => {
+test("{§mcp-module} {§functionality-discovery-inputs} with no registry the family declares no discovery", async () => {
     const h = harness({ PLURNK_MCP_REGISTRY_URL: "", PLURNK_MCP_REGISTRY_LIMIT: "5" });
     await h.setup();
     try {
@@ -1754,4 +1756,104 @@ test("{§mcp-module} {§module-contained-configuration} an invalid registry sett
             assert.ok(h.actions.has("workspace.mcp.oauth.begin"), "the module's continuations remain");
         } finally { await h.module.stop(); }
     }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plugin Configuration ({§mcp-configuration})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-configuration} plugin stdio interpretation is literal except for the two reserved placeholders", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "mcp-plugin-${UNEXPANDED}-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const ctx = { root: join(directory, "plugin"), data: join(directory, "data") };
+    await mkdir(ctx.root);
+    const source = {
+        name: "tool", type: "stdio" as const, command: "./bin/tool", cwd: "${PLUGIN_DATA}",
+        args: ["${PLUGIN_ROOT}", "${PLUGIN_DATA}", "${SECRET}", "${PLUGIN_ROOT}/${PLUGIN_ROOT}"],
+        env: { SAMPLE: "${PLUGIN_DATA}", LITERAL: "${SECRET}" },
+    };
+    const resolved = PluginConfiguration.resolve(source, ctx);
+    assert.deepEqual(resolved, {
+        type: "stdio", command: join(ctx.root, "bin/tool"), cwd: ctx.data,
+        args: [ctx.root, ctx.data, "${SECRET}", `${ctx.root}/${ctx.root}`],
+        env: { SAMPLE: ctx.data, LITERAL: "${SECRET}", PLUGIN_ROOT: ctx.root, PLUGIN_DATA: ctx.data },
+    });
+    await PluginConfiguration.prepare(source, ctx);
+    await access(ctx.data);
+    assert.equal(PluginConfiguration.resolve({ name: "tool", type: "stdio", command: "node" }, ctx).cwd, ctx.root);
+    assert.equal(PluginConfiguration.resolve({ name: "tool", type: "stdio", command: "${COMMAND}" }, ctx).command, "${COMMAND}");
+});
+
+test("{§mcp-configuration} plugin paths are checked at launch without interpreting opaque arguments", async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "mcp-plugin-paths-"));
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    const ctx = { root: join(directory, "plugin"), data: join(directory, "data") };
+    await mkdir(ctx.root);
+    await mkdir(ctx.data);
+    const source = { name: "tool", type: "stdio" as const, command: "node", args: ["../../opaque"], env: { OPAQUE: "../../opaque" } };
+    await PluginConfiguration.prepare(source, ctx);
+    for (const cwd of ["./../outside", "${PLUGIN_ROOT}/../outside", "${PLUGIN_DATA}/../outside"]) {
+        await assert.rejects(PluginConfiguration.prepare({ ...source, cwd }, ctx), /cwd resolves outside/u);
+    }
+    await symlink(directory, join(ctx.root, "escape"));
+    await symlink(directory, join(ctx.data, "escape"));
+    await assert.rejects(PluginConfiguration.prepare({ ...source, command: "./escape/tool" }, ctx), /command resolves outside/u);
+    await assert.rejects(PluginConfiguration.prepare({ ...source, cwd: "${PLUGIN_DATA}/escape" }, ctx), /cwd resolves outside/u);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Registry Entries ({§mcp-module})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-module} a registry name's last segment is the alias plurnk spells", () => {
+    assert.equal(aliasOf("io.github.example/example-server"), "example-server");
+    assert.equal(aliasOf("io.github.example/Example_Server"), "example-server");
+    assert.equal(aliasOf("com.example/2fa-tools"), "fa-tools");
+    assert.equal(aliasOf("com.example/123"), null);
+});
+
+test("{§mcp-module} each launchable package and Streamable HTTP remote becomes one self-contained entry", () => {
+    const server: RegistryServer = {
+        name: "io.github.example/example-server",
+        version: "1.2.3",
+        description: "Search the example index.",
+        packages: [
+            {
+                registryType: "npm", identifier: "@example/server", version: "1.2.3", runtimeHint: "npx", transport: { type: "stdio" },
+                packageArguments: [{ type: "positional", value: "serve" }, { type: "named", name: "--port", default: "3000" }, { type: "named", name: "--verbose" }],
+                environmentVariables: [{ name: "EXAMPLE_API_KEY", isRequired: true, isSecret: true }, { name: "EXAMPLE_REGION", isRequired: true, default: "eu" }],
+            },
+            { registryType: "pypi", identifier: "example-server", version: "0.5.0", runtimeHint: "uvx", transport: { type: "stdio" } },
+            { registryType: "oci", identifier: "docker.io/example/server:1.2.3", version: "1.2.3", transport: { type: "stdio" }, environmentVariables: [{ name: "EXAMPLE_API_KEY" }] },
+            { registryType: "nuget", identifier: "Example.Server", version: "0.5.0", runtimeHint: "dnx", transport: { type: "stdio" } },
+        ],
+        remotes: [
+            { type: "streamable-http", url: "https://mcp.example.com/mcp", headers: [{ name: "X-Tenant", value: "public" }, { name: "X-Api-Key", isRequired: true, isSecret: true }] },
+        ],
+    };
+    assert.deepEqual(registryEntries(server).map(({ entry }) => entry), [
+        { type: "stdio", command: "npx", args: ["-y", "@example/server@1.2.3", "serve", "--port", "3000"] },
+        { type: "stdio", command: "uvx", args: ["example-server@0.5.0"] },
+        { type: "stdio", command: "docker", args: ["run", "-i", "--rm", "-e", "EXAMPLE_API_KEY", "docker.io/example/server:1.2.3"] },
+        { type: "stdio", command: "dnx", args: ["Example.Server@0.5.0"] },
+        { type: "streamable-http", url: "https://mcp.example.com/mcp", headers: { "X-Tenant": "public" } },
+    ]);
+    const [npm, , , , remote] = registryEntries(server);
+    assert.equal(npm?.alias, "example-server");
+    assert.equal(npm?.reference, "io.github.example/example-server@1.2.3");
+    assert.match(npm?.summary ?? "", /^Search the example index\. — npx -y @example\/server@1\.2\.3 serve --port 3000 — Needs EXAMPLE_API_KEY\.$/u,
+        "the summary names what the environment must supply, and a variable with a default needs nothing");
+    assert.match(remote?.summary ?? "", /Needs the X-Api-Key header\.$/u, "a secret header is never an entry's literal");
+});
+
+test("{§mcp-module} what needs a person's input first, and what plurnk cannot launch, has no entry", () => {
+    const base = { name: "io.github.example/example-server", version: "1.0.0" };
+    const none = (server: Omit<RegistryServer, "name" | "version">): void =>
+        assert.deepEqual(registryEntries({ ...base, ...server }), [], JSON.stringify(server));
+    none({ packages: [{ registryType: "npm", identifier: "@example/server", version: "1.0.0", transport: { type: "stdio" }, packageArguments: [{ type: "positional", value: "{target_dir}" }] }] });
+    none({ packages: [{ registryType: "npm", identifier: "@example/server", version: "1.0.0", transport: { type: "stdio" }, packageArguments: [{ type: "positional", isRequired: true }] }] });
+    none({ packages: [{ registryType: "npm", identifier: "@example/server", version: "1.0.0", transport: { type: "streamable-http" } }] });
+    none({ packages: [{ registryType: "mcpb", identifier: "https://example.com/server.mcpb", version: "1.0.0", transport: { type: "stdio" } }] });
+    none({ remotes: [{ type: "sse", url: "https://mcp.example.com/sse" }] });
+    none({ remotes: [{ type: "streamable-http", url: "https://mcp.example.com/{tenant}/mcp" }] });
 });

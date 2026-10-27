@@ -27,10 +27,10 @@ const run = async (tag: string, command: string, options: Partial<Pick<ExecArgs,
     return { result, out };
 };
 
-test("{§executor-dynamic-runtimes} the runtimes module declares the candidate common-REPL tags, matching RUNTIME_TAGS", async () => {
+test("{§executor-discovery} the runtimes module declares the candidate common-REPL tags, matching RUNTIME_TAGS", async () => {
     const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf-8"));
     assert.equal(pkg.plurnk.kind, "exec");
-    assert.equal(pkg.plurnk.runtimesModule, "./runtimes", "{§executor-dynamic-runtimes} the declarations are resolved on the host");
+    assert.equal(pkg.plurnk.runtimesModule, "./runtimes", "{§executor-discovery} the declarations are resolved on the host");
     const declared = runtimes();
     for (const declaration of declared) RuntimeDeclaration.assert(declaration, declaration.name);
     const manifest = declared.map((r) => r.name);
@@ -43,7 +43,7 @@ test("{§executor-dynamic-runtimes} the runtimes module declares the candidate c
         summary: unknown;
         invocation: { example?: { body?: string; target?: string }; signature?: string };
     }>;
-    assert.equal(shell?.summary, Shell.summary(Shell.current()), "{§executor-shell} the shell's summary names the shell that runs");
+    assert.equal(shell?.summary, Shell.summary(Shell.current()), "{§executor-subprocess} the shell's summary names the shell that runs");
     assert.deepEqual(shell?.invocation.example, { body: "git status --short" }, "the shell retains its ordinary command witness");
     assert.ok(
         alternatives.every(({ invocation }) => typeof invocation.example?.body === "string"
@@ -53,7 +53,7 @@ test("{§executor-dynamic-runtimes} the runtimes module declares the candidate c
     );
 });
 
-test("{§executor-tool-document}: declared interpreter examples execute as raw inline programs", async (t) => {
+test("{§executor-discovery}: declared interpreter examples execute as raw inline programs", async (t) => {
     for (const runtime of runtimes().filter(({ name }) => name !== "sh")) {
         await t.test(runtime.name, async (t) => {
             const body = runtime.invocation.example?.body;
@@ -70,7 +70,7 @@ test("{§executor-tool-document}: declared interpreter examples execute as raw i
     }
 });
 
-test("{§executor-subprocess-routing} spawnArgs: the subprocess floor (sh/js/python3)", () => {
+test("{§executor-subprocess} spawnArgs: the subprocess floor (sh/js/python3)", () => {
     // @ts-expect-error exercise the protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", "echo hi"), { cmd: Shell.current().path, args: ["-c", "echo hi"], useShell: false });
     // @ts-expect-error
@@ -79,7 +79,7 @@ test("{§executor-subprocess-routing} spawnArgs: the subprocess floor (sh/js/pyt
     assert.deepEqual(make("python3").spawnArgs("python3", "print(1)"), { cmd: "python3", args: ["-c", "print(1)"], useShell: false });
 });
 
-test("{§executor-subprocess-routing} spawnArgs: a target selects the interpreter's script-file form and body is tokenized into argv", () => {
+test("{§executor-subprocess} spawnArgs: a target selects the interpreter's script-file form and body is tokenized into argv", () => {
     // @ts-expect-error protected hook
     assert.deepEqual(make("sh").spawnArgs("sh", '--flag "two words"', "./run.sh"), { cmd: Shell.current().path, args: ["./run.sh", "--flag", "two words"], useShell: false });
     // @ts-expect-error
@@ -88,7 +88,7 @@ test("{§executor-subprocess-routing} spawnArgs: a target selects the interprete
 
 // An EDIT-created script has no exec bit, and
 // a file target still runs — the interpreter reads it; execve never happens.
-test("{§executor-subprocess-routing} a file target runs without +x; transient exec never mutates its mode", async () => {
+test("{§executor-subprocess} a file target runs without +x; transient exec never mutates its mode", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-transient-"));
     try {
         const script = path.join(dir, "greet.sh");
@@ -111,19 +111,19 @@ test("{§executor-subprocess-routing} a file target runs without +x; transient e
     }
 });
 
-test("{§executor-probe} probe: js is always available (not PATH-gated) and reports its version", async () => {
+test("{§executor-results} probe: js is always available (not PATH-gated) and reports its version", async () => {
     const r = await make("js").probe();
     assert.equal(r.available, true);
     assert.equal(r.detail, process.version);
 });
 
-test("{§executor-subprocess-routing} live: sh runs a shell command", async () => {
+test("{§executor-subprocess} live: sh runs a shell command", async () => {
     const { result, out } = await run("sh", "echo plurnk");
     assert.equal(result.status, 200);
     assert.equal(out.stdout, "plurnk\n");
 });
 
-test("{§executor-default-inventory} effect: every common interpreter is host (subprocess, proposal-gated)", () => {
+test("{§executor-policy} effect: every common interpreter is host (subprocess, proposal-gated)", () => {
     assert.equal(make("sh").effect(null), "host");
     assert.equal(make("js").effect(null), "host");
     assert.equal(make("python3").effect(null), "host");
@@ -140,7 +140,7 @@ test("{§executor-policy} probe: reflects PATH presence per tag", async () => {
 // discover() ({§executor-policy}) — a disabled tag is never registered, so probe() no
 // longer sees it. Covered in plurnk-execs' policy.test.ts / discover.test.ts.
 
-test("{§executor-spawn-account}: the shell runs as the configured account and sees its name in its environment", async () => {
+test("{§executor-policy}: the shell runs as the configured account and sees its name in its environment", async () => {
     const previous = process.env.PLURNK_EXECS_SPAWN_USER;
     process.env.PLURNK_EXECS_SPAWN_USER = os.userInfo().username;
     try {
@@ -153,7 +153,7 @@ test("{§executor-spawn-account}: the shell runs as the configured account and s
     }
 });
 
-test("{§executor-subprocess-routing} Node permission framework alignment: unflagged js spawns freely; flagged js is confined to allowlist and denies child_process", async (t) => {
+test("{§executor-subprocess} Node permission framework alignment: unflagged js spawns freely; flagged js is confined to allowlist and denies child_process", async (t) => {
     const allowedDir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-perm-allowed-"));
     const deniedDir = await fs.mkdtemp(path.join(os.tmpdir(), "execs-perm-denied-"));
     t.after(async () => {

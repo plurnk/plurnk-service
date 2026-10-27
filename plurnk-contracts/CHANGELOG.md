@@ -59,9 +59,9 @@
 - 50fbe81: An interactive `McpOAuth` definition may name the `issuer` its sign-in binds
   to, where discovery starts, and `authorizationParams` added to the
   authorization request, such as `access_type=offline` ({§mcp-server-definition},
-  {§oauth-issuer}). `oauth.begin` for an alias awaiting a sign-in after a refused
+  {§oauth-continuation}). `oauth.begin` for an alias awaiting a sign-in after a refused
   request starts the authorization on a connection its server never challenges
-  ({§oauth-begin-unchallenged}).
+  ({§oauth-continuation}).
 - 4e4cb32: AG-UI: an accepted message is discoverable before its arrival (#1166).
   `status.inbox` lists the accepted messages the bound Worker has not yet
   observed; the snapshot carries the ones a client on the thread sent, with

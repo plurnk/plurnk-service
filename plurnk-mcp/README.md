@@ -14,7 +14,7 @@ revision.
 
 ## Configure servers
 
-Put shared servers in `~/.agents/mcp.json` ({§mcp-file-configuration}):
+Put shared servers in `~/.agents/mcp.json` ({§mcp-configuration}):
 
 ```json
 {
@@ -33,7 +33,7 @@ Installed Agent Plugins also contribute `mcp.json` servers through the same
 workspace management. Standalone definitions precede plugin components within
 each scope; npm bundles come last. Plugin subprocesses use their plugin root
 and persistent data directory, with the standard's literal-string rules
-({§mcp-plugin-configuration}).
+({§mcp-configuration}).
 `list` identifies the winning file and entry; file changes are read before the next turn.
 
 Environment-only configuration remains available and overrides file definitions
@@ -50,20 +50,20 @@ and the server's resource scheme. A higher-precedence definition replaces
 the whole connection, including authentication; it does not patch fields.
 Declaring a server enables it unless an independent control disables it.
 Explicit HTTP(S) endpoints may use private-network hosts; OAuth retains its
-TLS and authorization requirements ({§mcp-endpoint-security}).
+TLS and authorization requirements ({§mcp-transports}).
 
 | Transport | Behaviour |
 |---|---|
 | `stdio` | Spawn `command` and `args` without a shell. Bare commands use PATH; relative commands use the working directory. References in `args`, `env`, and `cwd` expand at launch. |
-| `streamable-http` | Connect to `url`, with optional `headers` and `authorization`. Header references expand at connection time; SDK protocol headers remain transport-owned. Structured authorization and an Authorization header cannot both be declared. Redirects are refused ({§mcp-redirect-refused}). |
+| `streamable-http` | Connect to `url`, with optional `headers` and `authorization`. Header references expand at connection time; SDK protocol headers remain transport-owned. Structured authorization and an Authorization header cannot both be declared. Redirects are refused ({§mcp-transports}). |
 
 A local server defaults to a stable, workspace-owned state directory outside
-the project ({§mcp-launch-directory}). An explicit absolute `cwd` overrides
+the project ({§mcp-configuration}). An explicit absolute `cwd` overrides
 that location; the caller provisions it. This is file placement, not a sandbox.
 
 Stdio servers inherit the operator's environment without Plurnk settings or
 model-provider keys. Workspace `env` entries apply on top, then the definition's
-`env`; session-local overrides do not ({§mcp-launch-environment}). A running
+`env`; session-local overrides do not ({§mcp-module}). A running
 server keeps its launch environment; disable then enable it to pick up changes.
 
 A tool marked `annotations.readOnlyHint` runs with the `read` effect;
@@ -73,12 +73,12 @@ owner unless `PLURNK_SERVICE_PROPOSALS` accepts or rejects it.
 ## Manage a workspace's servers
 
 MCP is one family of workspace Functionality, managed with the verbs every family shares
-({§mcp-management-actions}); `discover` is present while the operator configures a registry.
+({§mcp-module}); `discover` is present while the operator configures a registry.
 
 | Action | Parameters |
 |---|---|
 | `workspace.mcp.list` | — |
-| `workspace.mcp.discover` | `query`: searches the MCP Registry; present while `PLURNK_MCP_REGISTRY_URL` names one ({§mcp-registry-discovery}) |
+| `workspace.mcp.discover` | `query`: searches the MCP Registry; present while `PLURNK_MCP_REGISTRY_URL` names one ({§mcp-module}) |
 | `workspace.mcp.add` | optional `alias` (the definition's `name`), `definition`: a complete connection definition |
 | `workspace.mcp.enable` / `disable` / `remove` | `alias` |
 | `workspace.mcp.oauth.complete` | `alias`, complete `callbackUrl` |
@@ -121,7 +121,7 @@ the initial survey ({§tools-resource-materialization}).
 ## Operator settings
 
 Independent controls use the same lowercase alias spelling as definitions
-({§mcp-server-settings}). A control may precede its server; it is validated
+({§mcp-configuration}). A control may precede its server; it is validated
 without creating one.
 
 | Variable | Setting |
@@ -196,8 +196,8 @@ OAuth; stdio servers read their credentials from the environment. A server that
 challenges an anonymous connection comes up `authorization-required`, without
 publishing partial tools. One that answers its catalog anonymously and refuses a
 request instead goes `authorization-required` at that refusal, and the request
-fails with that code ({§mcp-request-unauthorized}); either way its alias stays
-registered, out of service ({§mcp-unavailable-runtime}). A URL-only definition
+fails with that code ({§mcp-host-composition}); either way its alias stays
+registered, out of service ({§mcp-configuration}). A URL-only definition
 is sufficient; no callback port needs to be configured. The terminal client's
 `/mcp oauth <alias>` binds an available loopback port and calls
 `workspace.mcp.oauth.begin` before opening the returned authorization URL. A
@@ -205,7 +205,7 @@ fixed OAuth redirect, if configured, is respected. A server that publishes no
 OAuth metadata needs its authorization server named as `authorization.issuer`,
 and `authorization.authorizationParams` adds provider request parameters such as
 `access_type=offline` where a refresh token is issued only on request
-({§oauth-issuer}). Supplying the callback URL explicitly also works for
+({§oauth-continuation}). Supplying the callback URL explicitly also works for
 remote/headless use. The client submits the complete URL through
 `workspace.mcp.oauth.complete`. Its `202` acknowledges sign-in; tools activate
 at the next safe workspace boundary, between turns, without another callback
@@ -214,7 +214,7 @@ state, so a turn in flight still sees the alias awaiting sign-in. A sign-in
 outlives its connection: the alias's later connections with the same definition
 present it, refreshing it as it lapses — when an idle workspace returns, on
 `enable`, or on `disable` then `enable` — until its authorization server rejects
-it, another sign-in replaces it, or the daemon stops ({§oauth-grant}). `list`
+it, another sign-in replaces it, or the daemon stops ({§oauth-continuation}). `list`
 shows an active alias's grant as its `detail.grant`: its issuer, the scope its
 authorization server stated, and whether it refreshes, never a token. PKCE,
 issuer and resource validation, refresh, scope escalation, and credentials

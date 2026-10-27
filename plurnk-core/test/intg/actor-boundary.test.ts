@@ -1274,7 +1274,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                 assert.equal(
                     shell?.aside,
                     `\`\`\`sh <!-- ${Shell.summary(Shell.current())} -->\ngit status --short\n\`\`\``,
-                    "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-shell}), as plain text rather than a code span",
+                    "Turn 0 teaches a compact executable witness with its aside naming the shell that runs ({§executor-subprocess}), as plain text rather than a code span",
                 );
                 const python = toolItems.flat().find(({ path }) => path === "workspace:///_plurnk/plurnk/python3.md");
                 assert.equal(
@@ -1725,7 +1725,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
     };
     // {§mcp-configuration} The first read makes the workspace resident.
     assert.match(await toolsDocument(), /fixture \(first\)/);
-    // {§executor-tool-catalog} The catalog shares the same refresh and withdrawal boundary.
+    // {§executor-discovery} The catalog shares the same refresh and withdrawal boundary.
     const listRequests = () => served.requests.filter(({ body }) => (body as { method?: string }).method === "tools/list").length;
     const beforeRead = listRequests();
     const names = async (): Promise<string[]> => JSON.parse(await toolsDocument("json")).tools.map((entry: { name: string }) => entry.name);
@@ -1795,7 +1795,7 @@ const verifyRefresh = async (t: TestContext, boundary: typeof boundaries[number]
 };
 
 for (const boundary of boundaries) {
-    test(`{§mcp-catalog-refresh-in-place} ${boundary} preserves the current tools, docs, and next model call`,
+    test(`{§mcp-setup} ${boundary} preserves the current tools, docs, and next model call`,
         { timeout: 15000 }, (t) => verifyRefresh(t, boundary));
 }
 });

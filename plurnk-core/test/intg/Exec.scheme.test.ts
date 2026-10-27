@@ -428,7 +428,7 @@ test("{§exec-target-routing} directory `(target)` sets the working directory fo
 });
 
 for (const source of ["local", "file", "session"] as const) {
-    test(`{§executor-subprocess-routing} ${source} script receives exact tokenized argv and workspace cwd`, async () => {
+    test(`{§executor-subprocess} ${source} script receives exact tokenized argv and workspace cwd`, async () => {
         await withWorkspace(async (ctx) => {
             const root = await mkdtemp(join(tmpdir(), "exec-arguments-"));
             try {
@@ -609,7 +609,7 @@ test("{§op-shapes} sh: clean exit → channels at state=closed, stdout captured
     });
 });
 
-test("{§executor-exit-code} sh: an exit code is the answer: channels closed, stderr captured, subscription closed at 200", async () => {
+test("{§executor-results} sh: an exit code is the answer: channels closed, stderr captured, subscription closed at 200", async () => {
     await withWorkspace(async (ctx) => {
         const idDeferred = deferred<number>();
         const dispatchPromise = ctx.engine.dispatch({
@@ -898,7 +898,7 @@ test("{§exec-target-routing} effect-gating: a pure execution being applied is n
     }
 });
 
-// {§exec-target-routing} {§executor-sinks}: cwd and target remain distinct inputs.
+// {§exec-target-routing} {§executor-contract}: cwd and target remain distinct inputs.
 test("{§exec-target-routing}: targetless pure runtime ignores workspace cwd and keeps a null target", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-pure-ws-"));
     const { db, engine, exec, workspaceId, sessionId, loopId, turnId, tag } = await wire();
@@ -1247,7 +1247,7 @@ test("{§exec-target-routing} literal targets survive directory collisions witho
     }
 });
 
-test("{§executor-tool-registry} exact tools own admission and their invocation contract", async () => {
+test("{§executor-discovery} exact tools own admission and their invocation contract", async () => {
     const ctx = await wire();
     try {
         const reference = await ctx.engine.referenceEntries(ctx.workspaceId);
@@ -1305,7 +1305,7 @@ test("{§tools-resource-materialization} target recovery follows a runtime's dec
     }
 });
 
-test("{§executor-invocation} required and unsupported buckets are refused before execution", async () => {
+test("{§executor-discovery} required and unsupported buckets are refused before execution", async () => {
     const ctx = await wire();
     try {
         const missingTarget = await ctx.dispatch(statement("literaltool", null, "{}"));
@@ -1326,7 +1326,7 @@ test("{§executor-invocation} required and unsupported buckets are refused befor
     }
 });
 
-// {§executor-blank-invocation} Each blank an invocation can be: a registry runtime without its target, a registered target
+// {§executor-discovery} Each blank an invocation can be: a registry runtime without its target, a registered target
 // without its body, a required target or body absent, or neither supplied. Each fence names the target it shows and
 // whether it carries a body.
 const BLANKS = [
@@ -1338,7 +1338,7 @@ const BLANKS = [
     { runtime: "resourcetool", target: null, body: "", code: "input-required", fences: [[null, true]] },
 ] as const;
 for (const blank of BLANKS) {
-    test(`{§executor-blank-invocation}: ${blank.runtime}${blank.target === null ? "" : ` (${blank.target})`} refused as ${blank.code} answers with its working form`, async () => {
+    test(`{§executor-discovery}: ${blank.runtime}${blank.target === null ? "" : ` (${blank.target})`} refused as ${blank.code} answers with its working form`, async () => {
         const ctx = await wire();
         try {
             const result = await ctx.dispatch(statement(blank.runtime, blank.target, blank.body));
@@ -1401,7 +1401,7 @@ test("{§exec-target-routing} a resource target is always a target, including wi
     }
 });
 
-test("{§executor-invocation} an exclusive runtime refuses body plus target", async () => {
+test("{§executor-discovery} an exclusive runtime refuses body plus target", async () => {
     const ctx = await wire();
     try {
         const result = await ctx.dispatch(statement("exclusivetool", "query.sql", "SELECT 1"));
@@ -1414,7 +1414,7 @@ test("{§executor-invocation} an exclusive runtime refuses body plus target", as
     }
 });
 
-test("{§executor-metadata} a tool owns opaque options even when its literal target looks like another scheme", async () => {
+test("{§executor-contract} a tool owns opaque options even when its literal target looks like another scheme", async () => {
     const ctx = await wire();
     try {
         const request = {
@@ -1432,7 +1432,7 @@ test("{§executor-metadata} a tool owns opaque options even when its literal tar
     }
 });
 
-test("{§executor-metadata} absent and rejecting preparation refuse options before effect admission", async () => {
+test("{§executor-contract} absent and rejecting preparation refuse options before effect admission", async () => {
     const ctx = await wire();
     try {
         const unsupported = { ...statement("bodyonly", null, "query"), metadata: ["option"] };
@@ -1450,7 +1450,7 @@ test("{§executor-metadata} absent and rejecting preparation refuse options befo
     }
 });
 
-test("{§executor-metadata} a malformed preparation is an internal failure before execution", async () => {
+test("{§executor-contract} a malformed preparation is an internal failure before execution", async () => {
     const ctx = await wire();
     try {
         await assert.rejects(
@@ -1701,7 +1701,7 @@ test("{§exec-target-routing} execution source READ preserves the complete autho
     }
 });
 
-test("{§executor-metadata} execution metadata does not require the source scheme to accept metadata", async () => {
+test("{§executor-contract} execution metadata does not require the source scheme to accept metadata", async () => {
     const ctx = await wire();
     try {
         ctx.schemes.register("source", {
@@ -3110,7 +3110,7 @@ test("{§exec-lifetime}: an unreadable lifetime is refused before the spawn, wit
 });
 
 test("{§exec-lifetime}: a tool's opaque metadata is still its own — the service reads no lifetime from it", { timeout: 120_000 }, async () => {
-    // {§executor-metadata} — `sh` takes the option-array shape, so a block that is not that shape is
+    // {§executor-contract} — `sh` takes the option-array shape, so a block that is not that shape is
     // the tool's to refuse. The service must not refuse it first in the name of `lifetime`.
     const { status, problem } = await refusal("````sh [ custom syntax ]", "exec-lifetime-opaque");
     assert.equal(status, 400);
@@ -3407,7 +3407,7 @@ const runExec = async (tag: string, body: string, cwd: string | null): Promise<{
 
 
 // One deterministic specimen per bundled runtime. `gate` verifies its
-// executor-owned effect fact through core admission. {§executor-effect}
+// executor-owned effect fact through core admission. {§executor-results}
 const CASES: ReadonlyArray<{ tag: string; body: string; cwd: string | null; expect: string; gate: "propose" | "auto" }> = [
     // Subprocess runtimes execute arbitrary host code → ALWAYS `host` → always gated, even for a
     // visibly-harmless command (the executor classifies the target, never parses the command to judge it).
@@ -3445,7 +3445,7 @@ test("{§exec-target-routing} execs batteries: coverage census — every self-co
 
 for (const { tag, body, cwd, expect, gate } of CASES) {
     const label = `${tag}${cwd === null ? "" : ` (${gate} target)`}`;
-    test(`{§executor-consumer-boundary} execs batteries: ${label} runs through the real Exec scheme, captures output, gates per effect`, async (t) => {
+    test(`{§executor-role} execs batteries: ${label} runs through the real Exec scheme, captures output, gates per effect`, async (t) => {
         const reg = await testExecutors();
         if (!reg.availableRuntimes().includes(tag)) {
             t.skip(`${tag} not available in this env (probe failed / resource-gated)`);
@@ -3505,7 +3505,7 @@ const fixture = fileURLToPath(new URL("./fixtures/environment-mcp.mjs", import.m
 const environmentEntry = (env: Readonly<Record<string, string>>): object => ({ type: "stdio", command: "node", args: [fixture], env: { ...env } });
 type Start = { witness: string | null; private: string | null; bound: string | null; catalog: string | null; plurnk: string | null; reference: string | null; home: string | null; pid: number };
 
-// {§mcp-launch-environment} — the operator's environment is the daemon process's own, so the test sets it there.
+// {§mcp-module} — the operator's environment is the daemon process's own, so the test sets it there.
 const withOperatorEnvironment = (t: TestContext, values: Readonly<Record<string, string>>): void => {
     const previous = Object.fromEntries(Object.keys(values).map((name) => [name, process.env[name]]));
     Object.assign(process.env, values);
@@ -3546,7 +3546,7 @@ test("{§functionality-model-projection} MCP replacement precedes a tool invocat
     assert.equal(await lifecycle.status(loop.loopId), 200);
 });
 
-test("{§mcp-launch-environment} a configured stdio server starts with the operator's environment beneath the workspace layer, never a session's, and picks up changes only on restart", { timeout: 30000 }, async (t) => {
+test("{§mcp-module} a configured stdio server starts with the operator's environment beneath the workspace layer, never a session's, and picks up changes only on restart", { timeout: 30000 }, async (t) => {
     const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-env-"));
     t.after(() => rm(scratch, { recursive: true, force: true }));
     withOperatorEnvironment(t, {
@@ -3658,7 +3658,7 @@ test("{§mcp-launch-environment} a configured stdio server starts with the opera
     }
 });
 
-test("{§mcp-launch-environment} native definitions bind credentials explicitly, retain references, and refuse missing references before launch", { timeout: 30000 }, async (t) => {
+test("{§mcp-module} native definitions bind credentials explicitly, retain references, and refuse missing references before launch", { timeout: 30000 }, async (t) => {
     const credentials = {
         BOUND_VALUE: "synthetic-custom-provider-credential",
         OPENAI_API_KEY: "synthetic-catalog-provider-credential",
@@ -3724,7 +3724,7 @@ for (const { policy, decision } of [
     { policy: "accept", decision: "accept" },
     { policy: "reject", decision: "reject" },
 ] as const) {
-    test(`{§mcp-launch-environment} a model-added credential binding follows ordinary ${policy}/${decision} approval`, { timeout: 30000 }, async (t) => {
+    test(`{§mcp-module} a model-added credential binding follows ordinary ${policy}/${decision} approval`, { timeout: 30000 }, async (t) => {
         serverProposals(t, policy);
         const credential = "synthetic-approved-provider-credential";
         const { hostPaths, env: mcpEnv } = await mcpFixture(t, {});
@@ -3783,7 +3783,7 @@ for (const { policy, decision } of [
     });
 }
 
-test("{§mcp-launch-environment} {§mcp-server-settings} a bearer setting resolves against the operator environment beneath the workspace layer and never enters the definition", async (t) => {
+test("{§mcp-module} {§mcp-configuration} a bearer setting resolves against the operator environment beneath the workspace layer and never enters the definition", async (t) => {
     const received: Array<string | null> = [];
     const served = await serveMcpHttp(t, createMcpHandler(() => {
         const server = new McpServer({ name: "authorized", version: "1.0.0" });

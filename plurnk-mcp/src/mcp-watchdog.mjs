@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// {§mcp-stdio-process-ownership} — the parent-death watchdog wrapper.
+// {§mcp-transports} — the parent-death watchdog wrapper.
 // plurnk-mcp spawns stdio servers through this wrapper so no server (or its
 // grandchildren, e.g. chromium) can outlive the daemon:
 //

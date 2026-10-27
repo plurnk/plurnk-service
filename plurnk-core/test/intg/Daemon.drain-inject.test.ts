@@ -124,14 +124,14 @@ test("{§session-ownership}: a fresh injection preserves the session owner", asy
     });
 });
 
-test("{§executor-cancellation} loop.cancel terminates a backgrounded exec; the stream concludes 499", async (approvalContext) => {
+test("{§executor-subprocess} loop.cancel terminates a backgrounded exec; the stream concludes 499", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A fire-and-forget exec outlives the loop that spawned it (in_progress keeps
     // turn 1 going, the loop ends on turn 2, the spawn runs on). loop.cancel
     // must ACTUALLY terminate it — proven by the exec stream concluding 499,
     // not merely cancelled=true.
     //
-    // `sleep 30` is the long-running job; {§executor-cancellation} requires
+    // `sleep 30` is the long-running job; {§executor-subprocess} requires
     // loop.cancel to process-group-kill it — proven by the 499
     // conclusion, not a 30s wall-clock leak.
     const mock = new Mock({

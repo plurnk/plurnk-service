@@ -1099,7 +1099,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return new Map([[tree.document.name, tree]]);
     }
 
-    // {§mcp-launch-environment}
+    // {§mcp-module}
     operatorEnvironment(): NodeJS.ProcessEnv {
         return ExecEnv.withoutOwnSecrets(process.env, this.#hostPaths);
     }

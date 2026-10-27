@@ -6,7 +6,7 @@ import os from "node:os";
 import Mimetypes from "../../src/Mimetypes.ts";
 
 // This suite's fixture is a third-party package, so it exercises the operator who admitted it
-// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
 process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 

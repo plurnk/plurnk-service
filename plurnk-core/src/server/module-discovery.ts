@@ -42,7 +42,7 @@ const assertDaemonModule = (
 };
 
 // {§module-lifecycle} — a package names its entry as an export subpath, resolved through its own
-// export map as {§executor-dynamic-runtimes} does, so conditions select source or build; a bundle
+// export map as {§executor-discovery} does, so conditions select source or build; a bundle
 // names a file beneath ai.plurnk/.
 const moduleEntry = async (manifest: NonNullable<Awaited<ReturnType<typeof Meta.readManifest>>>, packageName: string, entry: string): Promise<string> => {
     if (basename(manifest.manifestPath) === "plugin.json") return Meta.moduleFile(manifest, entry);

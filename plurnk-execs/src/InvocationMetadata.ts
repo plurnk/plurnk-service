@@ -4,7 +4,7 @@ import type { ExecInput, ExecPreparation } from "./types.ts";
 type Options = Record<string, never>;
 type Parsed = { options: Options } | { failure: SchemeResult };
 
-// {§executor-metadata} The executor framework READS the heading's `[metadata]` as a JSON array
+// {§executor-contract} The executor framework READS the heading's `[metadata]` as a JSON array
 // of option objects — house policy, not a language rule ({§slot-order}); the
 // default executor contract owns no metadata keys beyond the service's ({§manifest}).
 export default class InvocationMetadata {
@@ -22,7 +22,7 @@ export default class InvocationMetadata {
         return { options: {} };
     }
 
-    // {§executor-metadata} — an unsupported field's recovery names every field the run takes, the
+    // {§executor-contract} — an unsupported field's recovery names every field the run takes, the
     // service's ({§manifest}), and no guess at the field the author meant ({§diagnostic-observation}).
     static #fields(): string {
         const names = MetadataOptions.SERVICE_KEYS.map((name) => `\`${name}\``);

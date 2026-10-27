@@ -40,7 +40,7 @@ class FakeExecutor {
     }
 }
 
-// One package, two tags with divergent probe results. {§executor-probe}
+// One package, two tags with divergent probe results. {§executor-results}
 const oneTwoTagPackage = async () => ({
     registry: new Map([
         ["alpha", { runtime: "alpha", glyph: "α", summary: "Alpha fixture.", invocation: invocation("alpha input", "alpha"), details: "", packageName: "fake-pkg" }],
@@ -50,7 +50,7 @@ const oneTwoTagPackage = async () => ({
 
 const loadFake = async () => ({ default: FakeExecutor });
 
-test("{§executor-runtime-declaration} rejects a tool-derived summary without an exact registry", () => {
+test("{§executor-discovery} rejects a tool-derived summary without an exact registry", () => {
     const entry = workspaceEntry("derived-without-registry", "fixture");
     assert.throws(
         () => new ExecutorRegistry(new Map([["derived-without-registry", {
@@ -61,7 +61,7 @@ test("{§executor-runtime-declaration} rejects a tool-derived summary without an
     );
 });
 
-test("{§executor-channels} an executor cannot publish an undeclared channel", () => {
+test("{§executor-contract} an executor cannot publish an undeclared channel", () => {
     const entry = workspaceEntry("publication", "fixture");
     assert.throws(() => new ExecutorRegistry(new Map([["publication", {
         ...entry,
@@ -73,7 +73,7 @@ test("{§executor-channels} an executor cannot publish an undeclared channel", (
     }]])));
 });
 
-test("{§executor-tool-registry} validates and caches one snapshot for every consumer", () => {
+test("{§executor-discovery} validates and caches one snapshot for every consumer", () => {
     let reads = 0;
     const manifest: SchemeManifest = {
         name: "family",
@@ -203,7 +203,7 @@ test("{§module-lifecycle} workspace overlays cannot shadow base or peer owners"
     );
 });
 
-test("{§executor-probe} ExecutorRegistry preserves per-tag availability within one package", async () => {
+test("{§executor-results} ExecutorRegistry preserves per-tag availability within one package", async () => {
     const registry = await ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake });
 
     assert.equal(registry.entry("alpha")?.available, true, "the present tag is available");
@@ -219,7 +219,7 @@ test("{§executor-probe} ExecutorRegistry preserves per-tag availability within 
     );
 });
 
-test("{§executor-probe} ExecutorRegistry consumes discovery attribution without reopening a strict-export package manifest", async (t: TestContext) => {
+test("{§executor-results} ExecutorRegistry consumes discovery attribution without reopening a strict-export package manifest", async (t: TestContext) => {
     const root = await mkdtemp(join(tmpdir(), "core-strict-exec-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const packageName = "@plurnk/plurnk-execs-strict-fixture";
@@ -275,7 +275,7 @@ test("{§extension-trust-boundary}: build() notes untrusted packages that discov
     assert.match(warnings[0], /@acme\/acme-execs-cobol.*untrusted.*not registered/, "the note names the package + why");
 });
 
-test("{§executor-probe} startup requires no particular executor or replacement runtime", async () => {
+test("{§executor-results} startup requires no particular executor or replacement runtime", async () => {
     const registry = await ExecutorRegistry.build({ discoverFn: oneTwoTagPackage, load: loadFake });
     assert.equal(registry.entry("sh"), undefined);
     assert.equal(registry.entry("beta")?.available, false);

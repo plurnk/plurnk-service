@@ -5,7 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ServerConnection from "./client.ts";
-import { MCP_PROTOCOL_VERSION } from "./protocol.ts";
+import packageJson from "../package.json" with { type: "json" };
+import {
+    MCP_CLIENT_VERSION,
+    MCP_CONFORMANCE_VERSION,
+    MCP_PROTOCOL_VERSION,
+    MCP_SPECIFICATION_COMMIT,
+    MCP_TASKS_EXTENSION_ID,
+    MCP_TASKS_SPECIFICATION_COMMIT,
+} from "./protocol.ts";
 import { FIXTURES, stdioServer } from "../test/definitions.ts";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { serveMcpHttp } from "../test/http-fixture.ts";
@@ -16,7 +24,7 @@ const env = {
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
-test("{§mcp-plugin-configuration} a plugin process receives reserved variables and literal inputs with no native interpolation", async (t) => {
+test("{§mcp-configuration} a plugin process receives reserved variables and literal inputs with no native interpolation", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-mcp-launch-${PLUGIN_DATA}-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const context = { root: join(directory, "plugin"), data: join(directory, "data") };
@@ -44,7 +52,7 @@ test("{§mcp-plugin-configuration} a plugin process receives reserved variables 
     } finally { await connection.close(); }
 });
 
-test("{§mcp-plugin-configuration} remote plugin headers stay literal and protocol headers remain client-owned", async (t) => {
+test("{§mcp-configuration} remote plugin headers stay literal and protocol headers remain client-owned", async (t) => {
     const handler = createMcpHandler(() => new McpServer({ name: "literal", version: "1.0.0" }));
     const { url, requests } = await serveMcpHttp(t, handler);
     const connection = new ServerConnection({ name: "literal", type: "streamable-http", url, headers: {
@@ -122,7 +130,7 @@ test("{§mcp-host-composition} active request accounting retires a cancelled req
     }
 });
 
-test("{§mcp-launch-directory} an unconfigured cwd is supplied by the host, never materialized into the definition", async (t) => {
+test("{§mcp-configuration} an unconfigured cwd is supplied by the host, never materialized into the definition", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-mcp-cwd-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const { cwd: _cwd, ...definition } = stdioServer("where", [fixture], { env: { PLURNK_MCP_TEST_WHERE: "1" } });
@@ -135,7 +143,7 @@ test("{§mcp-launch-directory} an unconfigured cwd is supplied by the host, neve
     } finally { await connection.close(); }
 });
 
-test("{§mcp-launch-directory} an explicit absolute cwd and executable are not confined to a plugin root", async () => {
+test("{§mcp-configuration} an explicit absolute cwd and executable are not confined to a plugin root", async () => {
     const definition = { ...stdioServer("where", ["${SCRIPT}"], { cwd: "${SERVER_DIR}", env: { PLURNK_MCP_TEST_WHERE: "1" } }), command: process.execPath };
     const connection = new ServerConnection(definition, { ...env, SCRIPT: fixture, SERVER_DIR: FIXTURES }, { cwd: "/unused-host-directory" });
     try {
@@ -154,4 +162,26 @@ test("{§mcp-host-composition} concurrent callers share one launch and one conne
     } finally {
         await connection.close();
     }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Protocol Authority ({§mcp-authority})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-authority} protocol authority exact-pins the final SDK and frozen conformance referee", () => {
+    assert.equal(MCP_PROTOCOL_VERSION, "2026-07-28");
+    assert.match(MCP_SPECIFICATION_COMMIT, /^[0-9a-f]{40}$/);
+    assert.equal(packageJson.dependencies["@modelcontextprotocol/client"], MCP_CLIENT_VERSION);
+    assert.equal(
+        packageJson.devDependencies["@modelcontextprotocol/conformance"],
+        MCP_CONFORMANCE_VERSION,
+    );
+});
+
+test("{§mcp-authority} the optional Tasks authority is exact-pinned without reviving legacy Tasks", () => {
+    assert.equal(MCP_TASKS_EXTENSION_ID, "io.modelcontextprotocol/tasks");
+    assert.equal(
+        MCP_TASKS_SPECIFICATION_COMMIT,
+        "2c1425d9a288b9b1f489430fe1e00bb392b47e48",
+    );
 });

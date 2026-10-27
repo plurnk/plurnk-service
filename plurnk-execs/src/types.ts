@@ -14,7 +14,7 @@ import type { Notice } from "./Notice.ts";
 // `active` while producing, then a terminal `closed` (clean) or `errored`.
 export type ChannelState = "active" | "closed" | "errored";
 
-// A channel an executor declares it writes to ({§executor-channels}).
+// A channel an executor declares it writes to ({§executor-contract}).
 export interface ChannelDecl {
     mimetype: string;
     defaultState?: ChannelState;
@@ -64,7 +64,7 @@ export interface ExecArgs {
     // (`application/json`, `text/markdown`, …); the consumer retypes the channel
     // to it — the channel's declared mimetype is only the pre-run seed. A
     // runtime whose output type varies per call stamps it here; omission keeps
-    // the declared seed ({§executor-channels}).
+    // the declared seed ({§executor-contract}).
     write: (channel: string, chunk: string, mimetype?: string) => void;
     // Transition a declared channel's lifecycle state.
     setState: (channel: string, state: ChannelState) => void;
@@ -76,7 +76,7 @@ export interface ExecArgs {
     // reconnect presentation, cancellation, and resolution; the executor owns
     // only its request and interpretation of the returned payload.
     interact: (request: ClientInteractionRequest, signal?: AbortSignal) => Promise<ClientInteractionResolution>;
-    // Optional materialization request ({§executor-entry-sink}). The consumer
+    // Optional materialization request ({§executor-output-address}). The consumer
     // owns acquisition, storage, tags, announcement, and the returned canonical
     // model-facing address. `content === null` requests consumer-sourced bytes.
     // Rejection means only that materialization failed.
@@ -93,14 +93,14 @@ export interface ExecPreparation extends SchemeResult {
 // Terminal result of a `run()`. The universal operation-result contract applies
 // at this extension boundary: every failure carries RFC 9457 Problem Details.
 // `exitCode` is present only for subprocess executors; `page` only when a tool result
-// is a full page ({§executor-page-receipt}).
+// is a full page ({§executor-results}).
 export interface ExecResult extends ChannelProducerResult {
     exitCode?: number;
     page?: { readonly size: number; readonly returned: number };
 }
 
 // Side-effect class of an executor invocation, for the consumer's per-runtime
-// proposal-gating policy ({§executor-effect}). The executor declares the fact; the
+// proposal-gating policy ({§executor-results}). The executor declares the fact; the
 // consumer owns the *policy* (effect → propose/auto map, deployment-tunable):
 //   - host  : runs code / mutates the host (subprocess, mutating tools)     → propose
 //   - read  : observes external state, no host mutation                     → auto
@@ -120,7 +120,7 @@ export interface RuntimeAvailability {
 export interface RuntimeBodyDecl {
     readonly role: string;
     readonly required: boolean;
-    // {§executor-invocation}: the media type the body must be well-formed in, when it has one.
+    // {§executor-discovery}: the media type the body must be well-formed in, when it has one.
     readonly mimetype?: string;
 }
 
@@ -197,7 +197,7 @@ export interface ExecInfo {
 
 // One runtime-tag declaration — the shape of a static `plurnk.runtimes[]`
 // manifest entry, and the element type a dynamic runtimes function returns. `name`
-// is the canonical tag from {§executor-runtime-declaration}; the rest are the
+// is the canonical tag from {§executor-discovery}; the rest are the
 // manifest fields discover() surfaces onto ExecInfo (a per-tag
 // `docs/<tag>.md` file, when present, still wins over inline details).
 export interface RuntimeDecl {
@@ -215,7 +215,7 @@ export interface RuntimeDecl {
     expandTools?: boolean;
 }
 
-// Dynamic runtime declaration function ({§executor-dynamic-runtimes}). Discovery
+// Dynamic runtime declaration function ({§executor-discovery}). Discovery
 // imports it only after trust admission. A declared but broken admitted function is
 // fail-hard; a malformed unrelated package manifest is merely not discovered.
 export type RuntimesFunction = () => RuntimeDecl[] | Promise<RuntimeDecl[]>;

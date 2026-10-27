@@ -1110,7 +1110,7 @@ test("{§tokenomics} the full terminal enumeration names itself — max_turns in
 });
 
 describe("Engine.strike-executor-evidence", () => {
-// {§engine-rails} {§executor-exit-code} #425 F1 — a red test suite is an answer, never a strike. Every turn runs a
+// {§engine-rails} {§executor-results} #425 F1 — a red test suite is an answer, never a strike. Every turn runs a
 // command that exits 1; each conclusion is a 200 READ carrying its exit code. Under the shipped MAX_STRIKES the
 // loop must run through all of them and conclude on the model's own completed inventory.
 
@@ -1120,7 +1120,7 @@ describe("Engine.strike-executor-evidence", () => {
 
 const maxStrikes = Number(process.env.PLURNK_SERVICE_MAX_STRIKES);
 
-test("{§engine-rails} {§executor-exit-code} consecutive nonzero exits never strike the loop out", async (approvalContext) => {
+test("{§engine-rails} {§executor-results} consecutive nonzero exits never strike the loop out", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     assert.ok(Number.isInteger(maxStrikes) && maxStrikes > 0, "PLURNK_SERVICE_MAX_STRIKES must be set for the witness");
     const failing = maxStrikes + 2;

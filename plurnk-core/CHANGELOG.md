@@ -39,8 +39,8 @@
   working invocation fence in `invalid-tool-arguments` and `tool-reported-error`
   recovery, hold model Functionality mutations at the workspace boundary across
   `authorization-required` sign-in, and conclude loops when a turn pairs a reply
-  `SEND` with `WAIT` and no live work remains ({§executor-input-schema-preview},
-  {§executor-blank-invocation}, {§problems-mcp}, {§functionality-model-projection},
+  `SEND` with `WAIT` and no live work remains ({§executor-discovery},
+  {§executor-discovery}, {§mcp-model-projection}, {§functionality-model-projection},
   {§oauth-continuation}, {§loop-completion}) (#1228).
 - b28031f: `@opencode-ai/models` moves to `^0.0.113` ({§model-catalog-build}).
   `effort-unsupported` and `effort-invalid` name the route's supported or valid
@@ -172,7 +172,7 @@
 - 0a3b016: A refusal of a blank tool request, a required body or target absent or neither
   supplied, carries the invocation's working form in `recovery`; a registry
   runtime named without a target answers with every enabled target's fence
-  ({§executor-blank-invocation}).
+  ({§executor-discovery}).
 - 93c0d87: `instanceof ConfigurationError` recognizes a configuration error from any copy of
   the package by its name and key ({§configuration-error-identity}), so a module
   loaded from its own plugin root reports its configuration errors as its

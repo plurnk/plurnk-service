@@ -75,7 +75,7 @@ private quotationHere(): boolean { return this.lineOnly ? this.fenceOpens() : th
 private splitHere(): boolean { return !this.lineOnly && this.fencePairing().splits.has(this.lineStartOf(this.inputStream.index)); }
 private surplusHere(): boolean { return !this.lineOnly && this.fencePairing().surplus.has(this.lineStartOf(this.inputStream.index)); }
 private openOp: string = "";
-// {§executor-runtime-declaration} — the opener names a runtime rather than an operation keyword.
+// {§executor-discovery} — the opener names a runtime rather than an operation keyword.
 private execFence: boolean = false;
 private openHeading: string = "";
 private openHeadingLine: number = 0;

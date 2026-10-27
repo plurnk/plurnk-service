@@ -2,7 +2,7 @@ import type { Tool } from "@modelcontextprotocol/client";
 import type { RuntimeToolRegistry } from "@plurnk/plurnk-execs";
 import { summaryLine } from "./Summary.ts";
 
-// {§mcp-summary-derivation}: purpose first; label fallback follows MCP title precedence.
+// {§mcp-configuration}: purpose first; label fallback follows MCP title precedence.
 const toolSummary = (tool: Tool): string =>
     summaryLine(tool.description) ?? summaryLine(tool.title) ?? summaryLine(tool.annotations?.title) ?? tool.name;
 

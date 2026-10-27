@@ -229,7 +229,7 @@ test("{§tools-resource-materialization} percent-encodes exact targets without r
     assert.equal(ToolResources.targetSegment("issue%2Fread"), "issue%252Fread");
 });
 
-test("{§executor-tool-registry} an empty exact set publishes no runtime", () => {
+test("{§executor-discovery} an empty exact set publishes no runtime", () => {
     assert.deepEqual(ToolResources.render({
         runtime: "resources-only",
         summary: "An MCP server with no enabled tools.",
@@ -280,7 +280,7 @@ const render = (runtime = "gitea", inputSchema: JsonSchema = schema) => ToolReso
     }] },
 });
 
-test("{§executor-input-schema-preview} catalogs required top-level fields in the skeleton, surfaces enums/options in the aside, and preserves the complete schema separately", () => {
+test("{§executor-discovery} catalogs required top-level fields in the skeleton, surfaces enums/options in the aside, and preserves the complete schema separately", () => {
     const before = structuredClone(schema);
     const [family, detail] = render();
     assert.equal(family?.pathname, "/_plurnk/tools/gitea.md");
@@ -297,7 +297,7 @@ test("{§executor-input-schema-preview} catalogs required top-level fields in th
     assert.equal(render("other")[1]?.pathname, "/_plurnk/tools/other/issue%2Fread.json");
 });
 
-test("{§executor-input-schema-preview} complex conditional requirements stay in the raw schema", () => {
+test("{§executor-discovery} complex conditional requirements stay in the raw schema", () => {
     const conditional = { type: "object", oneOf: [
         { properties: { first: { type: "string" } }, required: ["first"] },
         { properties: { second: { type: "number" } }, required: ["second"] },
@@ -309,7 +309,7 @@ test("{§executor-input-schema-preview} complex conditional requirements stay in
     assert.deepEqual(parsed.oneOf, conditional.oneOf);
 });
 
-test("{§executor-tool-catalog} links an exact JSON catalog without changing the compact summary", () => {
+test("{§executor-discovery} links an exact JSON catalog without changing the compact summary", () => {
     const definitions = [{ name: "issue/read", description, inputSchema: schema,
         outputSchema: { type: "object" }, annotations: { readOnlyHint: true },
         _meta: { vendor: { revision: 1 } },
@@ -376,7 +376,7 @@ test("{§tools-resource-materialization} aside normalization cannot rewrite sche
     assert.ok(family.content.includes(`Schema: workspace://${detail.pathname} -->`));
 });
 
-test("{§executor-input-schema-preview} general schema-backed runtimes also expose an on-demand schema", () => {
+test("{§executor-discovery} general schema-backed runtimes also expose an on-demand schema", () => {
     const [family, detail] = ToolResources.render({
         runtime: "query", summary: "Run a query.", details: description, registry: null,
         invocation: { body: { role: "JSON arguments", required: true }, inputSchema: schema },
@@ -387,7 +387,7 @@ test("{§executor-input-schema-preview} general schema-backed runtimes also expo
     assert.deepEqual((JSON.parse(detail.content) as Record<string, unknown>).properties, schema.properties);
 });
 
-test("{§executor-input-schema-preview} includes original repository-owned referenced schemas without fetching external references", () => {
+test("{§executor-discovery} includes original repository-owned referenced schemas without fetching external references", () => {
     const ref = "https://schemas.plurnk.xyz/v0/McpServerDefinition.json";
     const input = { type: "object", required: ["definition"], properties: { definition: { $ref: ref } } };
     const [, detail] = render("mcp", input);
@@ -399,7 +399,7 @@ test("{§executor-input-schema-preview} includes original repository-owned refer
     assert.equal((JSON.parse(extDetail.content) as Record<string, unknown>).$ref, external.$ref);
 });
 
-test("{§executor-input-schema-preview} a required closed set of strings previews its first value and lists bounded choices in the aside (#762, #1228)", () => {
+test("{§executor-discovery} a required closed set of strings previews its first value and lists bounded choices in the aside (#762, #1228)", () => {
     const issueRead = {
         type: "object",
         required: ["method", "owner", "issue_number"],
@@ -425,7 +425,7 @@ test("{§executor-input-schema-preview} a required closed set of strings preview
     assert.equal(ToolInputSchema.asideNote(oversizedOrMixed), undefined);
 });
 
-test("{§executor-input-schema-preview} a schema that requires one of several inputs previews its first branch", () => {
+test("{§executor-discovery} a schema that requires one of several inputs previews its first branch", () => {
     const oneOf = {
         type: "object", additionalProperties: false,
         properties: { source: { type: "string" }, configuration: { type: "object" } },
@@ -437,7 +437,7 @@ test("{§executor-input-schema-preview} a schema that requires one of several in
     assert.deepEqual(ToolInputSchema.requiredFields({ type: "object", required: ["a"], anyOf: [{ required: ["a", "b"] }] }), ["a", "b"]);
 });
 
-test("{§executor-input-schema-preview} surfaces optional properties, nested object/array shapes, and bounded tails before the schema pointer (#1228)", () => {
+test("{§executor-discovery} surfaces optional properties, nested object/array shapes, and bounded tails before the schema pointer (#1228)", () => {
     const withOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
         invocation: { body: { role: "JSON arguments", required: true }, target: { role: "tool", required: true, kind: "literal" }, example: { target: "search" } },

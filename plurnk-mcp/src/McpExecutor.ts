@@ -29,7 +29,7 @@ import { summaryLine } from "./Summary.ts";
 
 const CHANNEL = "body";
 
-// {§mcp-summary-derivation}: the server's own purpose precedes a display label.
+// {§mcp-configuration}: the server's own purpose precedes a display label.
 const authoredServerSummary = (catalog: ServerCatalog | undefined): string | undefined =>
     summaryLine(catalog?.server?.description)
         ?? summaryLine(catalog?.instructions)
@@ -91,7 +91,7 @@ export const toolResultBody = async (result: ToolResultShape, runtime: string, e
     return { content: formatted ?? text, mimetype: formatted === undefined ? (parts.some((part) => part.type !== "text") ? "text/markdown" : "text/plain") : "application/json" };
 };
 
-// {§executor-page-receipt} — a JSON array exactly as long as the page the call asked for, or
+// {§executor-results} — a JSON array exactly as long as the page the call asked for, or
 // the tool's default page, is a full page: the receipt says so, and nothing more.
 const PAGE_ARGUMENTS = Object.freeze(["per_page", "page_size", "pageSize", "limit"]);
 
@@ -114,7 +114,7 @@ const pageReceipt = (
     return null;
 };
 
-// {§mcp-unavailable-runtime} An enabled server that cannot run keeps its alias: core refuses a call to it with the
+// {§mcp-configuration} An enabled server that cannot run keeps its alias: core refuses a call to it with the
 // reason its availability states, before anything runs ({§exec-target-routing}), so this executor never runs.
 export class UnavailableServerExecutor extends BaseExecutor {
     readonly #availability: RuntimeAvailability;
@@ -180,7 +180,7 @@ const progressNotice = (
 });
 
 export default class McpExecutor extends BaseExecutor {
-    // {§mcp-trailing-aside} — an HTML comment after the one JSON object is the writer's aside, not
+    // {§mcp-host-composition} — an HTML comment after the one JSON object is the writer's aside, not
     // arguments: read the object, never teach the tolerance (#758).
     static #parseArguments(input: string): unknown {
         try { return JSON.parse(input); }
@@ -430,11 +430,11 @@ export default class McpExecutor extends BaseExecutor {
             return { status: 200, ...(page === null ? {} : { page }) };
         } catch (error) {
             if (error instanceof AuthorizationRequiredError) {
-                // {§mcp-request-unauthorized} — the alias now awaits a sign-in.
+                // {§mcp-host-composition} — the alias now awaits a sign-in.
                 return fail("authorization-required", 401, awaitsSignIn(runtime), { tool: target, retryable: false });
             }
             if (error instanceof HeaderDeclarationError) {
-                // {§mcp-header-declarations} — refused before any request leg; the declaration is a field.
+                // {§mcp-transports} — refused before any request leg; the declaration is a field.
                 return fail(
                     "tool-header-invalid",
                     502,

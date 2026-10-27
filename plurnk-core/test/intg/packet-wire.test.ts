@@ -604,7 +604,7 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.doesNotMatch(out, /"source":/, "invocation correlation is not another content source");
     assert.match(out, /"terminal":true/, "an empty successful stream remains visibly conclusive");
     assert.doesNotMatch(out, /"page"/, "no page fact is invented for a result that carries none");
-    // {§executor-page-receipt} — a producer's full-page fact survives projection as written.
+    // {§executor-results} — a producer's full-page fact survives projection as written.
     const paged = PacketWire.renderLog([{
         coordinate: "1/2/5", origin: "_plurnk", op: "READ", status: 200,
         target: { scheme: "gitea", pathname: "/1/1/4/gitea", fragment: "result" },

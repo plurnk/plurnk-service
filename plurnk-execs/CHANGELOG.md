@@ -10,8 +10,8 @@
   working invocation fence in `invalid-tool-arguments` and `tool-reported-error`
   recovery, hold model Functionality mutations at the workspace boundary across
   `authorization-required` sign-in, and conclude loops when a turn pairs a reply
-  `SEND` with `WAIT` and no live work remains ({§executor-input-schema-preview},
-  {§executor-blank-invocation}, {§problems-mcp}, {§functionality-model-projection},
+  `SEND` with `WAIT` and no live work remains ({§executor-discovery},
+  {§executor-discovery}, {§mcp-model-projection}, {§functionality-model-projection},
   {§oauth-continuation}, {§loop-completion}) (#1228).
 
 ## 4.0.2

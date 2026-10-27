@@ -1,4 +1,4 @@
-// {§executor-shell} The shell `sh` runs: the environment's `$SHELL` when it names an executable file, else
+// {§executor-subprocess} The shell `sh` runs: the environment's `$SHELL` when it names an executable file, else
 // the system shell. One resolution per process serves both the declaration's summary and the spawn.
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, realpathSync, statSync } from "node:fs";
@@ -49,7 +49,7 @@ export default class Shell {
     // The first dotted number on the first line; a shell without `--version` (dash) reports none.
     static #version(path: string, env: NodeJS.ProcessEnv): string | null {
         const probe = spawnSync(path, ["--version"], {
-            encoding: "utf8", timeout: 2_000, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options(env), // {§executor-spawn-account}
+            encoding: "utf8", timeout: 2_000, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options(env), // {§executor-policy}
         });
         if (probe.status !== 0) return null;
         return /\d+(?:\.\d+)+/u.exec(probe.stdout.split("\n")[0] ?? "")?.[0] ?? null;

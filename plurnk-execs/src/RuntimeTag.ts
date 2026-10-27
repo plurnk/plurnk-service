@@ -10,7 +10,7 @@ const RESERVED = new Map([
 ]);
 
 // One admission rule for installed and module-owned executor identities
-// ({§executor-runtime-declaration}). A runtime tag is also its output URI
+// ({§executor-discovery}). A runtime tag is also its output URI
 // scheme, so canonical lowercase scheme syntax prevents folded aliases and
 // keeps package-owned docs beneath docs/<tag>.md.
 export default class RuntimeTag {

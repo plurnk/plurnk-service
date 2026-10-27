@@ -94,7 +94,7 @@ contribution types live in its framework's package, so this package never depend
 | `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Workspace paths; operator, workspace and session environment; the workspace state directory; module actions |
 | `FunctionalitySeam<Runtime, SchemeFacet>` | `@plurnk/plurnk-modules` | `registerFunctionalityAdapter` |
 | `SchemeRegistrationSeam`, `ResourceTreeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§resource-tree-scheme}) | Scheme and read-only tree registration, and the facet a runtime or a family manager exposes |
-| `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-module-slice}) | The runtimes a resident family prepares |
+| `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-role}) | The runtimes a resident family prepares |
 | `WorkspacePluginsSeam`, `WorkspacePluginSet` | `@plurnk/plurnk-agent-plugins` ({§plugin-set-module-slice}) | `readWorkspacePlugins` |
 | `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills` |
 
@@ -118,7 +118,7 @@ contract is the one package that depends on it directly. There is no manifest ve
 | Function | Contract |
 | --- | --- |
 | §module-workspace-paths `workspacePaths(workspaceId)` | Returns the host's absolute `home`, the bound `projectRoot` (null for a folderless workspace), and selected read-only `configurationRoots` in highest-precedence-first order ({§functionality-inspection}). Each root has a `directory` and an opaque `scope` shared with plugin discovery. Modules append their own format's paths and can interleave sources within the same scope; they never reconstruct the host's root selection or order. Configuration inputs do not move with operational state. |
-| `operatorEnvironment()` | Returns the ambient launch base: the operator's environment without Plurnk configuration or provider credentials ({§execution-output-identity}), not the model's command ceiling. Explicit bindings belong to the consuming module ({§mcp-launch-environment}). |
+| `operatorEnvironment()` | Returns the ambient launch base: the operator's environment without Plurnk configuration or provider credentials ({§execution-output-identity}), not the model's command ceiling. Explicit bindings belong to the consuming module ({§mcp-module}). |
 | `readWorkspaceEnvironment(workspaceId)` | Captures the workspace env layer ({§execution-output-identity}) and returns its composer. No argument uses admitted host values; a supplied environment supplies a module's reference-resolution context. Both apply the same captured values and masks, without session overrides. |
 | `readSessionEnvironment(workspaceId, sessionId)` | The same layers with the session's own overrides on top ({§functionality-coordinator}): what a command of that session runs under. |
 | §module-workspace-directory `workspaceStateDirectory(workspaceId, namespaceOwner)` | Returns and creates the module's absolute operational-state directory under the daemon's XDG state home. The host owns placement: the directory survives workspace renames and daemon restarts, and independently created workspaces, including in other databases, receive different directories. The module owns its contents and child-directory lifetimes. |

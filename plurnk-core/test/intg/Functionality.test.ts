@@ -1969,7 +1969,7 @@ const mcpFamily = async (): Promise<Family> => {
     // {§mcp-configuration}
     const home = await mkdtemp(join(tmpdir(), "plurnk-parity-mcp-"));
     const hostPaths = new HostPaths({ home, env: {} });
-    // {§mcp-registry-discovery} — a registry answering exactly as the MCP Registry does.
+    // {§mcp-module} — a registry answering exactly as the MCP Registry does.
     const registry = createServer((_request, response) => {
         response.setHeader("content-type", "application/json");
         response.end(JSON.stringify({ servers: [{ server: {

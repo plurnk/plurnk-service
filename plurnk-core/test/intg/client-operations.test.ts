@@ -1042,7 +1042,7 @@ test("{§mcp-host-composition} private caches stay with their authorized workspa
             daemon.invokeModuleAction(`workspace.${family}.${verb}`, params, { scope: "workspace", workspaceId });
         await action("env", "add", { alias: "ENV_AUTH", definition: { value: `fixture-${name}` } });
         // The workspace became resident before it held its token; enabling the unavailable server
-        // reconnects it ({§mcp-activation-isolation}).
+        // reconnects it ({§mcp-configuration}).
         await action("mcp", "enable", { alias: "fixture" });
         const source = PlurnkParser.frame(`READ (fixture://${resourcePath(uri)}) <1,-1>`, null);
         const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) });

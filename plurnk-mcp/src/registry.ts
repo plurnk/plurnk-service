@@ -1,4 +1,4 @@
-// {§mcp-registry-discovery} — `discover` searches the official MCP Registry (API v0.1). A listed server's
+// {§mcp-module} — `discover` searches the official MCP Registry (API v0.1). A listed server's
 // stdio packages become self-contained standard entries and its Streamable HTTP remotes become URL
 // entries; anything that needs a person's input first (a template variable, a required argument with
 // no value) has no entry. Nothing here installs, launches, or connects.

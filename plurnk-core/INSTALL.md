@@ -95,7 +95,7 @@ Do not overwrite a live database or pair a restored file with old sidecars.
 | Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects ({§session-causal-admission}). |
 | Project files and service configuration | Restore separately. Current files remain authoritative; startup reads the current configuration, not an earlier ambient environment captured in history. |
 | Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed ({§schedule-residency}, {§schedule-first-arming}). |
-| Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup ({§oauth-lifetime}). |
+| Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup ({§oauth-continuation}). |
 
 Retention controls expire packet compositions and call payloads, including physical-request
 captures. Messages, turn sources, operation receipts, approval decisions and request accounting

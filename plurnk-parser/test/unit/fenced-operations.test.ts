@@ -20,13 +20,13 @@ const statements = (source: string) => {
     });
 };
 
-test("{§executor-runtime-declaration} fenced operations: empty single-line and multiline blocks have the same semantics", () => {
+test("{§executor-discovery} fenced operations: empty single-line and multiline blocks have the same semantics", () => {
     const [inline, multiline] = statements("````READ (example.txt) <1,16>````\n````READ (example.txt) <1,16>\n````");
     assert.deepEqual({ ...inline, position: null }, { ...multiline, position: null });
     assert.equal(inline.op, "READ");
 });
 
-test("{§executor-runtime-declaration} fenced operations: executor and MCP names lower to the execution shape", () => {
+test("{§executor-discovery} fenced operations: executor and MCP names lower to the execution shape", () => {
     const [shell, mcp] = statements('````bash\necho "Hello world";\n````\n````gitea (issue_list)\n{"issue_id":42}\n````');
     assert.equal(isExecution(shell), true);
     assert.equal(isExecution(mcp), true);
@@ -38,7 +38,7 @@ test("{§executor-runtime-declaration} fenced operations: executor and MCP names
     assert.equal(mcp.body, '{"issue_id":42}');
 });
 
-test("{§executor-runtime-declaration} fenced operations: native keywords take precedence over executor names", () => {
+test("{§executor-discovery} fenced operations: native keywords take precedence over executor names", () => {
     const [find, edit] = statements("````FIND (src/**) ~retry````\n````EDIT (example.txt) <@abcde>\napples\n````");
     assert.equal(find.op, "FIND");
     assert.equal(edit.op, "EDIT");
@@ -47,14 +47,14 @@ test("{§executor-runtime-declaration} fenced operations: native keywords take p
     assert.equal(edit.body, "apples");
 });
 
-test("{§executor-runtime-declaration} fenced operations: inner programs and different-length fences remain exact literal body text", () => {
+test("{§executor-discovery} fenced operations: inner programs and different-length fences remain exact literal body text", () => {
     const body = '## A heading\n```sh\necho hello\n```\n`````\n### EDIT_ (unchanged<1,2>)\n';
     const [edit] = statements(PlurnkParser.frame("EDIT (README.md) <1,-1>", body));
     assert.equal(edit.op, "EDIT");
     assert.equal(edit.body, body);
 });
 
-test("{§executor-runtime-declaration} fenced operations: shorter and longer runs stay literal for independently chosen fence counts", () => {
+test("{§executor-discovery} fenced operations: shorter and longer runs stay literal for independently chosen fence counts", () => {
     for (const count of [4, 5, 8, 16, 33]) {
         const fence = "`".repeat(count);
         for (const newline of ["\n", "\r\n"]) {
@@ -69,7 +69,7 @@ test("{§executor-runtime-declaration} fenced operations: shorter and longer run
     }
 });
 
-test("{§executor-runtime-declaration} fenced operations: a longer backtick run closes a heading or body; an unfinished slot still loses the boundary", () => {
+test("{§executor-discovery} fenced operations: a longer backtick run closes a heading or body; an unfinished slot still loses the boundary", () => {
     for (const count of [4, 5, 7]) {
         const fence = "`".repeat(count);
         for (const extra of [1, 4]) {
@@ -92,7 +92,7 @@ test("{§executor-runtime-declaration} fenced operations: a longer backtick run 
     }
 });
 
-test("{§executor-runtime-declaration} fenced operations: a longer run after an inline body closes the block and what follows is prose", () => {
+test("{§executor-discovery} fenced operations: a longer run after an inline body closes the block and what follows is prose", () => {
     const result = PlurnkParser.parseStatements("````EDIT (notes.md) text`````\ncontinued\n````");
     assert.equal(result.unparsedTail, undefined);
     const admitted = result.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
@@ -105,7 +105,7 @@ test("{§executor-runtime-declaration} fenced operations: a longer run after an 
     assert.match(diagnostics[0].message, /body text was on the OP line/);
 });
 
-test("{§executor-runtime-declaration} fenced operations: framing excludes only its own newlines, preserving CRLF and whitespace", () => {
+test("{§executor-discovery} fenced operations: framing excludes only its own newlines, preserving CRLF and whitespace", () => {
     for (const body of ["a", " a ", "\na\n\n", "a\r\nb\r\n", "é 🦊\n  "]) {
         const [edit] = statements(`\`\`\`\`EDIT (example.txt) <1,-1>\r\n${body}\r\n\`\`\`\``);
         assert.equal(edit.op, "EDIT");
@@ -114,7 +114,7 @@ test("{§executor-runtime-declaration} fenced operations: framing excludes only 
     }
 });
 
-test("{§executor-runtime-declaration} fenced operations: transfer operands and opaque metadata keep their contracts", () => {
+test("{§executor-discovery} fenced operations: transfer operands and opaque metadata keep their contracts", () => {
     const [copy, exec] = statements('````COPY (a) <@abcde> (b) <0>````\n````gitea (issue_list) [{"headers": {"x": "]"}}] <1,0.1> <!-- list issues -->\n{}\n````');
     assert.equal(copy.op, "COPY");
     assert.equal(isExecution(exec), true);
@@ -136,7 +136,7 @@ test("{§slot-order}: targetless SEND retains message metadata and an opaque bod
     assert.equal(send.aside, "report");
 });
 
-test("{§executor-runtime-declaration} fenced operations: an unfinished block ends at an inner executor heading; a closed one keeps it as body", () => {
+test("{§executor-discovery} fenced operations: an unfinished block ends at an inner executor heading; a closed one keeps it as body", () => {
     const unfinished = PlurnkParser.parse('````READ (safe.txt)````\n````EDIT (victim.txt)\n```sh\necho literal\n```');
     assert.equal(unfinished.unparsedTail, undefined);
     assert.deepEqual(unfinished.items.filter((item) => item.kind === "statement").map((item) => writtenOp(item.statement)), ["READ", "EDIT", "sh"]);
@@ -146,14 +146,14 @@ test("{§executor-runtime-declaration} fenced operations: an unfinished block en
     assert.equal(edit?.kind === "statement" && edit.statement.op === "EDIT" ? edit.statement.body : null, "```sh\necho literal\n```");
 });
 
-test("{§executor-runtime-declaration} fenced operations: closed malformed blocks do not discard later valid operations", () => {
+test("{§executor-discovery} fenced operations: closed malformed blocks do not discard later valid operations", () => {
     const result = PlurnkParser.parse("````FIND (src/**) <~retry>\n````\n````READ (a.txt)````\n````NOTE\nInspect the results.\n````");
     assert.equal(result.unparsedTail, undefined);
     assert.equal(result.items.filter((item) => item.kind === "error").length, 1);
     assert.deepEqual(result.items.filter((item) => item.kind === "statement").map((item) => item.statement.op), ["READ", "NOTE"]);
 });
 
-test("{§executor-runtime-declaration} fenced operations: a message may contain literal executable examples without dispatching them", () => {
+test("{§executor-discovery} fenced operations: a message may contain literal executable examples without dispatching them", () => {
     const result = PlurnkParser.parse("````SEND\nRun this yourself:\n```bash\necho hello\n```\n````\n````WAIT\n````");
     assert.equal(result.unparsedTail, undefined);
     assert.equal(result.items.length, 2);
@@ -164,7 +164,7 @@ test("{§executor-runtime-declaration} fenced operations: a message may contain 
     assert.equal(item.statement.body?.raw, 'Run this yourself:\n```bash\necho hello\n```');
 });
 
-test("{§executor-runtime-declaration} fenced operations: canonical serialization retains bodies, operands, and executor selection without suffix state", () => {
+test("{§executor-discovery} fenced operations: canonical serialization retains bodies, operands, and executor selection without suffix state", () => {
     const before = statements("````gitea (issue_list)\n{\"issue_id\":42}\n````\n````COPY (a) <@abcde> (b) <0>````\n````EDIT (README.md) <1,-1>\n```sh\necho hello\n```\n\n````");
     const rendered = PlurnkParser.stringify(before);
     const after = statements(rendered);
@@ -173,7 +173,7 @@ test("{§executor-runtime-declaration} fenced operations: canonical serializatio
     assert.ok(rendered.includes("````EDIT"));
 });
 
-test("{§executor-runtime-declaration} fenced operations: inherited JavaScript property names are ordinary executor names", () => {
+test("{§executor-discovery} fenced operations: inherited JavaScript property names are ordinary executor names", () => {
     for (const name of ["constructor", "toString", "valueOf"]) {
         const [statement] = statements(`\`\`\`\`${name}\n{}\n\`\`\`\``);
         assert.equal(isExecution(statement), true);
@@ -181,7 +181,7 @@ test("{§executor-runtime-declaration} fenced operations: inherited JavaScript p
     }
 });
 
-test("{§executor-runtime-declaration} fenced operations: a closed malformed target or metadata stays local to its block", () => {
+test("{§executor-discovery} fenced operations: a closed malformed target or metadata stays local to its block", () => {
     for (const header of ["READ (broken", 'sh [{"cwd": "broken"', "READ (a) <oops>"]) {
         const result = PlurnkParser.parseStatements(header.startsWith("sh")
             ? `\`\`\`\`${header}\`\`\`\`\n\`\`\`\`READ (safe.md)\`\`\`\``

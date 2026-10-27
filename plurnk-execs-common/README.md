@@ -28,7 +28,7 @@ The table above is the **inline** form: the body is the program. A directory in
 the `(target)` slot selects the working directory for that inline program. A
 file in the `(target)` slot is instead the script each interpreter reads
 directly, and the body is tokenized by shell quoting (`tokenizeArgv`) into the
-script's arguments ({§executor-subprocess-routing}, {§executor-argv-tokenizer}).
+script's arguments ({§executor-subprocess}, {§executor-contract}).
 
 ```sh (./deploy.sh)
 --release "two words"
@@ -38,7 +38,7 @@ script's arguments ({§executor-subprocess-routing}, {§executor-argv-tokenizer}
 --format json
 ```
 
-All declared tags run host code, so every invocation is proposal-gated ({§executor-effect}). Inline programs have no
+All declared tags run host code, so every invocation is proposal-gated ({§executor-results}). Inline programs have no
 separate input channel; script targets receive their arguments from the body.
 
 ## Configuration
@@ -66,7 +66,7 @@ without adding any PLURNK-specific knob or altering default behavior.
 - **Workspace scope** (`plurnk (env)` with `scope: "workspace"`): `NODE_OPTIONS` reaches both `js` execution children and Node-based MCP server subprocesses in the workspace.
 - **Session scope** (`plurnk (env)` with `scope: "session"`): `NODE_OPTIONS` reaches `js` execution children of that session only.
 
-**Honest ledger:** Node's permission model provides same-UID accident containment, not adversarial security boundaries. PLURNK owns authority, consent, and audit, and never claims containment; for OS-account separation, combine with `PLURNK_EXECS_SPAWN_USER` ({§executor-spawn-account}) or an external container/VM sandbox.
+**Honest ledger:** Node's permission model provides same-UID accident containment, not adversarial security boundaries. PLURNK owns authority, consent, and audit, and never claims containment; for OS-account separation, combine with `PLURNK_EXECS_SPAWN_USER` ({§executor-policy}) or an external container/VM sandbox.
 
 ## Tests
 

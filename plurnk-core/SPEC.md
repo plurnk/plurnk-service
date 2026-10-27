@@ -226,7 +226,7 @@ flowchart LR
 | Baseline and exceptions | To a workspace a project file is **invisible**, **added**, or **tracked by git**; ambient admission of untracked files is prohibited ({§fs-write-surface}). Exceptions enter only by exact creation records (`source: "create"`, origin `constraint` from accepted EDIT or COPY/MOVE destinations), standard instruction projection (`AGENTS.md` / `AGENTS.local.md` into `workspace:///_plurnk/…` unless ignored or excluded, {§session-initialization-entry}), or model `members` proposals under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§tools-resource-materialization}) and `PLURNK_MEMBERS_AUTO_ADD` ({§membership-auto-add}). |
 | Native Git and hermetic execution | Core Git reads (`git ls-files`, `git status`, `git check-ignore -v`) execute the installed Git binary with ambient `GIT_*` and global/system config scrubbed, `core.fsmonitor=false`, `core.hooksPath=/dev/null`, and only the daemon user's `core.excludesFile` preserved. Repositories declaring `filter.<name>.clean` or `filter.<name>.process` are skipped with a `git_inspection_refused` notice. `PLURNK_SERVICE_GIT_ALLOWED` gates `PLURNK_SERVICE_GIT_AUTO` ({§operator-config-workspace-settings}). |
 | Ignore attribution and edit gate | An ignore refusal or `discover` verdict names its rule (`<file>:<line>`) from `git check-ignore -v`; negated patterns re-include paths. EDIT is bounded by membership: existing non-members refuse 403 before reading or writing bytes; accepted creations recursively create missing parent directories. |
-| Web discovery and retrieval | Web search is an ordinary MCP concern ({§mcp-tool-presentation}); executors prefetch discovered pages through the generic `content: null` `entry()` request ({§execution-output-identity}) into `WebFetcher`, which materializes sanitized readable projections under canonical HTTP URLs ({§scheme-address}) and omits failed candidates. |
+| Web discovery and retrieval | Web search is an ordinary MCP concern ({§mcp-model-projection}); executors prefetch discovered pages through the generic `content: null` `entry()` request ({§execution-output-identity}) into `WebFetcher`, which materializes sanitized readable projections under canonical HTTP URLs ({§scheme-address}) and omits failed candidates. |
 
 ### §membership-auto-add Overlay, auto-add, and SQL reconciliation
 
@@ -653,7 +653,7 @@ AST: `{ runtime, target, body: string | null, lineMarker }`. Execution refuses a
 
 ### §exec-target-routing Target routing, scratch realization, and registry resolution
 
-The engine routes unconditionally to `exec`, resolves `runtime` from the workspace snapshot at dispatch (installed base plus {§module-lifecycle} overlays; unknown tag `400`, unavailable probe `501`, configuration failure `503` {§configuration-repair-path}), validates {§executor-invocation} or {§executor-tool-registry} before effect admission, and prepares metadata under {§executor-metadata} using `project_root` (or daemon cwd when headless) as default `cwd`.
+The engine routes unconditionally to `exec`, resolves `runtime` from the workspace snapshot at dispatch (installed base plus {§module-lifecycle} overlays; unknown tag `400`, unavailable probe `501`, configuration failure `503` {§configuration-repair-path}), validates {§executor-discovery} or {§executor-discovery} before effect admission, and prepares metadata under {§executor-contract} using `project_root` (or daemon cwd when headless) as default `cwd`.
 
 | Target / Condition | Outcome |
 | --- | --- |
@@ -679,7 +679,7 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | --- | --- |
 | `active` stream | No Log row; `## Open Work` reports timing and channel growth ({§child-orientation}). Explicit READs carry `terminal: false`. |
 | `terminal` stream | One `origin=_plurnk` markerless READ per non-empty channel (or one bodyless row on the default channel if all channels are empty), carrying `terminal: true`, any `exitCode`, and empty sibling counts (`channels: {"#stderr": 0}`). |
-| Page bound & failures | Unrequested delivery is bounded by the first retrieval page ({§packet}, {§executor-page-receipt}) with an atomic per-subscription cursor. A failed execution attaches its Problem to the default (or first landed) channel row so Errors gets one pointer ({§operation-results}). Deleted channels owe no observation; KILL on a terminal stream returns `200` with `terminalStatus` ({§stream-control}). |
+| Page bound & failures | Unrequested delivery is bounded by the first retrieval page ({§packet}, {§executor-results}) with an atomic per-subscription cursor. A failed execution attaches its Problem to the default (or first landed) channel row so Errors gets one pointer ({§operation-results}). Deleted channels owe no observation; KILL on a terminal stream returns `200` with `terminalStatus` ({§stream-control}). |
 | Conclusion summary | `stream/concluded` ({§notifications}) formats `<addr> completed (exit N); <ch>=<B> bytes` or the lowercase Problem title for clients. |
 
 ### §execution-output-identity Workspace entries, auto-names, and command environment
@@ -687,9 +687,9 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 | Surface | Rule |
 | --- | --- |
 | Workspace entries & output | Every entry belongs to one workspace `(workspace_id, scheme, authority, pathname)` ({§scheme-operation-dispatch}). Each execution claims an 8-hex path (`sh:///ab3d5678`) in the workspace commons; deleting a producer session keeps its output. Stored output stays readable when an attachment is disabled or removed, while live control/input binds the workspace resource and wakes the initiating session. |
-| `entry()` sink ({§executor-entry-sink}) | Publishes textual, binary ({§binary-parity}), or HTTP-materialized ({§scheme-operation-dispatch}, {§http-lifecycle}, {§http-lifecycle}) resources under `<invocation>/resources/` ({§scheme-operation-dispatch}) with one runtime `EDIT` row ({§env-delta}). |
+| `entry()` sink ({§executor-output-address}) | Publishes textual, binary ({§binary-parity}), or HTTP-materialized ({§scheme-operation-dispatch}, {§http-lifecycle}, {§http-lifecycle}) resources under `<invocation>/resources/` ({§scheme-operation-dispatch}) with one runtime `EDIT` row ({§env-delta}). |
 | Session & workspace names | Unnamed sessions allocate 8 random lowercase hex chars (`session://ab3d5678`). Workspace names are unique non-empty strings refusing digit-only (`[0-9]+`), ill-formed Unicode, or `.`/`..` segments (`400 name-invalid`). Default workspace name abbreviates daemon home to `~` (matching `projectLabel` / `project_label`), reusing an existing workspace of that name ({§methods-workspace-create}, {§methods-workspace-create}); headless unnamed workspaces draw 5 alphanumeric chars with at least one letter from {§line-anchors}. |
-| Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}, {§host-path-layout}, always excluding `PLURNK_*` and provider API key vars) → workspace `env` → session `env` ({§env-functionality}, {§configuration-repair-path}) → invocation `env`. Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-launch-environment}. |
+| Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}, {§host-path-layout}, always excluding `PLURNK_*` and provider API key vars) → workspace `env` → session `env` ({§env-functionality}, {§configuration-repair-path}) → invocation `env`. Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-module}. |
 
 ## §proposal Proposals and client interactions
 
@@ -776,7 +776,7 @@ Discovery and pre-import trust follow {§extension-discovery}. Core arbitrates e
 
 ## §bundled-set Bundled Set
 
-`@plurnk/plurnk-service` is the sole manifest owner of the default extension set (`@plurnk/plurnk-schemes-http`, default `@plurnk/plurnk-mimetypes-*` format/image/pdf handlers and non-optional tree-sitter grammars {§mimetype-pdf-facts}, {§mimetype-grammar-packages}, {§mimetype-optional-grammars}, and `@plurnk/plurnk-execs-common` {§executor-default-inventory}, {§executor-policy}), while frameworks remain extension-free and opt-in packages (`@plurnk/plurnk-tavily-plugin`, `tokenizers`) stay outside the default dependency graph. The composed service install owns third-party advisory audits at the moderate floor.
+`@plurnk/plurnk-service` is the sole manifest owner of the default extension set (`@plurnk/plurnk-schemes-http`, default `@plurnk/plurnk-mimetypes-*` format/image/pdf handlers and non-optional tree-sitter grammars {§mimetype-pdf-facts}, {§mimetype-grammar-packages}, {§mimetype-optional-grammars}, and `@plurnk/plurnk-execs-common` {§executor-policy}, {§executor-policy}), while frameworks remain extension-free and opt-in packages (`@plurnk/plurnk-tavily-plugin`, `tokenizers`) stay outside the default dependency graph. The composed service install owns third-party advisory audits at the moderate floor.
 
 ---
 
@@ -790,7 +790,7 @@ Core consumes the language, schemas, and generated types under {§contract-repre
 
 ### §host-path-layout Host filesystem layout
 
-On XDG-compatible hosts, artifact semantics select the default location. An unset or empty base variable uses the XDG default; a relative value is ignored rather than resolved against the working directory. When the daemon projects an ambient environment for subprocess or module launches ({§execution-output-identity}, {§mcp-launch-environment}), its resolved `HOME` and XDG base directories replace any ambient values they supersede, and an absent `XDG_RUNTIME_DIR` is omitted.
+On XDG-compatible hosts, artifact semantics select the default location. An unset or empty base variable uses the XDG default; a relative value is ignored rather than resolved against the working directory. When the daemon projects an ambient environment for subprocess or module launches ({§execution-output-identity}, {§mcp-module}), its resolved `HOME` and XDG base directories replace any ambient values they supersede, and an absent `XDG_RUNTIME_DIR` is omitted.
 
 | Class | Base | Plurnk member |
 |---|---|---|

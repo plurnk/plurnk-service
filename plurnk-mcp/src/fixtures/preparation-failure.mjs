@@ -1,4 +1,4 @@
-// {§mcp-preparation-diagnostics}: the probe is hidden by the SDK; only the
+// {§mcp-module}: the probe is hidden by the SDK; only the
 // subsequent real session exposes stderr through the public transport.
 import { createInterface } from "node:readline";
 

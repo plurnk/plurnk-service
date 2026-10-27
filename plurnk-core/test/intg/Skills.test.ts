@@ -1223,7 +1223,7 @@ const parseOne = (input: string): PlurnkStatement => {
     return item.statement;
 };
 
-test("{§mcp-file-configuration} a global mcp.json supplies callable servers without a plugin or environment definition", { timeout: 30_000 }, async (t) => {
+test("{§mcp-configuration} a global mcp.json supplies callable servers without a plugin or environment definition", { timeout: 30_000 }, async (t) => {
     const roots = process.env.PLURNK_SERVICE_ROOTS;
     process.env.PLURNK_SERVICE_ROOTS = "global";
     t.after(() => { if (roots === undefined) delete process.env.PLURNK_SERVICE_ROOTS; else process.env.PLURNK_SERVICE_ROOTS = roots; });
@@ -1251,7 +1251,7 @@ test("{§mcp-file-configuration} a global mcp.json supplies callable servers wit
     assert.equal(await readFile(file, "utf8"), contents, "loading and invoking never rewrite operator configuration");
 });
 
-test("{§mcp-file-configuration} workspace and environment overrides restore the current file definition and enabledness", async (t) => {
+test("{§mcp-configuration} workspace and environment overrides restore the current file definition and enabledness", async (t) => {
     const { hostPaths, env } = await mcpFixture(t, {});
     const project = join(hostPaths.home, "project");
     const directories = [join(project, ".agents"), hostPaths.configDir, join(hostPaths.home, ".agents")];
@@ -1296,7 +1296,7 @@ test("{§mcp-file-configuration} workspace and environment overrides restore the
     assert.deepEqual(await readdir(directories[2]), ["mcp.json"], "workspace mutations never manufacture plugin files");
 });
 
-test("{§mcp-file-configuration} malformed files leave chat usable and normal turns publish repairs, changes, and removal", { timeout: 30_000 }, async (t) => {
+test("{§mcp-configuration} malformed files leave chat usable and normal turns publish repairs, changes, and removal", { timeout: 30_000 }, async (t) => {
     serverProposals(t, "accept");
     const { hostPaths, env } = await mcpFixture(t, {});
     const directory = join(hostPaths.home, ".agents");

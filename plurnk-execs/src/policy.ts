@@ -7,7 +7,7 @@
 //   PLURNK_EXECS_ONLY=a,b,c        allowlist — a tag not listed is disabled
 // The two compose within a layer (a listed tag can still be individually
 // killed). `only` is not an admissible runtime tag because it names this
-// allowlist key ({§executor-runtime-declaration}).
+// allowlist key ({§executor-discovery}).
 //
 // PURELY SUBTRACTIVE: intersecting layers means no downstream layer can restore
 // a tag removed upstream.

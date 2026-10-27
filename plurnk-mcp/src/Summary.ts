@@ -1,4 +1,4 @@
-/** {§mcp-summary-derivation}: a bounded excerpt, not a generated capability claim. */
+/** {§mcp-configuration}: a bounded excerpt, not a generated capability claim. */
 export const summaryLine = (text: string | undefined): string | undefined => {
     const normalized = text?.replaceAll(/\s+/gu, " ").trim();
     if (normalized === undefined || normalized === "") return undefined;

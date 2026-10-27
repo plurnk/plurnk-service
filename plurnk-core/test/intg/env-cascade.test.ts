@@ -392,7 +392,7 @@ test("{§operator-config-precedence} config check validates capability definitio
 });
 
 for (const built of [false, true]) {
-    test(`{§mcp-file-configuration} ${built ? "built" : "source"} config check reads selected standalone files without starting servers`, async (t) => {
+    test(`{§mcp-configuration} ${built ? "built" : "source"} config check reads selected standalone files without starting servers`, async (t) => {
         const fx = await fixture();
         t.after(() => rm(fx.root, { recursive: true, force: true }));
         const directory = join(fx.home, ".agents");

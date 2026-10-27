@@ -1,1009 +1,170 @@
 # Plurnk MCP host specification
 
-## Host boundary
+`@plurnk/plurnk-mcp` is an MCP **host/client** that projects trusted remote servers into Plurnk. It does not implement an MCP server or authorization server.
 
-`@plurnk/plurnk-mcp` is an MCP **host/client** that projects trusted remote
-servers into Plurnk. It does not implement an MCP server or authorization
-server. Protocol mechanics remain inside this package; core sees ordinary
-executor, resource, proposal, entry, Problem, and lifecycle contracts.
+## §mcp-authority Protocol authority, core matrix, capabilities, and exclusions
 
-## §mcp-authority Protocol authority
-
-The host's own wire authority is revision `2026-07-28`, specification commit
-`5f5440bb26a62e2cf3440b92da5a667efa03b267`. The implementation exact-pins
-`@modelcontextprotocol/client@2.4.0`. SDK exports are not protocol authority:
-that package deliberately retains legacy and deprecated API shapes. It owns
-core negotiation and transport; this package owns only exact-pinned extension
-wire that the SDK does not yet implement.
-
-Connection setup negotiates-and-degrades. A server that negotiates the pinned
-revision and offers `server/discover` is a **modern** peer: it gets the complete
-extension wire (the `_meta` envelope, `resultType`, the Tasks extension) and its
-discover result is the identity and capability source. A server the SDK
-negotiated below the pin is an ordinary MCP peer: it serves the standard
-tool/resource/prompt surface from its `initialize` result at its negotiated
-revision, and the host applies no envelope, discover, or Tasks requirements to
-it. There is no rejection for offering an older supported revision and no
-protocol downgrade of the host's own extension wire: modern peers and legacy
-peers simply carry different surfaces.
-
-The optional Tasks authority is the official `experimental-ext-tasks` contract
-at commit `2c1425d9a288b9b1f489430fe1e00bb392b47e48`. It is negotiated
-per-connection and absent from a legacy peer.
-
-## §mcp-core-matrix Core capability matrix
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§mcp-catalog-convergence} | A catalog is complete or it is an error. |
-| {§mcp-catalog-deadline} | `PLURNK_MCP_CONNECT_TIMEOUT` bounds connection setup and, separately, each complete catalog/list walk,… |
-| {§mcp-retry-pacing} | Every retry the adapter schedules on its own — reopening a dropped subscription, refreshing a catalog a… |
-| {§mcp-catalog-list-absence} | An unsupported list method does not disable the server. |
-<!-- /map -->
-
-The accountable capability matrix lives in `capabilityMatrix.ts`
-({§mcp-capability-matrix}). This table describes the pinned revision;
-{§mcp-authority} owns the SDK-negotiated older-peer surface.
+- **Protocol authority:** Pinned wire revision `2026-07-28`, specification commit `5f5440bb26a62e2cf3440b92da5a667efa03b267`, `@modelcontextprotocol/client@2.4.0`. Optional Tasks authority: `experimental-ext-tasks` (`io.modelcontextprotocol/tasks`) at commit `2c1425d9a288b9b1f489430fe1e00bb392b47e48`.
+- **Negotiate-and-degrade:** A server negotiating `2026-07-28` and offering `server/discover` is a **modern** peer (uses `_meta` envelope, `resultType`, Tasks extension, `server/discover` identity/capabilities). A server negotiated below the pin is an ordinary legacy peer (`initialize` result at its negotiated revision; no modern envelope, `server/discover`, or Tasks required). Dual-era mixing on one connection is forbidden.
+- **Accountable capability matrix (`capabilityMatrix.ts`):** One row per core surface, official extension, or selected experimental candidate, carrying authority, disposition (`supported`, `partial`, `excluded`, `deferred`), advertisement (`always`, `conditional`, `none`), interactivity, and evidence citations. Static wire advertisement (`staticClientCapabilities`) derives from `always` rows; `conditional` extensions are added by connection logic ({§oauth-client-credentials}).
 
 | Surface | Upstream contract | Plurnk host disposition |
-|---|---|---|
-| Base | JSON-RPC 2.0; per-request protocol, identity, and capability metadata; every result has `resultType` | Require the modern envelope and preserve protocol results and errors without reconstructing them |
-| Discovery | Servers implement `server/discover` | Probe before registration; retain identity, instructions, capabilities, versions, and cache hints |
-| Tools | Negotiated server capability: `tools/list`, `tools/call` | Build one operator-filtered exact Registry snapshot at setup; route only its enabled names without renaming them |
-| Resources | Negotiated server capability: `resources/list`, `resources/templates/list`, `resources/read` | Publish catalogs, templates, and materialized contents through the server's resource authority |
-| Prompts | Negotiated server capability: `prompts/list`, `prompts/get` | Publish prompt definitions and retrieve prompt messages through the same server authority |
-| Completion | Negotiated server capability: `completion/complete` | Make prompt and resource-template completion available to the host interaction that owns the argument |
-| Pagination | Opaque cursors on list methods | Drain every page with a finite non-convergence guard; never publish a partial catalog as complete ({§mcp-catalog-convergence}) |
-| Caching | `server/discover`, list methods, and `resources/read` carry `ttlMs` and `cacheScope` | Honor freshness and notification invalidation; partition private entries by authorization context |
-| Subscriptions | `subscriptions/listen` plus acknowledged filters and correlated notifications | Keep one current filter for list changes, resource URIs read into cache, and active Task IDs; overlap filter replacement, re-listen after loss, and never use the removed resource subscription methods |
-| Progress | Request-scoped `notifications/progress` | Project progress onto the owning Plurnk operation without creating an independent protocol lifecycle |
-| Cancellation | Per-request stream closure on HTTP; `notifications/cancelled` on stdio | Drive cancellation from the owning Plurnk abort signal and settle the same operation |
-| MRTR | `input_required` on `tools/call`, `resources/read`, or `prompts/get` | Fulfill supported input requests, echo opaque `requestState` byte-for-byte, and retry only the originating request with a fresh JSON-RPC ID |
-| Elicitation | Active client capability carried through MRTR | Advertise supported form/URL modes and route the request through Plurnk's client-owned interaction lifecycle |
-| Authorization | OAuth profile for HTTP transports | Require validated protected-resource and authorization-server metadata; never infer endpoints; use PKCE, issuer validation, resource indicators, refresh, and bounded scope escalation; never apply OAuth to stdio |
+| --- | --- | --- |
+| Base | JSON-RPC 2.0; per-request protocol, identity, and capability metadata; every result has `resultType` | Require the modern envelope and preserve protocol results and errors without reconstructing them. |
+| Discovery | `server/discover` | Probe before registration; retain identity, instructions, capabilities, versions, and cache hints. |
+| Tools | `tools/list`, `tools/call` | Build one operator-filtered exact Registry snapshot at setup; route only its enabled names without renaming them. |
+| Resources | `resources/list`, `resources/templates/list`, `resources/read` | Publish catalogs, templates, and materialized contents through the server's resource authority. |
+| Prompts | `prompts/list`, `prompts/get` | Publish prompt definitions and retrieve prompt messages through the same server authority. |
+| Completion | `completion/complete` | Make prompt and resource-template completion available to the host interaction that owns the argument. |
+| Pagination | Opaque cursors on list methods | Drain every page; refuse repeated cursors with `CatalogNonConvergenceError` (method and cursor named) so partial catalogs are never published or cached (#601). |
+| Deadlines & Pacing | `PLURNK_MCP_CONNECT_TIMEOUT` (default `30000` ms), `PLURNK_MCP_REQUEST_TIMEOUT` (default `86400000` ms), `PLURNK_MCP_RETRY_FLOOR_MS` (`250` ms) .. `PLURNK_MCP_RETRY_CEILING_MS` (`5000` ms) | `CONNECT_TIMEOUT` bounds connection setup and each complete catalog/list walk; `REQUEST_TIMEOUT` bounds tool calls, resource/prompt reads, and client-input waits. Adapter-scheduled retries double from `RETRY_FLOOR_MS` up to `RETRY_CEILING_MS`. |
+| Unsupported list absence | First-page JSON-RPC `-32601` on `tools/list`, `resources/list`, `resources/templates/list`, or `prompts/list` | Yields an empty collection and availability detail naming the unsupported method without disabling the server; errors after page 1 or other protocol/transport errors remain failures. |
+| Caching | `ttlMs` and `cacheScope` on `server/discover`, list methods, and `resources/read` | Honor freshness and notification invalidation; partition private entries by authorization context. |
+| Subscriptions | `subscriptions/listen` + acknowledged filters and correlated notifications | Keep one current filter for list changes, cached resource URIs, and active Task IDs; overlap filter replacement, re-listen after loss. |
+| Progress & Cancellation | Request-scoped `notifications/progress`; HTTP stream close / stdio `notifications/cancelled` | Project progress onto the owning Plurnk operation; drive cancellation from the owning Plurnk abort signal. |
+| MRTR & Elicitation | `input_required` on `tools/call`, `resources/read`, or `prompts/get` | Advertise form/URL elicitation modes; echo opaque `requestState` byte-for-byte; retry only the originating request with a fresh JSON-RPC ID. |
+| Authorization | OAuth profile for HTTP transports | Require validated protected-resource and authorization-server metadata; never infer endpoints; use PKCE, issuer validation, resource indicators, refresh, and bounded scope escalation; never apply OAuth to stdio. |
+| Exclusions | Deprecated/removed/excluded surfaces | Exclude Roots, Sampling, Logging, legacy HTTP+SSE, `ping`, `logging/setLevel`, `notifications/roots/list_changed`, `resources/subscribe`, `resources/unsubscribe`, SSE `Last-Event-ID`, legacy `tasks/list` & `tasks/result`; prefer pre-registration/CIMD over DCR (never probe inferred `/register`). |
 
-§mcp-catalog-convergence **A catalog is complete or it is an error.** The pinned SDK's aggregating
-list walk (`listTools`, `listResources`, `listResourceTemplates`, `listPrompts`) stops silently when
-a server returns a cursor it already returned, drops `nextCursor`, and caches the partial aggregate
-as if it were whole; only its page cap (`listMaxPages`) throws. The host's client watches the pages
-the SDK requests and refuses the page that repeats a cursor with `CatalogNonConvergenceError`
-(method and cursor named), so the listing fails and nothing partial is published or cached.
-Pagination, caching, and the cap remain the SDK's; a converging server's pages aggregate exactly as
-before. This is a host guard over an upstream behavior, not a second paginator; the upstream
-report is #601's to file.
+## §mcp-tasks Tasks extension, subscription ownership, and lifetime
 
-§mcp-catalog-deadline `PLURNK_MCP_CONNECT_TIMEOUT` bounds connection setup and,
-separately, each complete catalog/list walk, including parallel collections and
-all pagination. Failure cancels unfinished sibling lists; it never publishes a
-partial catalog. Caller cancellation and connection shutdown still apply.
-Tool calls, resource reads, prompt retrieval, and their client-input waits retain
-`PLURNK_MCP_REQUEST_TIMEOUT`; discovery does not borrow that operation allowance.
-
-§mcp-retry-pacing Every retry the adapter schedules on its own — reopening a dropped
-subscription, refreshing a catalog a server announced as changed — waits
-`PLURNK_MCP_RETRY_FLOOR_MS`, doubling per attempt up to `PLURNK_MCP_RETRY_CEILING_MS`.
-One pacing serves them all; a ceiling beneath the floor fails configuration. The
-deadlines above bound an attempt; this paces the next one.
-
-§mcp-catalog-list-absence **An unsupported list method does not disable the server.**
-At the first page of `tools/list`, `resources/list`, `resources/templates/list`, or
-`prompts/list`, JSON-RPC `-32601` yields an empty collection for that method and an
-availability detail naming the unsupported method. This is host tolerance, not
-a claim that the server satisfies its advertised capabilities. The empty result
-is immediately stale; a later successful listing clears the diagnostic. An error
-after the first page, any other protocol error, transport/authentication failure,
-or non-convergence remains a failure. SDK pagination and caching retain ownership.
-
-## §mcp-tasks Tasks extension
-
-Tasks is the optional `io.modelcontextprotocol/tasks` extension, never core
-conformance. Plurnk advertises it only when its complete lifecycle is active.
-The server may return an unsolicited `resultType: "task"` handle from
-`tools/call`; the host then uses `tasks/get`, `tasks/update`, and
-`tasks/cancel`. `tasks/get` carries status, outstanding input, and the terminal
-result or protocol error. Task notifications, when selected, use the unified
-subscription stream. `tasks/list`, `tasks/result`, and per-call task opt-in do
-not exist in this revision.
-
-Polling honors each current `pollIntervalMs` under the one owning operation
-deadline. Task input keys are fulfilled at most once, in one atomic client
-interaction per observed input set. A completed Task is validated as the
-originating tool result; a failed Task preserves its JSON-RPC error.
-Handle ownership and the restart journey are bounded in {§tasks-lifetime}.
-
-§mcp-subscription-ownership Notification filters belong to the shared connection,
-not an individual operation. Acquiring or releasing Task interest schedules a
-filter update without blocking Task polling, settlement, or cancellation; the
-ordinary `tasks/get` path remains available before acknowledgement and during
-watch recovery. A resource READ may await cache-watch setup, but owner
-cancellation ends only that caller's wait. It neither cancels another caller's
-setup nor closes the connection. Filter acknowledgement, overlap replacement,
-retry, and teardown retain one connection-level owner.
-
-## §tasks-lifetime Tasks lifetime
-
-Task handles belong to the connection and operation that created them. They
-are process-local, never persisted or automatically replayed. Ordinary host
-lifecycle owns interruption and recovery ({§session-causal-admission});
-MCP adds no second scheduler or client-disconnect policy.
+- **Tasks protocol (`io.modelcontextprotocol/tasks`):** Advertised only when its complete lifecycle is active. When `tools/call` returns an unsolicited `resultType: "task"` handle, the host uses `tasks/get`, `tasks/update`, and `tasks/cancel`, honoring `pollIntervalMs` under `PLURNK_MCP_REQUEST_TIMEOUT`. Task input keys are fulfilled at most once in one atomic client interaction per observed input set.
+- **Subscription ownership:** Notification filters belong to the shared `ServerConnection`, not an individual operation. Acquiring/releasing Task interest schedules a filter update without blocking `tasks/get` polling, settlement, or cancellation. Cancelling one resource READ ends only that caller's wait without cancelling another caller's subscription setup or closing the connection.
+- **Tasks lifetime:** Task handles are process-local, never persisted or automatically replayed ({§session-causal-admission}):
 
 | Boundary | Behaviour |
-|---|---|
-| Client interrupt / reattach | The live operation retains its pending input across the intentional Run boundary; synchronization re-presents it ({§acp-sync}). |
-| Client hangup | Inherits the owning client's cancellation or observer-detachment semantics; MCP does not change them. |
-| Graceful shutdown | Aborts and settles owned work before closing its protocol connection ({§mcp-connection-shutdown}). |
-| Restart after owner loss | No Task resume or automatic tool replay; core reconciles the interrupted operation and its durable evidence. |
-| Workspace reactivation | Reconstructs the attachment from its definition, not an old Task handle. Active Tasks retain workspace residency ({§module-workspace-residency}). |
-| Expiry | The owning operation deadline also bounds client-input waits ({§mcp-input-deadline}); expiry cancels the Task before settling the failed operation. MRTR retains its separate round bound. |
-| Cancellation | Owner abort cancels the task before settling; the handle is then terminal. |
-| Already terminal | Terminal results and errors are consumed by the drive loop; a completed or failed task is never re-polled or re-resumed. |
-
-## §mcp-exclusions Removed, deprecated, and excluded surfaces
-
-| Classification | Surfaces | Disposition |
-|---|---|---|
-| Deprecated | Roots, Sampling, Logging | Do not advertise or implement; use explicit resources/tool arguments, Plurnk's provider layer, and stderr/OpenTelemetry respectively |
-| Deprecated | HTTP+SSE transport; Sampling `includeContext` values | Do not adopt; use Streamable HTTP and no Sampling |
-| Deprecated fallback | OAuth Dynamic Client Registration | Prefer pre-registration, then CIMD when advertised; use DCR only when authorization-server metadata advertises `registration_endpoint`; otherwise fail without probing an inferred endpoint |
-| Removed at pinned revision | `initialize`, `notifications/initialized`, `Mcp-Session-Id`, HTTP GET event stream | Absent on modern connections; the negotiated older-peer lifecycle remains SDK-owned ({§mcp-authority}) |
-| Removed | `ping`, `logging/setLevel`, `notifications/roots/list_changed` | Do not send, handle, or teach |
-| Removed | `resources/subscribe`, `resources/unsubscribe`, SSE resumption and `Last-Event-ID` | Use `subscriptions/listen`; reissue a lost request with a new ID |
-| Removed | Legacy Tasks `tasks/list`, `tasks/result`, and task-augmentation request fields | Use only the negotiated final Tasks extension |
-| Excluded | Other official, experimental, or private extensions | Require a separately owned contract before negotiation |
-| Excluded | Dual-era operation | Modern peers and legacy peers carry different surfaces; the host never mixes the two on one connection |
-| Excluded | MCP server and authorization-server roles | This package is the host/client only |
-
-## §mcp-capability-matrix Accountable capability matrix
-
-`capabilityMatrix.ts` is the one accountable support matrix: one row per core
-surface, official extension, or explicitly selected experimental candidate,
-carrying authority, disposition (supported, partial, excluded, deferred),
-advertisement, interactivity, and evidence citations. Rows are "supported"
-only when every layer their owning contract includes has real coverage; a row
-cannot claim support merely because the direct SDK or conformance path passes.
-Every evidence citation must resolve through a named specification tag or a
-named composed test.
-
-The static wire advertisement is derived from the matrix by construction
-(`staticClientCapabilities`): an extension reaches the wire only because its
-row says `always`, and a `conditional` extension is added only by its owning
-connection logic ({§oauth-client-credentials}). The matrix unit tests enforce
-unique identities, no excluded row advertising, supported rows citing evidence,
-composed coverage for every advertised row, and exact reconciliation
-between the matrix and the derived advertisement. Official required
-conformance stays a separate named gate, never folded into a matrix row.
-
-## §mcp-transports Transport bindings
-
-<!-- map -->
-| Tag | Promise |
 | --- | --- |
-| {§mcp-endpoint-security} | Configured MCP and registry endpoints accept HTTP or HTTPS, including private-network hosts. |
-| {§mcp-stdio-process-ownership} | A stdio connection owns the complete process group created for its server. |
-| {§mcp-redirect-refused} | An HTTP endpoint is never redirected. |
-| {§mcp-header-declarations} | A tool with an invalid `x-mcp-header` declaration is never called. |
-<!-- /map -->
+| Client interrupt / reattach | Live operation retains pending input across the Run boundary; synchronization re-presents it ({§acp-sync}). |
+| Client hangup / Graceful shutdown | Inherits owning client's cancellation/detachment semantics; shutdown aborts and settles owned work before closing the protocol connection ({§mcp-setup}). |
+| Restart / Workspace reactivation | No Task resume or automatic tool replay on restart; reactivation reconstructs the attachment from its definition. Active Tasks retain workspace residency ({§module-workspace-residency}). |
+| Expiry / Cancellation / Terminal | Operation deadline bounds client-input waits ({§mcp-host-composition}); expiry or owner abort invokes `tasks/cancel` before settling; terminal Tasks are never re-polled or re-resumed. |
+
+## §mcp-transports Transport bindings, security, header declarations, and errors
 
 | Binding | Contract |
-|---|---|
-| stdio | Spawn one exact executable with an explicit argument array and no shell; newline-delimited JSON-RPC is the only stdout/stdin traffic; stderr is diagnostic; shutdown closes stdin, waits, then terminates if necessary |
-| Streamable HTTP | Send one POST per request or notification; accept JSON or SSE responses; close the response stream to cancel; modern connections never open the removed general GET stream |
-
-§mcp-endpoint-security **Configured MCP and registry endpoints accept HTTP or HTTPS,
-including private-network hosts.** Transport admission does not relax OAuth:
-the SDK retains token-endpoint TLS enforcement (with its loopback exception),
-issuer/resource binding, PKCE and redirect validation. No transport-policy bypass is supplied.
-
-§mcp-stdio-process-ownership A stdio connection owns the complete process group
-created for its server. Ordinary closure forwards stdin EOF and permits a
-bounded graceful exit; an expired shutdown bound or disappearance of the host
-process forcibly terminates the group, including descendants.
-
-§mcp-redirect-refused **An HTTP endpoint is never redirected.** Every Streamable HTTP request,
-authorization discovery included, sets `redirect: "manual"`; a 301, 302, 303, 307, or 308 fails the
-connection naming the `Location`. Configured headers therefore never reach another origin
-and the endpoint URL is corrected where it is configured.
-
-At the pinned revision, HTTP requests carry matching `MCP-Protocol-Version` and `Mcp-Method`
-headers. Named requests also carry `Mcp-Name`; declared primitive tool
-parameters carry validated `Mcp-Param-*` headers. Header names compare
-case-insensitively, and body/header disagreement fails instead of guessing.
-For `tasks/get`, `tasks/update`, and `tasks/cancel`, `Mcp-Name` is the encoded
-`taskId` required by the Tasks extension.
-
-§mcp-header-declarations **A tool with an invalid `x-mcp-header` declaration is never called.** Before either request leg of a tool call, Tasks or direct, the tool's `inputSchema` is scanned for `x-mcp-header` declarations. A definition that breaks any rule below refuses the call with `tool-header-invalid` ({§problems-mcp}) naming the tool and the declaration, and no request is sent.
-
-| Rule | What |
 | --- | --- |
-| Placement | each sits on a property reached through `properties` alone, never under `items`, `additionalProperties`, a combinator, a conditional, `$defs` or a `$ref` target |
-| Name | a non-empty RFC 9110 token that is unique case-insensitively |
-| Type | `string`, `integer` or `boolean`, never `number` (SEP-2243) |
-| The definition scanned | the one the caller supplies; otherwise the server's listing supplies it, and a Tasks call whose listing lacks the tool fails as unlisted |
-| A direct call | never waits on a failed listing ({§mcp-catalog-deadline}): with no definition at hand there is nothing to scan and no routing header to derive, so it proceeds as a plain `tools/call` |
-
-## §mcp-errors Error allocation
-
-| Condition | Code and boundary |
-|---|---|
-| Standard JSON-RPC parse/request/method/params/internal failures | `-32700`, `-32600`, `-32601`, `-32602`, `-32603` |
-| Missing resource or task handle | `-32602` |
-| Tasks extension capability absent | `-32003` |
-| Header/body mismatch | `-32020` `HeaderMismatch`; HTTP 400 |
-| Required client capability absent | `-32021` `MissingRequiredClientCapability`; HTTP 400 where applicable |
-| Protocol revision unsupported | `-32022` `UnsupportedProtocolVersion`; HTTP 400 |
-| Server-private errors | `-32000` through `-32019` only |
-| Future MCP-reserved errors | `-32020` through `-32099` only as assigned by the protocol |
-
-A tool-level `isError: true` result is a completed tool result, not a JSON-RPC
-failure. A failed Task carries its originating JSON-RPC error; a Task wrapping
-a tool-level error completes with that tool result. Plurnk preserves the
-originating distinction in its canonical Problem/result path.
-
-## §mcp-configuration Configuration
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§mcp-file-configuration} | Standalone `mcp.json` files are read-only configuration inputs, not plugins. |
-| {§mcp-plugin-configuration} | Plugin MCP components use their format's interpretation, not the native file dialect. |
-| {§mcp-activation-isolation} | Cold endpoint failure is capability-local. |
-| {§mcp-unavailable-runtime} | An enabled server that cannot run keeps its alias. |
-| {§mcp-definitions} | A server is not a plugin installation. |
-| {§mcp-launch-directory} | An implicit working directory is workspace-owned state, not the project. |
-| {§mcp-summary-derivation} | Orientation prefers the server's own purpose over display labels; no capabilities are inferred. |
-| {§mcp-server-settings} | Independent behavior settings do not change connection definitions. |
-| {§mcp-module} | The MCP family beneath the coordinator |
-| {§mcp-launch-environment} | Ambient inheritance and explicit bindings are distinct. |
-| {§mcp-management-actions} | MCP is one family of workspace Functionality |
-| {§mcp-registry-discovery} | `discover` searches the MCP Registry. |
-| {§mcp-preparation-diagnostics} | Unavailable preparation reports observations. |
-| {§oauth-continuation} | A URL-only HTTP definition is sufficient to reach the client sign-in handoff. |
-| {§oauth-issuer} | A configured issuer is where a sign-in starts and the one server it trusts. |
-| {§oauth-begin-unchallenged} | A sign-in starts where no connection is challenged. |
-<!-- /map -->
-
-MCP servers are complete connection definitions ({§mcp-server-definition}). Standalone files, plugin components, and environment declarations
-supply the service baseline; live additions belong to the workspace. All use the common resolution
-and lifecycle ({§configuration-repair-path}, {§functionality-coordinator}). Disabled definitions remain
-client-visible but contribute no connection, Registry, documentation, or resource authority.
-
-§mcp-file-configuration **Standalone `mcp.json` files are read-only configuration inputs, not plugins.**
-The module reads `mcp.json` in the directories supplied by {§functionality-inspection}. Definitions resolve
-by alias, highest precedence first:
-
-| Source | Location |
-|---|---|
-| Workspace overlay | Ordinary `plurnk (mcp)` `add` state |
-| Environment | `PLURNK_MCP_<alias>` |
-| Project | `<project>/.agents/mcp.json`, then selected project plugins |
-| Plurnk-only | `$XDG_CONFIG_HOME/plurnk/mcp.json`, then selected Plurnk plugins |
-| Shared global | `~/.agents/mcp.json`, then selected global plugins |
-| Installed npm plugins | Selected plugin bundles in the installed graph |
-
-- The document is an object with required `mcpServers`, an object keyed by server alias,
-  and an optional string `$schema` editor hint. No schema is fetched. No other top-level fields.
-- Each entry is the owning connection definition without `name`; its map key supplies the name.
-  An omitted `type` is inferred from `command` (stdio) or `url` (Streamable HTTP).
-  Ambiguous, unsupported, or incomplete entries fail the same definition validator as environment/live inputs.
-- Select the whole winning entry before validating it; never merge fields or fall back from an invalid winner.
-  Environment enabledness and tool controls apply independently to file-backed aliases.
-- Missing files contribute nothing. Invalid/unreadable files or selected entries produce a named
-  configuration diagnostic under {§configuration-repair-path}, not a daemon exit or an empty catalog.
-- Inspection reports `kind: file`, the absolute file `source`, and the entry's JSON Pointer `reference`.
-  Normal pre-turn refresh observes file edits and deletion; `list` never starts a server or writes a file.
-  Workspace removal restores the current inherited definition and controls.
-- File entries retain {§mcp-launch-directory} and {§mcp-launch-environment}; a file's location is
-  not a subprocess working directory. Plugin-root configuration and packaging are separate.
-
-`mcpServers` follows the common MCP catalog shape, also used by
-[MCP Inspector](https://github.com/modelcontextprotocol/inspector/blob/main/docs/mcp-server-configuration.md).
-The discovery locations are Plurnk's supported cross-client convention, not an MCP wire requirement.
-
-§mcp-plugin-configuration **Plugin MCP components use their format's interpretation, not the native file dialect.**
-The validated components supplied by {§functionality-inspection} become ordinary configured MCP
-definitions. The adapter carries the canonical plugin root and persistent data directory as
-interpretation context under {§functionality-adapter}; inspection preserves symbolic definitions.
-
-| Field or boundary | Agent Plugins v1 behavior |
-|---|---|
-| `command` | Bare executable or plugin-root-relative `./` path; no expansion |
-| `args`, `env`, `cwd` | One nonrecursive expansion of `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` only; all other placeholder-like text stays literal |
-| Omitted `cwd` | Plugin root; explicit plugin/data cwd is contained within its corresponding resolved root |
-| Subprocess environment | Ordinary admitted operator/workspace environment, then configured values, then authoritative `PLUGIN_ROOT` and `PLUGIN_DATA` |
-| Data | Created before launch; preserved across disable, removal of an override, and in-place plugin updates |
-| Filesystem containment | Rechecked before each subprocess launch, including existing parents of missing paths |
-| HTTP URL and headers | Literal; client-owned protocol headers win; existing no-redirect rule applies |
-| Unsupported transport or name | Skip the entry with a configuration notice; never rename, reinterpret, or disable independent entries |
-
-Supported transports are stdio and Streamable HTTP, not legacy SSE. Server names must meet
-Plurnk's runtime alias grammar `[a-z][a-z0-9-]*`; other standard map keys are explicitly unsupported.
-The standard loader owns component validation and narrow failure boundaries
-({§agent-plugins-mcp-entries}, {§agent-plugins-components}). Connection failures remain ordinary
-unavailable outcomes. Current adapter notices join client/model configuration diagnostics;
-source repair replaces them, rather than retaining a historical warning.
-
-§mcp-activation-isolation **Cold endpoint failure is capability-local.** An enabled server
-that cannot connect or complete discovery during workspace activation remains
-enabled and client-visible as `unavailable`. It publishes no tools, resources, or
-documentation, only its alias out of service ({§mcp-unavailable-runtime}), and cannot
-prevent other capabilities or the daemon from starting or serving dormant sessions. Enabling that already-enabled alias is an explicit reconnect
-attempt; failure preserves the unavailable snapshot, while success atomically
-replaces it. An interactive enable continues to reject an unavailable candidate
-without changing durable state.
-
-§mcp-unavailable-runtime **An enabled server that cannot run keeps its alias.** Preparation registers
-every enabled server: an active one with its tools and resources, any other as a runtime out of
-service whose availability states what keeps it from running, so a call to the alias is refused with
-that state ({§exec-target-routing}) and never as a name nothing registered.
-
-| State | The refusal names |
-| --- | --- |
-| `authorization-required` | the operator's sign-in it awaits |
-| `unavailable` | what preparation observed: its Problem's bounded diagnostic, else its detail |
-
-| Variable | Contract |
-|---|---|
-| `PLURNK_MCP_<alias>` | Complete `McpServerDefinition` JSON; transport and authentication replace together |
-| `PLURNK_MCP_ENABLED`, `PLURNK_MCP_<alias>_ENABLED` | Shared default and per-alias flags ({§resource-environment}); declared servers default enabled |
-| `PLURNK_MCP_<alias>_TOOLS` | Optional JSON array of exact enabled tool names; absent or empty enables every listed tool, and `[]` enables none |
-| `PLURNK_MCP_EXPANDED` | JSON array of aliases whose tool invocations are surveyed at turn 0 ({§tools-resource-materialization}); absent or `[]` expands none |
-| `PLURNK_MCP_CONNECT_TIMEOUT` | Positive integer milliseconds for setup and each complete catalog walk |
-| `PLURNK_MCP_REQUEST_TIMEOUT` | Positive integer milliseconds for the whole operation |
-| `PLURNK_MCP_REGISTRY_URL` | HTTP(S) registry `discover` searches; empty, the family serves no discovery ({§mcp-registry-discovery}) |
-| `PLURNK_MCP_REGISTRY_LIMIT` | Positive integer result bound |
-
-Aliases and controls follow {§resource-environment}. Malformed definitions or controls fail
-configuration by variable name, even when disabled or not yet associated with a resource.
-Authentication belongs in the definition, never in separate bearer/OAuth environment companions.
-The package's offline validator composes these same readers
-({§operator-config-precedence}); it performs no connection or secret resolution.
-Runtime configuration errors leave the manager inspectable without publishing MCP
-capabilities or preventing unrelated model work ({§configuration-repair-path}).
-
-§mcp-definitions **A server is not a plugin installation.** `add` persists a workspace
-connection definition; `remove` removes that definition through the common coordinator.
-Neither writes nor deletes project, user or global configuration files. MCP management
-and preparation do not enumerate or install Agent Plugins. Plugin integration is a separate
-configuration-source concern, not an MCP definition or lifecycle.
-
-| Transport | Launch or connection |
-|---|---|
-| `stdio` | Spawn `command` with `args`, without a shell. Bare executable names use PATH; relative executable paths use the working directory. `args`, `env` and explicit `cwd` expand `${NAME}` references once against the workspace-composed operator environment. |
-| `streamable-http` | Connect to `url` with `headers` and `authorization` from that same definition. Header references expand at connection time. Protocol-generated headers are transport-owned; application authentication headers are retained. Declaring both structured authorization and an Authorization header is invalid. No redirect is followed ({§mcp-redirect-refused}). |
-
-§mcp-launch-directory **An implicit working directory is workspace-owned state, not the project.**
-Core's {§module-workspace-directory} supplies a stable directory isolated by workspace and MCP alias.
-An explicit `cwd` must resolve to an absolute path and overrides that directory; it is not confined
-to an installation root. The caller owns provisioning an explicit directory. Runtime paths and
-resolved environment values are never copied back into a stored definition. Disabling or removing
-a server closes its connection, not its retained state directory or saved results.
-
-A tool whose `annotations.readOnlyHint` is true takes the `read` effect; every other tool keeps the
-conservative `host` effect ({§mcp-model-projection}).
-
-§mcp-summary-derivation **Orientation prefers the server's own purpose over display
-labels; no capabilities are inferred.** Blank values fall through:
-
-| Summary | Precedence, highest first |
-|---|---|
-| Server | `serverInfo.description` → `instructions` → `serverInfo.title` → effective admitted tool-name list → server alias |
-| Tool | `description` → `title` → `annotations.title` → tool name |
-
-Derived prose is whitespace-normalized, limited to its first sentence, and
-clipped within 80 characters plus an ellipsis, preferring a word boundary. Full server instructions remain authored
-Markdown in the runtime document's `details`, available on demand;
-turn0 surveys only the compact summary/invocations. Full tool descriptions
-remain in the linked input-contract documents. With tools, the runtime declares
-`{ from: "tools", description }`: purpose annotates rather than replaces the
-complete effective menu in the runtime Summary and survey row
-({§find}). Without a stated purpose the menu stands alone. The tool
-doc's Summary section IS the invocation form
-```` ```server (tool) <!-- one-liner --> ````, so the discovery row teaches the
-call ({§tools-resource-materialization}).
-
-§mcp-server-settings **Independent behavior settings do not change connection definitions.**
-`<alias>_TOOLS` narrows the effective tool catalog. A valid control may precede its definition,
-without creating a server; all control values are validated immediately ({§resource-environment}).
-Bearer and OAuth settings belong to the whole HTTP definition. Secrets in structured authorization
-are `${NAME}` references expanded only while preparing the connection. Interactive tokens,
-PKCE verifiers and callback state remain in memory; restart reconstructs an authorization-required
-attachment, never a stored credential.
-
-### §mcp-module The MCP family beneath the coordinator
-
-The package declares itself a daemon module in `package.json#plurnk`, so the host discovers it
-({§module-lifecycle}). It is setup-only: `setup` registers the family adapter and there is no
-start seam. Its factory only reads the environment: the registry settings, because they decide
-whether the family serves discovery ({§mcp-registry-discovery}). An invalid one is contained
-({§module-contained-configuration}): the family serves no discovery and the rest works. Every
-other configuration error surfaces in the family's diagnostics at runtime, and all of them in the
-offline check ({§operator-config-precedence}). It claims no HTTP mounts.
-
-§mcp-launch-environment **Ambient inheritance and explicit bindings are distinct.** A stdio
-server receives these layers in order; it never receives the invoking session's overrides.
-
-| Layer | Environment |
-|---|---|
-| Ambient base | The operator's environment excluding `PLURNK_*` and provider credential names ({§execution-output-identity}). The model-command inherit/exclude selectors do not apply. |
-| Workspace | Shared `env` values and masks ({§execution-output-identity}); a withheld name cannot be restored by the transport's own defaults. |
-| Definition | Explicit `env` values. Native `${NAME}` references resolve once against the operator environment with workspace values and masks applied, including names excluded from ambient inheritance. Missing references fail preparation before launch. |
-
-An explicit credential binding belongs to the server's complete definition and its existing
-admission and approval path ({§functionality-model-projection}, {§capability-admission}).
-Configured definitions and approved live additions use the same resolution; no operator-only
-grant is required. Auto-approval retains its ordinary meaning. Resolved values are never copied
-back into definitions. These rules limit inherited exposure, not the authority of an approved
-program to disclose what it receives. Agent Plugin definitions retain {§mcp-plugin-configuration},
-including their distinct literal-string and placeholder rules.
-
-A running server keeps its launch environment: `disable` and `enable` restart it after an
-environment change; there is no automatic restart or stale-configuration state. HTTP servers
-have no local process environment; their native header and authorization references use the
-same workspace-composed operator environment.
-
-§mcp-management-actions **MCP is one family of workspace Functionality** ({§functionality-coordinator}). The coordinator publishes `workspace.mcp.list | add | replace | enable | disable | remove`, with `discover` while a registry is configured, and the model's `mcp` runtime with the common semantics, durable state, and publication; this module registers the family adapter and owns protocol truth beneath it.
-
-| Verb | What |
-| --- | --- |
-| `available` | the configured service baseline |
-| `add`, `replace` ({§functionality-replacement}), `remove` | change workspace state ({§mcp-definitions}) |
-| `discover` | searches the MCP Registry ({§mcp-registry-discovery}) |
-| `prepare` | connects the enabled set, reusing unchanged live attachments, and returns one runtime per enabled server, with its resource facet when active ({§mcp-unavailable-runtime}), one outcome per alias (`active` with catalog detail — negotiated protocol version, server identity, capabilities, tool names, resource and prompt counts — and any grant it presents ({§oauth-grant}), `unavailable` with its exact Problem, or `authorization-required` with its URL), and a snapshot in three phases |
-| `publish` | adopts the connected set and consumes or records pending authorizations, synchronously |
-| `commit` | closes connections the new set no longer uses |
-| `abort` | closes only what the attempt opened |
-
-§mcp-registry-discovery **`discover` searches the MCP Registry.** The family serves discovery while `PLURNK_MCP_REGISTRY_URL`, read when the module is constructed, names a registry; empty, the family has no `discover` ({§functionality-replacement}). Its one input, `query`, asks that registry (API v0.1) for one page of at most `PLURNK_MCP_REGISTRY_LIMIT` servers, each at its latest version, whose names match.
-
-| Discovery, admission, or installation condition | Problem | Status |
-|---|---|---|
-| The registry is unreachable, fails, or answers malformed | `discover-failed`, retryable | 502 |
-| The complete connection definition is invalid | `definition-invalid` | 400 |
-| The alias differs from the definition's name | `alias-mismatch` | 400 |
-
-| Registry server | Candidate |
-| --- | --- |
-| Each npm, PyPI, NuGet or OCI package with a stdio transport | a stdio entry run as the registry's own examples run it (`npx -y`, `uvx`, `dnx`, or `docker run -i --rm` passing each declared variable through) |
-| Each Streamable HTTP remote | a URL entry with its non-secret literal headers |
-| One that needs a person's input first, such as a template variable or a required argument with no value | none |
-| Every candidate | a complete definition; its summary names the environment variables and headers the server needs, and its provenance names the registry and the server's `name@version` |
-
-Protocol continuations remain MCP-registered workspace actions beneath the
-common grammar:
-
-| Action | Parameters | Result / effect |
-|---|---|---|
-| `workspace.mcp.oauth.begin` | `alias`, `redirectUrl` | Begin sign-in using a client-owned callback, without changing the connection definition; publish the pending URL through the coordinator. An active alias is returned unchanged. |
-| `workspace.mcp.oauth.complete` | `alias`, `callbackUrl` | Validates and exchanges the pending callback through the SDK, returning `McpOAuthCompletionResult` (`202`, `alias`); ordinary capability refresh publishes the authenticated tools at the next safe boundary ({§oauth-continuation}). |
-| `workspace.mcp.complete` | `server`, `ref`, `argument`; optional `context` | Requests negotiated prompt/resource-template argument completion for a client-owned interaction. |
-
-Expected preparation failures cross the boundary as MCP-management Problems
-rather than generic failures; an explicit client action rejects them and a
-Session's own accepted mutation publishes them as unavailable
-({§functionality-model-projection}):
-
-| Endpoint condition | Problem |
-|---|---|
-| Cannot connect or complete discovery/catalog preparation at the negotiated revision | `502 server-unavailable`, retryable; names the server and its `type` without exposing credentials |
-| HTTP 401 without configured credentials | Enabled `authorization-required`, its alias out of service ({§mcp-unavailable-runtime}), and no URL until the client begins sign-in |
-| HTTP 401 with configured credentials | `502 server-authentication-failed`, non-retryable, with `upstreamStatus: 401`; credentials are not replaced by interactive OAuth |
-| Sign-in discovery lacks validated authorization metadata or a usable client-registration method | `502 oauth-metadata-unavailable` or `oauth-registration-unavailable`, non-retryable; retain the definition and surface the setup boundary, not retryable downtime |
-| The endpoint answers with a redirect | `502 server-redirected`, non-retryable ({§mcp-redirect-refused}) |
-| An operator setting of the alias is invalid | `422 server-settings-invalid`, non-retryable ({§mcp-server-settings}) |
-| Client-credentials grant rejected by the authorization server | `502 oauth-client-credentials-failed`, non-retryable; names the server and client id, never the secret ({§oauth-client-credentials}) |
-
-Resource and prompt failures retain one caught remote diagnostic only through
-the executor-owned `PLURNK_EXECS_ERROR_DETAIL_LIMIT` bound; complete causes stay
-in daemon diagnostics. No MCP resource Problem admits an unbounded SDK message.
-
-§mcp-preparation-diagnostics **Unavailable preparation reports observations.**
-The `server-unavailable` Problem carries these extensions; `list` projects the
-same published Problem rather than reconstructing it from an earlier catalog.
-
-| Field | Observation |
-|---|---|
-| `elapsedMs` | Measured preparation call time, rounded to milliseconds; excludes subsequent adapter cleanup. |
-| `timeoutMs` | Configured connection/catalog timeout; not a claim that negotiation, catalog loading, and cleanup share one total deadline. |
-| `diagnostic` | Bounded cause-chain text, innermost causes first, when available. OAuth error text remains excluded. |
-| `stderr` | Bounded tail of stderr exposed by the public session transport, when nonempty. |
-
-Each text field is bounded by `PLURNK_EXECS_ERROR_DETAIL_LIMIT`; zero omits
-text. Redaction precedes truncation and masks known launch-environment values,
-configured arguments/headers, referenced environment values, and URL userinfo.
-This is known-value redaction, not classification of arbitrary server content.
-Stderr capture retains only the bounded tail plus overlap needed to redact a
-value crossing its boundary; it does not replace ordinary daemon stderr.
-Overlap retained for redaction is never displayed when replacements shorten
-the visible diagnostic or stderr window.
-Unavailable process exit codes, signals, and negotiation-probe stderr are
-omitted. Transport closure does not prove a particular process exit.
-
-§oauth-continuation A URL-only HTTP definition is sufficient to reach the client
-sign-in handoff. An unauthenticated 401 publishes `authorization-required` with
-an empty `authorization` object, not retryable downtime. No browser is opened,
-client is registered, or workspace lease retained merely for that challenge.
-The client binds its callback before `oauth.begin`; absent an explicitly
-configured redirect, it obtains an ephemeral loopback port (RFC 8252 §7.3).
-The MCP SDK owns metadata discovery, registration, PKCE and token exchange.
-An explicit OAuth definition may supply scope, client-registration metadata, an issuer and
-authorization parameters ({§oauth-issuer});
-its optional fixed redirect is respected, never silently rewritten. Bearer,
-client-credentials and Authorization-header configurations cannot be replaced
-by `oauth.begin`. Callback addresses and acquired credentials are session state,
-not changes to the persisted definition.
-
-```mermaid
-sequenceDiagram
-    Model->>MCP: add URL-only definition
-    MCP-->>Client: authorization-required notice
-    User->>Client: sign in to alias
-    Client->>Client: bind callback
-    Client->>MCP: oauth.begin(alias, redirectUrl)
-    MCP-->>Client: authorization URL
-    Client->>User: open consent page
-    User->>Client: browser callback
-    Client->>MCP: oauth.complete(alias, callbackUrl)
-    MCP-->>Client: 202 sign-in accepted; activation pending
-    MCP-->>Model: settled active outcome and tools
-```
-
-`oauth.begin` prepares an authorization attempt without enabling the alias or waiting for workspace quiescence; `oauth.complete` accepts the complete callback URL so state, `code`, and `iss` remain one parsing unit.
-
-| Fact | Rule |
-| --- | --- |
-| `oauth.begin` returns | `202` with an `authorization.url` when consent is required, `202` without that field when an accepted connection awaits publication, or `200` when tools are already active; these results name the alias, not a capability snapshot |
-| The pending candidate | the adapter retains one per `(workspace, alias)` holding the connection and one workspace residency lease; an unchanged publication preserves that independent attempt, and a new challenge supersedes it ({§oauth-lifetime}) |
-| Concurrent begins | concurrent begin requests for one alias are refused; a later begun attempt supersedes the prior one unless its grant is already accepted and awaiting publication; an in-flight begin cannot attach after disable, remove or definition replacement |
-| Grant acceptance | returns without waiting for workspace quiescence; it is not a configuration mutation and cannot re-enable an alias; the existing catalog-refresh path prepares and publishes the current enabled definitions, then consumes the candidate and releases its lease; the accepted result does not claim tool readiness: `list` and a call to the alias report the current published snapshot, including any subsequent preparation failure, so a turn holding the workspace when the sign-in is accepted still sees the alias awaiting it, and the next turn sees its publication ({§module-workspace-residency}) |
-| A bad callback | one for a superseded attempt fails as invalid; a committed attachment that no longer matches the pending definition fails with a conflict instead of replaying a stale snapshot; a missing, expired, mismatched, or replayed callback fails without exposing attacker-owned OAuth error text |
-
-| Callback boundary | Result |
-|---|---|
-| Active workspace | Accept the valid grant without waiting for the held turn; queue publication through the coordinator's ordinary workspace gate. |
-| Identical concurrent or accepted-but-unpublished callback | Share the same acceptance; exchange the one-time code once. |
-| Different callback for that accepted attempt | Reject; never borrow another callback's acceptance. |
-| Disable, remove, or replacement | Current definitions win; the old candidate cannot restore a withdrawn server. |
-| Publication failure | Do not claim active tools; retain the accepted candidate for normal refresh/enable retry, without another code exchange. |
-| Preparation failure published as unavailable | Preserve the preparation diagnostic; release the pending lease and close its unused connection. |
-| Callback after publication | The attempt has been consumed; `404 oauth-not-pending`. |
-
-§oauth-issuer **A configured issuer is where a sign-in starts and the one server it trusts.** An
-interactive definition's `authorization.issuer` names the authorization server: discovery reads its
-metadata (RFC 8414, then OpenID Connect Discovery) whether or not the MCP server publishes
-protected-resource metadata, and the client registration, tokens and refresh are bound to it. With
-none named, the SDK discovers the server from the resource's protected-resource metadata, falling
-back to the resource's origin; where neither publishes metadata, a sign-in fails
-`502 oauth-metadata-unavailable` and its recovery names the issuer field. `authorization.authorizationParams`
-join every authorization request the definition makes, such as `access_type=offline` for a server
-that issues a refresh token only when asked; the parameters the flow sets itself cannot be named
-({§mcp-server-definition}).
-
-§oauth-begin-unchallenged **A sign-in starts where no connection is challenged.** A server may answer
-its catalog to anyone and refuse only requests ({§mcp-request-unauthorized}), so the connection
-`oauth.begin` prepares meets no challenge.
-
-| The alias awaits a sign-in because | and begin's connection meets no challenge |
-| --- | --- |
-| a request was refused | begin starts the SDK's authorization on that connection and returns its URL as for a challenged one; a refusal of that start is a preparation failure ({§mcp-preparation-diagnostics}) and leaves no pending attempt |
-| its connection was challenged | the connection is accepted as it is: `202` without a URL, publishing at the next boundary |
-
-## §oauth-lifetime Interactive OAuth lifetime and reauthorization
-
-Interactive OAuth state is process memory: an accepted sign-in's client
-registration and access and refresh tokens are its alias's grant
-({§oauth-grant}), and the PKCE verifier and pending state live only in the
-pending candidate. Nothing OAuth-secret is written to SQLite; the durable
-workspace state holds only the unexpanded definition ({§mcp-configuration}).
-There is no daemon callback HTTP listener, authority-root resource, or
-daemon-side browser side channel: an interactive client may receive its
-configured loopback redirect, or accept a pasted callback for remote/headless
-use. It returns the complete URL through `workspace.mcp.oauth.complete` so
-`state`, `code`, and `iss` remain one parsing unit. Reauthorization after a
-daemon restart is the intended journey, documented here rather than presented as
-an accidental failure.
-
-| Journey point | Behaviour |
-|---|---|
-| Pending authorization | One pending candidate per `(workspace, alias)`; a new challenge or customized enable cancels and replaces it. A callback from a superseded attempt fails state validation instead of cross-completing. |
-| Client disconnect | Does not touch the pending candidate; it can still be completed, or replaced by a fresh request. |
-| Daemon restart during pending | The candidate is lost: nothing was durable, no attachment publishes, and `oauth.complete` answers `404 oauth-not-pending`. Start authorization again. |
-| Daemon restart after authorization | The durable definition rehydrates but tokens are gone; a challenged attachment publishes `authorization-required` and enable returns `202`. A URL is present only when a callback is already configured. The operator reauthorizes. |
-| Token expiry | An expired access token surfaces as one unauthorized response; the SDK re-acquires via `refresh_token` when one was issued; otherwise the request fails and the alias awaits a sign-in ({§mcp-request-unauthorized}). |
-| Refresh | Happens only against the issuer bound during the original authorization; the refreshed token replaces the grant's, for every later connection ({§oauth-grant}). |
-| Workspace cooling | Closes the alias's connection; the grant outlives it, and the alias's next connection presents it ({§oauth-grant}). |
-| Workspace disable/remove | Closes the attachment and clears its pending candidate; the grant stays for the alias's return with the definition it was accepted for ({§oauth-grant}). No durable secret deletion is needed because nothing secret is durable. |
-| Server replacement | Publication discards any superseded pending connection and releases its residency, including replacement by a definition without OAuth. Completion of an unpublished configuration drift fails `409 oauth-target-conflict` instead of replaying a stale snapshot. |
-| Cross-authorization protection | Candidates and grants are keyed by `(workspace, alias)`; callback state, PKCE, and issuer are validated by the SDK against the attempt that created them, so no other workspace, alias, or attempt can complete this authorization. |
-
-§oauth-grant **A grant outlives its connection.** An accepted sign-in is its alias's grant, held per
-`(workspace, alias)` with the definition it was accepted for. Only a redirect the definition
-configures still has a client waiting at it once the sign-in is accepted.
-
-| When | The grant |
-| --- | --- |
-| A connection the module opens for the alias with that definition, after cooling, an explicit enable, or disable and enable | is presented, and refreshed as it lapses |
-| An active alias's connection presents it | is listed in the alias's `detail.grant`: the `issuer` its tokens came from, the `scope` that authorization server stated, and whether it is `refreshable`; never a token or a time. An active alias presenting no grant lists none |
-| A connection serves another definition, or another workspace | is never presented |
-| Its server refuses it, at connection or on a request ({§mcp-request-unauthorized}) | starts a sign-in only at a redirect the definition configures; otherwise the alias awaits the sign-in a client begins ({§oauth-continuation}) |
-| A sign-in for the alias is accepted | is replaced by the new one |
-| Its authorization server rejects it, or the daemon stops | ends |
-
-## §oauth-client-credentials Client-credentials grant adoption
-
-The `client-credentials` arm of `McpServerDefinition.authorization` adopts the
-official `io.modelcontextprotocol/oauth-client-credentials` extension's
-client-secret form faithfully: a connection whose definition holds a
-client-credentials grant ({§mcp-server-settings}) advertises the extension capability in
-`clientCapabilities.extensions`; connections without one never claim it. The
-grant uses `client_secret_basic` authentication with `grant_type
-client_credentials`. The setting's optional `scope` is passed to
-the token request. The credential itself is one complete symbolic environment
-reference (`clientSecret: "${NAME}"`), expanded only while preparing the
-connection; it is never stored in SQLite, logged, or echoed in Problems.
-
-| Aspect | Behaviour |
-|---|---|
-| Issuer binding | The setting's optional `issuer` is passed as the SDK provider's `expectedIssuer`, stamping the credential with its authorization server so SEP-2352 issuer checks refuse to send it elsewhere. Absent, the SDK's legacy no-binding behaviour applies. |
-| Token lifetime | Token refresh is 401-triggered by the SDK client: an expired access token surfaces as one unauthorized response, the provider re-fetches with the stored credential, and the request is retried. Proactive expiry scheduling is a client-internal optimization, not a wire requirement; Plurnk does not wrap the SDK with its own scheduler. |
-| Rotation | `clientSecret` resolution happens per connection preparation, so rotating the operator environment value takes effect on the next preparation of the server. |
-| Errors | A rejected grant crosses the action boundary as `502 oauth-client-credentials-failed`, non-retryable, naming the server and client id only; SDK OAuth error text is never echoed. Other connection failures keep the generic `server-unavailable` allocation. |
-
-Static credentials authorize application principals (service attachments, CI,
-daemons), not human users. Private-key JWT and static JWT assertions for
-client authentication are a declared non-goal; the specification permits a
-secret-only client and Plurnk declines the assertion arms. The interactive
-OAuth arm is the human-principal path ({§mcp-management-actions}); bearer
-remains the private-service/legacy transport credential.
-
-## §mcp-ema-deferral Enterprise-managed authorization deferral
-
-Plurnk does not advertise or implement
-`io.modelcontextprotocol/enterprise-managed-authorization`. The SDK supplies
-the wire steps (ID-JAG acquisition via RFC 8693 and the RFC 7523 JWT bearer
-grant); the extension's remaining responsibilities are enterprise deployment
-policy, not open-source host mechanics:
-
-| Responsibility | Ownership |
-|---|---|
-| Capability advertisement, ID-JAG and access-token exchange, scope-error handling | Public protocol responsibilities the SDK host could own |
-| SSO acquisition of the identity assertion (ID token or SAML) | Presumes a user session the headless daemon does not own |
-| Saving the identity assertion for later use | Durable identity material; conflicts with the credential policy — secrets have one owner, the operator environment, and never a durable store |
-| IdP endpoint and client registration configuration | Organization-owned; Plurnk has no org-level configuration seam |
-
-The conformance client declines the enterprise scenarios, the capability
-matrix keeps the extension non-advertised ({§mcp-capability-matrix}), and the
-extension stays separate from core OAuth and client-credentials reporting.
-Re-evaluate when an organization-owned configuration owner exists and a
-decision on durable identity material is ratified.
-
-## §mcp-setup Atomic lifecycle
-
-When a cold workspace is demanded, activation resolves service defaults and durable positive
-workspace state, opens and discovers only enabled connections, all at once so that a workspace
-waits for its slowest server rather than their sum,
-lists the negotiated catalogs, applies enabled/effect policy, builds each exact
-tool Registry and resource facet, and submits one complete owner snapshot to
-{§module-lifecycle}. A configured tool absent from the server, a
-duplicate remote name, an enabled name not representable as a Plurnk target,
-or a `read` name outside the enabled set fails that workspace activation. No
-partial namespace is published and every acquired candidate closes.
-
-§mcp-catalog-refresh-in-place **A catalog change refreshes in place.** An unchanged
-definition re-lists over its existing connection and atomically republishes its
-executor, documents, and resource facet through {§functionality-coordinator}.
-SDK cache invalidation and the host's publication acknowledgement are separate
-boundaries; neither closes or replaces the committed connection.
-
-| Refresh boundary | Pending invalidation |
-|---|---|
-| Notification | Marks the alias immediately; notifications coalesce under the existing refresh timer. |
-| Successful publication | Acknowledges only the invalidation captured by that preparation. A newer notification remains pending. |
-| Failed listing | Keeps the previous usable snapshot and retries pending work with bounded backoff. |
-| Aborted publication | Does not acknowledge the unpublished catalog. |
-| Disable/remove, workspace cooling, or shutdown | Retires obsolete refresh timers and invalidations. |
-
-MCP participates in core Functionality residency
-({§module-workspace-residency}). Preparation reports the current server alias
-through the coordinator's activity contract
-({§functionality-inspection}); inspection never starts a connection
-({§functionality-inspection}). Every tool call and Task retains the workspace
-from executor entry through its terminal result; an interactive OAuth candidate
-retains it until completion, replacement, cancellation, or module shutdown.
-Catalog refresh timers are infrastructure, not residency owners: cooling
-serializes behind a refresh already running and cancels any timer not yet begun.
-At a lease-free quiescent boundary, deactivation removes the workspace snapshot
-and closes all of its connections; an accepted sign-in outlives them
-({§oauth-grant}). Core separately withdraws the executor/scheme publication
-while preserving durable MCP state and generated reference entries for
-transparent reactivation.
-
-Add and enable prepare the candidate while the old snapshot remains
-authoritative, then publish only at {§module-workspace-residency}. Disable and
-remove publish the complete reduced snapshot at the same boundary. The
-old connection rejects replacement with `409 server-busy` while it owns an active protocol request,
-MRTR exchange, or Task. Cache/list-change watches are infrastructure and close
-with the old connection after the new snapshot commits. A failed candidate or
-commit leaves the durable definition, connection, Registry, docs, and resource
-authority unchanged. Materialization and registration inspect the complete
-owning operation result; a non-success preserves its original Problem.
-
-§mcp-connection-shutdown Module `stop()` prevents new work and aborts each connection's
-active requests, including client-input waits. Discovery and preparation recheck
-admission after asynchronous environment resolution, before owning a new connection;
-Functionality preparation also carries its host's cancellation signal into catalog requests,
-checks it after state-directory resolution, and preserves cancellation rather than publishing
-an unavailable definition ({§functionality-preparation-cancellation}). Candidate cleanup is joined;
-its failures are preserved alongside cancellation, including failures from other concurrently
-prepared aliases.
-Connection startup rechecks after asynchronous directory resolution before opening
-its transport. Their protocol cleanup settles
-before the extension channel or connected transport closes, so a created Task
-can receive `tasks/cancel`. Concurrent closers await the same settlement.
-Candidates still negotiating and standalone OAuth transports close immediately.
-Infrastructure watches retire without a redundant per-listen cancellation;
-active mutations settle, process-local snapshots are discarded, and close
-failures are reported. Core's shutdown deadline remains the outer bound
-({§module-shutdown-order}).
-
-## §mcp-host-composition Protocol-to-Plurnk composition
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§mcp-input-deadline} | Client-input waits consume the remaining owning operation budget (`PLURNK_MCP_REQUEST_TIMEOUT`); each MRTR… |
-| {§mcp-tool-replay} | A tool call is effectful unless host policy proves otherwise. |
-| {§mcp-tool-problem-detail} | Tool-call Problems keep runtime, tool, and any bounded remote diagnostic as structured extensions. |
-| {§mcp-request-unauthorized} | A request refused for want of a sign-in says so, and its alias then awaits one. |
-| {§mcp-trailing-aside} | A tool call's body is one JSON object. |
-<!-- /map -->
-
-One `ServerConnection` owns negotiation, SDK caches, authorization partition,
-subscriptions, active request controllers, MRTR rounds, and Tasks for one
-workspace attachment. The host does not reproduce SDK protocol machinery.
-
-| Protocol event | Plurnk composition |
-|---|---|
-| `tools/call` progress | Writes ordinary transient progress on the owning execution stream; it creates no log sibling or polling vocabulary. |
-| Operation cancellation | The owning execution's abort signal closes the HTTP request stream or sends the stdio cancellation notification. |
-| `input_required` | Routes each embedded elicitation request through the operation's client interaction (`mode: "form"` or `mode: "url"`). Opaque `requestState` remains private to the connection and only the originating request is reissued after all embedded requests settle. |
-| Elicitation form / URL | Validates the response (`{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }`) against the requested form or URL action contract. Client cancellation becomes the standard `cancel` action; unsupported families or modes fail before any interaction or retry. |
-| Task handle | Keeps the original execution stream active, follows `tasks/get` and selected Task notifications, and settles that same stream with the terminal result or error. |
-| Task input | Routes through the operation's client interaction, then sends `tasks/update`; it never asks the model to manufacture protocol state. |
-| Task cancellation | The owning execution's cancellation invokes `tasks/cancel` before settling the ordinary stream cancellation. |
-| List invalidation | Invalidates SDK catalogs and atomically refreshes the attachment snapshot. |
-| Selected resource update | Invalidates that URI's SDK cache entry; a subsequent READ acquires current content. Private entries remain authorization-partitioned. Earlier READ receipts stay unchanged; ordinary remote changes neither broadcast nor wake sessions ({§actor-boundary}). |
-| Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
-
-The general executor interaction contract, not this package, owns client
-interrupt durability and ACP presentation. Reattachment re-surfaces input
-only while its originating operation remains live. MRTR round
-limits, request timeout, cancellation, and Task terminal state are one
-operation lifecycle; none becomes a hidden retry loop.
-
-§mcp-input-deadline Client-input waits consume the remaining owning operation
-budget (`PLURNK_MCP_REQUEST_TIMEOUT`); each MRTR round or Task input set does not
-start a fresh budget. Expiry aborts the input's ordinary Core waiter, removes it
-from pending/reconnect discovery, and enters the same bounded protocol cleanup
-as other operation failures. A late response is no longer pending. No response
-or tool replay is fabricated; the failed operation remains available to the
-session for recovery. SDK wire-leg timeouts retain ownership of transport waits.
-
-§mcp-tool-replay A tool call is effectful unless host policy proves otherwise.
-After dispatch, a transport failure cannot prove that the MCP server did not
-apply the call, so `tool-call-failed` is non-retryable and never recommends
-automatic identical replay. Read-classification controls proposal policy; it
-does not weaken this uncertain-outcome boundary.
-
-§mcp-tool-problem-detail Tool-call Problems keep runtime, tool, and any bounded
-remote diagnostic as structured extensions. Their prose states only the failed
-boundary fact; it neither repeats those fields nor infers whether the remote
-effect occurred.
-For `isError: true`, nonblank text content blocks, in order and joined by
-newlines, supply `diagnostic` under the existing executor error-detail bound.
-Nontext parts and structured data are not interpreted as explanations. With no
-text explanation the extension is absent; successful results do not acquire one.
-The complete result and passive output remain unchanged ({§mcp-result-content}).
-
-§mcp-request-unauthorized **A request refused for want of a sign-in says so, and its alias then awaits one.**
-A server may answer its catalog to anyone and challenge only a request, so preparation can publish it
-`active`. A later request — a tool call, a resource or prompt read, or a completion — is refused for
-want of a sign-in when it is answered with HTTP 401, or challenged in a way the SDK cannot meet without
-the operator's consent (an interactive grant it cannot refresh). The refusal depends on the definition:
-
-| Definition | A request refused for want of a sign-in |
-| --- | --- |
-| URL-only, or interactive OAuth | fails `401 authorization-required`, non-retryable, and republishes the alias `authorization-required`, out of service ({§mcp-unavailable-runtime}), with no URL until the client begins sign-in ({§oauth-continuation}) |
-| A bearer token, a client-credentials grant, or an Authorization header | fails as any failed request of its kind; no state changes and no sign-in is offered |
-
-Only a fresh connection answers the awaited sign-in — an accepted sign-in, an explicit enable, a changed
-definition, or the alias's return after disable, removal, cooling or a restart — and it publishes what
-its preparation observes, presenting the alias's grant where its definition has one ({§oauth-grant}).
-
-§mcp-trailing-aside A tool call's body is one JSON object. HTML comments after
-that object are the writer's aside, not arguments: when the body does not parse
-as written, trailing `<!-- … -->` comments are removed and the object is read.
-Any other trailing text is still `invalid-tool-arguments`. Nothing teaches the
-tolerance (#758).
-
-## §mcp-result-content Passive result content
-
-The default output channel carries the tool's result, not its transport envelope:
-text parts are written as text with their own newlines
-— whitespace-formatted `application/json` when the text is a complete JSON document,
-else unchanged `text/plain` ({§contract-representations});
-several text parts join with newlines; an empty content with
-`structuredContent` writes it pretty-printed — so the page rule and a scoped
-READ mean what they say and nothing reaches the model double-escaped. The
-complete result, including metadata and annotations, remains available in
-`#json` as protocol evidence. The default body preserves content order:
-
-| Content | Model-facing projection |
-| --- | --- |
-| Text | Its text. |
-| Inline image/audio | Link to an invocation-owned typed byte resource, published through {§executor-entry-sink}. |
-| Embedded text/blob resource | Link to a typed resource snapshot; use the supplied URI's filename when present. |
-| Resource link | Link to the existing MCP resource address; acquisition occurs on READ, not on listing. |
-
-Unnamed resources receive eight-character hexadecimal identifiers, not ordinal
-labels. No binary base64 is copied into the default result body. Listing a
-resource creates no native model attachment; READ uses {§log-wire-format},
-including scoped byte reads, supported modalities, and the owning READ's retention
-and curation lifecycle.
-Resource publication is passive; completion of the originating execution retains
-its ordinary wake semantics. A single `resources/read` content item becomes the
-resource's typed body; multiple items become named children under its `resources/`
-folder and a directory of links. Each response retains its complete `#json` evidence;
-reconstructing the same collection preserves child paths ({§scheme-operation-dispatch}).
-Generated catalogs and prompt documents use two-space
-JSON indentation; individual text resources preserve their source layout. A
-standalone `blob` content block is not a modern `tools/call` content member
-(blobs ride inside embedded blob resources) and is rejected as
-protocol-invalid. Size limits and MIME trust remain ordinary channel and
-entry policy, not MCP-specific rules.
-
-§mcp-prompt-content Retrieved prompts retain their ordered message list, roles,
-text, and metadata as data, never injected as messages. The same content
-projection used for tools replaces non-text parts with resource links: embedded
-content becomes typed snapshots under the prompt's `resources/` folder; remote
-links resolve through the server resource authority. Reading a snapshot does
-not retrieve the prompt again or discard its arguments. A missing snapshot is
-not found, never an implicit prompt re-execution. The prompt's `#json` preserves
-the complete original response. Media acquisition, native delivery, retention,
-and curation use the ordinary READ contract, not a separate prompt lifecycle.
-
-## §mcp-apps-exclusion MCP Apps exclusion
-
-Plurnk does not advertise or implement MCP Apps. An Apps host must sandbox
-render third-party HTML/JavaScript, enforce CSP and `_meta.ui` permissions,
-mediate a `postMessage` JSON-RPC `ui/` dialect, proxy app-initiated tool
-calls with consent, and own teardown. No Plurnk client can enforce that
-sandbox today (the terminal cannot), the daemon is not a second
-application platform, and ACP has no standard Apps projection — inventing
-a private event stream to carry Apps is rejected. Compact tool summaries and
-invocations derive only from name, description, title, and input schema,
-without `_meta.ui`. The on-demand raw tool catalog preserves `_meta` as inert
-data: no UI resource is fetched or preloaded, permissions are not granted,
-and reading a definition does not activate an App. The capability matrix keeps the extension
-non-advertised ({§mcp-capability-matrix}). Re-evaluate only when a
-sandbox-capable client exists and a standard ACP projection is agreed;
-even then the capability would be per-client-advertised, never daemon-wide.
-
-## §mcp-skills-deferral Skills extension adoption boundary
-
-Plurnk does not advertise or implement `io.modelcontextprotocol/skills`.
-[SEP-2640](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2640-skills-extension.md)
-is Final, with a
-[stable extension specification](https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx).
-Deferral concerns host integration, not standards maturity: origin-qualified
-identities, manifest verification, content-bound approval, and activation
-must compose with the existing skills, resource, and proposal owners before
-adoption. Reading an MCP resource does not claim extension support or activate
-it as a skill. The design review is tracked in #654.
-
-## §mcp-model-projection Model-facing projection
+| `stdio` | Spawn one exact executable with an explicit argument array and no shell; newline-delimited JSON-RPC on stdout/stdin; stderr is diagnostic. Owns the complete process group (watchdog wrapper): forwards stdin EOF for bounded graceful exit, then forcibly terminates the process group (including descendants) on timeout or parent SIGKILL. |
+| `streamable-http` | Send one POST per request or notification; accept JSON or SSE responses; close the response stream to cancel; modern connections never open a general GET stream. Accepts HTTP or HTTPS (including private-network hosts) while retaining SDK token-endpoint TLS enforcement (with loopback exception), issuer/resource binding, and PKCE. Every HTTP request sets `redirect: "manual"`; 301/302/303/307/308 fails with `McpRedirectError` (`502 server-redirected`) naming `Location` so configured headers never reach another origin. |
+
+- **HTTP protocol & routing headers:** At `2026-07-28`, HTTP requests carry `MCP-Protocol-Version` and `Mcp-Method`. Named requests carry `Mcp-Name` (encoded `taskId` for `tasks/get`, `tasks/update`, `tasks/cancel`; safe ASCII preserved, ambiguous values encoded as `=?base64?...?=`). Declared primitive tool parameters carry `Mcp-Param-*` headers.
+- **`x-mcp-header` declarations (SEP-2243):** Before either request leg of a tool call (Tasks or direct), the tool's `inputSchema` is scanned for `x-mcp-header`:
+  - Must sit on a property reached through `properties` alone (never under `items`, `additionalProperties`, `oneOf`/`anyOf`/`allOf`, `if`/`then`/`else`, `$defs`, or `$ref`).
+  - Header name must be a non-empty RFC 9110 token, unique case-insensitively across the tool.
+  - Property `type` must be `string`, `integer`, or `boolean` (never `number`, `object`, `array`, `null`, or untyped).
+  - Violation refuses the call before any request is sent with `HeaderDeclarationError` $\to$ `502 tool-header-invalid` ({§mcp-model-projection}) naming `tool` and `declaration`.
+- **Error allocation:** Standard JSON-RPC `-32700`, `-32600`, `-32601`, `-32602` (missing resource/task handle), `-32603`; `-32003` (Tasks capability absent); `-32020` `HeaderMismatch` (HTTP 400); `-32021` `MissingRequiredClientCapability` (HTTP 400); `-32022` `UnsupportedProtocolVersion` (HTTP 400); `-32000..-32019` server-private. A tool-level `isError: true` is a completed tool result (`502 tool-reported-error`), whereas a failed Task preserves its JSON-RPC protocol error (`502 tool-call-failed`).
+
+## §mcp-configuration Configuration, files, plugins, isolation, and summaries
+
+MCP servers are complete connection definitions ({§contracts-ownership}, {§configuration-authority}, {§functionality-coordinator}). Definitions resolve by alias (`[a-z][a-z0-9-]*`), highest precedence first:
+
+| Precedence | Source | Location / Key |
+| --- | --- | --- |
+| 1 | Workspace overlay | `plurnk (mcp)` `add` / `replace` state (never writes/deletes host `mcp.json` files) |
+| 2 | Environment | `PLURNK_MCP_<alias>` (complete `McpServerDefinition` JSON; transport and auth replace together) |
+| 3 | Project | `<project>/.agents/mcp.json`, then selected project plugins |
+| 4 | Plurnk-only | `$XDG_CONFIG_HOME/plurnk/mcp.json`, then selected Plurnk plugins |
+| 5 | Shared global | `~/.agents/mcp.json`, then selected global plugins |
+| 6 | Installed npm plugins | Selected plugin bundles in the installed graph |
+
+- **Standalone `mcp.json` files:** Object with required `mcpServers` map and optional `$schema` string. Omitted `type` is inferred from `command` (`stdio`) or `url` (`streamable-http`). Whole winning entry is selected before validation (no field merging or fallback from an invalid winner). Reported with `provenance: { kind: "file", source: <file>, reference: "/mcpServers/<alias>" }`.
+- **Agent Plugins (`PluginConfiguration`):** Validated plugin components ({§agent-plugins-mcp-entries}, {§agent-plugins-components}, {§functionality-adapter}) carry `{ root, data }` context and `provenance: { kind: "plugin", source, reference }`:
+  - `command`: bare executable or plugin-root-relative `./` path (no placeholder expansion).
+  - `args`, `env`, `cwd`: one nonrecursive expansion of `${PLUGIN_ROOT}` and `${PLUGIN_DATA}` only; all other `${...}` text stays literal. Omitted `cwd` defaults to `root`; explicit `cwd` and relative `./` command paths must resolve inside `root` or `data` (checked via `realpath` before launch). `PLUGIN_ROOT` and `PLUGIN_DATA` are injected into the child environment.
+  - Unsupported transport (e.g., `sse`) or invalid server name is skipped with a configuration notice without blocking valid siblings.
+- **Environment knobs ({§resource-environment}):**
+  - `PLURNK_MCP_ENABLED` (default `1`), `PLURNK_MCP_<alias>_ENABLED` (`0` or `1`).
+  - `PLURNK_MCP_<alias>_TOOLS`: optional JSON array of enabled tool names; absent/`""` enables all, `[]` enables none.
+  - `PLURNK_MCP_EXPANDED`: JSON array of aliases whose tool invocations are surveyed at turn 0 ({§system-entry-owners}); default `[]`.
+  - `PLURNK_MCP_REGISTRY_URL` (default `""`), `PLURNK_MCP_REGISTRY_LIMIT` (default `5`).
+  - Native `stdio` definitions expand `${NAME}` once in `args`, `env`, and explicit absolute `cwd` against the workspace-composed operator environment; implicit `cwd` uses Core's workspace-and-alias state directory ({§module-workspace-directory}). `streamable-http` definitions expand `${NAME}` in `headers` and `authorization` (`bearer.token`, `client-credentials.clientSecret`, `oauth.clientSecret`) only at connection preparation; supplying both `authorization` and an `Authorization` header is invalid.
+- **Cold endpoint isolation & unavailable runtimes:** Cold failure during workspace activation leaves the server enabled and client-visible as `unavailable` (or `authorization-required`). Preparation still registers the alias as an unavailable runtime ({§exec-lifetime}) whose availability detail names `it awaits the operator's sign-in` (for `authorization-required`) or its Problem's bounded diagnostic/detail (for `unavailable`).
+- **Summary derivation:** Whitespace-normalized, first sentence, clipped within 80 chars + `…`:
+  - **Server:** `serverInfo.description` $\to$ `instructions` $\to$ `serverInfo.title` $\to$ effective admitted tool-name list (`Tools: ...`) $\to$ `MCP server <alias>.` With tools, `runtimeDecl` uses `{ from: "tools", description? }` and full `instructions` as `details` ({§scheme-contract}, {§system-entry-owners}).
+  - **Tool:** `description` $\to$ `title` $\to$ `annotations.title` $\to$ tool `name`.
+
+## §mcp-module Module adapter, launch environment, management, registry, and diagnostics
+
+- **Setup-only module (`@plurnk/plurnk-mcp`):** Registers the `mcp` family adapter ({§module-lifecycle}, {§functionality-coordinator}) and workspace actions `workspace.mcp.oauth.begin`, `workspace.mcp.oauth.complete`, and `workspace.mcp.complete`. Invalid `PLURNK_MCP_REGISTRY_URL` or `PLURNK_MCP_REGISTRY_LIMIT` is contained in `module.contained` ({§module-contained-configuration}), withholding `discover` while keeping the family operational.
+- **Stdio launch environment:** Receives (1) operator ambient base excluding `PLURNK_*` and provider credential names ({§exec-stream}), (2) workspace shared `env` values and masks, and (3) definition `env` values with `${NAME}` resolved once against the workspace-composed operator environment ({§functionality-model-projection}, {§capability-admission}).
+- **Registry discovery (`discover`):** Active when `PLURNK_MCP_REGISTRY_URL` is non-empty; queries `<url>/v0.1/servers?search=<query>&version=latest&limit=<limit>`. Converts launchable `npm` (`npx -y`), `pypi` (`uvx`), `nuget` (`dnx`), and `oci` (`docker run -i --rm`) stdio packages and `streamable-http` remotes into self-contained definitions (`aliasOf` takes the last name segment, lowercased, `[a-z][a-z0-9-]*`), omitting entries requiring user template variables or missing required positional arguments. Failures reject with `502 discover-failed` (retryable); invalid definitions reject with `400 definition-invalid` or `400 alias-mismatch`.
+- **Preparation diagnostics (`PreparationDiagnostics`):** `502 server-unavailable` carries `elapsedMs`, `timeoutMs`, bounded `diagnostic` (innermost cause chain first, excluding OAuth error text), and bounded `stderr` tail, each capped at `PLURNK_EXECS_ERROR_DETAIL_LIMIT` (`0` omits text). Redacts known launch-environment values, configured args/headers, referenced env values, and URL userinfo with `__redacted__` across chunk and truncation boundaries before slicing.
+
+## §oauth-continuation Interactive OAuth continuation, issuer, lifetime, and grants
+
+- **Sign-in continuation (`workspace.mcp.oauth.begin` / `workspace.mcp.oauth.complete`):**
+  - Unauthenticated HTTP 401 publishes `authorization-required` with `authorization: {}` (or `authorization: { url }` when `redirectUrl` is pre-configured on the definition).
+  - `oauth.begin({ alias, redirectUrl })` prepares a pending candidate per `(workspace, alias)` holding one workspace residency lease ({§module-workspace-residency}), returning `202` with `authorization.url` (or `202` without `url` when an unchallenged connection is accepted as-is, or `200` when already active). Concurrent begins for the same alias reject with `409 oauth-busy`.
+  - When an alias awaits sign-in because a request was refused ({§mcp-host-composition}) and `oauth.begin`'s connection meets no catalog challenge, `begin` starts the SDK's authorization on that connection anyway.
+  - `oauth.complete({ alias, callbackUrl })` validates `state`, `code`, and `iss` as one unit, exchanges the code once, records the grant, and triggers capability refresh (`202`).
+- **Configured issuer (`authorization.issuer` & `authorization.authorizationParams`):** Discovery reads RFC 8414 / OIDC metadata at `issuer` whether or not the MCP server publishes protected-resource metadata, binding registration, tokens, and refresh to `issuer`. Without `issuer` or server metadata, sign-in fails `502 oauth-metadata-unavailable` (recovery names `authorization.issuer`). `authorizationParams` (e.g., `access_type: "offline"`, `prompt: "consent"`) join the authorization URL.
+- **Process-memory lifetime & grants (`OAuthGrantSummary`):** Tokens and PKCE verifiers never touch SQLite. An accepted sign-in is held in memory per `(workspace, alias)` bound to the exact definition it was accepted for:
+  - Presented and refreshed via `refresh_token` across workspace cooling, explicit `enable`, and `disable`+`enable` with the same definition, and summarized in `detail.grant: { issuer, scope?, refreshable }`.
+  - Never presented to a changed definition or another workspace.
+  - Ends when rejected by the authorization server or on daemon stop; replaced when a new sign-in is accepted.
+
+## §oauth-client-credentials Client-credentials grant and EMA deferral
+
+- **`client-credentials` (`io.modelcontextprotocol/oauth-client-credentials`):** Advertised in `clientCapabilities.extensions` only on connections whose definition configures `authorization.type === "client-credentials"`. Uses `client_secret_basic` with `grant_type=client_credentials`, optional `scope`, and optional `issuer` (`expectedIssuer`). `clientSecret: "${NAME}"` expands per connection preparation. Rejected grants fail with `502 oauth-client-credentials-failed` (non-retryable, naming server and `clientId` only). JWT assertion arms are excluded.
+- **Enterprise-managed authorization (`io.modelcontextprotocol/enterprise-managed-authorization`):** Deferred and non-advertised; headless daemon does not own interactive SSO assertion acquisition, durable identity storage, or org-level IdP configuration.
+
+## §mcp-setup Atomic setup, in-place catalog refresh, and connection shutdown
+
+- **Atomic setup:** Opens and discovers enabled connections in parallel, lists catalogs, applies `<alias>_TOOLS` and `readOnlyHint` policy, and submits one snapshot. Missing configured tools, duplicate remote tool names, or unrepresentable target names fail activation.
+- **In-place catalog refresh:** `notifications/tools/list_changed` (and resource/prompt list changes) coalesce under a refresh timer, re-list over the existing connection, and atomically republish through {§functionality-coordinator}. Active protocol requests, MRTR exchanges, or Tasks reject connection replacement with `409 server-busy`.
+- **Connection shutdown (`Module.stop()` / `connection.close()`):** Prevents new work, aborts active requests and client-input waits, honors host preparation `AbortSignal` ({§functionality-preparation-cancellation}) after async env/directory resolution, awaits `tasks/cancel` before closing the extension channel/transport, and retires subscription watches without redundant per-listen cancellation ({§module-shutdown-order}).
+
+## §mcp-host-composition Protocol-to-Plurnk composition, deadlines, Problems, and unauthorized requests
+
+- **MRTR & client interactions:** `input_required` routes each embedded elicitation (`mode: "form"` or `mode: "url"`) through `interact(request, signal)` (`toolName: "mcp_input_required"`), keeping `requestState` private and bounding rounds at 10. Unclaimed input families (e.g., `sampling/createMessage`) fail before opening an interaction (and cancel any owned Task).
+- **Input deadline:** Client-input waits consume the remaining `PLURNK_MCP_REQUEST_TIMEOUT` budget across MRTR rounds and Task inputs rather than resetting per round.
+- **Tool replay & Problem detail:** `tool-call-failed` (`502`) is always `retryable: false` because post-dispatch transport failure cannot prove the remote effect did not occur. Tool Problems carry `runtime`, `tool`, and bounded `diagnostic` (from the error cause or joined nonblank text blocks of `isError: true`) as structured fields, while `detail` states only the boundary fact.
+- **Request-time 401 (`authorization-required`):** When an `active` server with a URL-only or interactive `oauth` definition refuses `tools/call`, `resources/read`, `prompts/get`, or `completion/complete` with HTTP 401 (or an unrefreshable interactive grant), the request fails `401 authorization-required` (non-retryable) and republishes the alias as `authorization-required` (out of service, `detail: "it awaits the operator's sign-in"`). Configured `bearer`, `client-credentials`, or `Authorization` header definitions fail as ordinary request errors without state change.
+- **Trailing HTML comment aside:** When a tool call body does not parse directly as JSON, trailing `<!-- … -->` comments after the single JSON object are stripped before parsing (#758); any other non-object body fails `400 invalid-tool-arguments`.
+
+## §mcp-result-content Result content, prompt content, Apps exclusion, and Skills deferral
+
+- **Tool result channels:** `#json` stores the complete raw MCP result object. Default `#body` writes the result without the envelope: single/multiple text blocks join with `\n` (pretty-printed `application/json` via `renderJsonResult` when a complete JSON document, else `text/plain` under {§contracts-ownership}); empty `content` with `structuredContent` writes pretty-printed JSON; inline `image`/`audio` and embedded `resource` items publish via `entry(null, ...)` ({§executor-output-address}) and link as `<runtime>:///<id>/resources/<name-or-hex8>`; `resource_link` items link as `<runtime>:///resources/<encoded-uri>`. Standalone `blob` items in `tools/call` are rejected as protocol-invalid.
+- **Prompt content (`/prompts/<name>?key=val`):** Preserves `#json` raw response and writes projected `GetPromptResult` JSON to `#body` where non-text parts become `resource_link` items pointing to snapshot children under `/prompts/<name>/resources/<name-or-hex8>` (or `<runtime>:///resources/<encoded-uri>` for remote `resource_link`s) ({§log-wire-format}, {§scheme-contract}). Reading a snapshot never re-executes the prompt.
+- **Exclusions:** MCP Apps (`_meta.ui` remains inert in raw catalogs and is excluded from compact invocations) and `io.modelcontextprotocol/skills` (SEP-2640, #654) are not advertised or implemented.
+
+## §mcp-model-projection Model projection, tool presentation, conformance, and Problems
 
 | MCP surface | Plurnk surface |
-|---|---|
-| Server | One registered runtime, `workspace:///_plurnk/tools/<server>.md`, and matching resource scheme |
-| Enabled tool | One annotated call in the compact runtime document plus one exact `workspace:///_plurnk/tools/<server>/<encoded-tool>.json` input-contract document |
-| Complete tool definitions | `workspace:///_plurnk/tools/<server>.json`, containing `{"tools":[...]}` from the same effective snapshot |
-| Tool survey | Ordinary FIND summary metadata from the standard executable-tool resource tree |
-| Resource catalog | `<server>:///` and `<server>:///resources` |
-| Resources | `<server>:///resources` and encoded resource-URI descendants |
-| Prompts | `<server>:///prompts` and encoded prompt-name descendants |
+| --- | --- |
+| Server | Runtime `<server>`, `workspace:///_plurnk/tools/<server>.md`, and resource scheme `<server>:///` ({§exec-stream}) |
+| Enabled tool & raw catalog | Compact invocation in `<server>.md`, schema doc `workspace:///_plurnk/tools/<server>/<encoded-tool>.json`, and full catalog `workspace:///_plurnk/tools/<server>.json` (`{"tools":[...]}` sorted by name) ({§executor-discovery}) |
+| Resources & Prompts | `<server>:///`, `<server>:///resources[/<encoded-uri>]`, `<server>:///prompts[/<encoded-name>]` (never lists tools) |
+| Tool effect | `annotations.readOnlyHint === true` $\to$ `read`; all other enabled tools $\to$ `host` (unregistered target throws) |
 
-Qualified `<server>://<session>/…` resources, prompts, and catalogs follow
-{§execution-output-identity}: the qualifier selects the stored projection, not
-a private attachment. Acquisition uses the workspace attachment; the requesting
-operation retains its policy and client interactions.
-Returned Plurnk resource links retain that qualifier; MCP protocol URIs remain
-unchanged on the wire.
+- **Conformance authority:** `@modelcontextprotocol/conformance@0.2.0-alpha.12` (`--requirements 2026-07-28`, 39 client scenarios including SEP-2243 `http-invalid-tool-headers`, plus `--scenario auth/client-credentials-basic`).
 
-§mcp-tool-presentation One canonical enabled-tool snapshot owns every
-model-facing and executable consequence. Each enabled remote tool becomes one
-exact target in {§executor-tool-registry}. Its standard
-{§executor-tool-document} carries a compact summary, requiredness derived from
-the input schema, and the original schema itself. The common renderer owns
-{§executor-input-schema-preview}, not an MCP-specific schema interpreter.
-The compact runtime document contains annotated, copyable tool invocations with
-shallow required-field previews and alias-scoped schema links. Each linked child
-preserves the complete remote description and raw input schema, without
-reconstructing property tables or expanding nested constraints into the preview.
-Output schemas do not enter compact invocation teaching; the returned value remains ordinary evidence. Disabled names
-appear in no model teaching, and there is no MCP-specific FIND,
-READ, authority-root, or other model discovery mechanism for tools.
-
-Each registry entry carries the original MCP `Tool` object as its
-{§executor-tool-catalog} definition. The catalog preserves full descriptions,
-input and output schemas, annotations, icons, and metadata as received through
-the MCP client, without synthesized fields or schema expansion. It contains
-the selected tools from all catalog pages, sorted by tool name, not the JSON-RPC
-envelope, pagination cursors, or transport cache controls. The Markdown family
-document links to it; ordinary READ and JSONPath can inspect one tool or the
-whole catalog. Reading the catalog performs no additional MCP discovery and
-does not inject its contents into turn 0.
-
-Core validates the exact target and the selected tool's invocation before
-effect admission. `McpExecutor.run()` independently rejects a target outside
-the same snapshot before issuing `tools/call`. The server's empty-authority
-scheme is consequently resource-only: its root and `/resources` catalogs
-contain resources and resource templates, never tools. Tool results become
-ordinary Plurnk entries and channels, so slicing, tags, curation, notices, and
-Problems need no MCP-specific parallel mechanism.
-
-A configured server's `annotations.readOnlyHint` supplies its tool's declared effect:
-a tool marked read-only takes the executor `read` effect; every other enabled
-tool remains `host` and therefore uses the ordinary proposal policy. Effect classification receiving an unregistered
-target is an internal contract violation rather than a conservative guess.
-
-## §mcp-conformance Conformance authority
-
-Protocol conformance runs through official
-`@modelcontextprotocol/conformance@0.2.0-alpha.12`, whose immutable
-`2026-07-28` requirement manifest names the thirty-nine client scenarios of
-that revision, the SEP-2243 `http-invalid-tool-headers` scenario among them
-({§mcp-header-declarations}). Its required client leg must pass; `not_scored`
-probes remain visible without changing that verdict. The adopted
-`auth/client-credentials-basic` extension runs as a separate named gate
-requiring successful grant and bearer checks; an empty or skipped report never
-passes. Extension scenarios have no dated-spec filter and do not alter the core
-pass rate. The `auth/client-credentials-jwt`, `auth/enterprise-managed-authorization`,
-`auth/dpop`, `auth/dpop-nonce` and `auth/wif-jwt-bearer` extensions are not
-adopted and stay `not_scored`; the JWT arm remains excluded under
-{§oauth-client-credentials}. Atlas and third-party stdio/Streamable HTTP
-servers are composition evidence only.
-
-§problems-mcp **MCP Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
-
-| code | status | contract |
-|---|---:|---|
-| `tool-required` | 400 | An MCP tool target is required. Recovery: Select a target documented under workspace:///_plurnk/tools/*runtime*/. |
-| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: Select a target documented under workspace:///_plurnk/tools/*runtime*/. |
-| `tool-reported-error` | 502 | The MCP tool reported an error (the tool call failed). Recovery: the tool's working invocation fence with its schema note and schema link (#1228). |
-| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: One JSON object per MCP tool call, followed by the tool's working invocation fence (#1228). |
-| `resource-address-invalid` | 400 | The MCP resource address is invalid (a malformed encoded address); not retryable. |
-| `resource-part-not-found` | 404 | The resource response does not contain this part. |
-| `resource-read-failed` | 502 | MCP resource preparation failed; retryable, with the bounded upstream diagnostic. |
-| `resource-find-failed` | 502 | MCP resource listing failed; retryable, with the bounded upstream diagnostic. |
-| `oauth-client-credentials-failed` | 502 | MCP server '*name*' rejected the client-credentials grant. |
-| `server-authentication-failed` | 502 | MCP server '*name*' rejected authentication (HTTP 401). |
-| `authorization-required` | 401 | MCP server '*name*' awaits the operator's sign-in; the request was not completed. |
-| `oauth-metadata-unavailable` | 502 | MCP OAuth requires validated authorization-server metadata, and the server provided none. Recovery, when the definition names no issuer: Name the authorization server as the definition's authorization.issuer. |
-| `oauth-registration-unavailable` | 502 | No client is registered with the authorization server: none is configured for it, it advertises no Dynamic Client Registration endpoint, and no client metadata document it accepts is configured. |
-| `oauth-redirect-invalid` | 400 | The OAuth callback must use HTTPS or HTTP loopback with a usable port. |
-| `oauth-configuration-conflict` | 409 | MCP server '*alias*' is not configured for this interactive OAuth callback. |
-| `oauth-busy` | 409 | MCP server '*alias*' is already starting authorization. |
-| `parameters-invalid` | 400 | Unsupported parameter(s): *names*. |
-| `server-settings-invalid` | 422 | MCP server '*name*' has invalid operator settings: *cause*. |
-| `server-busy` | 409 | MCP server '*name*' has *n* active request(s). |
-| `obsolete-connection-close-failed` | 500 | The MCP capability change committed, but an obsolete connection did not close cleanly. |
-| `oauth-not-pending` | 404 | MCP server '*alias*' has no pending OAuth authorization. |
-| `oauth-target-conflict` | 409 | MCP server '*alias*' changed while its OAuth authorization was pending. Recovery: Start authorization again from the server's current definition. |
-| `oauth-callback-invalid` | 400 | OAuth authorization for MCP server '*alias*' could not be completed. |
-| `server-not-connected` | 409 | MCP server '*name*' is not connected for this workspace. |
-| `completion-parameters-invalid` | 400 | MCP completion requires 'ref' and 'argument' objects. |
-| `server-unavailable` | 502 | Configured MCP server '*name*' is unavailable. |
-| `resource-part-not-found` | 404 | The resource response does not contain the requested part. |
-| `server-redirected` | 502 | MCP endpoint *url* redirected to *location*; plurnk follows no redirect, so the server's url must be the endpoint itself ({§mcp-redirect-refused}). |
-| `tool-header-invalid` | 502 | MCP tool '*name*' declares an invalid x-mcp-header; the tool was not called ({§mcp-header-declarations}). The declaration read is the `declaration` field. |
+| Problem code | Status | Contract (`detail` and `recovery`) |
+| --- | --- | --- |
+| `tool-required` | 400 | An MCP tool target is required. Recovery: `Select a target documented under workspace:///_plurnk/tools/<runtime>/.` |
+| `tool-not-enabled` | 404 | The MCP tool is not enabled. Recovery: `Select a target documented under workspace:///_plurnk/tools/<runtime>/.` |
+| `tool-reported-error` | 502 | The MCP tool reported an error. Recovery: the tool's working invocation fence with its schema note and schema link (#1228). |
+| `tool-call-failed` | 502 | The MCP tool call failed (`retryable: false`, with `runtime`, `tool`, and bounded `diagnostic`). |
+| `invalid-tool-arguments` | 400 | MCP tool arguments must be one JSON object. Recovery: `One JSON object per MCP tool call.` followed by the tool's working invocation fence (#1228). |
+| `tool-header-invalid` | 502 | `MCP tool '<name>' declares an invalid x-mcp-header; the tool was not called.` (`tool` and `declaration` fields). |
+| `resource-address-invalid` | 400 | The MCP resource address is invalid (`retryable: false`). |
+| `resource-part-not-found` | 404 | The resource response does not contain this part / the requested part. |
+| `resource-read-failed` / `resource-find-failed` | 502 | MCP resource preparation / listing failed (`retryable: true`, with bounded `diagnostic`). |
+| `authorization-required` | 401 | `MCP server '<name>' awaits the operator's sign-in; the request was not completed.` |
+| `server-authentication-failed` | 502 | `MCP server '<name>' rejected authentication (HTTP 401).` (`upstreamStatus: 401`). |
+| `oauth-client-credentials-failed` | 502 | `MCP server '<name>' rejected the client-credentials grant.` |
+| `oauth-metadata-unavailable` | 502 | `MCP OAuth requires validated authorization-server metadata, and the server provided none.` Recovery (when no issuer): `Name the authorization server as the definition's authorization.issuer.` |
+| `oauth-registration-unavailable` | 502 | `No client is registered with the authorization server: none is configured for it, it advertises no Dynamic Client Registration endpoint, and no client metadata document it accepts is configured.` |
+| `oauth-redirect-invalid` | 400 | `The OAuth callback must use HTTPS or HTTP loopback with a usable port.` |
+| `oauth-configuration-conflict` | 409 | `MCP server '<alias>' is not configured for this interactive OAuth callback.` |
+| `oauth-busy` | 409 | `MCP server '<alias>' is already starting authorization.` |
+| `oauth-not-pending` | 404 | `MCP server '<alias>' has no pending OAuth authorization.` |
+| `oauth-target-conflict` | 409 | `MCP server '<alias>' changed while its OAuth authorization was pending.` Recovery: `Start authorization again from the server's current definition.` |
+| `oauth-callback-invalid` | 400 | `OAuth authorization for MCP server '<alias>' could not be completed.` |
+| `parameters-invalid` / `completion-parameters-invalid` | 400 | `Unsupported parameter(s): <names>.` / `MCP completion requires 'ref' and 'argument' objects.` |
+| `server-settings-invalid` | 422 | `MCP server '<name>' has invalid operator settings: <cause>.` |
+| `server-busy` / `server-not-connected` | 409 | `MCP server '<name>' has <n> active request(s).` / `MCP server '<name>' is not connected for this workspace.` |
+| `obsolete-connection-close-failed` | 500 | `The MCP capability change committed, but an obsolete connection did not close cleanly.` |
+| `server-unavailable` | 502 | `Configured MCP server '<name>' is unavailable.` |
+| `server-redirected` | 502 | `MCP endpoint <url> redirected to <location>; plurnk follows no redirect, so the server's url must be the endpoint itself.` |
+| `discover-failed` / `definition-invalid` / `alias-mismatch` | 502 / 400 | Registry discovery failed (`retryable: true`) / definition invalid / alias differs from definition name. |

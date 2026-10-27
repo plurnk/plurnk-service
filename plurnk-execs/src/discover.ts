@@ -24,15 +24,15 @@ interface ExecManifest {
 // not just `@plurnk/*`. Tests and unusual layouts can pass `packageDirs`
 // explicitly to skip the scan.
 //
-// Trust precedes executable discovery code ({§executor-trust}). A package is recognized
+// Trust precedes executable discovery code ({§executor-policy}). A package is recognized
 // only when its manifest declares `plurnk.kind === "exec"`; tags come from:
 //   - STATIC: `plurnk.runtimes: { name, glyph?, summary, invocation, details? }[]` —
 //     tags known at publish time.
 //   - DYNAMIC: `plurnk.runtimesModule: "<export-subpath>"` — a trusted runtimes function that
-//     returns deployment-configured declarations ({§executor-dynamic-runtimes}).
+//     returns deployment-configured declarations ({§executor-discovery}).
 // Each decl registers its tag separately; one package can claim many tags
 // backed by the same default export. Summary, invocation, and details are
-// defined by {§executor-runtime-declaration}.
+// defined by {§executor-discovery}.
 //
 // Tags occupy one flat namespace. Two packages claiming one tag are a fail-hard
 // installation ambiguity.
@@ -48,7 +48,7 @@ export default class Discover {
             const manifest = await Discover.#readExecManifest(dir);
             if (manifest === null) continue; // not an exec package
             // Trust is enforced before any dynamic runtimes function is imported
-            // ({§executor-trust}).
+            // ({§executor-policy}).
             if (!Meta.isTrusted(manifest.packageName)) {
                 skipped.add(manifest.packageName);
                 continue;
@@ -99,7 +99,7 @@ export default class Discover {
         for (const raw of await Discover.#runtimeDecls(dir, packageName, plurnk)) {
             const decl = RuntimeDeclaration.assert(raw, packageName);
             // A package doc file wins over inline details
-            // ({§executor-runtime-declaration}).
+            // ({§executor-discovery}).
             const details = await DocFile.read(dir, decl.name) ?? decl.details ?? "";
             infos.push({
                 runtime: decl.name,
@@ -117,7 +117,7 @@ export default class Discover {
     }
 
     // Static declarations win over a dynamic export when both are present
-    // ({§executor-dynamic-runtimes}).
+    // ({§executor-discovery}).
     static async #runtimeDecls(dir: string, packageName: string, plurnk: Record<string, unknown>): Promise<unknown[]> {
         if (Array.isArray(plurnk.runtimes)) return plurnk.runtimes;
         const mod = plurnk.runtimesModule;
@@ -127,7 +127,7 @@ export default class Discover {
 
     // Import an admitted package's runtimes function through its export map. Its loading,
     // shape, execution, and result failures are fail-hard
-    // ({§executor-dynamic-runtimes}).
+    // ({§executor-discovery}).
     static async #loadDynamicRuntimes(dir: string, packageName: string, rel: string): Promise<unknown[]> {
         if (!rel.startsWith("./")) throw new Error(`exec runtimes function invalid: ${packageName} -> ${rel} must be an export subpath like "./runtimes"`);
         // Self-reference resolution: the subpath resolves through the package's OWN export

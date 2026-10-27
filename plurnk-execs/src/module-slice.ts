@@ -1,4 +1,4 @@
-// {§executor-module-slice} — what a daemon module contributes to the exec kind: runtimes, each
+// {§executor-role} — what a daemon module contributes to the exec kind: runtimes, each
 // an executor with its declaration, availability and optional scheme facet. The base module
 // contract is `@plurnk/plurnk-modules` ({§module-seam-slices}).
 import type { RuntimeSchemeFacet, SchemeManifest } from "@plurnk/plurnk-schemes";
@@ -27,10 +27,10 @@ export interface Executor {
     prepare?(input: ExecInput): Promise<ExecPreparation>;
     run(args: ExecArgs): Promise<ExecResult>;
     // The host aborts on resolve or timeout so probe work is reaped immediately
-    // ({§executor-probe}). Optional and ignore-safe.
+    // ({§executor-results}). Optional and ignore-safe.
     probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
     // One pure classification of the consumer-canonical logical target
-    // ({§executor-effect}); authored body text is never an admission input.
+    // ({§executor-results}); authored body text is never an admission input.
     effect(target: string | null): Effect;
     toolRegistry?(workspaceId?: number): RuntimeToolRegistry;
 }

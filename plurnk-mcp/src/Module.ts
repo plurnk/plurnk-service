@@ -101,7 +101,7 @@ type Snapshot = ReadonlyMap<string, Attachment>;
 const attachmentConnection = (attachment: Attachment): ServerConnection | undefined =>
     attachment.kind === "unavailable" ? undefined : attachment.connection;
 
-// {§mcp-unavailable-runtime} An enabled server that cannot run still answers to its alias: a call to it is refused with
+// {§mcp-configuration} An enabled server that cannot run still answers to its alias: a call to it is refused with
 // the state that keeps it from running, never as a name nothing registered.
 const unavailableRuntime = (attachment: AuthorizationAttachment | UnavailableAttachment): RuntimeRegistration => {
     const { name } = attachment.definition;
@@ -116,7 +116,7 @@ const unavailableRuntime = (attachment: AuthorizationAttachment | UnavailableAtt
     };
 };
 
-// {§oauth-lifetime} — a pending authorization is process memory per
+// {§oauth-continuation} — a pending authorization is process memory per
 // (workspace, alias): the challenged connection, its URL, the workspace residency it
 // holds, and the accepted grant awaiting capability publication.
 interface PendingAuthorization extends McpBinding {
@@ -197,7 +197,7 @@ const preparationError = (
             completeCause,
         );
     }
-    // {§mcp-redirect-refused} — the operator corrects the endpoint; retrying cannot.
+    // {§mcp-transports} — the operator corrects the endpoint; retrying cannot.
     const redirect = causeOf(cause, McpRedirectError);
     if (redirect !== undefined) {
         return actionError(
@@ -303,7 +303,7 @@ const statusOf = (error: unknown): number | null => {
     return typeof problem?.status === "number" ? problem.status : null;
 };
 
-// An active alias's detail: its server's catalog, and the summary of a grant its connection presents ({§oauth-grant}).
+// An active alias's detail: its server's catalog, and the summary of a grant its connection presents ({§oauth-continuation}).
 const activeDetail = ({ executor: { catalog }, connection }: ActiveAttachment): object => {
     const grant = connection.oauthGrant?.summary;
     return {
@@ -318,7 +318,7 @@ const activeDetail = ({ executor: { catalog }, connection }: ActiveAttachment): 
     };
 };
 
-// {§mcp-registry-discovery} — the registry `discover` searches.
+// {§mcp-module} — the registry `discover` searches.
 interface Registry {
     readonly url: string;
     readonly limit: number;
@@ -331,7 +331,7 @@ type SetupSeam = Pick<ModuleSetupSeam,
 
 export default class Module implements DaemonModule<SetupSeam> {
     readonly #env: NodeJS.ProcessEnv;
-    // {§mcp-registry-discovery} The registry `discover` searches, read at construction; without one the
+    // {§mcp-module} The registry `discover` searches, read at construction; without one the
     // family serves no discovery. An invalid setting withholds discovery alone
     // ({§module-contained-configuration}).
     readonly #registry: Registry | null;
@@ -349,9 +349,9 @@ export default class Module implements DaemonModule<SetupSeam> {
     readonly #pending = new Map<string, PendingAuthorization>();
     readonly #authorizing = new Set<string>();
     readonly #dirty = new Map<string, symbol>();
-    // {§mcp-request-unauthorized} The aliases whose server refused a call for want of a sign-in, by pending key.
+    // {§mcp-host-composition} The aliases whose server refused a call for want of a sign-in, by pending key.
     readonly #challenged = new Set<string>();
-    // {§oauth-grant} Each alias's accepted sign-in, by pending key, with the definition it was accepted for; cooling
+    // {§oauth-continuation} Each alias's accepted sign-in, by pending key, with the definition it was accepted for; cooling
     // keeps it.
     readonly #grants = new Map<string, McpBinding & { readonly grant: OAuthGrant }>();
     readonly #connections = new Set<ServerConnection>();
@@ -457,7 +457,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         await this.#handleOrThrow().refresh(identity, { gate: "none", ifChanged: true });
     }
 
-    // {§mcp-registry-discovery} Candidates are complete definitions, never installations.
+    // {§mcp-module} Candidates are complete definitions, never installations.
     async #discover(query: FunctionalityDiscoverQuery, { url, limit }: Registry): Promise<FunctionalityCandidate[]> {
         const term = query.query!;
         let servers: RegistryServer[];
@@ -540,7 +540,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         const { definition, context } = binding;
         signal?.throwIfAborted();
         this.#assertOpen();
-        // {§mcp-server-settings} — the operator's settings for this alias; a bad one isolates this server.
+        // {§mcp-configuration} — the operator's settings for this alias; a bad one isolates this server.
         let settings: ToolPolicy;
         try {
             settings = serverSettings(definition.name, this.#env);
@@ -555,7 +555,7 @@ export default class Module implements DaemonModule<SetupSeam> {
             const environment = await this.#workspaceEnvironment(workspaceId);
             signal?.throwIfAborted();
             this.#assertOpen();
-            // {§mcp-launch-environment} — a configured server inherits the operator's environment beneath the
+            // {§mcp-module} — a configured server inherits the operator's environment beneath the
             // workspace layer, as every MCP client launches one; the model's command ceiling is not its base.
             const cwd = candidate === undefined && definition.type === "stdio" && definition.cwd === undefined && context === undefined
                 ? await this.#stateDirectory(workspaceId, `${OWNER}/${definition.name}`) : undefined;
@@ -675,7 +675,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         const fresh: ConnectedAttachment[] = [];
         const consumedPending = new Map<string, PendingAuthorization>();
         const refreshed = new Map<string, symbol | undefined>();
-        // {§mcp-request-unauthorized} The aliases this preparation connects afresh or signs in, which answer any refusal.
+        // {§mcp-host-composition} The aliases this preparation connects afresh or signs in, which answer any refusal.
         const answered = new Set<string>();
         try {
             // {§mcp-setup} — every server that needs a connection or a catalog is prepared at once, so a
@@ -688,7 +688,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 const heldConnection = existing === undefined ? undefined : attachmentConnection(existing);
                 const settledBinding = existing !== undefined && force !== name && sameBinding(existing, binding)
                     && pending?.prepared === undefined && pending?.authorized !== true;
-                // {§mcp-request-unauthorized} A server that refused a call for want of a sign-in awaits one on the connection
+                // {§mcp-host-composition} A server that refused a call for want of a sign-in awaits one on the connection
                 // it holds, whatever its catalog still lists.
                 const mode = settledBinding && this.#challenged.has(key) && existing?.kind === "active" && heldConnection !== undefined ? "challenged"
                     : settledBinding && !this.#dirty.has(key) ? "reuse"
@@ -711,7 +711,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 }
                 try {
                     if (plan.mode === "catalog") {
-                        // {§mcp-catalog-refresh-in-place} — only the catalog is dirty: the executor is
+                        // {§mcp-setup} — only the catalog is dirty: the executor is
                         // rebuilt on the connection the alias already holds. No second process is
                         // spawned, so neither abort nor commit has anything of this alias to close
                         // (#429).
@@ -796,7 +796,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                     if (registered) this.#pending.delete(key);
                     published.removed.push({ key, pending, registered });
                 }
-                // {§oauth-lifetime} A client's challenge is independent of the published connection.
+                // {§oauth-continuation} A client's challenge is independent of the published connection.
                 for (const [key, pending] of this.#pending) {
                     if (!key.startsWith(`${workspaceId}:`)) continue;
                     const name = key.slice(`${workspaceId}:`.length);
@@ -832,7 +832,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 };
             },
             commit: async () => {
-                // {§mcp-catalog-refresh-in-place} A published snapshot acknowledges only
+                // {§mcp-setup} A published snapshot acknowledges only
                 // its captured invalidation, never a newer notification or an aborted candidate.
                 for (const [key, invalidation] of refreshed) {
                     if (this.#dirty.get(key) === invalidation) this.#clearCatalogRefresh(key);
@@ -842,7 +842,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                         this.#clearCatalogRefresh(key);
                     }
                 }
-                // {§mcp-request-unauthorized} A fresh connection or an accepted sign-in answers a refusal; withdrawal forgets it.
+                // {§mcp-host-composition} A fresh connection or an accepted sign-in answers a refusal; withdrawal forgets it.
                 for (const key of [...this.#challenged]) {
                     if (key.startsWith(`${workspaceId}:`) && (answered.has(key) || !next.has(key.slice(`${workspaceId}:`.length)))) {
                         this.#challenged.delete(key);
@@ -923,7 +923,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         try {
             const connected = await this.#prepareAttachment(identity.workspaceId, current, undefined, redirectUrl);
             if (connected.kind === "unavailable") throw new Error("OAuth preparation returned an unavailable attachment.");
-            // {§oauth-begin-unchallenged} An alias awaiting a sign-in for a refused request starts one on a connection its
+            // {§oauth-continuation} An alias awaiting a sign-in for a refused request starts one on a connection its
             // server never challenges; one whose connection was challenged and is no longer is accepted as it is.
             const prepared = connected.kind === "active" && this.#challenged.has(key) ? await this.#beginUnchallenged(connected) : connected;
             if (this.#attachments.get(identity.workspaceId)?.get(alias) !== current) {
@@ -952,7 +952,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         } finally { this.#authorizing.delete(key); }
     }
 
-    // {§oauth-begin-unchallenged} The SDK's authorization starts on the connection; one it finds authorized stays active.
+    // {§oauth-continuation} The SDK's authorization starts on the connection; one it finds authorized stays active.
     async #beginUnchallenged(connected: ActiveAttachment): Promise<ConnectedAttachment> {
         let authorizationUrl: string | undefined;
         try {
@@ -985,7 +985,7 @@ export default class Module implements DaemonModule<SetupSeam> {
         const key = this.#pendingKey(identity.workspaceId, alias);
         const pending = this.#pending.get(key);
         if (pending === undefined) {
-            // {§oauth-lifetime} — restart during pending authorization surfaces
+            // {§oauth-continuation} — restart during pending authorization surfaces
             // as a factual not-pending state, never a secret replay.
             throw actionError(
                 "oauth-not-pending",
@@ -1030,7 +1030,7 @@ export default class Module implements DaemonModule<SetupSeam> {
                 { workspaceId: identity.workspaceId, alias, retryable: false },
             );
             pending.authorized = true;
-            // {§oauth-grant} The accepted sign-in is the alias's grant, replacing any before it.
+            // {§oauth-continuation} The accepted sign-in is the alias's grant, replacing any before it.
             const grant = pending.connection.oauthGrant;
             if (grant !== undefined) {
                 this.#grants.set(key, { definition: pending.definition, ...(pending.context === undefined ? {} : { context: pending.context }), grant });
@@ -1069,14 +1069,14 @@ export default class Module implements DaemonModule<SetupSeam> {
             return await attachment.connection.complete(completion.data);
         } catch (cause) {
             if (cause instanceof AuthorizationRequiredError) {
-                // {§mcp-request-unauthorized}
+                // {§mcp-host-composition}
                 throw actionError("authorization-required", 401, awaitsSignIn(server), { workspaceId, name: server, retryable: false }, cause);
             }
             throw cause;
         }
     }
 
-    // {§oauth-grant} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.
+    // {§oauth-continuation} The alias's grant, for a connection with the definition it was accepted for, while it holds tokens.
     #grantFor(workspaceId: number, binding: McpBinding): OAuthGrant | undefined {
         const held = this.#grants.get(this.#pendingKey(workspaceId, binding.definition.name));
         return held !== undefined && held.grant.signedIn && sameBinding(held, binding) ? held.grant : undefined;

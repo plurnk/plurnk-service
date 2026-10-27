@@ -13,7 +13,7 @@ interface Recipe {
 }
 
 const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
-    // Subprocess floor. `sh`'s bin is the shell the environment names ({§executor-shell}), resolved at use.
+    // Subprocess floor. `sh`'s bin is the shell the environment names ({§executor-subprocess}), resolved at use.
     sh: { bin: "sh", arg: (c) => ["-c", c] },
     js: { bin: "node", arg: (c) => ["-e", c], alwaysAvailable: true },
     python3: { bin: "python3", arg: (c) => ["-c", c] },
@@ -23,14 +23,14 @@ const RECIPES: Readonly<Record<string, Recipe>> = Object.freeze({
 export const RUNTIME_TAGS: readonly RuntimeTag[] = Object.freeze(Object.keys(RECIPES).filter(isExecutionOp));
 
 const onPath = (bin: string): boolean =>
-    spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin], { ...SpawnAccounts.options() }).status === 0; // {§executor-spawn-account}
+    spawnSync("sh", ["-c", `command -v "$1"`, "sh", bin], { ...SpawnAccounts.options() }).status === 0; // {§executor-policy}
 
 export default class Common extends SubprocessExecutor {
     protected override spawnArgs(runtime: string, command: string, target: string | null = null): SpawnArgs {
         const r = Common.#recipe(runtime);
         if (r === undefined) throw new Error(`plurnk-execs-common received unclaimed runtime tag '${runtime}'`);
         // With a target the program IS the target and the body is its arguments,
-        // tokenized by shell quoting ({§executor-subprocess-routing}, {§executor-argv-tokenizer}).
+        // tokenized by shell quoting ({§executor-subprocess}, {§executor-contract}).
         // The interpreter reads the file; no executable bit is consulted or changed.
         if (target !== null) {
             return { cmd: r.bin, args: [target, ...tokenizeArgv(command)], useShell: false };
@@ -38,7 +38,7 @@ export default class Common extends SubprocessExecutor {
         return { cmd: r.bin, args: r.arg(command), useShell: false };
     }
 
-    // {§executor-shell} `sh` runs the environment's shell; every other recipe is fixed.
+    // {§executor-subprocess} `sh` runs the environment's shell; every other recipe is fixed.
     static #recipe(runtime: string): Recipe | undefined {
         const r = RECIPES[runtime];
         return runtime === "sh" && r !== undefined ? { ...r, bin: Shell.current().path } : r;

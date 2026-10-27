@@ -132,7 +132,7 @@ export interface WorkspacePaths {
 export interface ModuleSetupSeam {
     // {§module-workspace-paths}
     workspacePaths(workspaceId: number): Promise<WorkspacePaths>;
-    // {§mcp-launch-environment} Ambient launch base, before the module's explicit bindings:
+    // {§mcp-module} Ambient launch base, before the module's explicit bindings:
     // excludes reserved names ({§execution-output-identity}) without applying the model-command ceiling.
     operatorEnvironment(): NodeJS.ProcessEnv;
     // {§execution-output-identity} The workspace layer over admitted ambient values, or over a supplied

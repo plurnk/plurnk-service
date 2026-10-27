@@ -85,7 +85,7 @@ const serverCapabilities = (client: Client): DiscoverResult["capabilities"] | un
 export interface ServerCatalog {
     readonly protocolVersion: string;
     readonly server: ReturnType<Client["getServerVersion"]>;
-    // {§mcp-summary-derivation} — the initialize result's orientation essay;
+    // {§mcp-configuration} — the initialize result's orientation essay;
     // its first sentence is the last server-summary tier.
     readonly instructions?: string;
     readonly capabilities: DiscoverResult["capabilities"];
@@ -121,16 +121,16 @@ type ResolvedDefinition = ResolvedStdioDefinition | ResolvedHttpDefinition;
 export interface ServerConnectionOptions {
     // {§oauth-continuation} Callback supplied by the client, never persisted configuration; it begins a new grant.
     readonly oauthRedirectUrl?: string;
-    // {§oauth-grant} The alias's accepted sign-in, which a connection without a client's callback carries.
+    // {§oauth-continuation} The alias's accepted sign-in, which a connection without a client's callback carries.
     readonly oauthGrant?: OAuthGrant;
     readonly plugin?: PluginContext;
-    // {§mcp-launch-environment} Exact admitted environment, separate from reference resolution.
+    // {§mcp-module} Exact admitted environment, separate from reference resolution.
     readonly environment?: NodeJS.ProcessEnv;
-    // {§mcp-launch-directory} Host-owned cwd when the definition does not select one.
+    // {§mcp-configuration} Host-owned cwd when the definition does not select one.
     readonly cwd?: string;
     readonly onCatalogChanged?: (error: Error | null) => void;
     readonly onInfrastructureError?: (error: Error) => void;
-    // {§mcp-request-unauthorized} A request was refused for want of a sign-in the definition does not configure.
+    // {§mcp-host-composition} A request was refused for want of a sign-in the definition does not configure.
     readonly onAuthorizationRequired?: () => void;
 }
 
@@ -202,7 +202,7 @@ const resolveDefinition = (
     const authorization = definition.authorization;
     const configuredRedirect = authorization?.type === "oauth" ? authorization.redirectUrl : undefined;
     const redirectUrl = configuredRedirect ?? oauthRedirectUrl;
-    // {§oauth-grant} A client's callback begins a new grant; any other connection carries the alias's accepted one, or
+    // {§oauth-continuation} A client's callback begins a new grant; any other connection carries the alias's accepted one, or
     // begins one at the redirect the definition configures.
     const grant = oauthRedirectUrl === undefined && oauthGrant !== undefined
         ? oauthGrant
@@ -248,7 +248,7 @@ const resolveDefinition = (
             cachePartition: `client:${authorization.clientId}`,
         };
     }
-    // {§oauth-lifetime} — the registration and tokens are the grant's, which outlives this connection; the PKCE
+    // {§oauth-continuation} — the registration and tokens are the grant's, which outlives this connection; the PKCE
     // verifier and callback state are this provider's. All of it is process memory.
     const oauthProvider = new InteractiveOAuthProvider({
         grant: grant!,
@@ -311,7 +311,7 @@ const openTransport = (
                 headers.set("Mcp-Name", mcpRoutingHeaderValue(request.params.taskId));
                 sent = { ...init, headers };
             }
-            // {§mcp-redirect-refused} — configured headers never reach another origin: no
+            // {§mcp-transports} — configured headers never reach another origin: no
             // redirect is followed, and a redirected endpoint fails naming where it pointed.
             const response = await outboundFetch(url, { ...sent, redirect: "manual" });
             if (REDIRECT_STATUSES.has(response.status)) {
@@ -336,7 +336,7 @@ const openTransport = (
         authorizationFetches.set(transport, createFetchWithInit(transportFetch, requestInit));
         return transport;
     }
-    // {§mcp-stdio-process-ownership} — stdio servers spawn through the
+    // {§mcp-transports} — stdio servers spawn through the
     // parent-death watchdog wrapper: the real server runs detached (own
     // process group) and the wrapper group-kills it (grandchildren included)
     // when the daemon dies by ANY path, including SIGKILL where close()
@@ -363,7 +363,7 @@ const openTransport = (
     });
 };
 
-// {§mcp-catalog-convergence} — a catalog is complete or it is an error. The SDK's aggregating list
+// {§mcp-authority} — a catalog is complete or it is an error. The SDK's aggregating list
 // walk (`listTools`, `listResources`, `listResourceTemplates`, `listPrompts`) stops silently when a
 // server hands back a cursor it already handed back, then drops `nextCursor` and caches the partial
 // aggregate as if it were whole. This client watches the pages the SDK requests and refuses the page
@@ -395,7 +395,7 @@ class CatalogClient extends Client {
 
     constructor(...args: ConstructorParameters<typeof Client>) {
         super(...args);
-        // {§mcp-header-declarations} — retain listed definitions so callTool scans them on both legs
+        // {§mcp-transports} — retain listed definitions so callTool scans them on both legs
         // and refuses invalid declarations with HeaderDeclarationError rather than proceeding unlisted.
         Object.defineProperty(this, "_excludeInvalidXMcpHeaderTools", { value: () => {} });
     }
@@ -416,7 +416,7 @@ class CatalogClient extends Client {
             // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the SDK's overloaded request is forwarded verbatim with the caller's arguments
             result = await (super.request as unknown as (...inner: unknown[]) => Promise<unknown>)(...args);
         } catch (error) {
-            // {§mcp-catalog-list-absence} — never turn a later-page error into a partial success.
+            // {§mcp-authority} — never turn a later-page error into a partial success.
             if (
                 collection === undefined || method === undefined
                 || cursor !== undefined
@@ -438,7 +438,7 @@ class CatalogClient extends Client {
     }
 }
 
-// {§mcp-redirect-refused} — an HTTP endpoint answered with a redirect, which plurnk never follows.
+// {§mcp-transports} — an HTTP endpoint answered with a redirect, which plurnk never follows.
 export class McpRedirectError extends Error {
     readonly url: string;
     readonly location: string | null;
@@ -451,7 +451,7 @@ export class McpRedirectError extends Error {
     }
 }
 
-// {§mcp-request-unauthorized} The sentence each surface refuses a request awaiting a sign-in with.
+// {§mcp-host-composition} The sentence each surface refuses a request awaiting a sign-in with.
 export const awaitsSignIn = (server: string): string =>
     `MCP server '${server}' awaits the operator's sign-in; the request was not completed.`;
 
@@ -484,7 +484,7 @@ const openClient = async (
         name: packageJson.name,
         version: packageJson.version,
     };
-    // {§mcp-capability-matrix} — static advertisement derives from the
+    // {§mcp-authority} — static advertisement derives from the
     // capability matrix by construction; the conditional client-credentials
     // extension ({§oauth-client-credentials}) is added only on connections
     // that actually hold a client-credentials definition.
@@ -649,7 +649,7 @@ export default class ServerConnection {
         return this.#pendingAuthorization?.authorizationUrl ?? null;
     }
 
-    // {§oauth-grant} The grant this connection presents, or begins.
+    // {§oauth-continuation} The grant this connection presents, or begins.
     get oauthGrant(): OAuthGrant | undefined {
         return this.#resolved.type === "streamable-http" ? this.#resolved.oauthProvider?.grant : undefined;
     }
@@ -706,7 +706,7 @@ export default class ServerConnection {
         return (await this.#open()).client;
     }
 
-    // {§oauth-begin-unchallenged} A server whose catalog answers anonymously challenges no connection, so the SDK never
+    // {§oauth-continuation} A server whose catalog answers anonymously challenges no connection, so the SDK never
     // starts its authorization; a sign-in the client begins starts it here, as the transport would on a challenge.
     async beginAuthorization(): Promise<string | undefined> {
         const resolved = this.#resolved;
@@ -781,7 +781,7 @@ export default class ServerConnection {
         }
     }
 
-    // {§mcp-request-unauthorized} A request the server refused with HTTP 401, on a definition that configures no credential
+    // {§mcp-host-composition} A request the server refused with HTTP 401, on a definition that configures no credential
     // of its own, awaits a sign-in exactly as a challenge at connection does.
     #refusedUnsigned(cause: unknown): AuthorizationRequiredError | null {
         if (this.#resolved.type !== "streamable-http") return null;
@@ -802,7 +802,7 @@ export default class ServerConnection {
         }
         const authorization = this.#resolved.oauthProvider.takeAuthorization();
         if (authorization === undefined) return null;
-        // {§oauth-grant} The grant no longer answers, and no client waits at its redirect.
+        // {§oauth-continuation} The grant no longer answers, and no client waits at its redirect.
         const authorizationUrl = authorization.url;
         if (authorizationUrl === undefined) return new AuthorizationRequiredError(undefined, cause);
         this.#pendingAuthorization = {
@@ -818,7 +818,7 @@ export default class ServerConnection {
         return this.#request(async ({ client }, signal) => {
             const timeout = connectTimeoutMs(this.#environ);
             const settled = new AbortController();
-            // {§mcp-catalog-deadline}: one bound across parallel lists and every SDK pagination leg.
+            // {§mcp-authority}: one bound across parallel lists and every SDK pagination leg.
             const deadline = AbortSignal.any([signal, AbortSignal.timeout(timeout), settled.signal]);
             try {
                 return await run(client, { signal: deadline, timeout, maxTotalTimeout: timeout });
@@ -906,7 +906,7 @@ export default class ServerConnection {
     ): Promise<CallToolResult> {
         return this.#request(async ({ client, subscriptions, extensions }, requestSignal) => {
             const timeout = requestTimeoutMs(this.#environ);
-            // {§mcp-header-declarations} — the definition is scanned before either leg; an invalid declaration
+            // {§mcp-transports} — the definition is scanned before either leg; an invalid declaration
             // refuses the call here and nothing reaches the transport.
             const listed = async (): Promise<Tool | undefined> => (await this.tools(requestSignal))
                 .find((candidate) => candidate.name === name);
@@ -929,7 +929,7 @@ export default class ServerConnection {
                     subscriptions,
                 });
             }
-            // The direct leg never waits on a failed listing ({§mcp-catalog-deadline}): a definition at hand is
+            // The direct leg never waits on a failed listing ({§mcp-authority}): a definition at hand is
             // scanned, and a call with none to scan proceeds as it always has, with no routing headers.
             const tool = toolDefinition ?? await listed().catch(() => {
                 requestSignal.throwIfAborted();
@@ -1041,7 +1041,7 @@ export default class ServerConnection {
         if (client !== undefined) {
             closures.push(client.then(
                 async ({ client: connected, extensions, subscriptions }) => {
-                    // {§mcp-connection-shutdown} — active Task cleanup still needs the transport.
+                    // {§mcp-setup} — active Task cleanup still needs the transport.
                     await Promise.all([...this.#requests, subscriptions.retire()]);
                     extensions?.close();
                     await connected.close();

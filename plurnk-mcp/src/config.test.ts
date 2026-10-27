@@ -18,6 +18,7 @@ import {
     serverSettings,
     validateConfiguration,
 } from "./config.ts";
+import { readDefinition } from "./definition.ts";
 
 const floor = {
     PLURNK_MCP_ENABLED: "1",
@@ -25,7 +26,7 @@ const floor = {
     PLURNK_MCP_REQUEST_TIMEOUT: "86400000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
-test("{§mcp-plugin-configuration} plugin servers compose by scope, retain context, and isolate unsupported entries", async (t) => {
+test("{§mcp-configuration} plugin servers compose by scope, retain context, and isolate unsupported entries", async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "plurnk-mcp-plugins-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
     const project = join(directory, "project", ".agents");
@@ -75,7 +76,7 @@ test("{§mcp-configuration} whole definitions and independent controls use the s
     assert.deepEqual(serviceDefinitions(floor), []);
 });
 
-test("{§mcp-file-configuration} files compose whole entries beneath environment definitions and independent controls", async (t) => {
+test("{§mcp-configuration} files compose whole entries beneath environment definitions and independent controls", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-sources-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const directories = ["project", "plurnk", "global"].map((name) => join(root, name));
@@ -102,7 +103,7 @@ test("{§mcp-file-configuration} files compose whole entries beneath environment
     assert.deepEqual(await configuredDefinitions([], floor), [], "unselected roots are never read");
 });
 
-test("{§mcp-file-configuration} invalid selected entries identify their file and pointer without leaking values or falling back", async (t) => {
+test("{§mcp-configuration} invalid selected entries identify their file and pointer without leaking values or falling back", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-invalid-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const file = join(root, "mcp.json");
@@ -122,7 +123,7 @@ test("{§mcp-file-configuration} invalid selected entries identify their file an
     await assert.rejects(configuredDefinitions([root], floor), (error: unknown) => error instanceof ConfigurationError && error.key === `${file}#/mcpServers/UpperCase`);
 });
 
-test("{§mcp-file-configuration} missing files are inert, malformed and unreadable files remain inspectable configuration errors", async (t) => {
+test("{§mcp-configuration} missing files are inert, malformed and unreadable files remain inspectable configuration errors", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-mcp-document-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const file = join(root, "mcp.json");
@@ -154,7 +155,7 @@ test("{§mcp-configuration} invalid definitions and controls fail even when no s
     assert.throws(() => serviceDefinitions({ ...floor, PLURNK_MCP_future_ENABLED: "yes" }), /PLURNK_MCP_future_ENABLED must be 0 or 1/u);
 });
 
-test("{§mcp-server-settings} controls precede declarations without making resources; every value is validated", () => {
+test("{§mcp-configuration} controls precede declarations without making resources; every value is validated", () => {
     const env = { ...floor, PLURNK_MCP_future_TOOLS: '["issue_read","issue_search"]', PLURNK_MCP_future_ENABLED: "0" };
     assert.deepEqual(serviceDefinitions(env), []);
     assert.deepEqual(serverSettings("future", env), { tools: ["issue_read", "issue_search"] });
@@ -212,7 +213,7 @@ test("{§operator-config-precedence} MCP validation checks every independent con
     }
 });
 
-test("{§mcp-retry-pacing} one pacing, stated on the panel, doubles from its floor to its ceiling", () => {
+test("{§mcp-authority} one pacing, stated on the panel, doubles from its floor to its ceiling", () => {
     const pacing = retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "100", PLURNK_MCP_RETRY_CEILING_MS: "450" });
     assert.deepEqual(pacing, { floorMs: 100, ceilingMs: 450 });
     assert.deepEqual([0, 1, 2, 3, 9].map((attempt) => retryDelayMs(pacing, attempt)), [100, 200, 400, 450, 450]);
@@ -222,4 +223,24 @@ test("{§mcp-retry-pacing} one pacing, stated on the panel, doubles from its flo
         () => retryPacing({ PLURNK_MCP_RETRY_FLOOR_MS: "500", PLURNK_MCP_RETRY_CEILING_MS: "450" }),
         /PLURNK_MCP_RETRY_CEILING_MS \(450\) must be at least PLURNK_MCP_RETRY_FLOOR_MS \(500\)/u,
     );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Server Definition ({§mcp-server-definition})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-server-definition} direct commands, symbolic authentication and custom headers share one admission path", () => {
+    for (const command of ["node", "/usr/bin/node", "./bin/server"]) {
+        assert.deepEqual(readDefinition({ name: "local", type: "stdio", command }), { name: "local", type: "stdio", command });
+    }
+    const definition = { name: "forge", type: "streamable-http", url: "https://example.com/mcp", authorization: { type: "bearer", token: "${TOKEN}" }, headers: { "X-Tenant": "${TENANT}" } };
+    assert.deepEqual(readDefinition(definition), definition);
+    assert.notEqual(readDefinition(definition), definition);
+    assert.throws(() => readDefinition({ ...definition, headers: { aUtHoRiZaTiOn: "Bearer ${TOKEN}" } }), /cannot supply both authorization and an Authorization header/u);
+    for (const url of ["https://", "file:///tmp/server", "ftp://example.com/mcp"]) {
+        assert.throws(() => readDefinition({ ...definition, url }), TypeError);
+    }
+    for (const url of ["http://localhost/mcp", "http://127.0.0.1/mcp", "http://[::1]/mcp", "http://mcp.internal/mcp", "http://192.0.2.1/mcp", "https://example.com/mcp"]) {
+        assert.equal(readDefinition({ ...definition, url }).type, "streamable-http");
+    }
 });

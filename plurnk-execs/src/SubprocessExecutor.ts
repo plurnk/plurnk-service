@@ -57,7 +57,7 @@ export default class SubprocessExecutor extends BaseExecutor {
         if (bin === null) return { available: true };
         if (signal?.aborted) return { available: false };
         // No internal deadline — the per-probe timeout is the consumer's
-        // ({§executor-probe}), handed in as `signal`. We pass it to spawn so a
+        // ({§executor-results}), handed in as `signal`. We pass it to spawn so a
         // resolved or
         // timed-out probe REAPS its child at once; no in-flight `--version` write
         // can EPIPE after host teardown. stdin/stderr are
@@ -66,7 +66,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             let settled = false;
             const done = (r: RuntimeAvailability): void => { if (!settled) { settled = true; resolve(r); } };
             let out = "";
-            // {§executor-spawn-account} — probed as the account the runtime will run as.
+            // {§executor-policy} — probed as the account the runtime will run as.
             const child = spawn(bin, ["--version"], { signal, stdio: ["ignore", "pipe", "ignore"], ...SpawnAccounts.options() });
             child.stdout?.on("data", (chunk: Buffer) => { out += chunk.toString("utf8"); });
             child.on("error", (err) => done(errnoCode(err) === "ABORT_ERR"
@@ -83,7 +83,7 @@ export default class SubprocessExecutor extends BaseExecutor {
     // interpreter table (e.g. the common-REPL harness) override this — and so
     // inherit run()'s streaming + process-group abort handling rather than
     // reimplementing it. When `target` is set, the body is tokenized into argv
-    // ({§executor-subprocess-routing}, {§executor-argv-tokenizer}).
+    // ({§executor-subprocess}, {§executor-contract}).
     protected spawnArgs(runtime: string, command: string, target: string | null): SpawnArgs {
         return Runtime.resolve(runtime, command, target);
     }
@@ -145,7 +145,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // (e.g. the `sleep` in `sh -c "sleep 30"`) that a bare SIGTERM to the
             // direct child orphans, leaking the process and its stdout pipe. We
             // drive cancellation manually rather than via spawn's `signal`
-            // option, which only kills the direct child ({§executor-cancellation}).
+            // option, which only kills the direct child ({§executor-subprocess}).
             // env: consumer-scoped when provided (drops plurnk's own secrets,
             // {§execution-output-identity}); host env inherited when absent.
             // fd0: a provided stdin body gets a pipe (written + EOF'd below); NO
@@ -156,7 +156,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // the exec obligation never resolves: the loop hangs until a client
             // cancel. /dev/null delivers immediate EOF, so it fails fast instead.
             // (The probe path already uses this discipline; matches it.)
-            // {§executor-spawn-account} — the child runs as the configured account, with its name in its environment.
+            // {§executor-policy} — the child runs as the configured account, with its name in its environment.
             const child = spawn(cmd, args, {
                 stdio: [stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
                 shell: useShell, cwd: cwd ?? undefined, env: SpawnAccounts.environment(env ?? process.env), detached: true,

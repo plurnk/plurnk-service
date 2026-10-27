@@ -496,7 +496,7 @@ test("{§provider-configuration} loadActiveProvider: throws a named error when n
 
 {
 // This file's fixtures are third-party packages, so it exercises the operator who admitted them
-// ({§executor-trust}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
+// ({§executor-policy}); the shipped panel admits only `@plurnk/*`. Tests of the gate itself state
 // their own value below and override this one.
 process.env.PLURNK_EXTENSIONS_TRUSTED_ONLY = "0";
 
@@ -519,7 +519,7 @@ const buildModules = async (t: TestContext, packages: Record<string, unknown>): 
     return root;
 };
 
-test("{§executor-trust} discover: the node_modules scan is scope-agnostic — third-party scopes are found", async (t) => {
+test("{§executor-policy} discover: the node_modules scan is scope-agnostic — third-party scopes are found", async (t) => {
     const root = await buildModules(t, {
         "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
         "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
@@ -533,7 +533,7 @@ test("{§executor-trust} discover: the node_modules scan is scope-agnostic — t
     assert.equal(registry.get("bar"), "unscoped-provider-bar");        // unscoped resolves
 });
 
-test("{§executor-trust} discover: a provider package missing plurnk.name is ignored, not crashed", async (t) => {
+test("{§executor-policy} discover: a provider package missing plurnk.name is ignored, not crashed", async (t) => {
     const root = await buildModules(t, {
         "@acme/headless": { name: "@acme/headless", plurnk: { kind: "provider" } },          // no name
         "@acme/named": { name: "@acme/named", plurnk: { kind: "provider", name: "named" } },
@@ -569,7 +569,7 @@ test("{§provider-request-authority} discover: an invalid grammarStyle fails lou
     await assert.rejects(discover({ cwd: root }), /grammarStyle must be "none" or "llamacpp"/);
 });
 
-test("{§executor-trust} discover: an array kind declares no provider extension", async (t) => {
+test("{§executor-policy} discover: an array kind declares no provider extension", async (t) => {
     const root = await buildModules(t, {
         "@acme/dual": {
             name: "@acme/dual",
@@ -580,7 +580,7 @@ test("{§executor-trust} discover: an array kind declares no provider extension"
     assert.equal(registry.size, 0);
 });
 
-test("{§executor-trust} discover: a name claimed by two packages is a fail-hard collision", async (t) => {
+test("{§executor-policy} discover: a name claimed by two packages is a fail-hard collision", async (t) => {
     const root = await buildModules(t, {
         "@plurnk/plurnk-provider-native": { name: "@plurnk/plurnk-provider-native", plurnk: { kind: "provider", name: "native" } },
         "@acme/rival-native": { name: "@acme/rival-native", plurnk: { kind: "provider", name: "native" } },
@@ -591,7 +591,7 @@ test("{§executor-trust} discover: a name claimed by two packages is a fail-hard
     );
 });
 
-test("{§executor-trust} discover: node_modules entries with no package.json or malformed JSON are skipped, not crashed", async (t) => {
+test("{§executor-policy} discover: node_modules entries with no package.json or malformed JSON are skipped, not crashed", async (t) => {
     const root = await tempDir(t, "providers-junk-");
     const nm = path.join(root, "node_modules");
     await fs.mkdir(path.join(nm, "no-manifest"), { recursive: true });                  // a dir, no package.json
@@ -604,7 +604,7 @@ test("{§executor-trust} discover: node_modules entries with no package.json or 
     assert.deepEqual([...registry.keys()], ["native"]); // only the well-formed provider survives
 });
 
-test("{§executor-trust} discover: normalizes attribution per package", async (t) => {
+test("{§executor-policy} discover: normalizes attribution per package", async (t) => {
     const root = await buildModules(t, {
         "@acme/provider-solo": { name: "@acme/provider-solo", plurnk: { kind: "provider", name: "solo", attribution: "@acme/solo" } },
         "@acme/provider-multi": { name: "@acme/provider-multi", plurnk: { kind: "provider", name: "multi", attribution: ["@acme/a", "@acme/b"] } },
@@ -617,7 +617,7 @@ test("{§executor-trust} discover: normalizes attribution per package", async (t
     ]);
 });
 
-test("{§executor-trust} discover: validates trusted attribution before provider admission", async (t) => {
+test("{§executor-policy} discover: validates trusted attribution before provider admission", async (t) => {
     const root = await buildModules(t, {
         "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: 42 } },
     });
@@ -632,7 +632,7 @@ test("{§executor-trust} discover: validates trusted attribution before provider
     await assert.rejects(discover({ cwd: reservedRoot }), /'@plurnk\/' is reserved/);
 });
 
-test("{§executor-trust} discover: an untrusted malformed attribution is withheld before validation", async (t) => {
+test("{§executor-policy} discover: an untrusted malformed attribution is withheld before validation", async (t) => {
     const root = await buildModules(t, {
         "@acme/provider-bad": { name: "@acme/provider-bad", plurnk: { kind: "provider", name: "bad", attribution: ["ok", 42] } },
     });
@@ -658,7 +658,7 @@ const trustFixture = (t: TestContext) => buildModules(t, {
     "@acme/acme-provider-foo": { name: "@acme/acme-provider-foo", plurnk: { kind: "provider", name: "foo" } },
 });
 
-test("{§executor-trust} trust gate OFF ('' or '0'): every provider is trusted; unset defers to the panel", async (t) => {
+test("{§executor-policy} trust gate OFF ('' or '0'): every provider is trusted; unset defers to the panel", async (t) => {
     const root = await trustFixture(t);
     for (const gate of ["", "0"]) {
         const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: gate } });
@@ -671,7 +671,7 @@ test("{§executor-trust} trust gate OFF ('' or '0'): every provider is trusted; 
     assert.equal(skipped.size, 1);
 });
 
-test("{§executor-trust} trust gate ON: @plurnk/* always trusted; third party declined → skipped, not registered", async (t) => {
+test("{§executor-policy} trust gate ON: @plurnk/* always trusted; third party declined → skipped, not registered", async (t) => {
     const root = await trustFixture(t);
     const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" } });
     assert.deepEqual([...registry.keys()], ["native"]);              // @plurnk/* survives
@@ -679,7 +679,7 @@ test("{§executor-trust} trust gate ON: @plurnk/* always trusted; third party de
     assert.equal(skipped.get("foo"), "@acme/acme-provider-foo");     // …recorded for a precise error
 });
 
-test("{§executor-trust} trust gate ON with an allowlist: a named third-party package is trusted", async (t) => {
+test("{§executor-policy} trust gate ON with an allowlist: a named third-party package is trusted", async (t) => {
     const root = await trustFixture(t);
     const { registry, skipped } = await discover({ cwd: root, env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-provider-foo" } });
     assert.deepEqual([...registry.keys()].toSorted(), ["foo", "native"]);

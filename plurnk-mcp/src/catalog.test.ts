@@ -46,7 +46,7 @@ const isTimeout = (error: unknown): boolean => {
 };
 
 for (const [method] of lists) {
-    test(`{§mcp-catalog-deadline}: stalled ${method} expires before the tool deadline and retries cleanly`, { timeout: 5000 }, async (t) => {
+    test(`{§mcp-authority}: stalled ${method} expires before the tool deadline and retries cleanly`, { timeout: 5000 }, async (t) => {
         let stalled = true;
         const served = await serveMcpHttp(t, handler(), async (request) => {
             const body = await request.clone().json();
@@ -64,7 +64,7 @@ for (const [method] of lists) {
     });
 }
 
-test("{§mcp-catalog-deadline}: pagination shares one deadline rather than renewing it for each page", { timeout: 5000 }, async (t) => {
+test("{§mcp-authority}: pagination shares one deadline rather than renewing it for each page", { timeout: 5000 }, async (t) => {
     const served = await serveMcpHttp(t, handler(), async (request) => {
         const body = await request.clone().json();
         if (body.method !== "resources/templates/list") return null;
@@ -83,7 +83,7 @@ test("{§mcp-catalog-deadline}: pagination shares one deadline rather than renew
     assert.ok(pages.length > 1 && pages.length < 7, `deadline stopped the multi-page walk after ${pages.length} pages`);
 });
 
-test("{§mcp-catalog-deadline}: caller cancellation stays identifiable and does not close the connection", async (t) => {
+test("{§mcp-authority}: caller cancellation stays identifiable and does not close the connection", async (t) => {
     const owner = new AbortController();
     const cause = new Error("caller cancelled discovery");
     const served = await serveMcpHttp(t, handler(), async (request) => {
@@ -104,7 +104,7 @@ test("{§mcp-catalog-deadline}: caller cancellation stays identifiable and does 
     assert.deepEqual((await connection.callTool("echo", {})).content, [{ type: "text", text: "still callable" }]);
 });
 
-test("{§mcp-catalog-deadline}: a real tool operation may outlast the discovery deadline", async (t) => {
+test("{§mcp-authority}: a real tool operation may outlast the discovery deadline", async (t) => {
     const served = await serveMcpHttp(t, handler(), async (request) => {
         const body = await request.clone().json();
         if (body.method === "tools/call") await delay(500, undefined, { signal: request.signal });
@@ -117,7 +117,7 @@ test("{§mcp-catalog-deadline}: a real tool operation may outlast the discovery 
 });
 
 for (const [method, collection] of lists) {
-    test(`{§mcp-catalog-list-absence} a missing ${method} leaves the other catalog collections usable`, async (t) => {
+    test(`{§mcp-authority} a missing ${method} leaves the other catalog collections usable`, async (t) => {
         let missing = true;
         const served = await serveMcpHttp(t, handler(), async (request) => {
             const body = await request.clone().json();
@@ -152,7 +152,7 @@ for (const [method, collection] of lists) {
 }
 
 for (const code of [-32602, -32603]) {
-    test(`{§mcp-catalog-list-absence} a list failure ${code} is not treated as an unsupported method`, async (t) => {
+    test(`{§mcp-authority} a list failure ${code} is not treated as an unsupported method`, async (t) => {
         const served = await serveMcpHttp(t, handler(), async (request) => {
             const body = await request.clone().json();
             return body.method === "resources/templates/list"
@@ -170,7 +170,7 @@ for (const code of [-32602, -32603]) {
     });
 }
 
-test("{§mcp-catalog-deadline} a method disappearing after the first page fails instead of publishing a partial catalog", async (t) => {
+test("{§mcp-authority} a method disappearing after the first page fails instead of publishing a partial catalog", async (t) => {
     const served = await serveMcpHttp(t, handler(), async (request) => {
         const body = await request.clone().json();
         if (body.method !== "resources/templates/list") return null;
@@ -193,7 +193,7 @@ test("{§mcp-catalog-deadline} a method disappearing after the first page fails 
     }
 });
 
-test("{§mcp-catalog-deadline} method-not-found on a tool call remains an operation error", async (t) => {
+test("{§mcp-authority} method-not-found on a tool call remains an operation error", async (t) => {
     const served = await serveMcpHttp(t, handler(), async (request) => {
         const body = await request.clone().json();
         return body.method === "tools/call"

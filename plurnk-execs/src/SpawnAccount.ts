@@ -21,7 +21,7 @@ export type AccountLookup = (name: string) => {
 const GETENT_ABSENT = 2;
 const getent: AccountLookup = (name) => spawnSync("getent", ["passwd", name], { encoding: "utf8" });
 
-// {§executor-spawn-account} — the account every subprocess runtime spawns as. Unset, the
+// {§executor-policy} — the account every subprocess runtime spawns as. Unset, the
 // daemon's own; a name is resolved once through the host's account database, `uid[:gid]`
 // is taken as written. An unresolvable value is an invalid configuration at the spawn.
 export default class SpawnAccounts {

@@ -429,7 +429,7 @@ class Search {
     }
 
     // A body that is not well-formed in its runtime's media type costs a repair ({§fence-pairing}); the
-    // trailing aside is the writer's, not the body's ({§mcp-trailing-aside}).
+    // trailing aside is the writer's, not the body's ({§mcp-host-composition}).
     #wellFormed(context: Context, record: End | undefined): boolean {
         if (context.runtime === undefined || context.opener === undefined || record === undefined) return true;
         const last = record.kind === "end" ? this.#raw.length - 1 : record.line - 1;

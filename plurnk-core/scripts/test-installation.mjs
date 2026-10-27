@@ -42,7 +42,7 @@ const installedManifest = (packageName) => JSON.parse(readFileSync(
     resolve(sandbox, "node_modules", ...packageName.split("/"), "package.json"),
     "utf8",
 ));
-// {§executor-dynamic-runtimes} An installed package's declarations, static or from its runtimes module, as discovery reads them.
+// {§executor-discovery} An installed package's declarations, static or from its runtimes module, as discovery reads them.
 const installedRuntimes = async (packageName) => {
     const { plurnk } = installedManifest(packageName);
     if (Array.isArray(plurnk?.runtimes)) return plurnk.runtimes;
@@ -835,7 +835,7 @@ try {
 }
 
 process.stdout.write("-- executor inventory --\n");
-// {§executor-default-inventory} {§executor-policy}: installed is sh, js and python3; policy filters them.
+// {§executor-policy} {§executor-policy}: installed is sh, js and python3; policy filters them.
 const defaultTags = ["sh", "js", "python3"];
 const declaredRuntimes = (await Promise.all(defaultExecPackages.map(async (packageName) =>
     (await installedRuntimes(packageName)).map(({ name }) => [name, packageName])))).flat();

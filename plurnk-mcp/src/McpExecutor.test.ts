@@ -9,7 +9,10 @@ import { fileURLToPath } from "node:url";
 import { ERROR_DETAIL_LIMIT, type ExecArgs } from "@plurnk/plurnk-execs";
 
 import type { Notice } from "@plurnk/plurnk-contracts";
+import type { Tool } from "@modelcontextprotocol/client";
 import McpExecutor, { runtimeDecl, runtimeServerSummary, serverSummary, toolResultBody, type ToolResultShape } from "./McpExecutor.ts";
+import PreparationDiagnostics from "./PreparationDiagnostics.ts";
+import { toolRegistry } from "./ToolPresentation.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 import { HeaderDeclarationError } from "./protocolHeaders.ts";
 
@@ -88,7 +91,7 @@ const waitForFile = async (pathname: string): Promise<void> => {
     }
 };
 
-test("{§mcp-summary-derivation} runtime declaration derives the server summary from the chain", async () => {
+test("{§mcp-configuration} runtime declaration derives the server summary from the chain", async () => {
     const declaration = runtimeDecl("echo", serverSummary("echo", undefined), false);
     assert.equal(declaration.summary, "MCP server echo.");
     assert.deepEqual(declaration.invocation, {
@@ -99,7 +102,7 @@ test("{§mcp-summary-derivation} runtime declaration derives the server summary 
     assert.equal(declaration.details, undefined);
 });
 
-test("{§problems-mcp} MCP executor requires a tool target instead of duplicating catalog discovery", async () => {
+test("{§mcp-model-projection} MCP executor requires a tool target instead of duplicating catalog discovery", async () => {
     const { connection, executor } = configured();
     try {
         const h = harness();
@@ -113,7 +116,7 @@ test("{§problems-mcp} MCP executor requires a tool target instead of duplicatin
     }
 });
 
-test("{§mcp-tool-presentation} MCP executor publishes exact enabled targets as one immutable registry", async () => {
+test("{§mcp-model-projection} MCP executor publishes exact enabled targets as one immutable registry", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
@@ -188,7 +191,7 @@ test("{§mcp-result-content} MCP executor calls a current tool and writes its re
     }
 });
 
-test("{§executor-page-receipt} a tool result exactly as long as the page it asked for, or the schema's default page, carries the page fact", async () => {
+test("{§executor-results} a tool result exactly as long as the page it asked for, or the schema's default page, carries the page fact", async () => {
     const connection = {
         async catalog() {
             return {
@@ -225,7 +228,7 @@ test("{§executor-page-receipt} a tool result exactly as long as the page it ask
     assert.deepEqual(await run('{"shape": "object"}'), { status: 200 }, "a non-array result has no page");
 });
 
-test("{§mcp-tool-problem-detail} a tool Problem names its runtime and tool and bounds the remote diagnostic", async () => {
+test("{§mcp-host-composition} a tool Problem names its runtime and tool and bounds the remote diagnostic", async () => {
     const connection = {
         async catalog() {
             return {
@@ -260,14 +263,14 @@ test("{§mcp-tool-problem-detail} a tool Problem names its runtime and tool and 
         else process.env[ERROR_DETAIL_LIMIT] = previous;
     }
 
-    assert.equal(result.problem?.detail, "The MCP tool call failed.", "the prose states the boundary fact and nothing else"); // {§problems-mcp}
+    assert.equal(result.problem?.detail, "The MCP tool call failed.", "the prose states the boundary fact and nothing else"); // {§mcp-model-projection}
     assert.equal(result.problem?.runtime, "effects", "the failed runtime is a field, not prose");
     assert.equal(result.problem?.tool, "mutate", "so is the tool");
     assert.equal(result.problem?.diagnostic, "conn...", "the remote cause is admitted only within the operator's bound");
     assert.doesNotMatch(JSON.stringify(result), /sk-not-in-the-packet/u, "nothing past the bound reaches the model");
 });
 
-test("{§mcp-tool-problem-detail} tool-reported errors retain bounded text explanations without changing their evidence", async () => {
+test("{§mcp-host-composition} tool-reported errors retain bounded text explanations without changing their evidence", async () => {
     const cases: Array<{ name: string; result: ToolResultShape; diagnostic?: string }> = [
         { name: "one text block", result: { isError: true, content: [{ type: "text", text: "No web results found" }] }, diagnostic: "No web results found" },
         { name: "multiple text blocks", result: { isError: true, content: [{ type: "text", text: "First cause" }, { type: "text", text: " \n " }, { type: "text", text: "Second cause" }] }, diagnostic: "First cause\nSecond cause" },
@@ -314,7 +317,7 @@ test("{§mcp-tool-problem-detail} tool-reported errors retain bounded text expla
     }
 });
 
-test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends automatic replay", async () => {
+test("{§mcp-host-composition} an uncertain MCP tool-call failure never recommends automatic replay", async () => {
     const connection = {
         async catalog() {
             return {
@@ -346,7 +349,7 @@ test("{§mcp-tool-replay} an uncertain MCP tool-call failure never recommends au
     assert.equal(result.problem?.retryable, false, "the remote tool may already have applied its effect");
 });
 
-test("{§mcp-header-declarations} a refused declaration is the tool-header-invalid Problem naming the tool and the declaration", async () => {
+test("{§mcp-transports} a refused declaration is the tool-header-invalid Problem naming the tool and the declaration", async () => {
     const declaration = "score: x-mcp-header 'Score' on type number; permitted on string, integer and boolean";
     const connection = {
         async catalog() {
@@ -371,13 +374,13 @@ test("{§mcp-header-declarations} a refused declaration is the tool-header-inval
 
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/executor/mcp/tool-header-invalid");
-    assert.equal(result.problem?.detail, "MCP tool 'invalid_number_header' declares an invalid x-mcp-header; the tool was not called."); // {§problems-mcp}
+    assert.equal(result.problem?.detail, "MCP tool 'invalid_number_header' declares an invalid x-mcp-header; the tool was not called."); // {§mcp-model-projection}
     assert.equal(result.problem?.tool, "invalid_number_header");
     assert.equal(result.problem?.declaration, declaration, "the declaration read is a field, not prose");
     assert.equal(result.problem?.retryable, false);
 });
 
-test("{§mcp-core-matrix} MCP executor keeps elicitation on its generic client interaction sink", async () => {
+test("{§mcp-authority} MCP executor keeps elicitation on its generic client interaction sink", async () => {
     const connection = new ServerConnection(stdioServer("interaction", [interactionFixture]), {
         PLURNK_MCP_CONNECT_TIMEOUT: "30000",
         PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
@@ -529,7 +532,7 @@ test("{§mcp-host-composition} MCP progress and cancellation remain on the ownin
     }
 });
 
-test("{§mcp-tool-presentation} MCP executor backstops core admission against disabled targets", async () => {
+test("{§mcp-model-projection} MCP executor backstops core admission against disabled targets", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
@@ -543,7 +546,7 @@ test("{§mcp-tool-presentation} MCP executor backstops core admission against di
     }
 });
 
-test("{§mcp-summary-derivation} every server-summary tier has one deterministic precedence", () => {
+test("{§mcp-configuration} every server-summary tier has one deterministic precedence", () => {
     const catalog = (
         server: Readonly<Record<string, string>>,
         instructions?: string,
@@ -583,7 +586,7 @@ test("{§mcp-summary-derivation} every server-summary tier has one deterministic
 
 // The invalid-arguments failure names the form that works, whatever the body was
 // (https://repo.possumtech.com/plurnk/plurnk-bench/issues/6).
-test("{§problems-mcp} invalid tool arguments carry the one-object recovery", async () => {
+test("{§mcp-model-projection} invalid tool arguments carry the one-object recovery", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
@@ -594,14 +597,14 @@ test("{§problems-mcp} invalid tool arguments carry the one-object recovery", as
             assert.equal(
                 result.problem?.recovery,
                 "One JSON object per MCP tool call.\n```echo (echo) <!-- Schema: workspace:///_plurnk/tools/echo/echo.json -->\n{\"message\": \"\"}\n```",
-            ); // {§problems-mcp}
+            ); // {§mcp-model-projection}
         }
     } finally {
         await connection.close();
     }
 });
 
-test("{§mcp-trailing-aside} an HTML comment after the one JSON object is an aside, not arguments", async () => {
+test("{§mcp-host-composition} an HTML comment after the one JSON object is an aside, not arguments", async () => {
     const { connection, executor } = configured();
     try {
         await executor.requireAvailable();
@@ -627,4 +630,197 @@ test("{§mcp-result-content} the channel carries the result, never the envelope"
     assert.deepEqual(await toolResultBody({ content: [{ type: "text", text: "one" }, { type: "text", text: "two" }] }, "fixture"), { content: "one\ntwo", mimetype: "text/plain" });
     assert.deepEqual(await toolResultBody({ content: [], structuredContent: { a: 1 } }, "fixture"), { content: '{\n  "a": 1\n}', mimetype: "application/json" });
     await assert.rejects(toolResultBody({ content: [{ type: "image", data: "AA==", mimeType: "image/png" }] }, "fixture"), /resource publisher/u);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tool Presentation ({§mcp-model-projection}, {§mcp-configuration}, {§mcp-result-content})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-model-projection} derives exact summaries and invocations from the same enabled tools", () => {
+    const tools: Tool[] = [{
+        name: "issue_read",
+        title: "Issue",
+        description: "Read\n one issue.",
+        annotations: { title: "Issue reader" },
+        inputSchema: {
+            type: "object",
+            properties: {
+                owner: { type: "string", description: "Repository owner.", minLength: 1 },
+                issue_number: { type: "integer" },
+            },
+            required: ["owner", "issue_number"],
+        },
+        outputSchema: {
+            type: "object",
+            properties: { title: { type: "string" } },
+        },
+    }];
+    const registry = toolRegistry("gitea", tools);
+    assert.deepEqual(registry.tools, [{
+        target: "issue_read",
+        summary: "Read one issue.",
+        invocation: {
+            body: { role: "JSON arguments", required: true },
+            target: { role: "MCP tool", required: true, kind: "literal" },
+            inputSchema: tools[0].inputSchema,
+        },
+        details: tools[0].description,
+        definition: tools[0],
+    }]);
+});
+
+test("{§mcp-configuration} tool purpose precedes titles; blank values fall through in protocol title order", () => {
+    const tool = { name: "web_search", inputSchema: { type: "object" as const } };
+    const summary = (fields: Partial<Tool>) => toolRegistry("search", [{ ...tool, ...fields }]).tools[0].summary;
+    assert.equal(summary({ description: "Search the Web. Return matching pages.", title: "Search", annotations: { title: "Old title" } }), "Search the Web.");
+    assert.equal(summary({ description: " \n ", title: "Search", annotations: { title: "Old title" } }), "Search");
+    assert.equal(summary({ title: " \t ", annotations: { title: "Search title" } }), "Search title");
+    assert.equal(summary({ description: " ", title: "", annotations: { title: " " } }), "web_search");
+});
+
+test("{§mcp-model-projection} an empty enabled set exposes no hidden tool names", () => {
+    assert.deepEqual(toolRegistry("gitea", []), {
+        tools: [],
+    });
+});
+
+test("{§mcp-model-projection} missing remote prose falls back to the tool name", () => {
+    assert.equal(toolRegistry("gitea", [{
+        name: "issue_read",
+        inputSchema: { type: "object" },
+    }]).tools[0]?.summary, "issue_read");
+});
+
+test("{§mcp-model-projection} a long description trims to its first sentence", () => {
+    const tools: Tool[] = [{
+        name: "web_search",
+        description: "Performs web searches using the API and returns results. Extra detail beyond the first sentence.",
+        inputSchema: { type: "object" },
+    }];
+    assert.equal(
+        toolRegistry("brave", tools).tools[0]?.summary,
+        "Performs web searches using the API and returns results.",
+    );
+    assert.equal(toolRegistry("brave", tools).tools[0]?.details, tools[0].description,
+        "summary shortening does not discard the full description from the input document");
+});
+
+test("{§mcp-result-content} Apps metadata remains inert catalog data, absent from compact invocations", () => {
+    const tools: Tool[] = [{
+        name: "analytics",
+        description: "Interactive analytics.",
+        inputSchema: { type: "object", properties: {}, additionalProperties: false },
+        _meta: {
+            ui: {
+                resourceUri: "ui://apps/analytics",
+                csp: "default-src 'none'",
+                permissions: ["tools/call", "sendOpenLink"],
+            },
+        },
+    }];
+    const registry = toolRegistry("apps", tools);
+    const entry = registry.tools.find((candidate) => candidate.target === "analytics");
+    assert.ok(entry);
+    assert.equal(entry.summary, "Interactive analytics.");
+    assert.ok(
+        !JSON.stringify([entry.summary, entry.invocation]).includes("ui://"),
+        "no UI resource or policy material reaches the compact invocation",
+    );
+    assert.deepEqual(entry.definition, tools[0], "the on-demand definition is not rewritten or stripped");
+});
+
+test("{§mcp-model-projection} catalogs preserve complete original tool records in name order", () => {
+    const tools: Tool[] = [{
+        name: "search", title: "Search", description: "Search documents.\n\nAll constraints apply.",
+        inputSchema: { type: "object", properties: { query: { $ref: "#/$defs/query" } },
+            $defs: { query: { type: "string", minLength: 1 } } },
+        outputSchema: { type: "object", properties: { matches: { type: "array", items: { type: "string" } } } },
+        annotations: { readOnlyHint: true },
+        icons: [{ src: "https://example.invalid/search.svg", mimeType: "image/svg+xml" }],
+        _meta: { vendor: { revision: 2 } },
+    }, {
+        name: "list", inputSchema: { type: "object", additionalProperties: false },
+    }];
+    const before = structuredClone(tools);
+    const registry = toolRegistry("docs", tools);
+    assert.deepEqual(registry.tools.map(({ definition }) => definition), [tools[1], tools[0]]);
+    assert.deepEqual(tools, before, "presentation does not mutate the received catalog");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preparation Diagnostics ({§mcp-module})
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("{§mcp-module}: a bounded stderr tail redacts values across chunks and retained-buffer boundaries", () => {
+    const secret = "fixture-[secret]-value";
+    const capture = new PreparationDiagnostics([secret], 48);
+    for (const chunk of ["discarded history\n", "older line\n".repeat(30), "last line ", secret.slice(0, 8), secret.slice(8), " failed\n"]) {
+        capture.write(Buffer.from(chunk));
+    }
+    const result = capture.describe(new Error(`wrapper ${secret}`, { cause: new Error(`rejected ${secret}`) }));
+    assert.match(result.diagnostic ?? "", /rejected __redacted__/u);
+    assert.match(result.stderr ?? "", /last line __redacted__ failed/u);
+    assert.doesNotMatch(JSON.stringify(result), /fixture-|secret|discarded/u);
+    assert.ok((result.stderr?.length ?? 0) <= 48);
+    assert.ok((result.diagnostic?.length ?? 0) <= 48);
+
+    const boundary = new PreparationDiagnostics([secret], 12);
+    boundary.write(Buffer.from(`old text ${secret} failed`));
+    assert.doesNotMatch(boundary.describe(new Error("closed")).stderr ?? "", /secret|value/u);
+});
+
+test("{§mcp-module}: overlapping values and heavily shortened tails reveal no value fragments", () => {
+    const capture = new PreparationDiagnostics(["abc", "cde", "long-private-value"], 36);
+    capture.write(Buffer.from(`older text abcdef ${"long-private-value ".repeat(8)}failed`));
+    const result = capture.describe(new Error("abcdef"));
+    assert.equal(result.diagnostic, "__redacted__f");
+    assert.match(result.stderr ?? "", /failed$/u);
+    assert.doesNotMatch(JSON.stringify(result), /private|value|abc|cde/u);
+});
+
+test("{§mcp-module}: shortening earlier secrets cannot reveal the truncated diagnostic suffix", () => {
+    const secret = "synthetic-key-that-is-long-enough";
+    for (const limit of [12, 24, 40, 64]) {
+        const capture = new PreparationDiagnostics([secret], limit);
+        const result = capture.describe(new Error(`${secret} `.repeat(10)));
+        assert.match(result.diagnostic ?? "", /__redacted__/u);
+        assert.doesNotMatch(result.diagnostic ?? "", /synthetic|key|enough/u);
+        assert.ok((result.diagnostic?.length ?? 0) <= limit);
+    }
+});
+
+test("{§mcp-module}: prefix and tail windows mask every intersecting known value", () => {
+    const secret = "Z9Qx".repeat(12);
+    for (const limit of [1, 12, 24, 48, 64]) {
+        for (const offset of [0, 1, secret.length - 1]) {
+            const capture = new PreparationDiagnostics([secret], limit);
+            const text = `${"|".repeat(offset)}${`${secret}|`.repeat(5)}${"|".repeat(offset)}`;
+            for (let start = 0; start < text.length; start += 7) capture.write(Buffer.from(text.slice(start, start + 7)));
+            const result = capture.describe(new Error(text));
+            for (const field of [result.diagnostic, result.stderr]) {
+                assert.ok(field !== undefined);
+                assert.doesNotMatch(field, /[Z9Qx]/u, `limit=${limit}, offset=${offset}`);
+                assert.ok(field.length <= limit);
+            }
+        }
+    }
+});
+
+test("{§mcp-module}: diagnostic text is bounded, cycle-safe, and preserves UTF-8 across chunks", () => {
+    const capture = new PreparationDiagnostics([], 80);
+    const bytes = Buffer.from("échec — last line\n");
+    for (const byte of bytes) capture.write(Buffer.of(byte));
+    const cause = new Error("request timed out");
+    cause.cause = cause;
+    const result = capture.describe(new AggregateError([cause, new Error("cleanup failed")], "preparation failed"));
+    assert.match(result.diagnostic ?? "", /request timed out/u);
+    assert.match(result.diagnostic ?? "", /cleanup failed/u);
+    assert.equal(result.stderr, "échec — last line");
+    assert.ok((result.diagnostic?.length ?? 0) <= 80);
+});
+
+test("{§mcp-module}: a zero diagnostic bound retains no text", () => {
+    const capture = new PreparationDiagnostics(["secret"], 0);
+    capture.write(Buffer.from("stderr secret"));
+    assert.deepEqual(capture.describe(new Error("failed secret")), {});
 });

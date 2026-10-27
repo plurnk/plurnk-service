@@ -114,14 +114,14 @@ const propertySignature = (raw: JsonSchema, depth = 0, root?: JsonSchema): strin
 };
 
 export default class ToolInputSchema {
-    // {§executor-input-schema-preview} — the top-level required fields, with the first `anyOf`
+    // {§executor-discovery} — the top-level required fields, with the first `anyOf`
     // branch's when the schema requires one of several alternatives.
     static requiredFields(schema: JsonSchema): string[] {
         const branches = Array.isArray(schema.anyOf) ? schema.anyOf : [];
         return [...new Set([...names(schema.required), ...names(objectOf(branches[0]).required)])];
     }
 
-    // {§executor-input-schema-preview} — a compact valid JSON skeleton of required fields.
+    // {§executor-discovery} — a compact valid JSON skeleton of required fields.
     static preview(schema: JsonSchema): string {
         const properties = objectOf(schema.properties);
         const entries = ToolInputSchema.requiredFields(schema).map((name) => {
@@ -131,7 +131,7 @@ export default class ToolInputSchema {
         return `{${entries.join(", ")}}`;
     }
 
-    // {§executor-input-schema-preview} — compact aside signature for required multi-value enums,
+    // {§executor-discovery} — compact aside signature for required multi-value enums,
     // required one-level structured objects/arrays, and optional top-level properties (#1228).
     static asideNote(schema?: JsonSchema): string | undefined {
         if (!isRecord(schema)) return undefined;
@@ -195,7 +195,7 @@ export default class ToolInputSchema {
         return `${runtime}${path}` + (note === "" ? "" : ` <!-- ${note} -->`);
     }
 
-    // {§executor-blank-invocation} — an invocation's copyable fence: its header, compact schema note, and input preview.
+    // {§executor-discovery} — an invocation's copyable fence: its header, compact schema note, and input preview.
     static fence(
         runtime: string,
         invocation: RuntimeInvocationDecl,

@@ -4,9 +4,9 @@ import type { Tool } from "@modelcontextprotocol/client";
 const BASE64_PREFIX = "=?base64?";
 const BASE64_SUFFIX = "?=";
 const RFC9110_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-// {§mcp-header-declarations} — the types SEP-2243 admits on a declared property; `number` is not one of them.
+// {§mcp-transports} — the types SEP-2243 admits on a declared property; `number` is not one of them.
 const HEADER_TYPES = new Set(["string", "integer", "boolean"]);
-// {§mcp-header-declarations} — subschema keywords a declaration must not sit under: the chain to a declared
+// {§mcp-transports} — subschema keywords a declaration must not sit under: the chain to a declared
 // property runs through `properties` alone. A map-valued keyword holds schemas as its values.
 const UNREACHABLE_KEYWORDS = [
     "items", "prefixItems", "contains", "additionalProperties", "unevaluatedProperties", "unevaluatedItems",
@@ -38,7 +38,7 @@ interface HeaderDeclaration {
     readonly type: string;
 }
 
-/** {§mcp-header-declarations} — a tool definition whose `x-mcp-header` declarations break SEP-2243; it is never called. */
+/** {§mcp-transports} — a tool definition whose `x-mcp-header` declarations break SEP-2243; it is never called. */
 export class HeaderDeclarationError extends Error {
     readonly tool: string;
     readonly declaration: string;
@@ -53,7 +53,7 @@ export class HeaderDeclarationError extends Error {
 
 const pathName = (path: readonly string[]): string => path.length === 0 ? "(root)" : path.join(".");
 
-// {§mcp-header-declarations} — every declaration the schema carries, or the first one that breaks the contract.
+// {§mcp-transports} — every declaration the schema carries, or the first one that breaks the contract.
 export const headerDeclarations = (tool: Tool): HeaderDeclaration[] => {
     const declarations: HeaderDeclaration[] = [];
     const seen = new Map<string, string>();
@@ -95,7 +95,7 @@ export const headerDeclarations = (tool: Tool): HeaderDeclaration[] => {
     return declarations;
 };
 
-/** {§mcp-header-declarations} — refuses before any request leg; the definition is scanned, nothing is sent. */
+/** {§mcp-transports} — refuses before any request leg; the definition is scanned, nothing is sent. */
 export const assertHeaderDeclarations = (tool: Tool): void => {
     headerDeclarations(tool);
 };
