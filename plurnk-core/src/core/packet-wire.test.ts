@@ -12,6 +12,10 @@ import { parseLogRecords } from "../../test/LogRecords.ts";
 import { contentWeight } from "./content-weight.ts";
 import GitState from "./git-state.ts";
 
+import ReadResolve from "../content/read-resolve.ts";
+import LogVisibility from "./LogVisibility.ts";
+import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
+import { editReceipt as buildEditReceipt, projectEditReceipt } from "../content/edit-receipt.ts";
 describe("packet-wire", () => {
 test("{§packet-assembly}: retained user-role evidence keeps its original envelope", () => {
     const content = "```EDIT (a.md)\nFull replacement.\n```\n\n```NOTE\nA remembered observation.\n```";
@@ -2130,5 +2134,100 @@ test("{§packet-inject} lines render in alias order, each in its directive's cal
 test("{§packet-inject} a line that opens with no directive is a configuration error naming its key", () => {
     assert.throws(() => recapLines({ PLURNK_SERVICE_RECAP_LINE_x: "Remember to take notes." }),
         (error: unknown) => error instanceof ConfigurationError && /PLURNK_SERVICE_RECAP_LINE_x/u.test(error.message));
+});
+});
+
+
+describe("packet-extents", () => {
+const weigh = (text: string): number => Math.ceil(text.length / 4);
+const content = Array.from({ length: 30 }, (_, index) => `source line ${index + 1}`).join("\n");
+
+test("{§log-wire-format}: successful retrievals format typed extents without changing their evidence", async (t) => {
+    for (const { unit, total, returned, expected } of [
+        { unit: "line", total: 602, returned: [1, 16], expected: "<1,16> of 602 lines" },
+        { unit: "line", total: 35, returned: [1, 35], expected: "35 lines" },
+        { unit: "line", total: 1, returned: [1, 1], expected: "1 line" },
+        { unit: "line", total: 35, expected: "none of 35 lines" },
+        { unit: "resource", total: 40, returned: [17, 32], expected: "<17,32> of 40 resources" },
+        { unit: "resource", total: 0, expected: "0 resources" },
+        { unit: "matchLocation", total: 40, returned: [17, 17], expected: "<17> of 40 match locations" },
+        { unit: "byte", total: 4096, returned: [1, 16], expected: "<1,16> of 4096 bytes" },
+    ]) {
+        await t.test(expected, () => {
+            const range = { unit, total, requested: [1, -1], ...(returned === undefined ? {} : { returned }) };
+            const row = { coordinate: "1/2/3", op: "READ", status: 200, target: { scheme: null, pathname: "sample" }, rx: { range, content: "" } };
+            const original = structuredClone(row);
+            const explicit = parseLogRecords(PacketWire.renderLog([row], weigh))[0];
+            const automatic = parseLogRecords(PacketWire.renderLog([{ ...row, origin: "_plurnk" }], weigh))[0];
+            assert.equal(explicit.range, expected);
+            assert.equal(automatic.range, expected);
+            assert.equal(explicit.region, undefined);
+            assert.equal(explicit.lines, undefined);
+            assert.deepEqual(row, original, "packet formatting does not mutate durable result facts");
+        });
+    }
+});
+
+test("{§log-wire-format}: a channel READ carrying its execution's failure formats its extent like any retrieval", () => {
+    const problem = { type: "https://problems.plurnk.xyz/executor/subprocess/timeout", title: "Timeout", status: 504, detail: "'sh' timed out." };
+    const range = { unit: "line", total: 3, requested: [1, 100], returned: [1, 3] };
+    const row = { coordinate: "1/10/1", op: "READ", status: 504, origin: "_plurnk", target: { scheme: "sh", pathname: "/8d5808a1" }, rx: { range, content: "a\nb\nc", problem, terminal: true } };
+    const rendered = parseLogRecords(PacketWire.renderLog([row], weigh))[0];
+    assert.equal(rendered.range, "3 lines", "the retrieval succeeded; only the execution failed");
+});
+
+test("{§log-wire-format}: READ acquisition, receipt trimming, and READ of the log keep distinct coordinates", async () => {
+    const rx = await ReadResolve.resolve({ content, mimetype: "text/plain", lineMarker: { marks: [17, 18] } });
+    const entry = { coordinate: "1/2/3", op: "READ", status: rx.status, target: { scheme: null, pathname: "sample" }, rx };
+    const original = structuredClone(rx);
+    const whole = parseLogRecords(PacketWire.renderLog([entry], weigh))[0];
+    assert.equal(whole.range, "<17,18> of 30 lines");
+    assert.equal(whole.body, "17:source line 17\n18:source line 18\n");
+    const scope = LogVisibility.resolveScope({ marks: [1] }, "log:///1/2/3/READ", rx.content ?? "");
+    assert.equal(scope.ok, true);
+    const folded = LogVisibility.apply([], scope.range, TextCoordinates.lineCount(rx.content ?? ""));
+    const rendered = PacketWire.renderLog([{ ...entry, folded }], weigh);
+    const trimmed = parseLogRecords(rendered)[0];
+    assert.equal(trimmed.range, whole.range, "curation does not rewrite acquisition evidence");
+    assert.deepEqual(trimmed.trimmed, ["<1>"]);
+    assert.equal(trimmed.folded, undefined);
+    assert.equal(trimmed.body, "18:source line 18\n");
+    assert.equal(trimmed.tokens, weigh(rendered), "the new metadata participates in exact row accounting");
+    const reread = await ReadResolve.resolve({
+        content: rx.content ?? "", mimetype: "text/plain", lineMarker: { marks: [1, -1] },
+        visibleLines: LogVisibility.visibleLineOrdinals(folded, TextCoordinates.lineCount(rx.content ?? "")),
+    });
+    const observed = parseLogRecords(PacketWire.renderLog([{
+        coordinate: "1/3/1", op: "READ", status: reread.status,
+        target: { scheme: "log", pathname: "/1/2/3/READ" }, rx: reread,
+    }], weigh))[0];
+    assert.equal(observed.range, "<2> of 2 lines");
+    assert.equal(observed.body, "2:source line 18\n");
+    assert.deepEqual(rx, original, "the immutable acquisition retains both original source lines");
+});
+
+test("{§log-wire-format}: sparse acquisitions do not become complete merely by spanning both endpoints", async () => {
+    const rx = await ReadResolve.resolve({ content, mimetype: "text/plain", lineMarker: { marks: [1, -1] }, visibleLines: [1, 15, 30] });
+    const rendered = parseLogRecords(PacketWire.renderLog([{
+        coordinate: "1/2/3", op: "READ", status: rx.status, target: { scheme: null, pathname: "sample" }, rx,
+    }], weigh))[0];
+    assert.equal(rendered.range, "<1,30> of 30 lines");
+    assert.match(String(rendered.body), /1:source line 1\n15:source line 15\n30:source line 30/);
+});
+
+test("{§log-wire-format}: mutation scopes are resolved by the producer, not reverse-parsed by the packet", () => {
+    const original = "first\nsecond\nthird";
+    const updated = "first\nreplacement\nextra\nthird";
+    const receipt = projectEditReceipt(buildEditReceipt(original, updated, [{ marker: { marks: [2] }, body: "replacement\nextra" }]), 0);
+    const retained = structuredClone(receipt);
+    const row = parseLogRecords(PacketWire.renderLog([{
+        coordinate: "1/2/3", op: "EDIT", status: 200, target: { scheme: null, pathname: "sample" }, rx: { receipt },
+    }], weigh))[0];
+    assert.equal(row.effect, "<2> -> <2,3>");
+    assert.equal(row.range, undefined);
+    assert.equal(row.change, "lines -1 +2");
+    assert.equal(row.extent, "lines 3->4");
+    assert.match(String(row.body), /2:replacement\n3:extra/);
+    assert.deepEqual(receipt, retained);
 });
 });
