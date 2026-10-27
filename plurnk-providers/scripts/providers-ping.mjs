@@ -195,7 +195,7 @@ const pingEnvironment = (env, alias) => ({
     [`PLURNK_PROVIDERS_TOP_LOGPROBS_${alias}`]: "off",
 });
 
-export const pingRequest = (route) => {
+const pingRequest = (route) => {
     const sessionId = `providers-ping-${route.provider}`;
     return {
         messages: [{ role: "user", content: "Reply with OK." }],

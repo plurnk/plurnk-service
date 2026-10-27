@@ -1,7 +1,7 @@
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
 import { stream as streamOpenAICompletions } from "@earendil-works/pi-ai/api/openai-completions";
-import { normalizeContext, type AssistantMessageEvent, type Model } from "@earendil-works/pi-ai";
+import { normalizeContext, type Api, type Message, type Model, type TranscriptContext } from "@earendil-works/pi-ai";
 import { APICallError, JSONParseError, TypeValidationError } from "./errors.ts";
 import {
     chatMessageText,
@@ -23,7 +23,7 @@ import {
 import { normalizeUsage, UsageDetailError } from "./usage.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 
-export const retryDirective = (
+const retryDirective = (
     status: number | undefined,
     headers: Headers | Readonly<Record<string, string>>,
 ): boolean | null => {
@@ -40,7 +40,7 @@ export const retryDirective = (
 // {§provider-failure-normalization} (#479): a Retry-After header on any status is the
 // provider directing a wait (RFC 9110 defines it on 503 exactly for this);
 // its presence, like a bare 429, earns the bounded transport retry.
-export const retryAfterPresent = (
+const retryAfterPresent = (
     headers: Headers | Readonly<Record<string, string>>,
 ): boolean => {
     const raw = headers instanceof Headers
@@ -350,7 +350,7 @@ export const transportFailureOutputObserved = (error: unknown): boolean => {
     return false;
 };
 
-export const normalizeRetryAttemptError = (error: unknown): unknown => {
+const normalizeRetryAttemptError = (error: unknown): unknown => {
     if (!APICallError.isInstance(error)) {
         // Node's Undici stream reader reports a peer-aborted HTTP/2 body as this
         // raw TypeError after headers have arrived. Normalize it at the attempt
@@ -596,9 +596,62 @@ export type OpenAICompatibleProviderSettings = {
     transformRequestBody?: (body: Record<string, unknown>) => Record<string, unknown>;
 };
 
-export type OpenAICompatibleProvider = ((modelId: string, modelSettings?: Record<string, unknown>) => ModelTransport) & {
-    model: (modelId: string, modelSettings?: Record<string, unknown>) => ModelTransport;
-    chat: (modelId: string, modelSettings?: Record<string, unknown>) => ModelTransport;
+export const piContextFromPrompt = (
+    prompt: readonly ModelPromptMessage[],
+    api: Api,
+    provider: string,
+    modelId: string,
+): TranscriptContext => {
+    const messages: Message[] = prompt.map((message): Message => {
+        if (message.role === "system") {
+            return { role: "system", content: message.content, timestamp: 0 };
+        }
+        if (message.role === "assistant") {
+            return {
+                role: "assistant",
+                content: message.content
+                    .filter((part): part is Extract<typeof message.content[number], { type: "text" }> => part.type === "text")
+                    .map((part) => ({ type: "text" as const, text: part.text })),
+                api,
+                provider,
+                model: modelId,
+                usage: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    totalTokens: 0,
+                    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+                },
+                stopReason: "stop",
+                timestamp: 0,
+            };
+        }
+        return {
+            role: "user",
+            content: message.content.flatMap((part): Array<{ type: "text"; text: string } | { type: "image"; mimeType: string; data: string }> => {
+                if (part.type === "text") return [{ type: "text", text: part.text }];
+                if (!part.mediaType.startsWith("image/")) return [];
+                const rawBytes = part.data instanceof Uint8Array
+                    ? part.data
+                    : isRecord(part.data) && part.data.data instanceof Uint8Array
+                        ? part.data.data
+                        : undefined;
+                const data = rawBytes !== undefined
+                    ? encodeBytesBase64(rawBytes)
+                    : typeof part.data === "string"
+                        ? part.data
+                        : isRecord(part.data) && typeof part.data.data === "string"
+                            ? part.data.data
+                            : "";
+                return [{ type: "image" as const, mimeType: part.mediaType, data }];
+            }),
+            timestamp: 0,
+        };
+    });
+    return normalizeContext({
+        messages: messages.length > 0 ? messages : [{ role: "user", content: "", timestamp: 0 }],
+    });
 };
 
 const serializeCompatibleMessages = (
@@ -948,7 +1001,7 @@ const inspectOpenAISseStream = (
     });
 };
 
-export const toModelUsageFromPi = (
+const toModelUsageFromPi = (
     piUsage: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number } | undefined,
     rawUsage: Record<string, unknown> | undefined,
 ): ModelUsage => {
@@ -999,312 +1052,310 @@ export const toModelUsageFromPi = (
     };
 };
 
-export const createOpenAICompatible = (
-    settings: OpenAICompatibleProviderSettings,
-): OpenAICompatibleProvider => {
+export const createOpenAICompatibleModel = (
+    modelId: string,
+    settings: OpenAICompatibleProviderSettings = {},
+    modelSettings?: Record<string, unknown>,
+): ModelTransport => {
     const providerName = settings.name ?? "openai-compatible";
     const resolvedBaseUrl = (settings.baseURL ?? "https://api.openai.com/v1").replace(/\/+$/, "");
     const endpointUrl = `${resolvedBaseUrl}/chat/completions`;
     const underlyingFetch = settings.fetch ?? outboundFetch;
 
-    const makeModel = (modelId: string, modelSettings?: Record<string, unknown>): ModelTransport => {
-        const buildPiModel = (callHeaders?: Record<string, string | undefined>): Model<"openai-completions"> => {
-            const mergedHeaders: Record<string, string> = { ...settings.headers };
-            if (callHeaders !== undefined) {
-                for (const [key, value] of Object.entries(callHeaders)) {
-                    if (value !== undefined) mergedHeaders[key] = value;
-                }
+    const buildPiModel = (callHeaders?: Record<string, string | undefined>): Model<"openai-completions"> => {
+        const mergedHeaders: Record<string, string> = { ...settings.headers };
+        if (callHeaders !== undefined) {
+            for (const [key, value] of Object.entries(callHeaders)) {
+                if (value !== undefined) mergedHeaders[key] = value;
             }
-            return {
-                id: modelId,
-                name: modelId,
-                api: "openai-completions",
-                provider: providerName,
-                baseUrl: resolvedBaseUrl,
-                reasoning: true,
-                input: ["text", "image"],
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-                contextWindow: 128000,
-                maxTokens: 16384,
-                headers: mergedHeaders,
-                compat: {
-                    supportsStore: false,
-                    supportsDeveloperRole: false,
-                    supportsReasoningEffort: true,
-                    supportsUsageInStreaming: settings.includeUsage !== false,
-                    maxTokensField: "max_tokens",
-                    supportsStrictMode: false,
-                },
-            };
-        };
-
-        const dummyContext = normalizeContext({
-            messages: [{ role: "user", content: "", timestamp: 0 }],
-        });
-
-        const awaitFetchWithAbort = async (
-            fetchPromise: Promise<Response>,
-            signal: AbortSignal | null | undefined,
-        ): Promise<Response> => {
-            if (signal === undefined || signal === null) return fetchPromise;
-            if (signal.aborted) throw signal.reason ?? new Error("Request was aborted");
-            return new Promise<Response>((resolve, reject) => {
-                const onAbort = (): void => {
-                    reject(signal.reason ?? new Error("Request was aborted"));
-                };
-                signal.addEventListener("abort", onAbort, { once: true });
-                fetchPromise.then(
-                    (res) => {
-                        signal.removeEventListener("abort", onAbort);
-                        resolve(res);
-                    },
-                    (err) => {
-                        signal.removeEventListener("abort", onAbort);
-                        reject(err);
-                    },
-                );
-            });
-        };
-
+        }
         return {
-            provider: `${providerName}.chat`,
-            modelId,
-            async execute(callOptions: ModelTransportCallOptions): Promise<ModelTransportResult> {
-                callOptions.abortSignal?.throwIfAborted();
-                if (!callOptions.streaming) {
-                    const payload: Record<string, unknown> = { model: modelId, messages: [] };
-                    applyCompatiblePayloadOptions(payload, callOptions, settings, modelId, false, endpointUrl, modelSettings);
-                    const mergedHeaders = new Headers({ "Content-Type": "application/json" });
-                    if (settings.apiKey !== undefined && settings.apiKey.length > 0) {
-                        mergedHeaders.set("Authorization", `Bearer ${settings.apiKey}`);
+            id: modelId,
+            name: modelId,
+            api: "openai-completions",
+            provider: providerName,
+            baseUrl: resolvedBaseUrl,
+            reasoning: true,
+            input: ["text", "image"],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 128000,
+            maxTokens: 16384,
+            headers: mergedHeaders,
+            compat: {
+                supportsStore: false,
+                supportsDeveloperRole: false,
+                supportsReasoningEffort: true,
+                supportsUsageInStreaming: settings.includeUsage !== false,
+                maxTokensField: "max_tokens",
+                supportsStrictMode: false,
+            },
+        };
+    };
+
+    const awaitFetchWithAbort = async (
+        fetchPromise: Promise<Response>,
+        signal: AbortSignal | null | undefined,
+    ): Promise<Response> => {
+        if (signal === undefined || signal === null) return fetchPromise;
+        if (signal.aborted) throw signal.reason ?? new Error("Request was aborted");
+        return new Promise<Response>((resolve, reject) => {
+            const onAbort = (): void => {
+                reject(signal.reason ?? new Error("Request was aborted"));
+            };
+            signal.addEventListener("abort", onAbort, { once: true });
+            fetchPromise.then(
+                (res) => {
+                    signal.removeEventListener("abort", onAbort);
+                    resolve(res);
+                },
+                (err) => {
+                    signal.removeEventListener("abort", onAbort);
+                    reject(err);
+                },
+            );
+        });
+    };
+
+    return {
+        provider: `${providerName}.chat`,
+        modelId,
+        async execute(callOptions: ModelTransportCallOptions): Promise<ModelTransportResult> {
+            callOptions.abortSignal?.throwIfAborted();
+            if (!callOptions.streaming) {
+                const payload: Record<string, unknown> = { model: modelId, messages: [] };
+                applyCompatiblePayloadOptions(payload, callOptions, settings, modelId, false, endpointUrl, modelSettings);
+                const mergedHeaders = new Headers({ "Content-Type": "application/json" });
+                if (settings.apiKey !== undefined && settings.apiKey.length > 0) {
+                    mergedHeaders.set("Authorization", `Bearer ${settings.apiKey}`);
+                }
+                if (settings.headers !== undefined) {
+                    for (const [key, value] of Object.entries(settings.headers)) {
+                        if (value !== undefined) mergedHeaders.set(key, value);
                     }
-                    if (settings.headers !== undefined) {
-                        for (const [key, value] of Object.entries(settings.headers)) {
-                            if (value !== undefined) mergedHeaders.set(key, value);
-                        }
+                }
+                if (callOptions.headers !== undefined) {
+                    for (const [key, value] of Object.entries(callOptions.headers)) {
+                        if (value !== undefined) mergedHeaders.set(key, value);
                     }
-                    if (callOptions.headers !== undefined) {
-                        for (const [key, value] of Object.entries(callOptions.headers)) {
-                            if (value !== undefined) mergedHeaders.set(key, value);
-                        }
-                    }
-                    const rawPromise = underlyingFetch(endpointUrl, {
-                        method: "POST",
-                        headers: headersToRecord(mergedHeaders),
-                        body: JSON.stringify(payload),
-                        ...(callOptions.abortSignal === undefined ? {} : { signal: callOptions.abortSignal }),
+                }
+                const rawPromise = underlyingFetch(endpointUrl, {
+                    method: "POST",
+                    headers: headersToRecord(mergedHeaders),
+                    body: JSON.stringify(payload),
+                    ...(callOptions.abortSignal === undefined ? {} : { signal: callOptions.abortSignal }),
+                });
+                rawPromise.catch(() => {});
+                const response = await awaitFetchWithAbort(rawPromise, callOptions.abortSignal);
+                const responseHeadersRecord = headersToRecord(response.headers);
+                if (!response.ok) {
+                    const text = await response.text().catch(() => "");
+                    const { message, data } = extractErrorMessage(text, response.statusText, response.status);
+                    throw new APICallError({
+                        message,
+                        url: endpointUrl,
+                        requestBodyValues: payload,
+                        statusCode: response.status,
+                        responseHeaders: responseHeadersRecord,
+                        responseBody: text,
+                        isRetryable: isResponseRetryable(response.status, response.headers),
+                        data,
                     });
+                }
+                let text: string;
+                try {
+                    text = await response.text();
+                } catch (cause) {
+                    throw new APICallError({
+                        message: "Failed to process successful response",
+                        url: endpointUrl,
+                        requestBodyValues: payload,
+                        statusCode: response.status,
+                        responseHeaders: responseHeadersRecord,
+                        cause,
+                        isRetryable: isResponseRetryable(response.status, response.headers),
+                    });
+                }
+                let parsed: unknown;
+                try {
+                    parsed = JSON.parse(text);
+                } catch (cause) {
+                    throw new APICallError({
+                        message: "Failed to process successful response",
+                        url: endpointUrl,
+                        requestBodyValues: payload,
+                        statusCode: response.status,
+                        responseHeaders: responseHeadersRecord,
+                        responseBody: text,
+                        cause: new JSONParseError({ text, cause }),
+                        isRetryable: isResponseRetryable(response.status, response.headers),
+                    });
+                }
+                if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
+                    const received = isRecord(parsed) ? typeof parsed.choices : typeof parsed;
+                    throw new APICallError({
+                        message: "Failed to process successful response",
+                        url: endpointUrl,
+                        requestBodyValues: payload,
+                        statusCode: response.status,
+                        responseHeaders: responseHeadersRecord,
+                        responseBody: text,
+                        cause: new TypeValidationError({
+                            value: parsed,
+                            cause: new Error(`Invalid input: expected array, received ${received}`),
+                        }),
+                        isRetryable: isResponseRetryable(response.status, response.headers),
+                    });
+                }
+                let content = "";
+                let reasoning = "";
+                let nativeToolCalls = false;
+                for (const choiceValue of parsed.choices) {
+                    if (!isRecord(choiceValue)) continue;
+                    const message = isRecord(choiceValue.message) ? choiceValue.message : isRecord(choiceValue.delta) ? choiceValue.delta : undefined;
+                    if (message === undefined) continue;
+                    if (typeof message.content === "string") content += message.content;
+                    for (const field of ["reasoning_content", "reasoning", "thinking"]) {
+                        if (typeof message[field] === "string" && message[field].length > 0) {
+                            reasoning += message[field];
+                        }
+                    }
+                    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+                        nativeToolCalls = true;
+                    }
+                }
+                const choice0 = isRecord(parsed.choices[0]) ? parsed.choices[0] : undefined;
+                const rawFinish = typeof choice0?.finish_reason === "string" ? choice0.finish_reason : "stop";
+                const rawUsage = isRecord(parsed.usage) ? parsed.usage : undefined;
+                return {
+                    content,
+                    reasoning,
+                    ...(nativeToolCalls ? { nativeToolCalls: true } : {}),
+                    finishReason: {
+                        unified: toUnifiedFinishReason(rawFinish),
+                        raw: rawFinish,
+                    },
+                    usage: toModelUsageFromPi(undefined, rawUsage),
+                    rawChunks: [],
+                    response: {
+                        id: typeof parsed.id === "string" ? parsed.id : undefined,
+                        modelId: typeof parsed.model === "string" ? parsed.model : modelId,
+                        headers: responseHeadersRecord,
+                        body: parsed,
+                    },
+                    warnings: [],
+                };
+            }
+
+            let capturedRequestBody: unknown = {};
+            let responseHeadersRecord: Record<string, string> | undefined;
+            let pendingFetch: Promise<Response> | undefined;
+            let settleHeaders!: () => void;
+            let failHeaders!: (error: unknown) => void;
+            const headersReady = new Promise<void>((resolve, reject) => {
+                settleHeaders = resolve;
+                failHeaders = reject;
+            });
+            const sseState: SseInspectionState = {
+                originalChunksQueue: [],
+                sseErrorChunks: [],
+            };
+
+            const customFetch: typeof globalThis.fetch = async (input, init) => {
+                try {
+                    const rawPromise = underlyingFetch(input, init);
                     rawPromise.catch(() => {});
+                    pendingFetch = rawPromise;
                     const response = await awaitFetchWithAbort(rawPromise, callOptions.abortSignal);
-                    const responseHeadersRecord = headersToRecord(response.headers);
+                    responseHeadersRecord = headersToRecord(response.headers);
                     if (!response.ok) {
                         const text = await response.text().catch(() => "");
                         const { message, data } = extractErrorMessage(text, response.statusText, response.status);
-                        throw new APICallError({
+                        const apiError = new APICallError({
                             message,
-                            url: endpointUrl,
-                            requestBodyValues: payload,
+                            url: typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url,
+                            requestBodyValues: capturedRequestBody,
                             statusCode: response.status,
                             responseHeaders: responseHeadersRecord,
                             responseBody: text,
                             isRetryable: isResponseRetryable(response.status, response.headers),
                             data,
                         });
+                        failHeaders(apiError);
+                        throw apiError;
                     }
-                    let text: string;
-                    try {
-                        text = await response.text();
-                    } catch (cause) {
-                        throw new APICallError({
-                            message: "Failed to process successful response",
-                            url: endpointUrl,
-                            requestBodyValues: payload,
-                            statusCode: response.status,
-                            responseHeaders: responseHeadersRecord,
-                            cause,
-                            isRetryable: isResponseRetryable(response.status, response.headers),
-                        });
-                    }
-                    let parsed: unknown;
-                    try {
-                        parsed = JSON.parse(text);
-                    } catch (cause) {
-                        throw new APICallError({
-                            message: "Failed to process successful response",
-                            url: endpointUrl,
-                            requestBodyValues: payload,
-                            statusCode: response.status,
-                            responseHeaders: responseHeadersRecord,
-                            responseBody: text,
-                            cause: new JSONParseError({ text, cause }),
-                            isRetryable: isResponseRetryable(response.status, response.headers),
-                        });
-                    }
-                    if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
-                        const received = isRecord(parsed) ? typeof parsed.choices : typeof parsed;
-                        throw new APICallError({
-                            message: "Failed to process successful response",
-                            url: endpointUrl,
-                            requestBodyValues: payload,
-                            statusCode: response.status,
-                            responseHeaders: responseHeadersRecord,
-                            responseBody: text,
-                            cause: new TypeValidationError({
-                                value: parsed,
-                                cause: new Error(`Invalid input: expected array, received ${received}`),
-                            }),
-                            isRetryable: isResponseRetryable(response.status, response.headers),
-                        });
-                    }
-                    let content = "";
-                    let reasoning = "";
-                    let nativeToolCalls = false;
-                    for (const choiceValue of parsed.choices) {
-                        if (!isRecord(choiceValue)) continue;
-                        const message = isRecord(choiceValue.message) ? choiceValue.message : isRecord(choiceValue.delta) ? choiceValue.delta : undefined;
-                        if (message === undefined) continue;
-                        if (typeof message.content === "string") content += message.content;
-                        for (const field of ["reasoning_content", "reasoning", "thinking"]) {
-                            if (typeof message[field] === "string" && message[field].length > 0) {
-                                reasoning += message[field];
-                            }
-                        }
-                        if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-                            nativeToolCalls = true;
-                        }
-                    }
-                    const choice0 = isRecord(parsed.choices[0]) ? parsed.choices[0] : undefined;
-                    const rawFinish = typeof choice0?.finish_reason === "string" ? choice0.finish_reason : "stop";
-                    const rawUsage = isRecord(parsed.usage) ? parsed.usage : undefined;
-                    return {
-                        content,
-                        reasoning,
-                        ...(nativeToolCalls ? { nativeToolCalls: true } : {}),
-                        finishReason: {
-                            unified: toUnifiedFinishReason(rawFinish),
-                            raw: rawFinish,
-                        },
-                        usage: toModelUsageFromPi(undefined, rawUsage),
-                        rawChunks: [],
-                        response: {
-                            id: typeof parsed.id === "string" ? parsed.id : undefined,
-                            modelId: typeof parsed.model === "string" ? parsed.model : modelId,
-                            headers: responseHeadersRecord,
-                            body: parsed,
-                        },
-                        warnings: [],
-                    };
+                    callOptions.observeResponse?.({ headers: responseHeadersRecord });
+                    settleHeaders();
+                    const headers = new Headers(response.headers);
+                    headers.set("content-type", "text/event-stream");
+                    const inspectedBody = response.body === null
+                        ? null
+                        : inspectOpenAISseStream(response.body, sseState);
+                    return new Response(inspectedBody, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers,
+                    });
+                } catch (error) {
+                    failHeaders(error);
+                    throw error;
                 }
+            };
 
-                let capturedRequestBody: unknown = {};
-                let responseHeadersRecord: Record<string, string> | undefined;
-                let pendingFetch: Promise<Response> | undefined;
-                let settleHeaders!: () => void;
-                let failHeaders!: (error: unknown) => void;
-                const headersReady = new Promise<void>((resolve, reject) => {
-                    settleHeaders = resolve;
-                    failHeaders = reject;
-                });
-                const sseState: SseInspectionState = {
-                    originalChunksQueue: [],
-                    sseErrorChunks: [],
-                };
+            let payloadError: unknown;
+            let streamError: unknown;
+            let emittedMetadata = false;
+            let content = "";
+            let reasoning = "";
+            let responseId: string | undefined;
+            let responseModelId: string | undefined;
+            let finishReason: ModelFinishReason = { unified: "other", raw: undefined };
+            let usage: ModelUsage | undefined;
+            const rawChunks: unknown[] = [];
 
-                const customFetch: typeof globalThis.fetch = async (input, init) => {
+            const recordChunk = (chunk: unknown): void => {
+                rawChunks.push(chunk);
+                callOptions.observeRawChunk?.(chunk);
+            };
+
+            const piModel = buildPiModel(callOptions.headers);
+            const context = piContextFromPrompt(callOptions.prompt, "openai-completions", providerName, modelId);
+            const piStream = streamOpenAICompletions(piModel, context, {
+                apiKey: settings.apiKey ?? "plurnk-no-key",
+                signal: callOptions.abortSignal,
+                maxRetries: 0,
+                fetch: customFetch,
+                onPayload: (params) => {
+                    if (!isRecord(params)) return;
                     try {
-                        const rawPromise = underlyingFetch(input, init);
-                        rawPromise.catch(() => {});
-                        pendingFetch = rawPromise;
-                        const response = await awaitFetchWithAbort(rawPromise, callOptions.abortSignal);
-                        responseHeadersRecord = headersToRecord(response.headers);
-                        if (!response.ok) {
-                            const text = await response.text().catch(() => "");
-                            const { message, data } = extractErrorMessage(text, response.statusText, response.status);
-                            const apiError = new APICallError({
-                                message,
-                                url: typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url,
-                                requestBodyValues: capturedRequestBody,
-                                statusCode: response.status,
-                                responseHeaders: responseHeadersRecord,
-                                responseBody: text,
-                                isRetryable: isResponseRetryable(response.status, response.headers),
-                                data,
-                            });
-                            failHeaders(apiError);
-                            throw apiError;
-                        }
-                        callOptions.observeResponse?.({ headers: responseHeadersRecord });
-                        settleHeaders();
-                        const headers = new Headers(response.headers);
-                        headers.set("content-type", "text/event-stream");
-                        const inspectedBody = response.body === null
-                            ? null
-                            : inspectOpenAISseStream(response.body, sseState);
-                        return new Response(inspectedBody, {
-                            status: response.status,
-                            statusText: response.statusText,
-                            headers,
-                        });
+                        applyCompatiblePayloadOptions(params, callOptions, settings, modelId, true, endpointUrl, modelSettings);
+                        capturedRequestBody = { ...params };
                     } catch (error) {
-                        failHeaders(error);
+                        payloadError = error;
                         throw error;
                     }
-                };
-
-                let payloadError: unknown;
-                let streamError: unknown;
-                let emittedMetadata = false;
-                let content = "";
-                let reasoning = "";
-                let responseId: string | undefined;
-                let responseModelId: string | undefined;
-                let finishReason: ModelFinishReason = { unified: "other", raw: undefined };
-                let usage: ModelUsage | undefined;
-                const rawChunks: unknown[] = [];
-
-                const recordChunk = (chunk: unknown): void => {
-                    rawChunks.push(chunk);
-                    callOptions.observeRawChunk?.(chunk);
-                };
-
-                const piModel = buildPiModel(callOptions.headers);
-                const piStream = streamOpenAICompletions(piModel, dummyContext, {
-                    apiKey: settings.apiKey ?? "plurnk-no-key",
-                    signal: callOptions.abortSignal,
-                    maxRetries: 0,
-                    fetch: customFetch,
-                    onPayload: (params) => {
-                        if (!isRecord(params)) return;
-                        try {
-                            applyCompatiblePayloadOptions(params, callOptions, settings, modelId, true, endpointUrl, modelSettings);
-                            capturedRequestBody = { ...params };
-                        } catch (error) {
-                            payloadError = error;
-                            throw error;
+                },
+                onProviderStreamEvent: (chunk) => {
+                    const rawChunk = sseState.originalChunksQueue.shift() ?? chunk;
+                    recordChunk(rawChunk);
+                    if (!emittedMetadata && isRecord(rawChunk)) {
+                        const id = typeof rawChunk.id === "string" ? rawChunk.id : undefined;
+                        const chunkModel = typeof rawChunk.model === "string" ? rawChunk.model : undefined;
+                        if (id !== undefined || chunkModel !== undefined) {
+                            emittedMetadata = true;
+                            if (id !== undefined) responseId ??= id;
+                            if (chunkModel !== undefined) responseModelId ??= chunkModel;
+                            callOptions.observeResponse?.({
+                                ...(id === undefined ? {} : { id }),
+                                ...(chunkModel === undefined ? {} : { modelId: chunkModel }),
+                                ...(responseHeadersRecord === undefined ? {} : { headers: responseHeadersRecord }),
+                            });
                         }
-                    },
-                    onProviderStreamEvent: (chunk) => {
-                        const rawChunk = sseState.originalChunksQueue.shift() ?? chunk;
-                        recordChunk(rawChunk);
-                        if (!emittedMetadata && isRecord(rawChunk)) {
-                            const id = typeof rawChunk.id === "string" ? rawChunk.id : undefined;
-                            const chunkModel = typeof rawChunk.model === "string" ? rawChunk.model : undefined;
-                            if (id !== undefined || chunkModel !== undefined) {
-                                emittedMetadata = true;
-                                if (id !== undefined) responseId ??= id;
-                                if (chunkModel !== undefined) responseModelId ??= chunkModel;
-                                callOptions.observeResponse?.({
-                                    ...(id === undefined ? {} : { id }),
-                                    ...(chunkModel === undefined ? {} : { modelId: chunkModel }),
-                                    ...(responseHeadersRecord === undefined ? {} : { headers: responseHeadersRecord }),
-                                });
-                            }
-                        }
-                    },
-                });
+                    }
+                },
+            });
 
-                const originalPush = piStream.push.bind(piStream);
-                piStream.push = (event: AssistantMessageEvent): void => {
+            const consumePromise = (async () => {
+                for await (const event of piStream) {
                     if (event.type === "thinking_delta") {
                         reasoning += event.delta;
                         callOptions.observeReasoning?.(event.delta);
@@ -1320,18 +1371,15 @@ export const createOpenAICompatible = (
                                 recordChunk(errChunk);
                                 streamError ??= errChunk.error;
                             }
-                            originalPush(event);
-                            return;
+                            continue;
                         }
                         if (sseState.rawStreamReadError !== undefined) {
                             streamError ??= sseState.rawStreamReadError;
-                            originalPush(event);
-                            return;
+                            continue;
                         }
                         if (callOptions.abortSignal?.aborted) {
                             streamError ??= callOptions.abortSignal.reason ?? new Error("Request was aborted");
-                            originalPush(event);
-                            return;
+                            continue;
                         }
                         if (event.type === "done") {
                             const rawFinish = event.message.rawStopReason;
@@ -1356,50 +1404,40 @@ export const createOpenAICompatible = (
                             }
                         }
                     }
-                    originalPush(event);
-                };
-
-                const resultPromise = piStream.result();
-                try {
-                    await Promise.race([
-                        headersReady,
-                        resultPromise.then(() => {
-                            if (payloadError !== undefined) throw payloadError;
-                        }),
-                    ]);
-                    if (payloadError !== undefined) throw payloadError;
-                } catch (error) {
-                    if (pendingFetch !== undefined) {
-                        await pendingFetch.catch(() => {});
-                    }
-                    throw error;
                 }
-                await resultPromise;
-                if (streamError !== undefined) throw streamError;
-                return {
-                    content,
-                    reasoning,
-                    finishReason,
-                    usage,
-                    rawChunks,
-                    response: {
-                        ...(responseId ?? sseState.lastResponseId ? { id: responseId ?? sseState.lastResponseId } : {}),
-                        ...(responseModelId ?? sseState.lastModelId ? { modelId: responseModelId ?? sseState.lastModelId } : {}),
-                        ...(responseHeadersRecord === undefined ? {} : { headers: responseHeadersRecord }),
-                    },
-                    warnings: [],
-                };
-            },
-        };
-    };
+            })();
 
-    return Object.assign(
-        (modelId: string, modelSettings?: Record<string, unknown>) => makeModel(modelId, modelSettings),
-        {
-            model: makeModel,
-            chat: makeModel,
+            try {
+                await Promise.race([
+                    headersReady,
+                    consumePromise.then(() => {
+                        if (payloadError !== undefined) throw payloadError;
+                    }),
+                ]);
+                if (payloadError !== undefined) throw payloadError;
+            } catch (error) {
+                if (pendingFetch !== undefined) {
+                    await pendingFetch.catch(() => {});
+                }
+                throw error;
+            }
+            await consumePromise;
+            if (streamError !== undefined) throw streamError;
+            return {
+                content,
+                reasoning,
+                finishReason,
+                usage,
+                rawChunks,
+                response: {
+                    ...(responseId ?? sseState.lastResponseId ? { id: responseId ?? sseState.lastResponseId } : {}),
+                    ...(responseModelId ?? sseState.lastModelId ? { modelId: responseModelId ?? sseState.lastModelId } : {}),
+                    ...(responseHeadersRecord === undefined ? {} : { headers: responseHeadersRecord }),
+                },
+                warnings: [],
+            };
         },
-    );
+    };
 };
 
 const SDK_OWNED_BODY_KEYS = ["model", "messages", "stream", "stream_options", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"] as const;
@@ -1412,7 +1450,7 @@ export const executeOpenAICompatible = async (
             throw new TypeError(`OpenAI-compatible request extensions may not override SDK-owned field ${JSON.stringify(key)}`);
         }
     }
-    const provider = createOpenAICompatible({
+    const model = createOpenAICompatibleModel(request.model, {
         name: "plurnk",
         baseURL: baseUrl(request.url),
         headers: request.headers,
@@ -1427,7 +1465,6 @@ export const executeOpenAICompatible = async (
                 : {}),
         }, "openai"),
     });
-    const model = provider.model(request.model);
     return executeModel({
         modelTransport: model,
         headers: {},

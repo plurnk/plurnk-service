@@ -1,4 +1,4 @@
-import { createOpenAICompatible } from "./modelTransport.ts";
+import { createOpenAICompatibleModel } from "./modelTransport.ts";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
 import { contextWindowFromEnv, effectiveContextWindow, parseTimeoutMs, requireEnv } from "./env.ts";
@@ -51,13 +51,13 @@ export const ollamaProviderFromEnv = async (
         contextWindowFromEnv(env, "ollama"),
         await fetchContextWindow({ baseUrl, model, timeout }),
     );
-    const modelTransport = (fetch: typeof globalThis.fetch) => createOpenAICompatible({
+    const modelTransport = (fetch: typeof globalThis.fetch) => createOpenAICompatibleModel(model, {
         name: "ollama",
         baseURL: `${baseUrl}/v1`,
         includeUsage: true,
         fetch,
         transformRequestBody: (body) => withoutNativeTools(body, "openai"),
-    }).model(model);
+    });
     return providerFromModelAdapter({
         name: "ollama",
         env,

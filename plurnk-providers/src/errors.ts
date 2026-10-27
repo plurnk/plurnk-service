@@ -108,20 +108,6 @@ export class TypeValidationError extends Error {
     }
 }
 
-export class InvalidResponseDataError extends Error {
-    readonly data: unknown;
-
-    constructor({ data, message = `Invalid response data: ${JSON.stringify(data)}.` }: { data: unknown; message?: string }) {
-        super(message);
-        this.name = "InvalidResponseDataError";
-        this.data = data;
-    }
-
-    static isInstance(error: unknown): error is InvalidResponseDataError {
-        return error instanceof InvalidResponseDataError;
-    }
-}
-
 export interface ClassifiedProviderError {
     kind: ProviderErrorKind;
     message: string;
@@ -176,7 +162,7 @@ const preview = (value: unknown, limit: number | undefined): string => {
         : text;
 };
 
-type ProviderFailureCauseKind = "transport_terminated" | "invalid_json" | "schema_invalid" | "invalid_response_data" | "internal";
+type ProviderFailureCauseKind = "transport_terminated" | "invalid_json" | "schema_invalid" | "internal";
 
 interface ProviderFailureCause {
     readonly causeKind: ProviderFailureCauseKind;
@@ -200,7 +186,6 @@ const failureCause = (err: APICallError, detailLimit: number | undefined): Provi
         const inner = cause.cause instanceof Error ? firstLine(cause.cause.message) : "";
         return { causeKind: "schema_invalid", causeName: cause.name, causeMessage: inner === "" ? "Type validation failed" : `Type validation failed: ${preview(inner, detailLimit)}` };
     }
-    if (InvalidResponseDataError.isInstance(cause)) return { causeKind: "invalid_response_data", causeName: cause.name, causeMessage: preview(firstLine(cause.message), detailLimit) };
     return { causeKind: "internal", causeName: cause.name, causeMessage: preview(firstLine(cause.message), detailLimit) };
 };
 

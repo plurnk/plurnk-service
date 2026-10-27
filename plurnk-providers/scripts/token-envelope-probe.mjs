@@ -62,7 +62,7 @@ export const resolveProbeMaxOutputTokens = (mode, provider) => {
     return positiveInteger(mode, "--max-output-tokens");
 };
 
-export const buildProbePrompt = (chars, fill = "x") => {
+const buildProbePrompt = (chars, fill = "x") => {
     const count = positiveInteger(chars, "--prompt-chars", { allowZero: true });
     if (fill.length === 0) throw new TypeError("--fill must not be empty");
     const instruction = "Reply with exactly OK.";

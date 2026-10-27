@@ -2,7 +2,7 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { createOpenAI, createProviderModel } from "./modelAdapters.ts";
+import { createProviderModel } from "./modelAdapters.ts";
 import { catalogProviderFromEnv, catalogEfforts, providerFromModelAdapter } from "./catalogProvider.ts";
 import { catalogSnapshot, lookupProvider, resolveModel } from "@plurnk/plurnk-models";
 import { calculateCostUsdDecimal } from "./usage.ts";
@@ -475,16 +475,15 @@ test("{§provider-effort} Meta Muse adaptive reasoning is requested even when th
 
 test("{§provider-effort} native graded requests use only the supported configured fallback", async () => {
     let body: Record<string, unknown> | undefined;
-    const sdk = createOpenAI({
-        apiKey: "test-key",
-        fetch: async (_input, init) => {
+    const modelTransport = createProviderModel("openai", "o3", { OPENAI_API_KEY: "test-key" })!.modelTransport!(
+        async (_input, init) => {
             body = JSON.parse(requestBody(init));
             return new Response(`data: ${JSON.stringify({
                 id: "fallback", object: "chat.completion.chunk", created: 1, model: "o3",
                 choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
             })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
         },
-    });
+    );
     for (const [efforts, fallback, expected] of [
         [["low", "medium", "high", "xhigh", "max"], "high", "high"],
         [["low", "medium", "xhigh"], "high", undefined],
@@ -493,7 +492,7 @@ test("{§provider-effort} native graded requests use only the supported configur
         [["high", "xhigh"], "", undefined],
     ] as const) {
         const provider = providerFromModelAdapter({
-            name: "openai", model: "o3", modelTransport: sdk.chat("o3"),
+            name: "openai", model: "o3", modelTransport,
             contextWindow: 16_384,
             env: {
                 ...env,

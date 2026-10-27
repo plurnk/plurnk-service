@@ -6,7 +6,7 @@ import { APICallError, JSONParseError, ProviderError, RETRYABLE_PROVIDER_KINDS, 
 import { providerSource } from "./notices.ts";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { createAnthropic, createProviderModel } from "./modelAdapters.ts";
+import { createProviderModel } from "./modelAdapters.ts";
 import { requestBody } from "../../scripts/lib/test-fetch.ts";
 import { type ProviderAttempt, type ProviderRequestAccounting } from "./types.ts";
 
@@ -402,12 +402,14 @@ test("{§provider-request-accounting} native Messages failures retain SDK reason
         { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Native partial reasoning." } },
         { type: "error", error: { type: "overloaded_error", message: "Native stream failed." } },
     ];
-    const anthropic = createAnthropic({ apiKey: "fixture", fetch: async () => new Response(
-        chunks.map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join(""),
-        { headers: { "content-type": "text/event-stream" } },
-    ) });
+    const modelTransport = createProviderModel("anthropic", "fixture", { ANTHROPIC_API_KEY: "fixture" })!.modelTransport!(
+        async () => new Response(
+            chunks.map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join(""),
+            { headers: { "content-type": "text/event-stream" } },
+        ),
+    );
     const provider = new ModelProvider({
-        model: "fixture", modelTransport: anthropic("fixture"), streaming: true, rawBody: false,
+        model: "fixture", modelTransport, streaming: true, rawBody: false,
         fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
         temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
     });
