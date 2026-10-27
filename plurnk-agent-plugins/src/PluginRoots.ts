@@ -1,10 +1,8 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { AgentPluginFiles } from "@plurnk/plurnk-meta/agent-plugin";
 import PluginDirectory, { type AgentPlugin } from "./PluginDirectory.ts";
 import { isFileError, type PluginReport } from "./PluginReport.ts";
-
-const errnoCode = (cause: unknown): string | undefined =>
-    typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string" ? cause.code : undefined;
 
 export interface PluginRoot {
     readonly scope: string;
@@ -20,7 +18,28 @@ export interface PluginDiscovery {
     readonly reports: readonly PluginReport[];
 }
 
-const missing = (cause: unknown): boolean => errnoCode(cause) === "ENOENT";
+export interface InstalledPlugin extends DiscoveredPlugin {
+    // PLUGIN_DATA: a consumer creates it before launching one of the plugin's subprocesses.
+    readonly data: string;
+}
+
+// {§agent-plugins-expansion} A workspace's plugins in root precedence order. `Scope` names the
+// roots the host reads; this package treats a root scope as opaque, as discovery does.
+export interface WorkspacePluginSet<Scope extends string = string> {
+    readonly plugins: readonly InstalledPlugin[];
+    readonly reports: readonly PluginReport[];
+    // Changes exactly when a plugin, its manifest, its MCP configuration or its skills change.
+    readonly signature: string;
+    // Each root the host reads for the workspace; null where it reads none.
+    readonly roots: Readonly<Record<Scope, string | null>>;
+}
+
+// The setup slice a module uses to read a workspace's installed plugins ({§module-seam-slices}).
+export interface WorkspacePluginsSeam<Scope extends string = string> {
+    readWorkspacePlugins(workspaceId: number): Promise<WorkspacePluginSet<Scope>>;
+}
+
+const missing = (cause: unknown): boolean => AgentPluginFiles.errnoCode(cause) === "ENOENT";
 
 // A dangling link is not a directory; any other failure surfaces.
 const isDirectory = async (path: string): Promise<boolean> => {

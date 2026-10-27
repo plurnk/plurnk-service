@@ -144,7 +144,7 @@ export const harness = (env: Record<string, string> = {}, beforeRefresh: () => P
             mkdirSync(directory, { recursive: true });
             return directory;
         },
-        readWorkspaceEnvironment: async () => (ambient = getDefaultEnvironment()) => ({ ...ambient }),
+        readWorkspaceEnvironment: async () => (ambient: NodeJS.ProcessEnv = getDefaultEnvironment()) => ({ ...ambient }),
         operatorEnvironment: () => ({ ...getDefaultEnvironment() }),
         registerModuleAction: (registration: ActionRegistration): void => { actions.set(registration.name, registration); },
         registerFunctionalityAdapter: (candidate: Adapter) => {

@@ -5,13 +5,15 @@ import { isRecord, errnoCode } from "@plurnk/plurnk-contracts";
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, readlink, realpath, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parseSkill, skillName } from "@plurnk/plurnk-agent-skills";
+import { AgentPluginFiles } from "@plurnk/plurnk-meta/agent-plugin";
 import { Knob } from "@plurnk/plurnk-meta";
 import { actionError, messageOf } from "./problems.ts";
 
 const execFileP = promisify(execFile);
+const { inside, isFile } = AgentPluginFiles;
 
 // The ceiling of one tool run's captured output: a bound on a child process, not a choice.
 const TOOL_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -42,16 +44,6 @@ export interface OpenedSource {
     readonly commit?: string;
     close(): Promise<void>;
 }
-
-const inside = (root: string, candidate: string): boolean => {
-    const path = relative(root, candidate);
-    return path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path);
-};
-
-const isFile = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile(), (cause: NodeJS.ErrnoException) => {
-    if (cause.code === "ENOENT" || cause.code === "ENOTDIR") return false;
-    throw cause;
-});
 
 // The reason a tool gave: its last stderr line, or that it outran its deadline.
 const reason = (cause: unknown): string => {

@@ -1,8 +1,19 @@
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { FileByteSource } from "@plurnk/plurnk-schemes";
+import { FileByteSource, type ByteSource } from "@plurnk/plurnk-schemes";
 import { parseSkill, type SkillDocument } from "./SkillDocument.ts";
-import type SkillTree from "./SkillTree.ts";
+
+// {§provided-skills-module-slice} Resource names are relative to the skill root.
+export interface SkillTree {
+    readonly document: SkillDocument;
+    list(): Promise<string[]>;
+    resource(pathname: string): ByteSource;
+}
+
+// {§provided-skills-module-slice} The host composes references; the skills family serves them.
+export interface ProvidedSkillsSeam {
+    readProvidedSkills(): Promise<ReadonlyMap<string, SkillTree>>;
+}
 
 export class SkillResourceError extends Error {
     readonly code: "SKILL_PATH_OUTSIDE_ROOT" | "SKILL_RESOURCE_NOT_FILE" | "SKILL_DIRECTORY_CYCLE";

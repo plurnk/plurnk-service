@@ -3,8 +3,7 @@ import { parseEnv } from "node:util";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import Meta, { ConfigurationError, type PackageCandidate } from "@plurnk/plurnk-meta";
-import { AgentPluginFiles } from "@plurnk/plurnk-meta/agent-plugin";
-import type { PluginReport } from "@plurnk/plurnk-agent-plugins";
+import { AgentPluginFiles, type PluginReport } from "@plurnk/plurnk-agent-plugins";
 import HostPaths from "./HostPaths.ts";
 import PluginSources from "../server/PluginSources.ts";
 

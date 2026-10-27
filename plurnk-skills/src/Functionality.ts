@@ -2,7 +2,7 @@
 // family. Configuration roots are inputs; live references and fetched sources
 // belong to workspace definitions, never to an installation scope.
 import { createHash } from "node:crypto";
-import { readdir, readFile, realpath, stat } from "node:fs/promises";
+import { readdir, readFile, realpath } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { SkillDirectory, type ProvidedSkillsSeam, type SkillTree } from "@plurnk/plurnk-agent-skills";
@@ -12,11 +12,13 @@ import { errnoCode, SKILL_NAME,
     type FunctionalityDiscoverQuery,
     type JsonSchema,
     type SkillDefinition,type FunctionalityDefinitionSource,type FunctionalityFamilyHandle,type FunctionalityOutcome,type FunctionalityPreparation,type FunctionalityPrepared,type FunctionalityServiceDefinition,type WorkspaceCapabilityIdentity, isRecord } from "@plurnk/plurnk-contracts";
-import type { WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
+import { AgentPluginFiles, type WorkspacePluginsSeam } from "@plurnk/plurnk-agent-plugins";
 import { ConfigurationError, Knob, ResourceEnvironment } from "@plurnk/plurnk-meta";
 import type { FunctionalityAdapter, FunctionalityDiscovery, ModuleSetupSeam, WorkspacePaths } from "@plurnk/plurnk-modules";
 import SkillSource from "./SkillSource.ts";
 import { SkillsActionError, actionError, messageOf } from "./problems.ts";
+
+const { isFile } = AgentPluginFiles;
 
 const SKILLS_FAMILY = "skills";
 const SKILLS_OWNER = "@plurnk/plurnk-skills";
@@ -39,12 +41,6 @@ interface Snapshot {
     // unavailable under a client's reject policy unless it is the retried alias.
     readonly unavailable: readonly string[];
 }
-
-const missing = (cause: unknown): false => {
-    if (errnoCode(cause) === "ENOENT") return false;
-    throw cause;
-};
-const isFile = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile(), missing);
 
 const environment = (env: NodeJS.ProcessEnv = process.env): ResourceEnvironment => new ResourceEnvironment(
     "PLURNK_SKILLS_", { controls: ["FETCH_TIMEOUT_MS"], settings: [], aliasPattern: SKILL_NAME }, env,
