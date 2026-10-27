@@ -5,10 +5,10 @@ import { entryCoordinateOf, missDetail, missExtensions } from "../core/plurnk-ur
 import type { PlurnkSchemeContext, SchemeManifest } from "../core/scheme-types.ts";
 import type { ByteSource } from "../content/byte-view.ts";
 import EntryManifest from "./_entry-manifest.ts";
-import { EDIT_NOOP_DETAIL, EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, PathMimetype, ReadProjector, editReceipt } from "../content/index.ts";
+import { EDIT_NOOP_DETAIL, EditCollision, LineAnchors, MimetypeBinary, ReadProjector, editReceipt } from "../content/index.ts";
 import type { EditBatchReceipt, LineAnchorPrecondition } from "../content/index.ts";
 import Results, { type SchemeResultBase } from "../core/results.ts";
-import type { ResolvedEditStatement, ScopeNormalization } from "@plurnk/plurnk-schemes";
+import { PathMimetype, Slicer, TEXT_PRIMITIVE_MIMETYPE, type ResolvedEditStatement, type ScopeNormalization } from "@plurnk/plurnk-schemes";
 import { contentHash } from "../core/content-hash.ts";
 import DbProjectionCaps from "../core/caps/DbProjectionCaps.ts";
 import NativeContent from "../core/NativeContent.ts";
@@ -36,7 +36,6 @@ export type ReadResult = SchemeResultBase & {
     range?: RangeExtent;
     reason?: string;
 };
-export type OpenFoldResult = SchemeResultBase;
 
 interface ReadAddress {
     readonly authority?: string;
@@ -187,9 +186,9 @@ export default class EntryOps {
 
         // {§zero-width-column-one-insert} Resolve a type only for a new channel.
         const effectiveMimetype = channel?.mimetype
-            ?? await PathMimetype.resolveEntryMimetype(
+            ?? await PathMimetype.resolve(
                 pathname,
-                channels[targetChannel] ?? MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE,
+                channels[targetChannel] ?? TEXT_PRIMITIVE_MIMETYPE,
                 ctx.mimetypes,
             );
 
@@ -216,8 +215,8 @@ export default class EntryOps {
         // even for a deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
-        let merges: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["merges"];
-        let appliedEdits: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["applied"];
+        let merges: ReturnType<typeof Slicer.lineMarkerEditBatch>["merges"];
+        let appliedEdits: ReturnType<typeof Slicer.lineMarkerEditBatch>["applied"];
         const channelExists = channel !== undefined;
         if (channelExists && existing === undefined) {
             throw new Error("An entry channel cannot exist without its owning entry.");
@@ -240,7 +239,7 @@ export default class EntryOps {
                 marker: candidate.lineMarker!,
                 body: candidate.body ?? "",
             }));
-            const result = LineMarkerOps.applyLineMarkerEditBatch(originalContent, edits);
+            const result = Slicer.lineMarkerEditBatch(originalContent, edits);
             if (result.status !== 200) {
                 return Results.assert({
                     ...result,

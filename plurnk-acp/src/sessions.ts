@@ -76,7 +76,7 @@ export const assertSinglePortSecurity = (params: unknown): void => {
     }
 };
 
-export const extractProblemFromError = (err: unknown): ProblemDetails | null =>
+const extractProblemFromError = (err: unknown): ProblemDetails | null =>
     Problems.fromError(err) ??
     (isRecord(err) && isRecord(err.problem)
         ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion

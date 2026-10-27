@@ -17,7 +17,7 @@ export interface RemoteServer {
 
 export type McpServerEntry = StdioServer | RemoteServer;
 
-export interface ServerFinding extends Finding {
+interface ServerFinding extends Finding {
     readonly server: string;
 }
 

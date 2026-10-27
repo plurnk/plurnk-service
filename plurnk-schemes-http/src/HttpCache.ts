@@ -19,7 +19,7 @@ import {
 } from "./HttpShared.ts";
 import WebFetcher from "./WebFetcher.ts";
 
-export const DELTA_SECONDS_LIMIT = 2_147_483_648n;
+const DELTA_SECONDS_LIMIT = 2_147_483_648n;
 const HEURISTIC_CACHE_STATUSES = new Set([200, 203, 204, 206, 300, 301, 308, 404, 405, 410, 414, 501]);
 const BODY_PROCESSING_FIELDS = new Set([
     "content-encoding",

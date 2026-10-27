@@ -3,14 +3,14 @@ import { parsePath } from "@plurnk/plurnk-parser";
 import { basename } from "node:path";
 import NativeContent from "./NativeContent.ts";
 import DurableStatement from "./DurableStatement.ts";
-import { InvalidOperationResultError, type ScopeNormalization, type SchemeHandler, type StoredEntryData } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, Slicer, type ScopeNormalization, type SchemeHandler, type StoredEntryData } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import ResourceBindings from "./ResourceBindings.ts";
 import { entryCoordinateOf, missDetail, missExtensions, schemeNameOf } from "./plurnk-uri.ts";
 import { unregisteredSchemeRecovery } from "./unregistered-scheme.ts";
 import EntryAddressBinding, { type BoundEntryAddress } from "./EntryAddressBinding.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
-import { EditCollision, LineAnchors, LineMarkerOps, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
+import { EditCollision, LineAnchors, MimetypeBinary, type LineAnchorPrecondition } from "../content/index.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import EntryManifest from "../schemes/_entry-manifest.ts";
 import EntryReadable from "../schemes/_entry-readable.ts";
@@ -277,7 +277,7 @@ export default class ResourceSelector {
                     {}, { target, retryable: false },
                 );
             }
-            const window = LineMarkerOps.window(resolvedMarker.selection.lineMarker ?? { marks: [1, -1] }, size, "byte");
+            const window = Slicer.window(resolvedMarker.selection.lineMarker ?? { marks: [1, -1] }, size, "byte");
             if (window.status !== 200) return window;
             let complete: Uint8Array | undefined;
             let bytes: Uint8Array;
@@ -313,7 +313,7 @@ export default class ResourceSelector {
             };
         }
         if (resolvedMarker.selection.lineMarker !== null) {
-            const sliced = LineMarkerOps.sliceLinesRaw(content, resolvedMarker.selection.lineMarker);
+            const sliced = Slicer.linesRaw(content, resolvedMarker.selection.lineMarker);
             if (sliced.status !== 200) return Results.assert(sliced);
             content = sliced.text ?? "";
             startLine = sliced.startLine ?? 1;

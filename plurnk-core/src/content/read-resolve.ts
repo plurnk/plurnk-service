@@ -4,10 +4,8 @@
 // row lands ({§tokenomics}).
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
-import type { SchemeResultBase, ScopeNormalization } from "@plurnk/plurnk-schemes";
+import { Slicer, TEXT_PRIMITIVE_MIMETYPE, type SchemeResultBase, type ScopeNormalization } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import LineMarkerOps from "./line-marker.ts";
-import MimetypeBinary from "./mimetype-binary.ts";
 import LineSelection from "./line-selection.ts";
 import BodyPreview from "./body-preview.ts";
 
@@ -45,7 +43,7 @@ export default class ReadResolve {
         const { content, mimetype, lineMarker, visibleLines } = opts;
         // {§packet} — without a scope, the first page of the text, or of the visible selection.
         const marker: LineMarker = lineMarker ?? ReadResolve.#previewMarker(content, visibleLines);
-        const sliced = LineMarkerOps.sliceLines(content, marker);
+        const sliced = Slicer.lines(content, marker);
         if (sliced.status === 416) {
             return {
                 status: 416,
@@ -61,10 +59,10 @@ export default class ReadResolve {
         }
         const selectedMimetype = lineMarker === null
             ? mimetype
-            : MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE;
+            : TEXT_PRIMITIVE_MIMETYPE;
         const unfilteredContent = lineMarker === null
             && sliced.range !== undefined
-            && LineMarkerOps.coversAvailable(sliced.range)
+            && Slicer.coversAvailable(sliced.range)
             ? content
             : sliced.text ?? "";
         const selection = visibleLines === undefined ? undefined : LineSelection.retain(unfilteredContent, visibleLines, sliced.startLine ?? 1);

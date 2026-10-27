@@ -263,7 +263,7 @@ test("{§op-invariants} Engine.copy with <L> slices the source range into the de
         const entryRow = await db.test_get_entry_id_by_pathname.get<{ id: number }>({ pathname: "/sliced" });
         const dstChannel = await db.test_get_channel.get<{ content: string }>({ entry_id: entryRow?.id, name: "body" });
         assert.equal(dstChannel?.content, "beta\ngamma\n");
-        // Symmetric with READ <L> but WITHOUT the N: prefix (sliceLinesRaw) — the dest is content, not a view.
+        // Symmetric with READ <L> but WITHOUT the N: prefix (Slicer.linesRaw) — the dest is content, not a view.
         assert.doesNotMatch(dstChannel?.content ?? "", /^\d+:/, "COPY <L> writes raw lines, never the READ line-number prefix");
     } finally { await db.close(); }
 });

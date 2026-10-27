@@ -22,16 +22,16 @@ import { buildUnifiedDiff } from "./diff.ts";
 import { OWNER_ADDRESS, type AcpPeer, type BoundSession } from "./sessions.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 
-export interface Resolution extends ProposalResolution {
+interface Resolution extends ProposalResolution {
     readonly logEntryId: number;
 }
 
-export interface InteractionResolution {
+interface InteractionResolution {
     readonly interactionId: number;
     readonly resolution: ClientInteractionResolution;
 }
 
-export const proposalKey = (logEntryId: number): string => `proposal:${logEntryId}`;
+const proposalKey = (logEntryId: number): string => `proposal:${logEntryId}`;
 
 const interactionToolCallId = (interactionId: number): string => `int:${interactionId}`;
 
@@ -42,7 +42,7 @@ const STANDARD_PERMISSION_OPTIONS = [
     { optionId: "reject_always", name: "Reject always", kind: "reject_always" as const },
 ];
 
-export const proposalToolCall = (
+const proposalToolCall = (
     proposal: ProposalProjection,
 ): Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> => {
     const attrs = isRecord(proposal.attrs) ? proposal.attrs : {};
@@ -129,7 +129,7 @@ export const proposalToolCall = (
     };
 };
 
-export const proposalPermissionRequest = (
+const proposalPermissionRequest = (
     sessionId: string,
     proposal: ProposalProjection,
 ): RequestPermissionRequest => {
@@ -178,7 +178,7 @@ export const proposalPermissionRequest = (
     };
 };
 
-export const resolutionFromPermissionResponse = (
+const resolutionFromPermissionResponse = (
     logEntryId: number,
     response: unknown,
 ): Resolution | null => {
@@ -207,7 +207,7 @@ export const resolutionFromPermissionResponse = (
     return null;
 };
 
-export const interactionToolCall = (interaction: ClientInteractionProjection): SessionUpdate => ({
+const interactionToolCall = (interaction: ClientInteractionProjection): SessionUpdate => ({
     sessionUpdate: "tool_call_update",
     toolCallId: interactionToolCallId(interaction.interactionId),
     name: interaction.request.toolName,
@@ -222,7 +222,7 @@ export const interactionToolCall = (interaction: ClientInteractionProjection): S
     },
 });
 
-export const interactionToolCallResult = (
+const interactionToolCallResult = (
     interactionId: number,
     resolution: ClientInteractionResolution,
 ): SessionUpdate => ({
@@ -233,7 +233,7 @@ export const interactionToolCallResult = (
     content: [{ type: "content", content: { type: "text", text: JSON.stringify(resolution) } }],
 });
 
-export const interactionElicitationRequest = (
+const interactionElicitationRequest = (
     sessionId: string,
     interaction: ClientInteractionProjection,
 ): CreateElicitationRequest => {
@@ -279,7 +279,7 @@ export const interactionElicitationRequest = (
     };
 };
 
-export const interactionResolutionFromResponse = (
+const interactionResolutionFromResponse = (
     interactionId: number,
     response: unknown,
 ): InteractionResolution | null => {

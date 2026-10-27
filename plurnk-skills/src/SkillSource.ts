@@ -21,7 +21,7 @@ const ARCHIVE = /\.(?:zip|tar|tgz|tbz2|txz|tar\.(?:gz|bz2|xz|zst))$/iu;
 const SCP_REMOTE = /^[\w.~-]+@[\w.-]+:(?!\/\/)\S/u;
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//iu;
 
-export type SkillSourceKind = "git" | "folder" | "skill-file" | "archive";
+type SkillSourceKind = "git" | "folder" | "skill-file" | "archive";
 
 export interface LocatedSource {
     readonly kind: SkillSourceKind;

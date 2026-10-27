@@ -49,7 +49,7 @@ import { MessageScheme, type SchemeRegistrationSeam } from "@plurnk/plurnk-schem
 import type { DaemonModule } from "@plurnk/plurnk-modules";
 import { executeSlashCommand, handlePlurnkAction } from "./actions.ts";
 import { resolveModuleOptions, type ModuleOptions, type ResolvedModuleOptions } from "./config.ts";
-import { GateTracker, proposalKey, type ActiveGate } from "./gates.ts";
+import { GateTracker, type ActiveGate } from "./gates.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     AVAILABLE_COMMANDS,
@@ -79,7 +79,6 @@ import {
 } from "./transport.ts";
 
 export type { ModuleOptions } from "./config.ts";
-export { proposalKey };
 
 export type AcpSetupSeam = SchemeRegistrationSeam & Pick<ApplicationPort, "httpAddress">;
 

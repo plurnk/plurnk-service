@@ -26,12 +26,12 @@ export interface AcpSessionUpdate {
     readonly update: SessionUpdate;
 }
 
-export interface ReplayHistoryLinks {
+interface ReplayHistoryLinks {
     readonly older?: string;
     readonly newer?: string;
 }
 
-export type ReplayResult = AcpSessionUpdate[] & {
+type ReplayResult = AcpSessionUpdate[] & {
     readonly updates: AcpSessionUpdate[];
     readonly history: ReplayHistoryLinks;
 };

@@ -26,6 +26,8 @@ import {
     FileByteSource,
     type EntryAddress,
     InvalidOperationResultError,
+    MimetypeClassifier,
+    Slicer,
     type ResolvedEditStatement,
     type ScopeNormalization,
     type ProposalApplyRequest,
@@ -44,7 +46,6 @@ type WriteTarget =
         extensions?: Readonly<Record<string, unknown>>;
     };
 import {
-    LineMarkerOps,
     LineAnchors,
     EditCollision,
     EDIT_NOOP_DETAIL,
@@ -65,14 +66,12 @@ type EditResult = SchemeResultBase & { body?: string; attrs?: object; editReceip
 type ApplyArgs = { attrs: { path?: string; canonical?: string; original?: string; patched?: string; mimetype?: string; editReceipt?: EditBatchReceipt; deletePath?: string; baseSig?: string | null; existed?: boolean; [k: string]: unknown }; body?: string };
 type ApplyResult = ProposalApplyResult;
 
-// Detect mimetype from a file's path through the configured registry. The
-// `MimetypeBinary.normalizeAutoTextMimetype` wrapper ensures text/plain returned by the
-// service is normalized to text/markdown — plurnk-service never auto-
-// derives text/plain (see mimetype-binary.ts MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE).
+// Detect mimetype from a file's path through the configured registry.
+// `MimetypeClassifier.normalizeAutoText` normalizes text/plain to text/markdown ({§zero-width-column-one-insert}).
 const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): Promise<string> => {
     if (ctx.mimetypes === undefined) throw new Error("detectFileMimetype: configured mimetype registry is required");
     const detected = await ctx.mimetypes.detect({ path: canonical });
-    return MimetypeBinary.normalizeAutoTextMimetype(detected);
+    return MimetypeClassifier.normalizeAutoText(detected);
 };
 
 // {§membership}: READ and FIND consume membership-backed entries, not arbitrary
@@ -501,8 +500,8 @@ export default class File extends CoreSchemeAdapterBase {
         // file; every existing-file rewrite states its range explicitly.
         let patched: string;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
-        let merges: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["merges"];
-        let appliedEdits: ReturnType<typeof LineMarkerOps.applyLineMarkerEditBatch>["applied"];
+        let merges: ReturnType<typeof Slicer.lineMarkerEditBatch>["merges"];
+        let appliedEdits: ReturnType<typeof Slicer.lineMarkerEditBatch>["applied"];
         if (fileExists) {
             if (statements.some(({ lineMarker }) => lineMarker === null)) {
                 return failure(
@@ -516,7 +515,7 @@ export default class File extends CoreSchemeAdapterBase {
                 );
             }
             const edits = statements.map((candidate) => ({ marker: candidate.lineMarker!, body: candidate.body ?? "" }));
-            const result = LineMarkerOps.applyLineMarkerEditBatch(original, edits);
+            const result = Slicer.lineMarkerEditBatch(original, edits);
             if (result.status !== 200) return Results.assert(result);
             patched = result.result ?? "";
             scopeNormalizations = result.scopeNormalizations;

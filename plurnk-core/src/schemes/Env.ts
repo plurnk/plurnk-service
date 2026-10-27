@@ -16,13 +16,13 @@ import {
 import { OperationFailureError } from "../core/results.ts";
 import type { EnvRecord } from "../server/EnvFunctionality.ts";
 
-export interface EnvRegistry {
+interface EnvRegistry {
     readonly env: NodeJS.ProcessEnv;
     readonly record: Readonly<Record<string, EnvRecord>>;
 }
 export type EnvResolve = (workspaceId: number, sessionId: number) => Promise<EnvRegistry>;
 export type EnvWriteVerb = "replace" | "remove" | "disable";
-export type EnvWriteIdentity =
+type EnvWriteIdentity =
     | { readonly workspaceId: number; readonly sessionId: number; readonly scope: "session" }
     | { readonly workspaceId: number; readonly scope: "workspace" };
 export type EnvInvoke = (verb: EnvWriteVerb, params: unknown, identity: EnvWriteIdentity) => Promise<unknown>;

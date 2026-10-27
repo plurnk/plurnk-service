@@ -1,6 +1,6 @@
 import { isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
-import { FileByteSource, type ByteSource, type ChannelProducerResult } from "@plurnk/plurnk-schemes";
+import { FileByteSource, MimetypeClassifier, type ByteSource, type ChannelProducerResult } from "@plurnk/plurnk-schemes";
 import Results from "./results.ts";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeBinary from "../content/mimetype-binary.ts";
@@ -28,7 +28,7 @@ export default class FileMaterialization {
 
     static async detectSourceMimetype(path: string, source: ByteSource, mimetypes: Mimetypes | undefined): Promise<string> {
         if (mimetypes === undefined) throw new Error("File materialization requires the configured mimetype registry.");
-        const detected = MimetypeBinary.normalizeAutoTextMimetype(await mimetypes.detect({ path }));
+        const detected = MimetypeClassifier.normalizeAutoText(await mimetypes.detect({ path }));
         if (await MimetypeBinary.isBinaryMimetype(detected, mimetypes)) return detected;
         // {§tokenomics} The extension map cannot turn NUL-bearing bytes into prose.
         return (await source.read(1, 8192)).includes(0) ? "application/octet-stream" : detected;

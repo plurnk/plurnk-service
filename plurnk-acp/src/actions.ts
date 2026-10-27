@@ -13,7 +13,7 @@ import {
     type BoundSession,
 } from "./sessions.ts";
 
-export const buildDiscovery = async (seam: ApplicationPort): Promise<AcpDiscovery> => {
+const buildDiscovery = async (seam: ApplicationPort): Promise<AcpDiscovery> => {
     const display = (await seam.listClientDisplayCapabilities?.()) ?? [];
     const moduleActions = seam.listModuleActions?.() ?? [];
     const objSchema = { type: "object", additionalProperties: true } as const;
@@ -61,7 +61,7 @@ export const buildDiscovery = async (seam: ApplicationPort): Promise<AcpDiscover
     };
 };
 
-export const resolveActionTarget = async (
+const resolveActionTarget = async (
     seam: ApplicationPort,
     rawParams: Record<string, unknown>,
     params: Record<string, unknown>,

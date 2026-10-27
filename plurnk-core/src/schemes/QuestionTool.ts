@@ -12,7 +12,7 @@ import { OperationFailureError } from "../core/results.ts";
 // bespoke crosses the wire. Effect `read`: the tool observes the human's
 // answer and never mutates the host, so it is never proposal-gated.
 
-export const QUESTION_INPUT_SCHEMA = {
+const QUESTION_INPUT_SCHEMA = {
     type: "object",
     additionalProperties: false,
     required: ["message", "requestedSchema"],

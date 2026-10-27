@@ -3,7 +3,7 @@ import test from "node:test";
 import type { Db } from "../core/Db.ts";
 import type { WakeSessionPayload } from "../core/ChannelWrite.ts";
 import Results, { OperationFailureError } from "../core/results.ts";
-import DrainSupervisor from "./DrainSupervisor.ts";
+import DrainSupervisor, { type DrainEngine } from "./DrainSupervisor.ts";
 
 const payload: WakeSessionPayload = {
     workspaceId: 1,
@@ -16,30 +16,44 @@ const payload: WakeSessionPayload = {
     summary: "sh:///1/1/1/sh completed",
 };
 
-const supervisor = (
-    readSystemPrompt: () => Promise<string>,
-    emit: (workspaceId: number, method: string, params: unknown) => void = () => {},
-    overrides: Partial<ConstructorParameters<typeof DrainSupervisor>[0]> = {},
-): DrainSupervisor => new DrainSupervisor({
-    db: {
-        drain_find_slept_loop: { get: async () => undefined },
-    } as unknown as Db,
-    lifecycle: {} as never,
-    injectPrompt: async () => null,
-    assertInjectionCompatibility: async () => {},
-    runLoop: async () => { throw new Error("unused runLoop"); },
+const defaultEngine: DrainEngine = {
+    injectIntoLoop: async () => null,
     loopUsage: async () => ({} as never),
     loopAttributions: async () => [],
     discardLoopNotices: () => {},
     cancelSubscription: async () => false,
     subscriptionConcluded: async () => {},
     reapLoopStreams: async () => [],
-    hasActiveStreams: () => false,
-    readSystemPrompt,
-    emitLogEntry: async () => {},
-    emit,
-    ...overrides,
-});
+};
+
+const supervisor = (
+    readSystemPrompt: () => Promise<string>,
+    emit: (workspaceId: number, method: string, params: unknown) => void = () => {},
+    overrides: Partial<Omit<ConstructorParameters<typeof DrainSupervisor>[0], "engine">> & {
+        engine?: Partial<DrainEngine>;
+        injectPrompt?: DrainEngine["injectIntoLoop"];
+    } = {},
+): DrainSupervisor => {
+    const { engine, injectPrompt, ...rest } = overrides;
+    return new DrainSupervisor({
+        db: {
+            drain_find_slept_loop: { get: async () => undefined },
+        } as unknown as Db,
+        engine: {
+            ...defaultEngine,
+            ...engine,
+            ...(injectPrompt === undefined ? {} : { injectIntoLoop: injectPrompt }),
+        },
+        lifecycle: {} as never,
+        assertInjectionCompatibility: async () => {},
+        runLoop: async () => { throw new Error("unused runLoop"); },
+        hasActiveStreams: () => false,
+        readSystemPrompt,
+        emitLogEntry: async () => {},
+        emit,
+        ...rest,
+    });
+};
 
 test("{§session-wait-timing} a new supervisor restores the durable deadline without extending or duplicating it", async (t) => {
     t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 10_000 });

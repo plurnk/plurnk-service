@@ -6,7 +6,7 @@
 
 import HeadingReader from "./HeadingReader.ts";
 
-export type FenceCharacter = "`" | "~";
+type FenceCharacter = "`" | "~";
 
 // {§fence-pairing}: an operation heading on the line under a bare fence, as the heading it would be.
 type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null };

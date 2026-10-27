@@ -18,7 +18,7 @@ export interface RetentionPolicy {
     readonly reclaimMinFreeBytes: number; // 0 = reclaim every pass
 }
 
-export type AutoVacuum = "incremental" | "none";
+type AutoVacuum = "incremental" | "none";
 
 // SQLite's PRAGMA auto_vacuum codes for the modes the daemon manages.
 const AUTO_VACUUM_CODE: Readonly<Record<AutoVacuum, number>> = Object.freeze({ none: 0, incremental: 2 });

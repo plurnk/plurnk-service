@@ -1,20 +1,71 @@
 import { createHash } from "node:crypto";
+import { diffLines } from "diff";
 import LineAnchors from "./line-anchors.ts";
 import { InvalidOperationResultError, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { LineMarker } from "@plurnk/plurnk-contracts";
-import type {
-    AppliedEditBatchReceipt,
-    EditBatchReceipt,
-    EditEffectReceipt,
-    EditReceipt,
-    EditReceiptUnit,
-    ParseIssueTransition,
-    ReviewerReplacementEditBatchReceipt,
+import {
+    Slicer,
+    type AppliedEditBatchReceipt,
+    type EditBatchReceipt,
+    type EditEffectReceipt,
+    type EditReceipt,
+    type EditReceiptUnit,
+    type ParseIssueTransition,
+    type ReviewerReplacementEditBatchReceipt,
+    type SchemeResult,
 } from "@plurnk/plurnk-schemes";
-import LineMarkerOps from "./line-marker.ts";
 import ScopeFormat from "./scope-format.ts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import { Knob } from "@plurnk/plurnk-meta";
+import Results from "../core/results.ts";
+
+// {§env-delta} — render the net changed region in the
+// materialized body, with one-based line numbers and bounded surrounding lines.
+export const editedSpan = (original: string, updated: string, context = 2): string => {
+    const rows: { text: string; changed: boolean }[] = [];
+    for (const part of diffLines(original, updated)) {
+        if (part.removed) continue;  // removed lines aren't in the new content
+        const ls = part.value.split("\n");
+        if (ls.length > 1 && ls[ls.length - 1] === "") ls.pop();  // drop trailing-newline artifact
+        for (const t of ls) rows.push({ text: t, changed: part.added });
+    }
+    let lo = -1, hi = -1;
+    for (let i = 0; i < rows.length; i++) if (rows[i].changed) { if (lo < 0) lo = i; hi = i; }
+    if (lo < 0) { lo = 0; hi = rows.length - 1; }  // no added hunk (defensive) → whole
+    const start = Math.max(0, lo - context);
+    const end = Math.min(rows.length - 1, hi + context);
+    return rows.slice(start, end + 1).map((r, i) => `${start + i + 1}:${r.text}`).join("\n");
+};
+
+// {§edit} — current-state failure, without inferring earlier validity,
+// another writer, or fault from a failed precondition.
+export class EditCollision {
+    static result(target: string): SchemeResult;
+    static result<F extends Readonly<Record<string, unknown>>>(
+        target: string,
+        fields: F,
+        extensions?: Readonly<Record<string, unknown>>,
+    ): SchemeResult & F;
+    static result(
+        target: string,
+        fields: Readonly<Record<string, unknown>> = {},
+        extensions: Readonly<Record<string, unknown>> = {},
+    ): SchemeResult {
+        return Results.failure(
+            "engine:edit",
+            "edit-collision",
+            409,
+            "EDIT collided with the current resource state.",
+            fields,
+            {
+                target,
+                recovery: "READ the target again before selecting current coordinates.",
+                retryable: false,
+                ...extensions,
+            },
+        );
+    }
+}
 
 export interface ReceiptEdit {
     readonly marker: LineMarker;
@@ -24,9 +75,7 @@ export interface ReceiptEdit {
 export type {
     AppliedEditBatchReceipt,
     EditBatchReceipt,
-    EditEffectReceipt,
     EditReceipt,
-    EditReceiptUnit,
     ParseIssueTransition,
     ReviewerReplacementEditBatchReceipt,
 } from "@plurnk/plurnk-schemes";
@@ -389,7 +438,7 @@ const codePointEffects = (
     let offset = 0;
     edits
         .map((edit, index) => {
-            const replacement = LineMarkerOps.textReplacement(
+            const replacement = Slicer.textReplacement(
                 original,
                 edit.marker,
                 edit.body,

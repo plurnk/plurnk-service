@@ -21,7 +21,8 @@ import EditSequence from "./EditSequence.ts";
 import { isContextReceipt, reserved, type ContextFit } from "./ContextFit.ts";
 import LineAnchors from "../content/line-anchors.ts";
 import { ENGINE_PROBLEMS } from "./turn-signals.ts";
-import type { ParseErrorInfo, EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
+import type { ParseErrorInfo } from "./EmissionSplit.ts";
+import type { EngineProblemKind, BareBatchResult, BareExecution, AdmittedTurnResult, AdmittedTextSource } from "./TurnRunner.ts";
 
 // SEND recipients own their input; resource operations use the manifest.
 const OWNS_METADATA: ReadonlySet<string> = new Set(["SEND"]);

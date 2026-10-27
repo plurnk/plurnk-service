@@ -101,7 +101,7 @@ type TargetSelection = { result: DispatchResult } | {
     fanout?: { target: string; matched: number };
 };
 
-export interface ResolvedClientEntryAddress {
+interface ResolvedClientEntryAddress {
     readonly scheme: string;
     readonly authority: string;
     readonly pathname: string;

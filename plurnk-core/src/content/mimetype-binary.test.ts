@@ -31,23 +31,3 @@ test("{§mimetype} binary classification requires the configured registry", asyn
         /configured mimetype registry is required/,
     );
 });
-
-// --- MimetypeBinary.normalizeAutoTextMimetype ---
-
-test("{§zero-width-column-one-insert} MimetypeBinary.normalizeAutoTextMimetype: text/plain → text/markdown (the text primitive)", () => {
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype("text/plain"), MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE);
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype("text/plain"), "text/markdown");
-});
-
-test("{§zero-width-column-one-insert} MimetypeBinary.normalizeAutoTextMimetype: null/empty → text/markdown", () => {
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype(null), "text/markdown");
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype(undefined), "text/markdown");
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype(""), "text/markdown");
-});
-
-test("{§zero-width-column-one-insert} MimetypeBinary.normalizeAutoTextMimetype: passes other mimetypes through unchanged", () => {
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype("text/markdown"), "text/markdown");
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype("application/json"), "application/json");
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype("image/png"), "image/png");
-    assert.equal(MimetypeBinary.normalizeAutoTextMimetype("text/csv"), "text/csv");
-});

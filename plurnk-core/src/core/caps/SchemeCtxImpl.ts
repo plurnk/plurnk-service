@@ -22,11 +22,8 @@ interface SchemeCtxOptions {
 }
 
 export default class SchemeCtxImpl implements SchemeCtx {
+    readonly #coreCtx: PlurnkSchemeContext;
     readonly #editPrecondition: LineAnchorPrecondition | null;
-    readonly #fileRevision: string | undefined;
-    readonly #client: PlurnkSchemeContext["client"];
-    readonly #sequence: number | undefined;
-    readonly #ambientMembers: PlurnkSchemeContext["ambientMembers"];
     readonly workspaceId: number;
     readonly sessionId: number;
     readonly loopId: number;
@@ -49,6 +46,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         liveSubscriptions: LiveSubscriptions,
         options: SchemeCtxOptions,
     ) {
+        this.#coreCtx = ctx;
         this.workspaceId = ctx.workspaceId;
         this.sessionId = ctx.sessionId;
         this.loopId = ctx.loopId;
@@ -57,10 +55,6 @@ export default class SchemeCtxImpl implements SchemeCtx {
         this.signal = ctx.signal;
         this.logEntryId = ctx.logEntryId;
         this.#editPrecondition = options.editPrecondition ?? null;
-        this.#fileRevision = ctx.fileRevision;
-        this.#client = ctx.client;
-        this.#sequence = ctx.sequence;
-        this.#ambientMembers = ctx.ambientMembers;
         const authority = options.authority ?? "";
         this.projection = new DbProjectionCaps(ctx);
         this.messages = new DbMessageCaps(ctx, scheme);
@@ -101,26 +95,15 @@ export default class SchemeCtxImpl implements SchemeCtx {
         return unavailable as never;
     }
 
+    static coreContextOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): PlurnkSchemeContext | undefined {
+        return ctx instanceof SchemeCtxImpl ? ctx.#coreCtx : "db" in ctx ? ctx : undefined;
+    }
+
     static editPreconditionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): LineAnchorPrecondition | null {
         return ctx instanceof SchemeCtxImpl ? ctx.#editPrecondition : null;
     }
 
     static fileRevisionOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): string | undefined {
-        return ctx instanceof SchemeCtxImpl ? ctx.#fileRevision : "db" in ctx ? ctx.fileRevision : undefined;
-    }
-
-    // {§membership-auto-add} — a model dispatch's universe beyond membership reaches core schemes.
-    static ambientMembersOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): PlurnkSchemeContext["ambientMembers"] {
-        return ctx instanceof SchemeCtxImpl ? ctx.#ambientMembers : "db" in ctx ? ctx.ambientMembers : undefined;
-    }
-
-    // {§connection-lifecycle} — a person's operation carries the session it acts for to core adapters.
-    static clientOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): PlurnkSchemeContext["client"] {
-        return ctx instanceof SchemeCtxImpl ? ctx.#client : "db" in ctx ? ctx.client : undefined;
-    }
-
-    // {§loop-completion} The dispatching operation's sequence, which with the turn names the row it writes.
-    static sequenceOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): number | undefined {
-        return ctx instanceof SchemeCtxImpl ? ctx.#sequence : "db" in ctx ? ctx.sequence : undefined;
+        return SchemeCtxImpl.coreContextOf(ctx)?.fileRevision;
     }
 }

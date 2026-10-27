@@ -1,10 +1,9 @@
 import test, { describe } from "node:test";
 import Matcher from "./matcher.ts";
-import MimetypeBinary from "./mimetype-binary.ts";
-import PathMimetype from "./path-mimetype.ts";
 import { strict as assert } from "node:assert";
 import { type MatcherBody } from "@plurnk/plurnk-contracts";
-import { Mimetypes, type QueryMatch, type ParsedBodyMatcher, InvalidExpressionError, QueryParseFailureError } from "@plurnk/plurnk-mimetypes";
+import { type Mimetypes, type QueryMatch, type ParsedBodyMatcher, InvalidExpressionError, QueryParseFailureError } from "@plurnk/plurnk-mimetypes";
+import { TEXT_PRIMITIVE_MIMETYPE } from "@plurnk/plurnk-schemes";
 
 describe("matcher", () => {
 const stubQuery = (impl: (input: { content: string; hint: string }, matcher: ParsedBodyMatcher) => Promise<QueryMatch[]>): Mimetypes =>
@@ -131,7 +130,7 @@ test("{§matcher-dispatch} source unparseable for its mimetype → 203 soft fall
         stubQuery(async () => { throw new QueryParseFailureError({ mimetype: "application/json", cause: new Error("unexpected token } in JSON") }); }));
     assert.equal(r.status, 203);
     assert.equal(r.body, "{broken json");  // raw bytes handed back so the model can regex/visual-parse
-    assert.equal(r.mimetype, MimetypeBinary.TEXT_PRIMITIVE_MIMETYPE);
+    assert.equal(r.mimetype, TEXT_PRIMITIVE_MIMETYPE);
     assert.ok((r.reason ?? "").includes("Failed to parse content for query"));  // the handler's templated reason
 });
 
@@ -177,27 +176,5 @@ test("{§find} #449: one crashing candidate drops out; the operation and its sib
     assert.equal(allCrash.status, 415);
     assert.equal(allCrash.problem?.title, "Content handler crashed");
     assert.match(allCrash.problem?.detail, /text\/html content handler failed on one\.html/);
-});
-});
-
-describe("path-mimetype", async () => {
-const mimetypes = new Mimetypes();
-await mimetypes.ready();
-
-test("{§zero-width-column-one-insert} PathMimetype.resolveEntryMimetype: no extension → scheme default", async () => {
-    assert.equal(await PathMimetype.resolveEntryMimetype("users", "text/markdown", mimetypes), "text/markdown");
-    assert.equal(await PathMimetype.resolveEntryMimetype("notes", "text/plain", mimetypes), "text/plain");
-});
-
-test("{§zero-width-column-one-insert} PathMimetype.resolveEntryMimetype: leading-dot file is not an extension", async () => {
-    // `.env` is a filename, not an extension; falls back to scheme default.
-    assert.equal(await PathMimetype.resolveEntryMimetype(".env", "text/markdown", mimetypes), "text/markdown");
-});
-
-test("{§zero-width-column-one-insert} PathMimetype.resolveEntryMimetype: unknown extension → scheme default", async () => {
-    // .xyz isn't a registered mimetype handler; detect returns null;
-    // resolver falls back to scheme default.
-    const result = await PathMimetype.resolveEntryMimetype("data.xyz", "text/markdown", mimetypes);
-    assert.equal(result, "text/markdown");
 });
 });

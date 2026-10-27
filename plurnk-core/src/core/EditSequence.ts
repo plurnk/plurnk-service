@@ -1,7 +1,6 @@
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
-import type { ResolvedEditStatement, SchemeResult } from "@plurnk/plurnk-schemes";
+import { Slicer, type ResolvedEditStatement, type SchemeResult } from "@plurnk/plurnk-schemes";
 import LineAnchors from "../content/line-anchors.ts";
-import LineMarkerOps from "../content/line-marker.ts";
 import { assertEditReceipt } from "../content/edit-receipt.ts";
 
 export interface EditSnapshot {
@@ -44,7 +43,7 @@ export default class EditSequence {
             return;
         }
         // This expectation uses the snapshot's line-normal form, not the literal body sent to storage.
-        const replacement = LineMarkerOps.textReplacement(snapshot.content, statement.lineMarker, (statement.body ?? "").replace(/\r\n?/g, "\n"));
+        const replacement = Slicer.textReplacement(snapshot.content, statement.lineMarker, (statement.body ?? "").replace(/\r\n?/g, "\n"));
         if ("error" in replacement) {
             throw new Error("A successful EDIT has no valid text replacement.");
         }

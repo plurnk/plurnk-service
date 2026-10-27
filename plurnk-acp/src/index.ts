@@ -9,4 +9,3 @@ export {
     terminalIdForEntry,
     type AcpSessionUpdate,
 } from "./SessionTranslator.ts";
-export { createDaemonModule } from "./daemon-module.ts";

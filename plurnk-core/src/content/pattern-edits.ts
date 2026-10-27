@@ -1,9 +1,8 @@
 import type { MatcherBody, TextRegion } from "@plurnk/plurnk-contracts";
-import type { MatchEvidence } from "@plurnk/plurnk-schemes";
+import { Slicer, type MatchEvidence } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import { assertEditBatchReceipt, projectEditReceipt } from "./edit-receipt.ts";
 import type { DispatchResult } from "../core/mutation-types.ts";
-import LineMarkerOps from "./line-marker.ts";
 
 // {§edit-pattern} {§op-invariants} — a matcher's evidence over one resource becomes a batch of
 // ordinary coordinate edits, all relative to the same original content, so the existing batch
@@ -86,7 +85,7 @@ export default class PatternEdits {
     static bounds(marks: readonly number[] | undefined, content: string): TextRegion | null | { readonly error: string } {
         if (marks === undefined || marks.length === 0) return null;
         if (marks.length === 1 && marks[0] <= 0) return { error: "A pattern scope selects source text, not a prepend or append position." };
-        const selected = LineMarkerOps.textReplacement(content, { marks: [marks[0], ...marks.slice(1)] }, "");
+        const selected = Slicer.textReplacement(content, { marks: [marks[0], ...marks.slice(1)] }, "");
         if ("error" in selected) return selected;
         const region = TextCoordinates.regionFromOffsets(content, selected.start, selected.end);
         if (region === null) throw new Error("A resolved text scope has no source coordinates.");

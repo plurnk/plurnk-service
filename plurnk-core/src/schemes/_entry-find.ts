@@ -13,7 +13,7 @@
 //   <L>     — result pagination: resource or match-location positions N..M
 
 import { PathSyntax, renderJsonResult, type FindStatement, type RangeExtent, type TextRegion } from "@plurnk/plurnk-contracts";
-import { LineMarkerOps, MimetypeBinary } from "../content/index.ts";
+import { MimetypeBinary } from "../content/index.ts";
 import BodyPreview from "../content/body-preview.ts";
 import ScopeFormat from "../content/scope-format.ts";
 import ByteView, { type ByteSource } from "../content/byte-view.ts";
@@ -26,7 +26,7 @@ import EntryManifest, { type CatalogChannel, type CatalogDefaultChannel, type Ca
 import EntryFts from "./_entry-fts.ts";
 import Results, { type ProblemDetails, type SchemeResultBase } from "../core/results.ts";
 import FileAddress from "../core/FileAddress.ts";
-import type { MatchEvidence } from "@plurnk/plurnk-schemes";
+import { Slicer, type MatchEvidence } from "@plurnk/plurnk-schemes";
 import { resolveSearchCandidates, type SearchCandidateSet } from "./_search-candidate.ts";
 import { pathFolderSummaries, pathScope, pathScopeMatches, type PathScope, type PathFolderSummary } from "./_path-scope.ts";
 
@@ -204,7 +204,7 @@ export const projectFindResult = (
     // {§packet} — without a scope, the first page of results.
     const marker = statement.lineMarker ?? BodyPreview.firstPage();
     const unit = locationMode ? "matchLocation" : "resource";
-    const page = LineMarkerOps.page(completeItems, marker, { unit });
+    const page = Slicer.page(completeItems, marker, { unit });
     if (page.status !== 200) {
         if (page.problem === undefined) throw new Error("FIND pagination failed without Problem Details");
         return Results.assert({ status: page.status, problem: page.problem, ...fields, ...(page.range === undefined ? {} : { range: page.range }) });

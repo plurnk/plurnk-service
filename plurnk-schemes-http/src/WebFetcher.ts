@@ -28,17 +28,11 @@ import {
     requirePositiveIntegerEnv,
     responseMimetype,
     webUserAgent,
-    type CacheVariant,
 } from "./HttpShared.ts";
 
 export {
     CACHE_VARIANT_HEADER,
     MATERIALIZER_ID_HEADER,
-    PROJECTION_ID_HEADER,
-    cacheVariantEvidence,
-    classifyCacheVariant,
-    webUserAgent,
-    type CacheVariant,
 };
 
 export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";

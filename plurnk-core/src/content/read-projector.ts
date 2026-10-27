@@ -9,7 +9,6 @@ import { Slicer } from "@plurnk/plurnk-schemes";
 import type { SchemeManifest, PlurnkSchemeContext } from "../core/scheme-types.ts";
 import Results from "../core/results.ts";
 import LineAnchors from "./line-anchors.ts";
-import LineMarkerOps from "./line-marker.ts";
 import BodyPreview from "./body-preview.ts";
 import ByteView, { type ByteSource } from "./byte-view.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
@@ -136,7 +135,7 @@ export default class ReadProjector {
         if (total === null) return failure("entry-not-found", 404, `No bytes exist at ${target}.`);
         if (statement.matcher !== null) {
             if (statement.lineMarker !== null) {
-                const bounds = LineMarkerOps.window(statement.lineMarker, total, "byte");
+                const bounds = Slicer.window(statement.lineMarker, total, "byte");
                 if (bounds.status !== 200) return { ...bounds, content: null, mimetype: sourceMimetype, channel };
             }
             const loaded = await ByteView.load(source, target);
@@ -157,7 +156,7 @@ export default class ReadProjector {
             };
         }
         const marker: LineMarker = statement.lineMarker ?? BodyPreview.firstPage();
-        const window = LineMarkerOps.window(marker, total, "byte");
+        const window = Slicer.window(marker, total, "byte");
         if (window.status !== 200) {
             return {
                 ...window,

@@ -1076,16 +1076,16 @@ test("{§channels} DbSubscriptionCaps: open binds + composes abort, notifyChunk 
         assert.equal(publication?.published_channel, "stdout", "the model-facing selection persists through the completion wake");
 
         // notifyChunk → content appends + each fires a stream/event
-        await subs.notifyChunk("stdout", "hello ");
-        await subs.notifyChunk("stderr", "diagnostic");
-        await subs.notifyChunk("stdout", "world");
+        await signal.notifyChunk("stdout", "hello ");
+        await signal.notifyChunk("stderr", "diagnostic");
+        await signal.notifyChunk("stdout", "world");
         assert.equal((await entries.read("/run")).entry?.channels.stdout.content, "hello world");
         assert.equal((await entries.read("/run")).entry?.channels.stderr.content, "diagnostic", "unpublished auxiliary content is still durable");
         assert.ok(streamEvents.length >= 2, "each chunk fired a stream/event");
         assert.ok(streamEvents.every((event) => event.sessionId === sessionId), "stream updates identify their producer");
 
         // close(result) → channel terminal, exact result persisted, session woken with the summary
-        await subs.close({ status: 200 }, "exit 0; 11 bytes");
+        await signal.close({ status: 200 }, "exit 0; 11 bytes");
         assert.ok(streamEvents.every((event) => event.channel === "stdout"), "only the selected default channel is published");
         const meta = await db.channel_meta.get<{ state: string }>({ entry_id: entryId, channel: "stdout" });
         assert.equal(meta?.state, "closed");
@@ -1102,14 +1102,14 @@ test("{§channels} DbSubscriptionCaps: open binds + composes abort, notifyChunk 
             stdout: { content: "", mimetype: "text/plain", state: "active" },
             stderr: { content: "evidence", mimetype: "text/plain", state: "active" },
         } });
-        await subs.open("/mixed", { cancel: () => {} });
+        const mixedSub = await subs.open("/mixed", { cancel: () => {} });
         const bodyFailure = Results.failure("scheme:exec", "body-failed", 500, "The default body failed.");
         await assert.rejects(
-            () => subs.close(bodyFailure, "bad override", { missing: { status: 200 } }),
+            () => mixedSub.close(bodyFailure, "bad override", { missing: { status: 200 } }),
             /subscription channel result violates the channel producer contract/,
         );
         assert.equal((await entries.read("/mixed")).entry?.channels.stdout.state, "active");
-        await subs.close(bodyFailure, "body failed", { stderr: { status: 200 } });
+        await mixedSub.close(bodyFailure, "body failed", { stderr: { status: 200 } });
         const mixed = await entries.read("/mixed");
         assert.equal(mixed.entry?.channels.stdout.state, "errored");
         assert.equal(mixed.entry?.channels.stderr.state, "closed");
@@ -1132,7 +1132,7 @@ test("{§channels} DbSubscriptionCaps: open binds + composes abort, notifyChunk 
         assert.equal(await liveSubscriptions.cancel(cancelledId), true);
         assert.equal(cancelCalls, 1, "the registry reap coalesces with signal cancellation");
         const cancelledResult = Results.failure("scheme:exec", "cancelled", 499, "The session cancelled the stream.");
-        await subs.close(cancelledResult, "session cancelled");
+        await signal2.close(cancelledResult, "session cancelled");
         const cancelledRow = await db.test_get_subscription.get<{ close_status: number; close_result: string }>({ id: cancelledId });
         assert.equal(cancelledRow?.close_status, 499, "cancelled settlement is durable 499");
         assert.deepEqual(JSON.parse(cancelledRow?.close_result ?? "null"), cancelledResult);

@@ -6,6 +6,7 @@ import { routeForSpec } from "./model-route.ts";
 import type { MessageOpener, WakeSessionPayload } from "../core/ChannelWrite.ts";
 import ChannelWrite from "../core/ChannelWrite.ts";
 import type { Db } from "../core/Db.ts";
+import type Engine from "../core/Engine.ts";
 import type { LoopUsage } from "../core/Engine.ts";
 import ErrorDetail from "../core/ErrorDetail.ts";
 import type LoopLifecycle from "../core/LoopLifecycle.ts";
@@ -110,15 +111,16 @@ type RunLoop = (args: {
     onSettled: (logEntryId: number) => Promise<void>;
 }) => Promise<{ result: SchemeResult; hitMaxTurns: boolean }>;
 
-type InjectPrompt = (
-    loopId: number,
-    prompt: string,
-    openPaths: readonly string[],
-    source?: string,
-    evidence?: MessageEvidence,
-    messageAddress?: string,
-    opener?: MessageOpener,
-) => Promise<{ loopId: number; turnSeq: number; messageId: number } | null>;
+export type DrainEngine = Pick<
+    Engine,
+    | "injectIntoLoop"
+    | "loopUsage"
+    | "loopAttributions"
+    | "discardLoopNotices"
+    | "cancelSubscription"
+    | "subscriptionConcluded"
+    | "reapLoopStreams"
+>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
 // {§loop-completion} — completes, 499, the messages other sessions sent that an ended loop left unanswered.
 type CompleteAbandonedMessages = (workspaceId: number, sessionId: number, loopId: number, status: number) => Promise<unknown>;
@@ -129,16 +131,10 @@ type EmitEvent = (workspaceId: number, method: string, params: unknown) => void;
 // external facade, supplying only the named capabilities below.
 export default class DrainSupervisor {
     readonly #db: Db;
+    readonly #engine: DrainEngine;
     readonly #lifecycle: LoopLifecycle;
-    readonly #injectPrompt: InjectPrompt;
     readonly #assertInjectionCompatibility: AssertInjectionCompatibility;
     readonly #runLoop: RunLoop;
-    readonly #loopUsage: (loopId: number) => Promise<LoopUsage>;
-    readonly #loopAttributions: (loopId: number) => Promise<string[]>;
-    readonly #discardLoopNotices: (loopId: number) => void;
-    readonly #cancelSubscription: (subscriptionId: number) => Promise<boolean>;
-    readonly #subscriptionConcluded: (subscriptionId: number) => Promise<void>;
-    readonly #reapLoopStreams: (loopId: number) => Promise<readonly number[]>;
     readonly #hasActiveStreams: (sessionId: number) => boolean;
     readonly #readSystemPrompt: () => Promise<string>;
     readonly #emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
@@ -163,16 +159,10 @@ export default class DrainSupervisor {
 
     constructor({
         db,
+        engine,
         lifecycle,
-        injectPrompt,
         assertInjectionCompatibility,
         runLoop,
-        loopUsage,
-        loopAttributions,
-        discardLoopNotices,
-        cancelSubscription,
-        subscriptionConcluded,
-        reapLoopStreams,
         hasActiveStreams,
         readSystemPrompt,
         emitLogEntry,
@@ -180,16 +170,10 @@ export default class DrainSupervisor {
         completeAbandonedMessages,
     }: {
         db: Db;
+        engine: DrainEngine;
         lifecycle: LoopLifecycle;
-        injectPrompt: InjectPrompt;
         assertInjectionCompatibility: AssertInjectionCompatibility;
         runLoop: RunLoop;
-        loopUsage: (loopId: number) => Promise<LoopUsage>;
-        loopAttributions: (loopId: number) => Promise<string[]>;
-        discardLoopNotices: (loopId: number) => void;
-        cancelSubscription: (subscriptionId: number) => Promise<boolean>;
-        subscriptionConcluded: (subscriptionId: number) => Promise<void>;
-        reapLoopStreams: (loopId: number) => Promise<readonly number[]>;
         hasActiveStreams: (sessionId: number) => boolean;
         readSystemPrompt: () => Promise<string>;
         emitLogEntry: (workspaceId: number, logEntryId: number) => Promise<void>;
@@ -198,16 +182,10 @@ export default class DrainSupervisor {
     }) {
         this.#completeAbandonedMessages = completeAbandonedMessages ?? (async () => {});
         this.#db = db;
+        this.#engine = engine;
         this.#lifecycle = lifecycle;
-        this.#injectPrompt = injectPrompt;
         this.#assertInjectionCompatibility = assertInjectionCompatibility;
         this.#runLoop = runLoop;
-        this.#loopUsage = loopUsage;
-        this.#loopAttributions = loopAttributions;
-        this.#discardLoopNotices = discardLoopNotices;
-        this.#cancelSubscription = cancelSubscription;
-        this.#subscriptionConcluded = subscriptionConcluded;
-        this.#reapLoopStreams = reapLoopStreams;
         this.#hasActiveStreams = hasActiveStreams;
         this.#readSystemPrompt = readSystemPrompt;
         this.#emitLogEntry = emitLogEntry;
@@ -288,7 +266,7 @@ export default class DrainSupervisor {
                 });
             }
             const result = active === undefined ? null
-                : await this.#injectPrompt(active.id, prompt, args.openPaths ?? [], args.source, args.evidence, args.messageAddress, args.opener);
+                : await this.#engine.injectIntoLoop(active.id, prompt, args.openPaths ?? [], args.source, args.evidence, args.messageAddress, args.opener);
             if (result !== null) {
                 // runLoop may already have parked in the database while this drain
                 // is still registered. Wake that state now; if it is still running,
@@ -517,8 +495,8 @@ export default class DrainSupervisor {
         // {§notifications} {§exec-lifetime} The streams the loop's terminal reaps conclude before it is announced.
         if (!cancelled) await this.#reapLoop(loopId);
         const [usage, attributions, turnIds] = await Promise.all([
-            this.#loopUsage(loopId),
-            this.#loopAttributions(loopId),
+            this.#engine.loopUsage(loopId),
+            this.#engine.loopAttributions(loopId),
             this.#lifecycle.turnIds(loopId),
         ]);
         const loopResult = {
@@ -564,8 +542,8 @@ export default class DrainSupervisor {
         if (currentLoopId !== null) {
             const cancelled = await this.#lifecycle.finish(currentLoopId, cancelledResult(), { terminatedBy: "cancel" });
             [usage, attributions] = await Promise.all([
-                this.#loopUsage(currentLoopId),
-                this.#loopAttributions(currentLoopId),
+                this.#engine.loopUsage(currentLoopId),
+                this.#engine.loopAttributions(currentLoopId),
             ]);
             if (cancelled !== null) {
                 await this.#reapLoop(currentLoopId);
@@ -734,7 +712,7 @@ export default class DrainSupervisor {
             }
             return { cancelled: tree, subscriptions: new Map(open), drains: draining };
         });
-        await Promise.all([...subscriptions.values()].flat().map(({ id }) => this.#cancelSubscription(id)));
+        await Promise.all([...subscriptions.values()].flat().map(({ id }) => this.#engine.cancelSubscription(id)));
         for (const { loopId, sessionId: targetSessionId, result } of cancelled.loops) {
             const row = await this.#db.drain_get_session_workspace.get<{ workspace_id: number }>({
                 session_id: targetSessionId,
@@ -756,8 +734,8 @@ export default class DrainSupervisor {
     // A terminal loop's loop/terminated, then what it left unanswered answered for it.
     async #announce(workspaceId: number, sessionId: number, loopId: number, result: SchemeResult): Promise<void> {
         const [usage, attributions, turnIds] = await Promise.all([
-            this.#loopUsage(loopId),
-            this.#loopAttributions(loopId),
+            this.#engine.loopUsage(loopId),
+            this.#engine.loopAttributions(loopId),
             this.#lifecycle.turnIds(loopId),
         ]);
         await this.#publishTermination(workspaceId, { sessionId, loopId, result, hitMaxTurns: false, turnIds, usage, attributions });
@@ -806,13 +784,13 @@ export default class DrainSupervisor {
     // {§notifications} A subscription's conclusion as its observers receive it: its close delivered,
     // then its `stream/concluded` published.
     async #streamConcluded(subscriptionId: number): Promise<void> {
-        await this.#subscriptionConcluded(subscriptionId);
+        await this.#engine.subscriptionConcluded(subscriptionId);
         await this.#streamAnnouncements.get(subscriptionId)?.delivered;
     }
 
     // {§notifications} {§exec-lifetime} What the loop's terminal reaps, concluded and announced.
     async #reapLoop(loopId: number): Promise<void> {
-        const reaped = await this.#reapLoopStreams(loopId);
+        const reaped = await this.#engine.reapLoopStreams(loopId);
         await Promise.all(reaped.map((subscriptionId) => this.#streamConcluded(subscriptionId)));
     }
 
@@ -1083,7 +1061,7 @@ export default class DrainSupervisor {
         await Promise.all([...this.#streamAnnouncements.values()]
             .filter(({ sessionId }) => sessionId === event.sessionId)
             .map(({ delivered }) => delivered));
-        this.#discardLoopNotices(event.loopId);
+        this.#engine.discardLoopNotices(event.loopId);
         this.#emit(workspaceId, "loop/terminated", { ...event, loopSeq, terminatedAt });
         void this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.sessionId), "wake-on-completion");
     }

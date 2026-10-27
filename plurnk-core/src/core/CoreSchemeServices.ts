@@ -100,9 +100,10 @@ export abstract class CoreSchemeAdapterBase implements CoreSchemeAdapter {
         }
         const services = this.#services;
         if (services === undefined) throw new Error(`${this.constructor.name}: core services are not bound`);
-        const client = SchemeCtxImpl.clientOf(ctx);
-        const sequence = SchemeCtxImpl.sequenceOf(ctx);
-        const ambientMembers = SchemeCtxImpl.ambientMembersOf(ctx);
+        const core = SchemeCtxImpl.coreContextOf(ctx);
+        const client = core?.client;
+        const sequence = core?.sequence;
+        const ambientMembers = core?.ambientMembers;
         return {
             db: services.db,
             ...(services.hostPaths === undefined ? {} : { hostPaths: services.hostPaths }),

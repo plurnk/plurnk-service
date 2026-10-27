@@ -1,28 +1,19 @@
-import StoredPacket, { type RequestPacket, type PacketAssistant } from "./StoredPacket.ts";
+import StoredPacket, { type RequestPacket } from "./StoredPacket.ts";
 import NativeContent from "./NativeContent.ts";
-import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
-import { PathSyntax, PlurnkParseError, UNKNOWN_POSITION, Validator } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
+import { PathSyntax, UNKNOWN_POSITION } from "@plurnk/plurnk-contracts";
 import SessionOwners from "./SessionOwners.ts";
 import { setTimeout as delay } from "node:timers/promises";
 import {
     aggregateProviderAccounting, ProviderError, scopeEnvToAlias,
-    type GrammarEvidence, type Provider, type ProviderAttempt, type ProviderAttemptFinishReason, type ProviderRequestAccounting, type ProviderResponse,
+    type GrammarEvidence, type Provider, type ProviderAttempt, type ProviderRequestAccounting, type ProviderResponse,
 } from "@plurnk/plurnk-providers";
-import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, NoteStatement, ParseAttempt, PlurnkStatement, ReadStatement, UrlPath } from "@plurnk/plurnk-contracts";
+import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, Notice, ReadStatement } from "@plurnk/plurnk-contracts";
 
-// Internal-only — collected from PlurnkParser output, then translated to
-// Notice envelopes are defined by @plurnk/plurnk-contracts.
-// before being pushed to the loop's notices buffer.
-export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string; attempt?: ParseAttempt };
 // {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
-const comparePosition = (
-    a: { line: number; column: number },
-    b: { line: number; column: number },
-): number => a.line - b.line || a.column - b.column;
 import type SchemeRegistry from "./SchemeRegistry.ts";
-import type { BaseHandler, Mimetypes } from "@plurnk/plurnk-mimetypes";
-import FabricatedLog from "./FabricatedLog.ts";
+import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import Meta, { Knob, type ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
@@ -32,7 +23,6 @@ import WorkspaceSettings from "./workspace-settings.ts";
 import type { PlurnkSchemeContext } from "./scheme-types.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type { EngineNotifications } from "./notifications.ts";
-import { generatedPathname } from "./plurnk-uri.ts";
 import { contentWeight } from "./content-weight.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import { readFile } from "node:fs/promises";
@@ -63,35 +53,17 @@ import type PacketBuilder from "./PacketBuilder.ts";
 import { type ChatMessage, type WindowOverflow } from "./PacketBuilder.ts";
 import type Dispatcher from "./Dispatcher.ts";
 import type { DispatchContext, DispatchResult } from "./Dispatcher.ts";
-import { observed, observedSync } from "../observe/spans.ts";
+import { observed } from "../observe/spans.ts";
 import { genAiRequestName, genAiRequestOptions, settleGenAiResponse } from "../observe/genai.ts";
 import { PROVIDER_CALLS, recordCounter } from "../observe/metrics.ts";
 import ModelCall, { ModelCallPersistenceError, ProviderAccountingIntegrityError } from "./ModelCall.ts";
 import SessionName from "./SessionName.ts";
 import TurnOps from "./TurnOps.ts";
 import CapabilityResolver from "./CapabilityResolver.ts";
+import EmissionSplit, { DIRECTIVE, type BodyCheck, type SplitProviderResponse } from "./EmissionSplit.ts";
+import InitializationTurn from "./InitializationTurn.ts";
 
 export type EngineProblemKind = keyof typeof ENGINE_PROBLEMS;
-
-const regexLiteral = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-
-const workspaceCatalogTarget = (
-    namespace: "plurnk" | "tools",
-): UrlPath => {
-    const pathname = generatedPathname(`/${namespace}/*.md`);
-    return {
-        kind: "url",
-        raw: `workspace://${pathname}`,
-        scheme: "workspace",
-        username: null,
-        password: null,
-        hostname: null,
-        port: null,
-        pathname,
-        query: null,
-        fragment: null,
-    };
-};
 
 const assertOpenPaths = (value: unknown, source: string): string[] => {
     if (!Array.isArray(value) || !value.every((path): path is string => typeof path === "string" && path.length > 0)) {
@@ -113,60 +85,12 @@ const readMaxCommands = (): number => {
     return n;
 };
 
-// PLURNK_SERVICE_FILES_ITEMS — the turn-0 catalog preview. null = off;
-// -1 = the ordinary markerless page; positive N explicitly caps file rows. 0 / unset = off.
-const normalizeFilesItems = (n: number): number | null => (!Number.isFinite(n) || n === 0 ? null : n < 0 ? -1 : n);
-const readFilesItems = (): number | null => {
-    const raw = process.env.PLURNK_SERVICE_FILES_ITEMS;
-    if (raw === undefined || raw.length === 0) return null;
-    return normalizeFilesItems(Number.parseInt(raw, 10));
-};
-
 // Provider contract owned by @plurnk/plurnk-providers; engine is the consumer.
 import ProviderInstantiate from "./ProviderInstantiate.ts";
 import TurnMaterialization from "./TurnMaterialization.ts";
 import BareBatchRunner from "./BareBatchRunner.ts";
 import { TURN_STATUS_IMPLICIT_CONTINUE, outputAllowance, type ENGINE_PROBLEMS, type OutputCut } from "./turn-signals.ts";
 import AdmittedTurnExecutor from "./AdmittedTurnExecutor.ts";
-
-// Split-out call-metadata that travels with the parsed packet but lands in
-// Turn columns instead of packet.assistant.
-type TurnCallMetadata = {
-    finishReason: ProviderAttemptFinishReason;
-    model: string;
-};
-
-// What the parse of an emission's content yields, before the reasoning operations join it.
-type ParsedContent = {
-    ops: PlurnkStatement[];
-    contentStatementCount: number;
-    parseErrors: ParseErrorInfo[];
-    parseNotices: Notice[];
-    fabrications: ParseErrorInfo[];
-    outside: string[];
-    hasUnparsedTail: boolean;
-    operationOmitted: boolean;
-};
-type ParsedErrorItem = Extract<ReturnType<typeof PlurnkParser.parse>["items"][number], { kind: "error" }>;
-
-type SplitProviderResponse = {
-    packetAssistant: PacketAssistant;
-    sourceBacked: boolean;
-    callMetadata: TurnCallMetadata;
-    parseErrors: ParseErrorInfo[];
-    recoverableParseErrors: ParseErrorInfo[];
-    parseNotices: Notice[];
-    emissionValid: boolean;
-    emptyTurn: boolean;
-    // {§loop-completion}: an incomplete or malformed emission cannot conclude.
-    completionAllowed: boolean;
-    // {§outside-text}: the text of a turn that fenced no operation, in source order; null when the turn
-    // fenced one, since its text then joined the program as NOTEs.
-    outside: string | null;
-    // {§turn-source-resources}: the admitted content program; null when none was admitted. The emission
-    // site renders them against their own source; reasoning operations stay in their own source.
-    emissionStatements: readonly PlurnkStatement[] | null;
-};
 
 type MaterializedModelRequest = {
     readonly messages: ChatMessage[];
@@ -239,27 +163,8 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
 // {§tokenomics} — the row is the mandate; the gauge is the one home for the numbers
 // ({§tokenomics}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
-// {§session-initialization-entry} — the two NOTEs that open and close the initialization surveys, both
-// labelled as the card's own plan example is: the session's plan in steps, then its next step.
-const INITIALIZATION_NOTE: NoteStatement = {
-    op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: ["1. Survey the environment.", "2. Evaluate and react to the Open Message."].join("\n"),
-    position: UNKNOWN_POSITION,
-};
-const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
-    op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
-    body: "Evaluate and react to the Open Message.", position: UNKNOWN_POSITION,
-};
 // {§operation-results} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
-// {§diagnostic-observation} — what each notice of the model's own output asks of it: MUST where the card says MUST
-// or the output was refused, SHOULD where a near-miss was accepted.
-const DIRECTIVE = Object.freeze({
-    note: "YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn.",
-    emission: "YOU MUST ONLY emit fenced operation batches; with the parameters, pattern, and terse aside on the fenced operation line.",
-    advisory: "YOU SHOULD write the canonical form.",
-    output: "YOU SHOULD emit fewer or shorter operations per turn.",
-});
 const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", "packet-exceeds-budget", 413, OVER_BUDGET_DETAIL);
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
@@ -348,8 +253,6 @@ type TurnRequest = PacketFacts & {
 // Phase 4 — the attempt loop's bookkeeping: every logical provider call's durable
 // identities, the recovery clock ({§engine-rails}) and the wire spend, shared
 // with the failure handler.
-type BodyCheck = (runtime: string, body: string) => boolean;
-
 type ProviderAttempts = {
     wire: MaterializedModelRequest;
     response: ProviderAttempt | undefined;
@@ -611,17 +514,6 @@ export default class TurnRunner {
         return 500;
     }
 
-    #offsetToLineColumn(content: string, offset: number): { line: number; column: number } {
-        const cps = Array.from(content);
-        const clamped = Math.max(0, Math.min(offset, cps.length));
-        let line = 1;
-        let column = 0;
-        for (let i = 0; i < clamped; i++) {
-            if (cps[i] === "\n") { line++; column = 0; } else { column++; }
-        }
-        return { line, column };
-    }
-
     // {§log-wire-format}: native parts come from the READ's immutable snapshot,
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
@@ -674,7 +566,28 @@ export default class TurnRunner {
         try {
             const container = await this.#openTurnContainer(args, createdTurnIds);
             const gitStatus = await this.#deriveWorkspace(args, container.systemCtx);
-            if (container.initializationTurn !== null) await this.#runInitializationTurn(args, container, container.initializationTurn, gitStatus);
+            if (container.initializationTurn !== null) {
+                const { initializationTurn, initializationPolicies, initializationStatements, sessionName, transientOpenLogEntryId } = container;
+                await InitializationTurn.run({
+                    db: this.#db,
+                    schemes: this.#schemes,
+                    executors: this.#executors,
+                    capabilities: this.#capabilities,
+                    dispatcher: this.#dispatcher,
+                    executeAdmittedTurn: this.executeAdmittedTurn.bind(this),
+                    workspaceId,
+                    sessionId,
+                    loopId,
+                    sessionName,
+                    initializationTurn,
+                    initializationPolicies,
+                    initializationStatements,
+                    fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId }),
+                    signal: this.#loopSignal(loopId),
+                    onDispatch,
+                    onSettled,
+                });
+            }
             const composed = await this.#composeRequest(args, container, gitStatus);
             const admitted = await this.#admitPacket(args, composed);
             // {§tokenomics} — only the window ends a loop.
@@ -757,30 +670,9 @@ export default class TurnRunner {
             throw new Error(`session ${sessionId} has no durable ambient observation boundary`);
         }
         const systemCtx = this.#schemeContext(args, initializationTurn?.id ?? modelTurn!.id);
-        const initializationStatements: Array<FindStatement | ReadStatement> = [];
-        // {§session-initialization-entry} — the session's first turn is the worked
-        // example itself: the actual orienting operations.
-        // {§session-initialization-entry} {§session-initialization-entry} — the project AGENTS.md, then its AGENTS.local.md (materialized
-        // by LoopDocs under workspace:///_plurnk/), each get one foisted READ on the session's first loop, so local repo
-        // guidance is visible turn-0 content. Global policy stays in the system prompt; nothing else is force-read.
-        if (initializationTurn !== null) {
-            for (const name of ["/AGENTS.md", "/AGENTS.local.md"]) {
-                const pathname = generatedPathname(name);
-                const entry = await this.#db.crud_find_workspace_entry.get<{ id: number }>({
-                    workspace_id: workspaceId, scheme: "workspace", authority: "", pathname,
-                });
-                if (entry === undefined) continue;
-                const target: UrlPath = {
-                    kind: "url", raw: `workspace://${pathname}`, scheme: "workspace",
-                    username: null, password: null, hostname: null, port: null,
-                    pathname, query: null, fragment: null,
-                };
-                initializationStatements.push({
-                    op: "READ", aside: null, target,
-                    metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION,
-                } satisfies ReadStatement);
-            }
-        }
+        const initializationStatements = initializationTurn === null
+            ? []
+            : await InitializationTurn.guidanceStatements(this.#db, workspaceId);
         return {
             sessionName, transientOpenLogEntryId, loopSequence, createdTurnIds,
             initializationTurn, initializationPolicies, initializationStatements,
@@ -842,164 +734,6 @@ export default class TurnRunner {
         // consume the filesystem divergences a second time.
         await this.#warmWorkspace(systemCtx, true, false);
         return gitStatus;
-    }
-
-    // {§session-initialization-entry}: execute the initialization program before the model boundary.
-    async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow, gitStatus: GitStatusSnapshot | null): Promise<void> {
-        const { workspaceId, sessionId, loopId, onDispatch, onSettled } = args;
-        const { initializationStatements, initializationPolicies } = container;
-        // {§session-initialization-entry}: `init` lets the model curate the opening surveys as one set.
-        // {§operator-config-workspace-settings} — workspace filesItems replaces the env default.
-        const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
-        const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
-        if (filesItems !== null) { // {§session-initialization-entry} — once per session
-            initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
-        }
-        // {§session-initialization-entry} — the survey is an ordinary operation program: recorded as the
-        // turn's ops source and executed through the same path as a model's program; it authors no reasoning.
-        // {§turn-source-resources} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
-        // {§message-arrival} — the message reaches the model as an inbound SEND in the first
-        // model turn; initialization does not READ it a second time.
-        const admittedInitializationStatements: Array<FindStatement | ReadStatement> = [];
-        for (const statement of initializationStatements) {
-            if (!this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
-            // {§session-initialization-entry} — a survey that would select nothing is left out of the program.
-            if (statement.op === "FIND" && !await this.#dispatcher.selects(statement, {
-                workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
-            })) continue;
-            admittedInitializationStatements.push(statement);
-        }
-        if (admittedInitializationStatements.length === 0) {
-            // Nothing to survey (the preview off, no project guidance): the turn opens and completes empty.
-            await Turn.complete(this.#db, initializationTurn.id, 200);
-            return;
-        }
-        // {§session-initialization-entry} — the example turn shows the NOTE practice the card teaches:
-        // when the surveys run, one NOTE opens them and one closes them.
-        const programStatements: Array<NoteStatement | FindStatement | ReadStatement> =
-            admittedInitializationStatements.some((statement) => statement.op === "FIND")
-                ? [INITIALIZATION_NOTE, ...admittedInitializationStatements, INITIALIZATION_CLOSING_NOTE]
-                : admittedInitializationStatements;
-        const program = TurnOps.renderInternal(programStatements);
-        const admitted = PlurnkParser.parseStatements(program).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
-        if (admitted.length !== programStatements.length) {
-            throw new Error("initialization program did not preserve every authored operation");
-        }
-        await Turn.recordSource(this.#db, initializationTurn.id, "ops", program);
-        const result = await this.executeAdmittedTurn({
-            statements: admitted,
-            source: null,
-            emission: null,
-            origin: "_plurnk",
-            workspaceId,
-            sessionId,
-            loopId,
-            turnId: initializationTurn.id,
-            fromSequence: 1,
-            failOnOperationError: true,
-            fit: this.#fitFor(args, { turnId: initializationTurn.id, seq: initializationTurn.sequence, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId }),
-            signal: this.#loopSignal(loopId),
-            onDispatch,
-            onSettled,
-        });
-        if (result.status !== 200) {
-            throw new Error(`initialization returned ${result.status}; expected 200`);
-        }
-    }
-
-    // {§session-initialization-entry} — the opening surveys, each admitted only when
-    // its scheme is registered for the workspace. A positive filesItems caps the
-    // project rows.
-    async #catalogSurveys({ workspaceId }: TurnArgs, { sessionName, initializationPolicies }: TurnContainer, filesItems: number): Promise<FindStatement[]> {
-        const catalogSchemes = await this.#db.engine_scheme_catalog_summary.all<{ scheme: string; entries: number; shallow_items: number }>({ workspace_id: workspaceId });
-        const fileItems = catalogSchemes.find(({ scheme }) => scheme === "file")?.shallow_items ?? 0;
-        const fileCap = filesItems > 0 && fileItems > 0 ? Math.min(filesItems, fileItems) : null;
-        const surveys: FindStatement[] = [
-            {
-                op: "FIND", aside: null,
-                target: { kind: "url", raw: "skill://*/SKILL.md", scheme: "skill", username: null, password: null, hostname: "*", port: null, pathname: "/SKILL.md", query: null, fragment: null },
-                metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            },
-            {
-                op: "FIND", aside: null,
-                target: workspaceCatalogTarget("plurnk"),
-                metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            },
-            {
-                // {§tools-resource-materialization} — enabled MCP runtimes
-                // survey one row per server; each row's summary is
-                // the server one-liner or its flagship invocation form, so the
-                // discovery row itself orients. Servers named in
-                // PLURNK_MCP_EXPANDED add a second survey of their complete
-                // tool tree.
-                op: "FIND", aside: null,
-                target: workspaceCatalogTarget("tools"),
-                metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            },
-            ...this.#toolExpansions(workspaceId, initializationPolicies),
-            {
-                // {§tools-resource-materialization} — enabled members definitions survey at alias
-                // level; each row's summary is what its glob resolved to.
-                op: "FIND", aside: null,
-                target: { kind: "url", raw: "workspace:///_plurnk/members/*.md", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
-                metadata: null,
-                matcher: null, body: null, lineMarker: { marks: [1, -1] }, position: UNKNOWN_POSITION,
-            },
-            {
-                op: "FIND", aside: "project root member files",
-                target: { kind: "local", raw: "*" },
-                metadata: null,
-                matcher: null,
-                body: null,
-                lineMarker: fileCap === null ? null : { marks: [1, fileCap] },
-                position: UNKNOWN_POSITION,
-            },
-            {
-                op: "FIND", aside: "workspace knowledgebase entries",
-                target: { kind: "url", raw: "workspace:///*", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: "/*", query: null, fragment: null },
-                metadata: null,
-                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
-            },
-            {
-                op: "FIND", aside: "session knowledgebase entries",
-                target: { kind: "url", raw: `session://${sessionName}/*`, scheme: "session", username: null, password: null, hostname: sessionName, port: null, pathname: "/*", query: null, fragment: null },
-                metadata: null,
-                matcher: null, body: null, lineMarker: null, position: UNKNOWN_POSITION,
-            },
-        ];
-        return surveys.filter(({ target }) =>
-            this.#schemes.get(target?.kind === "url" ? target.scheme : "file", workspaceId) !== undefined);
-    }
-
-    // {§tools-resource-materialization} — expanded runtimes project complete
-    // invocation blocks, paged through ordinary FIND result ranges: one pattern FIND
-    // per runtime, naming the admitted tools when the policy narrows them.
-    #toolExpansions(workspaceId: number, policies: CapabilityPolicy[]): FindStatement[] {
-        const registry = this.#executors();
-        const expansions: FindStatement[] = [];
-        for (const tag of registry?.availableRuntimes(workspaceId) ?? []) {
-            const entry = registry?.entry(tag, workspaceId);
-            if (entry?.resourcesPath !== "/tools" || entry.expandTools !== true) continue;
-            const tools = registry?.toolRegistry(tag, workspaceId);
-            const admittedTools = tools?.tools.filter((tool) =>
-                this.#capabilities.allowsRuntimeAcross(tag, tool.target, workspaceId, policies)) ?? [];
-            if (admittedTools.length === 0) continue;
-            const targetFilter = tools !== null && tools !== undefined && admittedTools.length !== tools.tools.length
-                ? " \\((?:" + admittedTools.map((tool) => regexLiteral(PathSyntax.escapeTarget(tool.target))).join("|") + ")\\)"
-                : " ";
-            const pattern = "^(\x60{3,})" + regexLiteral(tag) + targetFilter + "[^\\n]*?(?:\\1|\\n[\\s\\S]*?\\n\\1)$";
-            expansions.push({
-                op: "FIND", aside: null,
-                target: { kind: "url", raw: `workspace:///_plurnk/tools/${tag}.md`, scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: generatedPathname(`/tools/${tag}.md`), query: null, fragment: null },
-                metadata: null,
-                matcher: { dialect: "regex", raw: `/${pattern.replaceAll("/", "\\/")}/m`, pattern, flags: "m" },
-                body: null, lineMarker: null, position: UNKNOWN_POSITION,
-            });
-        }
-        return expansions;
     }
 
     // Phase 3 — the inference turn and its request: the prompts the model has not
@@ -1221,7 +955,7 @@ export default class TurnRunner {
         // {§operation-results}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
         attempts.railGrammar = await this.#operatorGrammar(provider);
-        attempts.wellFormed = await this.#bodyChecks(workspaceId);
+        attempts.wellFormed = await EmissionSplit.bodyChecks(workspaceId, this.#executors(), this.#mimetypes);
         const attemptLimit = readEmissionAttempts();
         for (let attempt = 1; attempt <= attemptLimit;) {
             const verdict = await this.#issueProviderCall(args, request, attempts, attempt);
@@ -1337,7 +1071,7 @@ export default class TurnRunner {
         attempts.turnWireAccounting.push(...completedResponse.accounting);
         await modelCall.observeResponse(completedResponse, null, attempts.wire.nativeInputs);
         attempts.railEvidence = attempts.railGrammar === undefined ? undefined : completedResponse.grammarEvidence;
-        const split = this.#splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
+        const split = EmissionSplit.splitResponse(completedResponse, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
         attempts.split = split;
         await this.#classifyProviderAttempt(attempts, attemptRow.id, split, attempt, split.emissionValid);
         return split.emissionValid ? "admitted" : "rejected";
@@ -1470,7 +1204,7 @@ export default class TurnRunner {
             // {§provider-failure-normalization} — the interrupted response stays durable
             // as an unaccepted attempt; it is never admitted or replayed.
             await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
-            await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed), attempts.currentEmissionAttempt, false);
+            await this.#classifyProviderAttempt(attempts, attemptId, EmissionSplit.splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed), attempts.currentEmissionAttempt, false);
         } else {
             await modelCall.fail(failure, error.capacity ?? null);
         }
@@ -1532,7 +1266,7 @@ export default class TurnRunner {
         if (err instanceof ProviderError && err.attempt !== undefined) {
             attempts.response = err.attempt;
             await attempts.modelCall.observeResponse(err.attempt, failure, attempts.wire.nativeInputs);
-            attempts.split = this.#splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
+            attempts.split = EmissionSplit.splitResponse(err.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed);
             await this.#classifyProviderAttempt(attempts, attempts.attemptId, attempts.split, attempts.currentEmissionAttempt, false);
         } else {
             await attempts.modelCall.fail(
@@ -1691,7 +1425,7 @@ export default class TurnRunner {
         // cited lines ({§log-history-projection}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
-                ? this.#offsetToLineColumn(packetAssistant.content, notice.position)
+                ? EmissionSplit.offsetToLineColumn(packetAssistant.content, notice.position)
                 : null;
             this.#notices.push(workspaceId, sessionId, loopId, {
                 source: notice.source,
@@ -1807,206 +1541,6 @@ export default class TurnRunner {
             outputCut: outputCut(emission, provider),
             emissionAttempts: emission.emissionAttempts,
         });
-    }
-
-    // Split the wire-level ProviderResponse into the two destinations:
-    // packet.assistant gets the model's emission (content, ops, reasoning);
-    // Turn columns get accepted-call metadata (finishReason, model). Physical
-    // request usage and cost have their own cardinal persistence path.
-    // {§provider-surface} Text-fragment scraping policy lives
-    // here — engine owns the parse and the scraping rule, providers stay
-    // grammar-unaware.
-    //
-    // Test-fixture escape hatch: the Mock provider may pre-supply `ops` on
-    // its assistant payload to skip the parse roundtrip. The wire Provider
-    // contract has no `ops` field; only Mock exposes one. Real providers
-    // always take the parse path because their `assistant.ops` is undefined.
-    // {§fence-pairing}: each runtime that declares its body's media type is judged by that media type's
-    // handler. The parse is synchronous, so the handler must validate synchronously; one that cannot breaks the
-    // declaration's contract and fails here.
-    async #bodyChecks(workspaceId: number): Promise<BodyCheck | undefined> {
-        const registry = this.#executors();
-        if (registry === undefined) return undefined;
-        const declared = registry.availableRuntimes(workspaceId).flatMap((runtime) => {
-            const mimetype = registry.entry(runtime, workspaceId)?.invocation.body.mimetype;
-            return mimetype === undefined ? [] : [{ runtime, mimetype }];
-        });
-        if (declared.length === 0) return undefined;
-        const handlers = new Map<string, BaseHandler>(await Promise.all(declared.map(async ({ runtime, mimetype }) => {
-            const handler = await this.#mimetypes.getHandler(mimetype);
-            if (handler === null) throw new Error(`runtime '${runtime}' declares body media type ${mimetype}, which no installed handler reads`);
-            return [runtime, handler] as const;
-        })));
-        return (runtime, body) => {
-            const handler = handlers.get(runtime);
-            if (handler === undefined) return true;
-            let verdict: void | Promise<void>;
-            try { verdict = handler.validate(body); } catch { return false; }
-            if (verdict instanceof Promise) throw new Error(`the ${runtime} body media type validates asynchronously; a declared body media type must validate synchronously`);
-            return true;
-        };
-    }
-
-    #splitResponse(response: ProviderAttempt, executors: readonly string[] = [], wellFormed?: BodyCheck): SplitProviderResponse {
-        const { assistant } = response;
-        // A scripted provider's pre-parsed statements, each proven against the statement schema.
-        const preParsedOps = "ops" in assistant && Array.isArray(assistant.ops) ? assistant.ops.map((op) => Validator.assertPlurnkStatement(op)) : undefined;
-        const { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted } = preParsedOps === undefined
-            ? TurnRunner.#parseContent(assistant.content, executors, wellFormed)
-            : {
-                ops: [...preParsedOps], contentStatementCount: preParsedOps.length, parseErrors: [], parseNotices: [], fabrications: [],
-                outside: [], hasUnparsedTail: false, operationOmitted: false,
-            };
-        const reasoning = assistant.reasoning ?? null;
-        const reasoningOps = reasoning === null ? [] : PlurnkParser.parseReasoningOperations(reasoning, (warning) => {
-            parseNotices.push({
-                source: "grammar:reasoning",
-                kind: "parse_advisory",
-                level: "warn",
-                directive: DIRECTIVE.advisory,
-                message: warning.message,
-                parserSource: warning.source,
-            });
-        });
-        const operationCount = contentStatementCount + reasoningOps.length;
-        // {§op-shapes}: an admitted reasoning operation is the turn's work, a NOTE as much as a
-        // FIND or READ, with or without a content program.
-        if (reasoningOps.length > 0) {
-            for (let i = parseErrors.length - 1; i >= 0; i--) {
-                if (parseErrors[i].message === PlurnkParser.NO_VALID_OPERATION) parseErrors.splice(i, 1);
-            }
-        }
-        parseErrors.unshift(...fabrications.slice(0, 1));
-        const emissionStatements = preParsedOps === undefined && contentStatementCount > 0 ? [...ops] : null;
-        ops.unshift(...reasoningOps);
-        const completionAllowed = !hasUnparsedTail && !operationOmitted && !assistant.nativeToolCalls
-            && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
-            && !["length", "content_filter", "tool_calls"].includes(assistant.finishReason ?? "");
-        const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail;
-        // {§parse-recovery}: outside text is not operational work.
-        const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
-            || emptyTurn
-            || operationCount > 0);
-        const recoverableParseErrors = parseErrors
-            .filter((error) => error.message !== PlurnkParser.NO_VALID_OPERATION)
-            .toSorted(comparePosition);
-        return {
-            packetAssistant: { content: assistant.content, ops, reasoning },
-            sourceBacked: preParsedOps === undefined,
-            callMetadata: { finishReason: assistant.finishReason, model: assistant.model },
-            parseErrors,
-            recoverableParseErrors: emissionValid ? recoverableParseErrors : [],
-            emptyTurn,
-            completionAllowed,
-            parseNotices,
-            emissionValid,
-            outside: outside.length === 0 ? null : outside.join("\n\n"),
-            emissionStatements,
-        };
-    }
-
-    // {§outside-text} {§emission-admission} {§parse-recovery} An emission's content parsed into its
-    // statements and what sat beside them: outside text as NOTEs or the empty turn's source, a fabricated log
-    // heading as the rejection it is, each parse error by its severity, and the lexer's one boundary fact.
-    static #parseContent(content: string, executors: readonly string[], wellFormed: BodyCheck | undefined): ParsedContent {
-        const ops: PlurnkStatement[] = [];
-        const parseErrors: ParseErrorInfo[] = [];
-        let contentStatementCount = 0;
-        let hasUnparsedTail = false;
-        let operationOmitted = false;
-        const parseNotices: Notice[] = [];
-        const fabrications: ParseErrorInfo[] = [];
-        const outside: string[] = [];
-        // {§observability-boundary} — the parse is observed without its input;
-        // only the resulting statement count is attributable.
-        const parsed = observedSync("contracts.parse", {}, (span) => {
-            // {§fence-pairing}: explicit invocations parse without registration; available names
-            // also admit slotless headings. Dispatch resolves the then-current workspace registry.
-            const result = PlurnkParser.parse(content, { executors, ...(wellFormed === undefined ? {} : { wellFormed }) });
-            span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
-            return result;
-        });
-        // {§outside-text}: beside a fenced operation, the text between two operations is one NOTE at its
-        // position, annotation the model wrote without its fence; a turn that fenced no operation keeps
-        // its text as its outside source and stays an empty turn ({§outside-text}). Echoed emission
-        // headings are announcements, not annotation, and are dropped ({§emission-admission}).
-        const fenced = parsed.items.filter((item) => item.kind === "statement").length;
-        let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;
-        const flushSpan = (): void => {
-            if (span === null) return;
-            const body = span.body.join("\n\n");
-            if (body.length > 0) {
-                if (fenced > 0) {
-                    ops.push({ op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body, position: span.position });
-                    contentStatementCount += 1;
-                } else outside.push(body);
-            }
-            span = null;
-        };
-        for (const item of parsed.items) {
-            if (item.kind !== "text") flushSpan();
-            if (item.kind === "statement") {
-                ops.push(item.statement);
-                contentStatementCount += 1;
-            }
-            else if (item.kind === "text") {
-                // {§emission-admission}: a log-entry heading in outside text rejects the attempt.
-                const fabricated = FabricatedLog.find(item.content);
-                if (fabricated !== null) {
-                    fabrications.push({ message: FabricatedLog.message(fabricated.heading), line: item.position.line + fabricated.line, column: 1, source: "harness" });
-                    continue;
-                }
-                const body = FabricatedLog.stripEchoes(item.content);
-                if (body.length === 0) continue;
-                span ??= { body: [], position: item.position };
-                span.body.push(body);
-            }
-            else if (item.kind === "error") {
-                operationOmitted ||= TurnRunner.#admitParseError(item, parseErrors, parseNotices);
-            }
-        }
-        flushSpan();
-        // {§parse-recovery} — the lexer's one boundary fact: from `unparsedTail.from` on,
-        // nothing was read. The statements that closed before it are ordinary facts and run; the
-        // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
-        // lost its boundary before any statement closed has nothing admissible and is resampled.
-        const tail = parsed.unparsedTail;
-        if (tail !== undefined) {
-            hasUnparsedTail = true;
-            parseErrors.push({ message: tail.reason, line: tail.from.line, column: tail.from.column, source: "grammar" });
-        }
-        return { ops, contentStatementCount, parseErrors, parseNotices, fabrications, outside, hasUnparsedTail, operationOmitted };
-    }
-
-    // One parse error by its severity: an advisory is a grammar Notice beside the turn; an error is a diagnostic
-    // the model sees, with its recovery and the attempt it came from. Returns whether an operation was omitted.
-    static #admitParseError(item: ParsedErrorItem, parseErrors: ParseErrorInfo[], parseNotices: Notice[]): boolean {
-            const err = (item as { error?: PlurnkParseError }).error;
-            if (err instanceof PlurnkParseError) {
-                    if (err.severity === "warning") {
-                    parseNotices.push({
-                        source: "grammar",
-                        kind: "parse_advisory",
-                        level: "warn",
-                        directive: DIRECTIVE.advisory,
-                        message: err.message,
-                        position: {
-                            type: "content-offset",
-                            line: err.line,
-                            column: err.column,
-                        },
-                        parserSource: err.source,
-                    });
-                } else {
-                    parseErrors.push({ message: err.message, line: err.line, column: err.column, source: err.source,
-                        ...(err.recovery === undefined ? {} : { recovery: err.recovery }),
-                        ...(item.attempt === undefined ? {} : { attempt: item.attempt }) });
-                }
-            } else {
-                const msg = (err as { message?: string } | undefined)?.message ?? "parse error";
-                parseErrors.push({ message: msg, line: 0, column: 0, source: "parser" });
-            }
-        return err instanceof PlurnkParseError && err.operationOmitted;
     }
 
     // #note12 — extension reference docs are materialized beneath

@@ -103,15 +103,15 @@ test("{§slicer-text-algebra} shape discriminator narrows each family", () => {
     const proposal: ProposalResult = { shape: "proposal", status: 202, body: "preview", diff: "@@ -1 +1 @@" };
     const passthrough: PassthroughResult = { shape: "passthrough", status: 200, content: "row", mimetype: "application/json" };
 
-    assert.equal(Results.isEntryResult(entry), true);
-    assert.equal(Results.isProposalResult(entry), false);
-    assert.equal(Results.isPassthroughResult(entry), false);
+    assert.equal(Results.isEntry(entry), true);
+    assert.equal(Results.isProposal(entry), false);
+    assert.equal(Results.isPassthrough(entry), false);
 
-    assert.equal(Results.isProposalResult(proposal), true);
-    assert.equal(Results.isEntryResult(proposal), false);
+    assert.equal(Results.isProposal(proposal), true);
+    assert.equal(Results.isEntry(proposal), false);
 
-    assert.equal(Results.isPassthroughResult(passthrough), true);
-    assert.equal(Results.isProposalResult(passthrough), false);
+    assert.equal(Results.isPassthrough(passthrough), true);
+    assert.equal(Results.isProposal(passthrough), false);
 });
 
 test("{§slicer-text-algebra} shape guards are mutually exclusive and optional on a scheme result", () => {
@@ -122,12 +122,12 @@ test("{§slicer-text-algebra} shape guards are mutually exclusive and optional o
         { status: 204 },
     ];
     for (const r of results.slice(0, 3)) {
-        const hits = [Results.isEntryResult(r), Results.isProposalResult(r), Results.isPassthroughResult(r)].filter(Boolean);
+        const hits = [Results.isEntry(r), Results.isProposal(r), Results.isPassthrough(r)].filter(Boolean);
         assert.equal(hits.length, 1, "exactly one shape guard matches");
     }
-    assert.equal(Results.isEntryResult(results[3]), false);
-    assert.equal(Results.isProposalResult(results[3]), false);
-    assert.equal(Results.isPassthroughResult(results[3]), false);
+    assert.equal(Results.isEntry(results[3]), false);
+    assert.equal(Results.isProposal(results[3]), false);
+    assert.equal(Results.isPassthrough(results[3]), false);
 });
 
 test("{§diagnostic-observation} isErrorStatus marks 4xx/5xx and only those", () => {

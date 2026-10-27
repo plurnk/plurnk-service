@@ -50,7 +50,7 @@ const VERB_TEACHING: Readonly<Record<FunctionalityVerb, { summary: string; detai
 });
 
 // {§functionality-replacement} The family's verbs are exactly those with an input schema.
-export type FunctionalityTeaching = {
+type FunctionalityTeaching = {
     readonly summary?: string;
     readonly traits?: readonly string[];
     readonly inputSchemas: Readonly<Partial<Record<FunctionalityVerb, JsonSchema>>>;
@@ -79,7 +79,7 @@ export type FunctionalityManagerOptions =
         readonly includeQuestion?: boolean | ((workspaceId?: number) => boolean);
     } & FunctionalityFamilyEntry);
 
-export const isFunctionalityVerb = (value: unknown): value is FunctionalityVerb =>
+const isFunctionalityVerb = (value: unknown): value is FunctionalityVerb =>
     typeof value === "string" && (FUNCTIONALITY_VERBS as readonly string[]).includes(value);
 
 export const plurnkRuntimeDecl: RuntimeDecl & { readonly glyph: string } = {

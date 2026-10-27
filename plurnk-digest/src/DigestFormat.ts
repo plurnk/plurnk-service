@@ -17,7 +17,7 @@ export const literal = (body: string, language = "text"): string => {
 export const link = (from: string, target: string, label: string): string =>
     `[${label}](${posix.relative(posix.dirname(from), target)})`;
 
-export const summarize = (text: unknown, n = 80): string => {
+const summarize = (text: unknown, n = 80): string => {
     if (text === null || text === undefined) return "";
     const flat = (typeof text === "string" ? text : JSON.stringify(text) ?? "").replace(/\s+/g, " ").trim();
     if (flat.length <= n) return flat;
@@ -65,7 +65,7 @@ export const costSummary = (acct: ProviderAccounting | null): string => {
     return acct?.knownCostUsd == null ? "unknown" : `$${acct.knownCostUsd} + ? (incomplete)`;
 };
 
-export const operationResult = (raw: unknown, subject: string): OperationResult => {
+const operationResult = (raw: unknown, subject: string): OperationResult => {
     try {
         return Validator.assertOperationResult(parseJson(raw));
     } catch (cause) {

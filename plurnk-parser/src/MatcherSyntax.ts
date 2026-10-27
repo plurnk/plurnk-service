@@ -44,7 +44,7 @@ export const isJsonObject = (text: string): boolean => {
 };
 
 // {§parse-recovery} — shared by trailing-block recognition; invalid blocks remain owner input.
-export const metadataOptions = (metadata: readonly string[] | null | undefined): Record<string, unknown> | null => {
+const metadataOptions = (metadata: readonly string[] | null | undefined): Record<string, unknown> | null => {
     if (metadata?.length !== 1) return null;
     let parsed: unknown;
     try { parsed = JSON.parse(`[${metadata[0]}]`); }
@@ -59,20 +59,20 @@ export const metadataOptions = (metadata: readonly string[] | null | undefined):
 const isJsonArrayOfObjects = (inner: string): boolean => metadataOptions([inner]) !== null;
 
 // {§parse-recovery} — the receipts that name the log's heading notation where a model wrote it.
-export const chargeAdvisory = (written: string): string =>
+const chargeAdvisory = (written: string): string =>
     written.trim() === "\u00B7"
         ? "`\u00B7` is how the log separates a heading from its token charge; it is not part of an operation and was ignored."
         : `\`${written.trim()}\` is the token charge the log shows on a heading; it is not part of an operation and was ignored.`;
 
 // {§parse-recovery} — a middle-dot note before a comment: the comment is the aside, the note is named (#1005).
-export const strayDotAdvisory = (written: string, aside: string | null): string =>
+const strayDotAdvisory = (written: string, aside: string | null): string =>
     `\`${written}\` was ignored; the aside is \`<!-- ${aside ?? ""} -->\`.`;
 
-export const dotAsideAdvisory = (aside: string): string =>
+const dotAsideAdvisory = (aside: string): string =>
     `\`\u00B7 ${aside}\` was read as the aside; a note on an operation is written \`<!-- ${aside} -->\`.`;
 
 // {§slot-order} — the operation ran without the scope it cannot take; say which slots it has.
-export const scopelessAdvisory = (statement: PlurnkStatement, scope: string): string => {
+const scopelessAdvisory = (statement: PlurnkStatement, scope: string): string => {
     const op = writtenOp(statement);
     const slots = op === "NOTE" ? "`NOTE` takes no target or scope"
         : op === "SEND" ? "`SEND` without a recipient takes no scope"
@@ -291,7 +291,7 @@ const tryParseSlashRegex = (raw: string, pos: Position, advise?: Advise):
     return { ok: true, pattern, flags };
 };
 
-export const parseMatcherBody = (body: string, pos: Position, advise?: Advise): MatcherBody => {
+const parseMatcherBody = (body: string, pos: Position, advise?: Advise): MatcherBody => {
     // At statement EOF ANTLR retains one ordinary terminating line ending in
     // BODY_TEXT; before a following heading the lexer consumes that same EOL as
     // SECTION_END. Normalize the equivalent surfaces before enforcing one line.

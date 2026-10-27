@@ -1,5 +1,5 @@
 import { type EditStatement, type PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { InvalidOperationResultError, type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, Slicer, type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
 import { schemeNameOf } from "./plurnk-uri.ts";
@@ -14,7 +14,6 @@ import type { EditSnapshot } from "./EditSequence.ts";
 import MutationEffects from "./MutationEffects.ts";
 import PatternEdits from "../content/pattern-edits.ts";
 import PatternSelection from "./PatternSelection.ts";
-import LineMarkerOps from "../content/line-marker.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
 // {§op-methods-op-dispatch}: one resolved EDIT target owns one effect and one proposal.
@@ -274,7 +273,7 @@ export default class EditMutations {
         // {§zero-width-column-one-insert} Normalize authored scope syntax once.
         // Pattern-generated spans and scheme replacements already denote literal text.
         if (resolved.matcher === null && resolved.lineMarker !== null) {
-            resolved = { ...resolved, body: LineMarkerOps.wholeLineBody(content, resolved.lineMarker, resolved.body ?? "") };
+            resolved = { ...resolved, body: Slicer.wholeLineBody(content, resolved.lineMarker, resolved.body ?? "") };
         }
         return {
             statement: resolved,

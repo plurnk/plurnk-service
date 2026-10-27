@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { UNKNOWN_POSITION, type LineMarker } from "@plurnk/plurnk-contracts";
-import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
+import { Slicer, type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import EditSequence from "./EditSequence.ts";
 import LineAnchors from "../content/line-anchors.ts";
-import LineMarkerOps from "../content/line-marker.ts";
 import { editReceipt, projectEditReceipt, reviewerReplacementReceipt } from "../content/edit-receipt.ts";
 
 const identity = "workspace:///sequence.md";
@@ -15,7 +14,7 @@ const statement = (marker: LineMarker, body: string): ResolvedEditStatement => (
 });
 const apply = (sequence: EditSequence, content: string, marker: LineMarker, body: string): string => {
     const snapshot = sequence.observe(identity, content);
-    const update = LineMarkerOps.applyLineMarkerEdit(content, marker, body);
+    const update = Slicer.lineMarkerEdit(content, marker, body);
     assert.equal(update.status, 200);
     assert.ok(typeof update.result === "string");
     sequence.settle(snapshot, statement(marker, body), {

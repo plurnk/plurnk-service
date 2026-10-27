@@ -14,7 +14,6 @@ import type {
     SubscriptionCaps,
     SubscriptionHandle,
     StreamSubscription,
-    ChannelProducerResult,
 } from "@plurnk/plurnk-schemes";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 import ChannelWrite from "../ChannelWrite.ts";
@@ -29,7 +28,6 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
     readonly #authority: string;
     readonly #liveSubscriptions: LiveSubscriptions;
     readonly #publishedChannel: string | null;
-    #current: StreamSubscription | null = null;
 
     constructor(
         ctx: PlurnkSchemeContext,
@@ -89,7 +87,6 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
         const subscription = Object.assign(controller.signal, {
             notifyChunk, close: lifecycle.close.bind(lifecycle),
         });
-        this.#current = subscription;
         if (parent !== undefined) {
             const cancel = (): void => {
                 void liveSubscriptions.cancel(subscriptionId).catch((err: unknown) => {
@@ -103,21 +100,5 @@ export default class DbSubscriptionCaps implements SubscriptionCaps {
             }
         }
         return subscription;
-    }
-
-    async notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void> {
-        const current = this.#current;
-        if (current === null) throw new Error("subscriptions.notifyChunk: no open subscription");
-        await current.notifyChunk(channel, chunk, mimetype);
-    }
-
-    async close(
-        result: ChannelProducerResult,
-        summary?: string,
-        channelResults?: Readonly<Record<string, ChannelProducerResult>>,
-    ): Promise<void> {
-        const current = this.#current;
-        if (current === null) throw new Error("subscriptions.close: no open subscription");
-        await current.close(result, summary, channelResults);
     }
 }

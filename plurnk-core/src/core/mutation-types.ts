@@ -10,7 +10,6 @@ export type DispatchResult = SchemeResult;
 // {§op-methods-op-dispatch} — an evidence-gated normalization reported on its operation.
 export type EditMergeFact = { readonly rule: string } & Record<string, unknown>;
 
-export type PreparedRepresentation = EntryAddressResolution;
 export type MetadataResourceSelection = ResourceSelection & {
     readonly metadata: SchemeMetadataOrNull;
 };
@@ -90,7 +89,7 @@ export type PrepareDataRepresentation = (args: {
     manifest: SchemeManifest;
     ctx: PlurnkSchemeContext;
     publishedChannel: string | null;
-}) => Promise<PreparedRepresentation>;
+}) => Promise<EntryAddressResolution>;
 
 export type ProposalIds = {
     workspaceId: number;

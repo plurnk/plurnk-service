@@ -5,7 +5,7 @@ import type { LineMarker, TextLineMarker, EditStatement } from "@plurnk/plurnk-c
 import type { ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 
-export type LineAnchorFailure = {
+type LineAnchorFailure = {
     readonly kind: "invalid" | "missing" | "ambiguous";
     readonly anchor: string;
     readonly matches?: readonly number[];

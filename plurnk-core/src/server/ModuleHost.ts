@@ -25,7 +25,7 @@ export interface WorkspaceCapabilityProvider {
     deactivate(identity: WorkspaceCapabilityIdentity): void | Promise<void>;
 }
 
-export interface WorkspaceSchemeRegistration {
+interface WorkspaceSchemeRegistration {
     readonly name: string;
     readonly facet: RuntimeSchemeFacet;
     readonly traits?: readonly string[];
@@ -47,7 +47,7 @@ export interface WorkspaceCapabilityPublication {
 }
 
 // {§module-lifecycle} — the coordinator's host interface.
-export interface CapabilityProviderSeam {
+interface CapabilityProviderSeam {
     registerRuntimes(registrations: readonly RuntimeRegistration[]): Promise<void>;
     registerWorkspaceCapabilityProvider(namespaceOwner: string, provider: WorkspaceCapabilityProvider): void;
     readWorkspaceModuleState(workspaceId: number, namespaceOwner: string): Promise<unknown>;

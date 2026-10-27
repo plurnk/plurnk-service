@@ -17,7 +17,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile, realpath, appen
 import { tmpdir, homedir } from "node:os";
 import { basename, join, resolve, relative, dirname } from "node:path";
 import { type LineMarker, isExecutionOp, type FindStatement, type MatcherBody, type ParsedPath, type ReadStatement, Validator, type Notice } from "@plurnk/plurnk-contracts";
-import { type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
+import { MimetypeClassifier, type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
 import { DEFAULT_MIMETYPES, makeSchemeCtx, readThroughScheme } from "./_scheme.ts";
 import { insertLoop, insertOperationTurn, insertTurn, insertSession, insertWorkspace, openMigrated, rootWorkspace, seedEntryWithChannel, seedEnvelope } from "./_db.ts";
@@ -28,7 +28,6 @@ import { makeMockResponse, fixtureExecutors, makeRawMockResponse, parseDsl, user
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type Db } from "../../src/core/Db.ts";
 import { type PlurnkSchemeContext } from "../../src/core/scheme-types.ts";
-import { MimetypeBinary } from "../../src/content/index.ts";
 import { resourcePaths } from "./_find.ts";
 import { pathToFileURL } from "node:url";
 import { renderTarget, FILE_MISS_RECOVERY } from "../../src/core/plurnk-uri.ts";
@@ -579,7 +578,7 @@ const addMember = async (ctx: PlurnkSchemeContext, pathname: string): Promise<vo
     if (ctx.mimetypes === undefined) throw new Error("addMember: ctx.mimetypes required");
     const row = await ctx.db.envelope_get_workspace.get<{ project_root: string }>({ id: ctx.workspaceId });
     const canonical = join(row?.project_root ?? "", pathname);
-    const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await ctx.mimetypes.detect({ path: canonical }));
+    const mimetype = MimetypeClassifier.normalizeAutoText(await ctx.mimetypes.detect({ path: canonical }));
     const content = await readFile(canonical, "utf8");
     // {§fs-namespace} File entries retain their project-relative key.
     await EntryCrud.writeEntry({ authority: "", pathname: pathname }, { channels: { body: { content, mimetype } } }, ctx, "file");

@@ -1,9 +1,8 @@
 import type { LineMarker, MatcherBody, TextLineMarker, TextRegion } from "@plurnk/plurnk-contracts";
 import LineAnchors from "./line-anchors.ts";
 import { binaryInputMaximum, queryRegex, queryGlob } from "@plurnk/plurnk-mimetypes";
-import { Matcher, Results, type MatchResult, type ByteSource, type SchemeResult } from "@plurnk/plurnk-schemes";
+import { Matcher, Results, Slicer, type MatchResult, type ByteSource, type SchemeResult } from "@plurnk/plurnk-schemes";
 import PatternEdits from "./pattern-edits.ts";
-import LineMarkerOps from "./line-marker.ts";
 export type { ByteSource } from "@plurnk/plurnk-schemes";
 
 // The byte view of a resource: one hexadecimal octet per line, so coordinate = line = byte and
@@ -68,11 +67,11 @@ export default class ByteView {
                 const mark = marker.marks[0];
                 const start = mark === -1 ? original.length : mark === 0 ? 0 : mark - 1;
                 if (!Number.isInteger(start) || start < 0 || start > original.length) {
-                    return { result: LineMarkerOps.window(marker, original.length, "byte") };
+                    return { result: Slicer.window(marker, original.length, "byte") };
                 }
                 replacements.push({ start, end: start, bytes });
             } else {
-                const window = LineMarkerOps.window(marker, original.length, "byte");
+                const window = Slicer.window(marker, original.length, "byte");
                 if (window.status !== 200) return { result: window };
                 if (marker.marks[1] > original.length) return { result: Results.failure("engine:dispatcher", "range-not-satisfiable", 416,
                     `The byte range exceeds the available ${original.length} bytes.`, {}, { available: original.length, unit: "byte", retryable: false }) };

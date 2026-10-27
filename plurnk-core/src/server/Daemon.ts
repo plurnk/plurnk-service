@@ -287,19 +287,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             } });
         this.#drains = new DrainSupervisor({
             db,
+            engine: this.#engine,
             // {§loop-completion} — the daemon answers, 499, what an ended loop left unanswered.
             completeAbandonedMessages: (workspaceId, sessionId, loopId, status) =>
                 MessageAbandonment.complete(this.#engine, this.#db, workspaceId, sessionId, loopId, status),
             lifecycle: this.#lifecycle,
-            injectPrompt: (loopId, prompt, openPaths, source, evidence, messageAddress, opener) => this.#engine.injectIntoLoop(loopId, prompt, openPaths, source, evidence, messageAddress, opener),
             assertInjectionCompatibility: (args) => this.#sessionModels.assertInjectionCompatibility(args),
             runLoop: (args) => this.#runDrainLoop(args),
-            loopUsage: (loopId) => this.#engine.loopUsage(loopId),
-            loopAttributions: (loopId) => this.#engine.loopAttributions(loopId),
-            discardLoopNotices: (loopId) => this.#engine.discardLoopNotices(loopId),
-            cancelSubscription: (subscriptionId) => this.#engine.cancelSubscription(subscriptionId),
-            subscriptionConcluded: (subscriptionId) => this.#engine.subscriptionConcluded(subscriptionId),
-            reapLoopStreams: (loopId) => this.#engine.reapLoopStreams(loopId),
             hasActiveStreams: (sessionId) => this.#sessionHasActiveStreams(sessionId),
             readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"), // {§packet-inject}
             emitLogEntry: async (workspaceId, logEntryId) => {

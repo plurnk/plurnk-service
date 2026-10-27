@@ -8,7 +8,7 @@ import type { Db } from "./Db.ts";
 import type ExecutorRegistry from "./ExecutorRegistry.ts";
 import type NoticeChannel from "./NoticeChannel.ts";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
-import EditCollision from "../content/edit-collision.ts";
+import { EditCollision } from "../content/index.ts";
 import ClientInteractions from "./ClientInteractions.ts";
 import EntryAddressBinding from "./EntryAddressBinding.ts";
 

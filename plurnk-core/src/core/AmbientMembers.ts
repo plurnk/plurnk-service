@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { Knob } from "@plurnk/plurnk-meta";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { isRecord, type Notice } from "@plurnk/plurnk-contracts";
+import { MimetypeClassifier } from "@plurnk/plurnk-schemes";
 import { MimetypeBinary } from "../content/index.ts";
 import type { Db } from "./Db.ts";
 import GitMembership from "./git-membership.ts";
@@ -72,7 +73,7 @@ export default class AmbientMembers {
                 const path = resolve(root, key);
                 let size: number;
                 try { size = (await stat(path)).size; } catch { return null; }
-                const mimetype = MimetypeBinary.normalizeAutoTextMimetype(await args.mimetypes.detect({ path: key })) ?? "application/octet-stream";
+                const mimetype = MimetypeClassifier.normalizeAutoText(await args.mimetypes.detect({ path: key })) ?? "application/octet-stream";
                 if (size > TEXT_BYTES_MAX || await MimetypeBinary.isBinaryMimetype(mimetype, args.mimetypes)) return { content: null, mimetype };
                 try { return { content: await readFile(path, "utf8"), mimetype }; } catch { return null; }
             },

@@ -1,7 +1,7 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
 import LineAnchors from "../content/line-anchors.ts";
 import type { CopyStatement, EditStatement, LineMarker, MoveStatement, PlurnkStatement } from "@plurnk/plurnk-contracts";
-import { InvalidOperationResultError, MimetypeClassifier, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
+import { InvalidOperationResultError, MimetypeClassifier, PathMimetype, Slicer, type ResolvedEditStatement, type SchemeHandler } from "@plurnk/plurnk-schemes";
 import type SchemeRegistry from "./SchemeRegistry.ts";
 import { missDetail, missExtensions } from "./plurnk-uri.ts";
 import type LiveSubscriptions from "./LiveSubscriptions.ts";
@@ -9,7 +9,7 @@ import type ProposalLifecycle from "./ProposalLifecycle.ts";
 import type { ProposalSettlement } from "./ProposalLifecycle.ts";
 import type { EntryData, ReadEntryResult, WriteEntryResult, DeleteEntryResult } from "../schemes/_entry-crud.ts";
 import type { SchemeManifest, PlurnkSchemeContext } from "./scheme-types.ts";
-import { assertResourceEffects, editReceipt, EditCollision, LineMarkerOps, MimetypeBinary, PathMimetype, type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
+import { assertResourceEffects, editReceipt, EditCollision, MimetypeBinary, type LineAnchorPrecondition, type ResourceEffect } from "../content/index.ts";
 import ByteView from "../content/byte-view.ts";
 import EntryCrud from "../schemes/_entry-crud.ts";
 import { contentHash } from "./content-hash.ts";
@@ -27,7 +27,7 @@ import MutationEffects from "./MutationEffects.ts";
 import type ResourceSelector from "./ResourceSelector.ts";
 
 // COPY and MOVE orchestration: source selection, destination writes, move settlement.
-type ScopeNormalizations = ReturnType<typeof LineMarkerOps.applyLineMarkerEdit>["scopeNormalizations"];
+type ScopeNormalizations = ReturnType<typeof Slicer.lineMarkerEdit>["scopeNormalizations"];
 type EntryChannel = EntryData["channels"][string];
 
 // A transfer's destination as writeDestination binds it: handler, storage address, the entry as it stands (none
@@ -526,7 +526,7 @@ export default class ResourceTransfers {
         // {§copy}: a transfer supplies the absent channel's type;
         // a recognized destination suffix still participates in compatibility checking.
         const expectedMimetype = destRealMimetype
-            ?? await PathMimetype.resolveEntryMimetype(
+            ?? await PathMimetype.resolve(
                 destination.pathname,
                 destination.manifest.channels[destination.channel] ?? MimetypeClassifier.normalizeAutoText(source.mimetype),
                 ctx.mimetypes,
@@ -571,9 +571,9 @@ export default class ResourceTransfers {
         );
         if ("result" in resolvedMarker) return resolvedMarker.result;
         if (source.bytes !== undefined && resolvedMarker.selection.lineMarker!.marks.length > 2) {
-            return LineMarkerOps.window(resolvedMarker.selection.lineMarker!, 0, "byte");
+            return Slicer.window(resolvedMarker.selection.lineMarker!, 0, "byte");
         }
-        const created = LineMarkerOps.applyLineMarkerEdit(
+        const created = Slicer.lineMarkerEdit(
             "",
             resolvedMarker.selection.lineMarker!,
             source.content,
