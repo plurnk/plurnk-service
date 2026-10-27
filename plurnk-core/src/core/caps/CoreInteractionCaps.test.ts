@@ -5,7 +5,7 @@ import type { Db } from "../Db.ts";
 import type { PlurnkSchemeContext } from "../scheme-types.ts";
 
 for (const abort of ["owner", "interaction"] as const) {
-    test(`{§scheme-interactions}: the ${abort} signal can cancel a narrowed interaction`, async () => {
+    test(`{§capability-ctx}: the ${abort} signal can cancel a narrowed interaction`, async () => {
         const owner = new AbortController();
         const interaction = new AbortController();
         let forwarded: AbortSignal | undefined;

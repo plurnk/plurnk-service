@@ -5,7 +5,7 @@ const FIELDS = ["name", "slot", "header", "content"] as const;
 const FIELD_NAMES = new Set<string>(FIELDS);
 
 export default class PacketSections {
-    // {§scheme-packet-transform} Exact valid drafts preserve their list: the check narrows the value it was given.
+    // {§network-address} Exact valid drafts preserve their list: the check narrows the value it was given.
     static assertDrafts(value: unknown, subject = "packet section drafts"): PacketSectionDraft[] {
         PacketSections.#checkDrafts(value, subject);
         return value;

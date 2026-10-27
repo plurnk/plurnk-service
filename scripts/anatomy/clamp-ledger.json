@@ -5897,9 +5897,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §manifest"
         },
         "manifest-authority": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5909,9 +5909,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "manifest",
+          "reason": "Fold manifest-authority contract into §manifest"
         },
         "manifest-metadata-modifier": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5921,9 +5921,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "manifest",
+          "reason": "Fold manifest-metadata-modifier contract into §manifest"
         },
         "manifest-capability-traits": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5933,9 +5933,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "manifest",
+          "reason": "Fold manifest-capability-traits contract into §manifest"
         },
         "manifest-client-display": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5945,9 +5945,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "manifest",
+          "reason": "Fold manifest-client-display contract into §manifest"
         },
         "service-metadata-keys": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5957,9 +5957,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "manifest",
+          "reason": "Fold service-metadata-keys contract into §manifest"
         },
         "manifest-self-doc": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5969,9 +5969,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "manifest",
+          "reason": "Fold manifest-self-doc contract into §manifest"
         },
         "resource-publication-names": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5981,9 +5981,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold resource-publication-names contract into §scheme-operation-dispatch"
         },
         "scheme-source-bytes": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -5993,9 +5993,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold scheme-source-bytes contract into §scheme-operation-dispatch"
         },
         "web-materialization-contract": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6005,9 +6005,9 @@
           "liveShape": "paragraph",
           "codeCitations": 7,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold web-materialization-contract contract into §scheme-operation-dispatch"
         },
         "scheme-operation-dispatch": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6017,9 +6017,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §scheme-operation-dispatch"
         },
         "resolved-edit-statement": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6029,9 +6029,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold resolved-edit-statement contract into §scheme-operation-dispatch"
         },
         "read-preparation": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6041,9 +6041,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold read-preparation contract into §scheme-operation-dispatch"
         },
         "entry-address-resolution": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6053,9 +6053,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold entry-address-resolution contract into §scheme-operation-dispatch"
         },
         "handler-lifecycle": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6065,9 +6065,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold handler-lifecycle contract into §scheme-operation-dispatch"
         },
         "scheme-ctx-entries": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6077,9 +6077,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold scheme-ctx-entries contract into §scheme-operation-dispatch"
         },
         "scheme-edit-batch-receipt": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6089,9 +6089,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "scheme-operation-dispatch",
+          "reason": "Fold scheme-edit-batch-receipt contract into §scheme-operation-dispatch"
         },
         "scheme-packet-transform": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6101,9 +6101,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold scheme-packet-transform contract into §network-address"
         },
         "executor-scheme-output": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6113,9 +6113,9 @@
           "liveShape": "list",
           "codeCitations": 5,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold executor-scheme-output contract into §network-address"
         },
         "scheme-catalog-parse-issues": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6125,9 +6125,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold scheme-catalog-parse-issues contract into §network-address"
         },
         "network-address": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6137,9 +6137,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §network-address"
         },
         "mimetype-classifier": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6149,9 +6149,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold mimetype-classifier contract into §network-address"
         },
         "mimetype-verbatim-transfer": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6161,9 +6161,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold mimetype-verbatim-transfer contract into §network-address"
         },
         "scheme-projection": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6173,9 +6173,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold scheme-projection contract into §network-address"
         },
         "scheme-resource-capture": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6185,9 +6185,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold scheme-resource-capture contract into §network-address"
         },
         "slicer-window": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6197,9 +6197,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slicer-text-algebra",
+          "reason": "Fold slicer-window contract into §slicer-text-algebra"
         },
         "slicer-text-algebra": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6209,9 +6209,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §slicer-text-algebra"
         },
         "range-starts-at-one": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6221,9 +6221,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slicer-text-algebra",
+          "reason": "Fold range-starts-at-one contract into §slicer-text-algebra"
         },
         "read-zero-start": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6233,9 +6233,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slicer-text-algebra",
+          "reason": "Fold read-zero-start contract into §slicer-text-algebra"
         },
         "path-extension-mimetype": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6245,9 +6245,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "network-address",
+          "reason": "Fold path-extension-mimetype contract into §network-address"
         },
         "result-shape-guards": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6257,9 +6257,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slicer-text-algebra",
+          "reason": "Fold result-shape-guards contract into §slicer-text-algebra"
         },
         "result-error-status": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6269,9 +6269,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slicer-text-algebra",
+          "reason": "Fold result-error-status contract into §slicer-text-algebra"
         },
         "capability-ctx": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6281,9 +6281,9 @@
           "liveShape": "heading",
           "codeCitations": 4,
           "testCitations": 6,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §capability-ctx"
         },
         "scheme-ctx-workspace-environment": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6293,9 +6293,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-ctx",
+          "reason": "Fold scheme-ctx-workspace-environment contract into §capability-ctx"
         },
         "scheme-interactions": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6305,9 +6305,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-ctx",
+          "reason": "Fold scheme-interactions contract into §capability-ctx"
         },
         "scheme-subscriptions": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6317,9 +6317,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-ctx",
+          "reason": "Fold scheme-subscriptions contract into §capability-ctx"
         },
         "scheme-ctx-lifetime": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6329,9 +6329,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-ctx",
+          "reason": "Fold scheme-ctx-lifetime contract into §capability-ctx"
         },
         "scheme-edit-proposal-receipt": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6341,9 +6341,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-ctx",
+          "reason": "Fold scheme-edit-proposal-receipt contract into §capability-ctx"
         },
         "scheme-module-slice": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6353,9 +6353,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "resource-tree-scheme",
+          "reason": "Fold scheme-module-slice contract into §resource-tree-scheme"
         },
         "resource-tree-scheme": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6365,9 +6365,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §resource-tree-scheme"
         },
         "scheme-discovery": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6377,9 +6377,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §scheme-discovery"
         },
         "message-source-scheme": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6389,9 +6389,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §message-source-scheme"
         },
         "message-immutable": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6401,9 +6401,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "message-source-scheme",
+          "reason": "Fold message-immutable contract into §message-source-scheme"
         },
         "problems-schemes": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6413,9 +6413,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slicer-text-algebra",
+          "reason": "Fold problems-schemes contract into §slicer-text-algebra"
         },
         "pinned-wording-schemes": {
           "spec": "plurnk-schemes/SPEC.md",
@@ -6425,9 +6425,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slicer-text-algebra",
+          "reason": "Fold pinned-wording-schemes contract into §slicer-text-algebra"
         },
         "http-manifest": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6437,9 +6437,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §http-manifest"
         },
         "op-surface": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6449,9 +6449,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-manifest",
+          "reason": "Fold op-surface contract into §http-manifest"
         },
         "http-outbound-proposes": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6461,9 +6461,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-manifest",
+          "reason": "Fold http-outbound-proposes contract into §http-manifest"
         },
         "http-lifecycle": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6473,9 +6473,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §http-lifecycle"
         },
         "http-text-decoding": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6485,9 +6485,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold http-text-decoding contract into §http-lifecycle"
         },
         "http-binary-source": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6497,9 +6497,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold http-binary-source contract into §http-lifecycle"
         },
         "http-json-presentation": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6509,9 +6509,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold http-json-presentation contract into §http-lifecycle"
         },
         "html-materialization": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6521,9 +6521,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold html-materialization contract into §http-lifecycle"
         },
         "http-materializer-extensions": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6533,9 +6533,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold http-materializer-extensions contract into §http-lifecycle"
         },
         "http-channel-outcomes": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6545,9 +6545,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold http-channel-outcomes contract into §http-lifecycle"
         },
         "http-llms-txt": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6557,9 +6557,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold http-llms-txt contract into §http-lifecycle"
         },
         "http-status": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6569,9 +6569,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §http-status"
         },
         "http-replay": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6581,9 +6581,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-status",
+          "reason": "Fold http-replay contract into §http-status"
         },
         "http-config": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6593,9 +6593,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-host-policy",
+          "reason": "Fold http-config contract into §http-host-policy"
         },
         "http-host-policy": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6605,9 +6605,9 @@
           "liveShape": "heading",
           "codeCitations": 6,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §http-host-policy"
         },
         "automatic-fetch-check": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6617,9 +6617,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-host-policy",
+          "reason": "Fold automatic-fetch-check contract into §http-host-policy"
         },
         "materialization-lifecycle": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6629,9 +6629,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "revalidation",
+          "reason": "Fold materialization-lifecycle contract into §revalidation"
         },
         "host-rewrite": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6641,9 +6641,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "revalidation",
+          "reason": "Fold host-rewrite contract into §revalidation"
         },
         "revalidation": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6653,9 +6653,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §revalidation"
         },
         "http-kill": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6665,9 +6665,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "revalidation",
+          "reason": "Fold http-kill contract into §revalidation"
         },
         "sse": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6677,9 +6677,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "revalidation",
+          "reason": "Fold sse contract into §revalidation"
         },
         "prefetch": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6689,9 +6689,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §prefetch"
         },
         "ws": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6701,9 +6701,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "ws-lifecycle",
+          "reason": "Fold ws contract into §ws-lifecycle"
         },
         "ws-lifecycle": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6713,9 +6713,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical section heading §ws-lifecycle"
         },
         "problems-http": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6725,9 +6725,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-lifecycle",
+          "reason": "Fold problems-http contract into §http-lifecycle"
         },
         "pinned-wording-http": {
           "spec": "plurnk-schemes-http/SPEC.md",
@@ -6737,9 +6737,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-manifest",
+          "reason": "Fold pinned-wording-http contract into §http-manifest"
         }
       },
       "tests": {
@@ -6756,9 +6756,9 @@
             "scheme-operation-dispatch",
             "ws-lifecycle"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/resource-tree.test.ts",
+          "reason": "Merge plurnk-core/test/intg/KILL.scheme.test.ts coverage into plurnk-core/test/intg/resource-tree.test.ts"
         },
         "plurnk-core/test/intg/ambient-http-proxy.test.ts": {
           "tier": "intg",
@@ -6771,9 +6771,9 @@
           "citedTags": [
             "ambient-http-transport"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/http-native-media.test.ts",
+          "reason": "Merge plurnk-core/test/intg/ambient-http-proxy.test.ts coverage into plurnk-core/test/intg/http-native-media.test.ts"
         },
         "plurnk-core/test/intg/http-native-media.test.ts": {
           "tier": "intg",
@@ -6786,9 +6786,9 @@
           "citedTags": [
             "http-binary-source"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-core/test/intg/http-native-media.test.ts"
         },
         "plurnk-core/test/intg/range-recovery.test.ts": {
           "tier": "intg",
@@ -6801,9 +6801,9 @@
           "citedTags": [
             "scope-range-recovery"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/resource-tree.test.ts",
+          "reason": "Merge plurnk-core/test/intg/range-recovery.test.ts coverage into plurnk-core/test/intg/resource-tree.test.ts"
         },
         "plurnk-core/test/intg/resource-tree.test.ts": {
           "tier": "intg",
@@ -6816,9 +6816,9 @@
           "citedTags": [
             "resource-tree-scheme"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-core/test/intg/resource-tree.test.ts"
         },
         "plurnk-schemes-http/src/Guard.test.ts": {
           "tier": "unit",
@@ -6831,9 +6831,9 @@
           "citedTags": [
             "automatic-fetch-check"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes-http/src/Guard.test.ts"
         },
         "plurnk-schemes-http/src/HostPolicy.test.ts": {
           "tier": "unit",
@@ -6846,9 +6846,9 @@
           "citedTags": [
             "http-host-policy"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes-http/src/Guard.test.ts",
+          "reason": "Merge plurnk-schemes-http/src/HostPolicy.test.ts coverage into plurnk-schemes-http/src/Guard.test.ts"
         },
         "plurnk-schemes-http/src/Http.test.ts": {
           "tier": "unit",
@@ -6880,9 +6880,9 @@
             "sse",
             "web-materialization-contract"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes-http/src/Http.test.ts"
         },
         "plurnk-schemes-http/src/LiveAcquisitions.test.ts": {
           "tier": "unit",
@@ -6895,9 +6895,9 @@
           "citedTags": [
             "http-kill"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes-http/src/Http.test.ts",
+          "reason": "Merge plurnk-schemes-http/src/LiveAcquisitions.test.ts coverage into plurnk-schemes-http/src/Http.test.ts"
         },
         "plurnk-schemes-http/src/Materializer.test.ts": {
           "tier": "unit",
@@ -6910,9 +6910,9 @@
           "citedTags": [
             "http-materializer-extensions"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes-http/src/WebFetcher.test.ts",
+          "reason": "Merge plurnk-schemes-http/src/Materializer.test.ts coverage into plurnk-schemes-http/src/WebFetcher.test.ts"
         },
         "plurnk-schemes-http/src/WebFetcher.test.ts": {
           "tier": "unit",
@@ -6927,9 +6927,9 @@
             "prefetch",
             "readable-channel"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes-http/src/WebFetcher.test.ts"
         },
         "plurnk-schemes-http/src/Ws.test.ts": {
           "tier": "unit",
@@ -6944,9 +6944,9 @@
             "pinned-wording-http",
             "ws-lifecycle"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes-http/src/Ws.test.ts"
         },
         "plurnk-schemes/src/FileByteSource.test.ts": {
           "tier": "unit",
@@ -6959,9 +6959,9 @@
           "citedTags": [
             "scheme-source-bytes"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/ctx.test.ts",
+          "reason": "Merge plurnk-schemes/src/FileByteSource.test.ts coverage into plurnk-schemes/src/ctx.test.ts"
         },
         "plurnk-schemes/src/GeneratedByteSource.test.ts": {
           "tier": "unit",
@@ -6974,9 +6974,9 @@
           "citedTags": [
             "scheme-source-bytes"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/ctx.test.ts",
+          "reason": "Merge plurnk-schemes/src/GeneratedByteSource.test.ts coverage into plurnk-schemes/src/ctx.test.ts"
         },
         "plurnk-schemes/src/Manifest.test.ts": {
           "tier": "unit",
@@ -6989,9 +6989,9 @@
           "citedTags": [
             "manifest"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/Manifest.test.ts"
         },
         "plurnk-schemes/src/Matcher.test.ts": {
           "tier": "unit",
@@ -7007,9 +7007,9 @@
             "mimetype-content-query",
             "problems-schemes"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/Matcher.test.ts"
         },
         "plurnk-schemes/src/MessageAttachments.test.ts": {
           "tier": "unit",
@@ -7022,9 +7022,9 @@
           "citedTags": [
             "send-resource-attachments"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/Manifest.test.ts",
+          "reason": "Merge plurnk-schemes/src/MessageAttachments.test.ts coverage into plurnk-schemes/src/Manifest.test.ts"
         },
         "plurnk-schemes/src/MetadataOptions.test.ts": {
           "tier": "unit",
@@ -7039,9 +7039,9 @@
             "scheme-metadata-modifier",
             "service-metadata-keys"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/Manifest.test.ts",
+          "reason": "Merge plurnk-schemes/src/MetadataOptions.test.ts coverage into plurnk-schemes/src/Manifest.test.ts"
         },
         "plurnk-schemes/src/MimetypeClassifier.test.ts": {
           "tier": "unit",
@@ -7055,9 +7055,9 @@
             "mimetype-classifier",
             "mimetype-verbatim-transfer"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/MimetypeClassifier.test.ts"
         },
         "plurnk-schemes/src/NetworkAddress.test.ts": {
           "tier": "unit",
@@ -7070,9 +7070,9 @@
           "citedTags": [
             "network-address"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/NetworkAddress.test.ts"
         },
         "plurnk-schemes/src/OutputScheme.test.ts": {
           "tier": "unit",
@@ -7086,9 +7086,9 @@
             "executor-scheme-output",
             "manifest-capability-traits"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/Manifest.test.ts",
+          "reason": "Merge plurnk-schemes/src/OutputScheme.test.ts coverage into plurnk-schemes/src/Manifest.test.ts"
         },
         "plurnk-schemes/src/PathMimetype.test.ts": {
           "tier": "unit",
@@ -7101,9 +7101,9 @@
           "citedTags": [
             "path-extension-mimetype"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/MimetypeClassifier.test.ts",
+          "reason": "Merge plurnk-schemes/src/PathMimetype.test.ts coverage into plurnk-schemes/src/MimetypeClassifier.test.ts"
         },
         "plurnk-schemes/src/ResourceNames.test.ts": {
           "tier": "unit",
@@ -7116,9 +7116,9 @@
           "citedTags": [
             "resource-publication-names"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/NetworkAddress.test.ts",
+          "reason": "Merge plurnk-schemes/src/ResourceNames.test.ts coverage into plurnk-schemes/src/NetworkAddress.test.ts"
         },
         "plurnk-schemes/src/Results.test.ts": {
           "tier": "unit",
@@ -7137,9 +7137,9 @@
             "result-shape-guards",
             "slicer-text-algebra"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/Results.test.ts"
         },
         "plurnk-schemes/src/SchemeDiscovery.test.ts": {
           "tier": "unit",
@@ -7152,9 +7152,9 @@
           "citedTags": [
             "executor-trust"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/SchemeDiscovery.test.ts"
         },
         "plurnk-schemes/src/Slicer.test.ts": {
           "tier": "unit",
@@ -7176,9 +7176,9 @@
             "text-scope-semantics",
             "zero-width-column-one-insert"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/Slicer.test.ts"
         },
         "plurnk-schemes/src/ctx.test.ts": {
           "tier": "unit",
@@ -7192,9 +7192,9 @@
             "capability-ctx",
             "scheme-subscriptions"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical test suite plurnk-schemes/src/ctx.test.ts"
         },
         "plurnk-schemes/src/handler.test.ts": {
           "tier": "unit",
@@ -7209,9 +7209,9 @@
             "scheme-edit-batch-receipt",
             "scheme-operation-dispatch"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/ctx.test.ts",
+          "reason": "Merge plurnk-schemes/src/handler.test.ts coverage into plurnk-schemes/src/ctx.test.ts"
         },
         "plurnk-schemes/src/packet.test.ts": {
           "tier": "unit",
@@ -7224,11 +7224,12 @@
           "citedTags": [
             "scheme-packet-transform"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-schemes/src/NetworkAddress.test.ts",
+          "reason": "Merge plurnk-schemes/src/packet.test.ts coverage into plurnk-schemes/src/NetworkAddress.test.ts"
         }
-      }
+      },
+      "status": "completed"
     },
     "execs-and-mcp": {
       "id": "execs-and-mcp",

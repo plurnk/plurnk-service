@@ -119,7 +119,7 @@ export interface EntryOperationCaps {
 }
 
 // ── entries ──────────────────────────────────────────────────────────────
-// {§scheme-ctx-entries} — direct storage over the scheme's own namespace plus the
+// {§scheme-operation-dispatch} — direct storage over the scheme's own namespace plus the
 // standard PLURNK entry-op implementation. A scheme may use these semantics or
 // implement an op itself.
 export interface EntryStorageReadResult extends SchemeResult {
@@ -208,7 +208,7 @@ export interface InteractionCaps {
 export interface StreamSubscription extends AbortSignal {
     // FUSED append-and-notify: write the chunk to the named channel AND fire
     // stream/event in one call. Optional `mimetype` retypes the channel to the
-    // content's actual per-call type ({§scheme-subscriptions}).
+    // content's actual per-call type ({§capability-ctx}).
     notifyChunk(channel: string, chunk: string, mimetype?: string): Promise<void>;
 
     // Settle the subscription: validate and persist the exact universal
@@ -225,7 +225,7 @@ export interface StreamSubscription extends AbortSignal {
 // split is hidden here: a sibling acquires and retains one lifecycle object,
 // not the consumer's persistence substrates or its per-dispatch context. Only
 // the StreamSubscription returned by open may be retained after the handler
-// returns ({§scheme-ctx-lifetime}).
+// returns ({§capability-ctx}).
 export interface SubscriptionCaps {
     // Register the subscription for cancel routing and return the signal the
     // sibling should await for teardown. The returned AbortSignal is the session
@@ -249,7 +249,7 @@ export interface SubscriptionHandle {
 
 // ── the context ──────────────────────────────────────────────────────────
 // Fresh per op-call. A sibling MUST NOT retain it past the handler return
-// ({§scheme-ctx-lifetime}). Identity/lifecycle fields carry the engine's per-dispatch
+// ({§capability-ctx}). Identity/lifecycle fields carry the engine's per-dispatch
 // coordinates.
 export interface SchemeAddressCtx {
     readonly workspaceId: number;

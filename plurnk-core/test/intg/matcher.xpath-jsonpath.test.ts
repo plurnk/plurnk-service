@@ -850,7 +850,7 @@ test("{§matcher-dispatch} persistent-index maintenance re-derives only on conte
 });
 
 describe("json-response-presentation", () => {
-test("{§http-json-presentation}: READ, FIND and COPY share formatted JSON coordinates", async (t) => {
+test("{§http-lifecycle}: READ, FIND and COPY share formatted JSON coordinates", async (t) => {
     const db = await openMigrated();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();

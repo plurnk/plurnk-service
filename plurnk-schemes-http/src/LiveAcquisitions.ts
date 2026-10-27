@@ -1,4 +1,4 @@
-// {§http-kill} Addressed cancellation reaches every local acquisition of the resource.
+// {§revalidation} Addressed cancellation reaches every local acquisition of the resource.
 export default class LiveAcquisitions {
     readonly #controllers = new Map<string, Set<AbortController>>();
 

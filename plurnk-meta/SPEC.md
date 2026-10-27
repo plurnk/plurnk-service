@@ -104,7 +104,7 @@ kind-owned collection.
 | `"mimetype"`      | `handlers[]`                                             |
 | `"provider"`      | singular `name`                                          |
 | `"scheme"`        | `schemes[]`; singular `name` is the one-scheme shorthand |
-| `"http-materializer"` | `materializers[]` ({§http-materializer-extensions})     |
+| `"http-materializer"` | `materializers[]` ({§http-lifecycle})     |
 | `"module"`        | singular `module` export subpath ({§module-lifecycle})   |
 
 Coordinated capabilities spanning kinds use explicit daemon-module

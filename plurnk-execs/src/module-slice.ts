@@ -15,7 +15,7 @@ import type {
 } from "./types.ts";
 
 // The executor surface a host binds to: the contract, not the framework's class identity. Under
-// {§executor-scheme-output} the executor is also the scheme face for its output, so it exposes
+// {§network-address} the executor is also the scheme face for its output, so it exposes
 // `manifest` (named by its tag) and `defaultChannel`.
 export interface Executor {
     readonly runtime: string;

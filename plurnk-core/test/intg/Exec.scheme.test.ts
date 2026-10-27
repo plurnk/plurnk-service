@@ -829,7 +829,7 @@ const wire = async () => {
         available: true,
         detail: undefined,
     });
-    schemes.registerRuntimeSchemes(executors); // {§executor-scheme-output} Register per-tag READ faces as daemon boot does.
+    schemes.registerRuntimeSchemes(executors); // {§network-address} Register per-tag READ faces as daemon boot does.
     const workspaceId = await insertWorkspace(db, `effect-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);
     await ownSession(db, workspaceId, sessionId);
@@ -2348,7 +2348,7 @@ class ControlledExecutor implements Executor {
     #releaseFuture = false;
 
     // A runtime executor authors no manifest of its own: the face derives the read-only-output
-    // default from its runtime declaration ({§executor-scheme-output}), exactly like `sh`.
+    // default from its runtime declaration ({§network-address}), exactly like `sh`.
     get manifest() {
         return OutputScheme.manifestFromRuntime({ name: "controlled", glyph: "?", channels: { results: "text/plain" }, defaultChannel: "results" });
     }
@@ -4360,7 +4360,7 @@ test("{§execution-output-identity}: a facet that states its representation owns
     }
 });
 
-test("{§scheme-ctx-workspace-environment} {§execution-output-identity}: READ, FIND, COPY, execution, and BARE use the workspace attachment and channel", async () => {
+test("{§capability-ctx} {§execution-output-identity}: READ, FIND, COPY, execution, and BARE use the workspace attachment and channel", async () => {
     const db = await openMigrated();
     try {
         const { engine, schemes } = wire(db);

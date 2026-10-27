@@ -111,7 +111,7 @@ export default class HttpGet {
             return { status: 200 };
         }
 
-        // {§http-kill} — a KILL of the address aborts this acquisition through the tracked controller.
+        // {§revalidation} — a KILL of the address aborts this acquisition through the tracked controller.
         const liveKey = LiveAcquisitions.key(ctx.workspaceId, url);
         const local = new AbortController();
         const release = this.#live.track(liveKey, local);
@@ -270,7 +270,7 @@ export default class HttpGet {
                 await response.body?.cancel().catch(() => {});
             },
         };
-        // {§http-kill} — the open stream stays cancellable by a KILL of its address until it settles.
+        // {§revalidation} — the open stream stays cancellable by a KILL of its address until it settles.
         const releaseStream = this.#live.track(LiveAcquisitions.key(ctx.workspaceId, address.url), local);
         const written = await ctx.entries.write(address.pathname, this.#seedEntry());
         if (Results.isErrorStatus(written.status)) return this.#passthrough(written);
@@ -289,7 +289,7 @@ export default class HttpGet {
     }
 
 
-    // {§http-llms-txt} — after a successful generic GET materialization,
+    // {§http-lifecycle} — after a successful generic GET materialization,
     // acquire <origin>/llms.txt once per TTL window and materialize it as its
     // own https entry. Any failure is quiet: the companion never fails the
     // READ that piggybacked it, and the companion itself never recurses.

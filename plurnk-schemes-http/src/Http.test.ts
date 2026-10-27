@@ -9,8 +9,11 @@ import { buffer } from "node:stream/consumers";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import { strict as assert } from "node:assert";
-import { resolve } from "node:path";
+import { mkdtemp, mkdir, writeFile, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import LiveAcquisitions from "./LiveAcquisitions.ts";
 import MaterializerRegistry from "./Materializer.ts";
 import {
     MimetypeClassifier,
@@ -215,7 +218,7 @@ const killStmt = (target: UrlPath | null, matcher: KillStatement["matcher"] = nu
     op: "KILL", aside: null, target, metadata, lineMarker: null, matcher, body: null,
     position: { line: 0, column: 0 },
 });
-// {§http-outbound-proposes} — POST, PUT and the remote DELETE propose before anything leaves the
+// {§http-manifest} — POST, PUT and the remote DELETE propose before anything leaves the
 // process. A test that means to observe the REQUEST settles the proposal the way the dispatcher
 // does; the tests that assert the proposal itself call the verb directly.
 const settle = async (http: Http, ctx: SchemeCtx, metadata: readonly string[] | null, result: SchemeResult): Promise<SchemeResult> => {
@@ -294,7 +297,7 @@ const withFetch = async (
     impl: typeof fetch | (() => Promise<Response>),
     fn: () => Promise<void>,
     allowAllTargets = true,
-    // {§http-llms-txt} — the companion probe is routed to a quiet 404 by
+    // {§http-lifecycle} — the companion probe is routed to a quiet 404 by
     // default so ordinary fixtures model the pre-companion world; tests that
     // exercise the companion pass `true` and answer /llms.txt themselves.
     answerLlmsText = false,
@@ -317,7 +320,7 @@ const withFetch = async (
 const flush = () => new Promise<void>((done) => setImmediate(done));
 
 // ── manifest ──────────────────────────────────────────────────────────────
-test("{§web-materialization-contract}: Http publishes its WebFetcher as the framework's web materializer", () => {
+test("{§scheme-operation-dispatch}: Http publishes its WebFetcher as the framework's web materializer", () => {
     const http = new Http();
     assert.ok(http.webMaterializer instanceof WebFetcher, "the published materializer is the handler's own checked WebFetcher");
     for (const method of ["fetch", "materialize", "materializedChannels"] as const) {
@@ -345,7 +348,7 @@ test("{§http-lifecycle} manifest: documentation is loaded verbatim from docs/ht
     for (const op of ["READ", "EDIT", "SEND"]) assert.ok(fromFile.includes(`\`\`\`${op} (`), `${op} remains illustrated in the discoverable reference`);
 });
 
-test("{§http-config} ready validates the fetch ceiling without making a provider request", async () => {
+test("{§http-host-policy} ready validates the fetch ceiling without making a provider request", async () => {
     const originalTimeout = process.env.PLURNK_SCHEMES_HTTP_FETCH_TIMEOUT;
     let calls = 0;
     try {
@@ -1098,7 +1101,7 @@ test("{§http-lifecycle} READ: a binary projection input ceiling leaves a typed 
     assert.equal(diagnostics.length, 0);
 });
 
-test("{§sse} READ: an undeclared body retains application/octet-stream bytes, not guessed text", async () => {
+test("{§revalidation} READ: an undeclared body retains application/octet-stream bytes, not guessed text", async () => {
     const { ctx, inspect } = makeCtx();
     let result: Awaited<ReturnType<typeof prepareRepresentation>> | undefined;
     await withFetch(async () => new Response(new Uint8Array([0x68, 0x69]), {
@@ -1114,7 +1117,7 @@ test("{§sse} READ: an undeclared body retains application/octet-stream bytes, n
     assert.equal(inspect().wrote?.entry.channels.readable, undefined);
 });
 
-// ── server-sent events {§sse} ─────────────────────────────────────────────
+// ── server-sent events {§revalidation} ─────────────────────────────────────────────
 const sseBody = (chunks: Array<{ channel: string; chunk: string }>) =>
     chunks.filter((c) => c.channel === "body").map((c) => c.chunk);
 
@@ -1242,7 +1245,7 @@ test("{§http-lifecycle} READ SSE: cancellation after acquisition settles the re
     });
 });
 
-test("{§materialization-lifecycle} HTML preparation keeps the server source as body while readable carries the projection", async () => {
+test("{§revalidation} HTML preparation keeps the server source as body while readable carries the projection", async () => {
     const { ctx, inspect } = makeCtx();
     await withFetch(mockFetch(200, "OK", ["<html><body><h1>Hello</h1></body></html>"], { "content-type": "text/html; charset=utf-8" }), async () => {
         const r = await prepareRepresentation(new Http(), readStmt(urlTarget("https://example.com/spa", "/spa")), ctx);
@@ -1289,7 +1292,7 @@ test("{§http-lifecycle} READ: a present empty HTML projection succeeds and reta
     assert.equal(inspect().closed, null);
 });
 
-test("READ: public HTML uses the materializer Markdown and retains origin, request, and credit evidence ({§http-materializer-extensions})", async () => {
+test("READ: public HTML uses the materializer Markdown and retains origin, request, and credit evidence ({§http-lifecycle})", async () => {
     process.env[MATERIALIZER_ENV] = "stub";
     const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
     __stub.set({
@@ -1362,7 +1365,7 @@ test("{§channel-selection} READ: negotiated origin Markdown is the source itsel
 });
 
 for (const selected of ["body", "readable", "header"] as const) {
-    test(`{§http-channel-outcomes} preparation with authored #${selected} persists independent materializer channel outcomes`, async () => {
+    test(`{§http-lifecycle} preparation with authored #${selected} persists independent materializer channel outcomes`, async () => {
         process.env[MATERIALIZER_ENV] = "stub";
         const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
         __stub.set({
@@ -1441,7 +1444,7 @@ test("{§http-lifecycle} READ: recoverable materializer outcome uses the local f
 });
 
 for (const selected of ["body", "readable"] as const) {
-    test(`{§http-channel-outcomes} READ #${selected}: the materializer text may survive admitted origin transport failure`, async () => {
+    test(`{§http-lifecycle} READ #${selected}: the materializer text may survive admitted origin transport failure`, async () => {
         process.env[MATERIALIZER_ENV] = "stub";
         const { __stub } = (await import(pathToFileURL(resolve(STUB_DIR, "materializer.js")).href)) as unknown as { __stub: { set: (b: unknown) => void } };
         __stub.set({
@@ -1644,7 +1647,7 @@ test("{§http-lifecycle} SEND: POSTs the body and streams the response", async (
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "ok");
 });
 
-test("{§http-outbound-proposes} POST, PUT and the remote DELETE propose, and nothing leaves the process until settled", async () => {
+test("{§http-manifest} POST, PUT and the remote DELETE propose, and nothing leaves the process until settled", async () => {
     const target = urlTarget("https://example.com/p", "/p");
     const cases: ReadonlyArray<readonly [string, (http: Http, ctx: SchemeCtx) => Promise<SchemeResult>]> = [
         ["POST", (http, ctx) => http.send(sendStmt(target, "payload"), ctx)],
@@ -1675,7 +1678,7 @@ test("{§http-outbound-proposes} POST, PUT and the remote DELETE propose, and no
     }
 });
 
-test("{§http-outbound-proposes} a request header never enters the durable proposal attrs", async () => {
+test("{§http-manifest} a request header never enters the durable proposal attrs", async () => {
     const { ctx } = makeCtx();
     const http = new Http();
     const metadata = ["{\"Authorization\":\"Bearer s3cr3t-value\"}"];
@@ -1696,7 +1699,7 @@ test("{§http-outbound-proposes} a request header never enters the durable propo
     assert.equal(seenAuthorization, "Bearer s3cr3t-value");
 });
 
-test("{§http-outbound-proposes} the resolver's body replaces the authored one before it is sent", async () => {
+test("{§http-manifest} the resolver's body replaces the authored one before it is sent", async () => {
     const { ctx } = makeCtx();
     const http = new Http();
     let seenBody: unknown = null;
@@ -1712,7 +1715,7 @@ test("{§http-outbound-proposes} the resolver's body replaces the authored one b
     assert.equal(seenBody, "settled");
 });
 
-test("{§http-replay} SEND: an uncertain POST failure never recommends automatic replay", async () => {
+test("{§http-status} SEND: an uncertain POST failure never recommends automatic replay", async () => {
     const { ctx } = makeCtx();
     await withFetch(async () => { throw new Error("connection reset after dispatch"); }, async () => {
         const result = await httpSend(
@@ -1725,7 +1728,7 @@ test("{§http-replay} SEND: an uncertain POST failure never recommends automatic
     });
 });
 
-// ── request headers and method operations {§op-surface} ───────────────────
+// ── request headers and method operations {§http-manifest} ───────────────────
 test("{§http-lifecycle} READ: [metadata] headers are threaded into the fetch", async () => {
     const { ctx } = makeCtx();
     let seenHeaders: RequestInit["headers"];
@@ -1742,7 +1745,7 @@ test("{§http-lifecycle} READ: [metadata] headers are threaded into the fetch", 
     assert.match((seenHeaders)[0][1], /^PlurnkBot\//u);
 });
 
-test("{§pinned-wording-schemes} HTTP rejects malformed metadata without reflecting its contents", async () => {
+test("{§slicer-text-algebra} HTTP rejects malformed metadata without reflecting its contents", async () => {
     const { ctx } = makeCtx();
     const secret = "Bearer do-not-reflect";
     const result = await prepareRepresentation(
@@ -1752,7 +1755,7 @@ test("{§pinned-wording-schemes} HTTP rejects malformed metadata without reflect
     );
     assert.equal(result.status, 400);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/http/metadata-invalid");
-    assert.equal(result.problem?.detail, "[metadata] must be a JSON array."); // {§pinned-wording-schemes}
+    assert.equal(result.problem?.detail, "[metadata] must be a JSON array."); // {§slicer-text-algebra}
     assert.doesNotMatch(JSON.stringify(result), /do-not-reflect/);
 });
 
@@ -1797,12 +1800,12 @@ test("{§http-lifecycle} EDIT → PUT with the body (method mapping)", async () 
     assert.equal(inspect().chunks.filter((c) => c.channel === "body").map((c) => c.chunk).join(""), "updated");
 });
 
-test("{§pinned-wording-http} EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
+test("{§http-manifest} EDIT: a <L> line marker is rejected — http PUT replaces the whole resource", async () => {
     const { ctx } = makeCtx();
     const r = await httpEdit(editStmt(urlTarget("https://api.x/thing/42", "/thing/42"), "x", { marks: [1] }), ctx);
     assert.equal(r.status, 400);
     assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/http/line-edit-unsupported");
-    assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body."); // {§pinned-wording-http}
+    assert.equal(r.problem?.recovery, "Remove the line range and submit the complete replacement body."); // {§http-manifest}
 });
 
 test("{§channel-selection} an absent HTTP response channel is a 404 without a remote mutation", async () => {
@@ -1823,7 +1826,7 @@ test("{§channel-selection} an absent HTTP response channel is a 404 without a r
     assert.equal(inspect().opened, null);
 });
 
-test("{§http-kill} KILL {remote} sends DELETE with the authored precondition", async () => {
+test("{§revalidation} KILL {remote} sends DELETE with the authored precondition", async () => {
     const { ctx } = makeCtx();
     let seenMethod = "", seenVersion = "";
     const probe = async (_url: string | URL | Request, init?: RequestInit) => {
@@ -1843,7 +1846,7 @@ test("{§http-kill} KILL {remote} sends DELETE with the authored precondition", 
     assert.equal(seenVersion, '"revision-7"');
 });
 
-// {§http-kill} — a KILL follows the entry rule; only `{remote}` reaches the remote.
+// {§revalidation} — a KILL follows the entry rule; only `{remote}` reaches the remote.
 test("{§http-lifecycle} KILL without {remote} forgets the stored response and never contacts the remote", async () => {
     const { ctx, inspect } = makeCtx(priorEntry("stored page", "text/markdown", ""));
     let calls = 0;
@@ -1883,7 +1886,7 @@ test("{§http-lifecycle} KILL of a live acquisition cancels it in place, and the
     assert.equal(inspect().deleted, null, "a cancelled acquisition forgets nothing it never stored");
 });
 
-test("{§http-binary-source} KILL cancels a binary GET after headers, before publishing any partial bytes", { timeout: 3000 }, async (t) => {
+test("{§http-lifecycle} KILL cancels a binary GET after headers, before publishing any partial bytes", { timeout: 3000 }, async (t) => {
     const reading = Promise.withResolvers<void>();
     const outer = new AbortController();
     const { ctx, inspect } = makeCtx(null, { signal: outer.signal, projection: projectionCaps({
@@ -1922,7 +1925,7 @@ test("{§http-binary-source} KILL cancels a binary GET after headers, before pub
     }
 });
 
-// ── acquisition target rewrite {§host-rewrite} ────────────────────────────
+// ── acquisition target rewrite {§revalidation} ────────────────────────────
 test("{§http-lifecycle} GitHub blob → raw.githubusercontent rewrite (code wants source, not the SPA)", async () => {
     const { ctx, inspect } = makeCtx();
     let seenUrl = "";
@@ -3201,7 +3204,7 @@ test("{§http-lifecycle} TTL: explicit 0 disables the window — fresh stamp sti
     assert.equal(fetched, true);
 });
 
-test("{§http-config} TTL: unset crashes naming the var (floor-set knob, no silent default)", async () => {
+test("{§http-host-policy} TTL: unset crashes naming the var (floor-set knob, no silent default)", async () => {
     const { ctx } = makeCtx(priorEntry("cached", "text/plain", stampedHeader(1000)));
     await withTtl(undefined, async () => {
         await assert.rejects(
@@ -3254,7 +3257,7 @@ test("{§http-lifecycle} GET appends authoritative request-method metadata after
 });
 
 // ── wire identity ───────────────────────────────────────────────────────────
-test("{§http-config} byte path sends Plurnk's own identity, never a browser's", async () => {
+test("{§http-host-policy} byte path sends Plurnk's own identity, never a browser's", async () => {
     const { ctx } = makeCtx();
     let ua = "";
     const probe = async (_u: string | URL | Request, init?: RequestInit) => {
@@ -3268,7 +3271,7 @@ test("{§http-config} byte path sends Plurnk's own identity, never a browser's",
     assert.doesNotMatch(ua, /Mozilla|Chrome|Safari/u, "and never claims to be a browser");
 });
 
-test("{§http-llms-txt} a model-supplied User-Agent metadata block overrides the default identity", async () => {
+test("{§http-lifecycle} a model-supplied User-Agent metadata block overrides the default identity", async () => {
     const { ctx } = makeCtx();
     let ua = "";
     const probe = async (_u: string | URL | Request, init?: RequestInit) => {
@@ -3284,9 +3287,9 @@ test("{§http-llms-txt} a model-supplied User-Agent metadata block overrides the
 
 // ── cancellation ──────────────────────────────────────────────────────────
 
-// ── llms.txt companion ({§http-llms-txt}) ───────────────────────────────
+// ── llms.txt companion ({§http-lifecycle}) ───────────────────────────────
 
-test("{§http-llms-txt} a successful GET piggybacks the origin's llms.txt exactly once per window", async () => {
+test("{§http-lifecycle} a successful GET piggybacks the origin's llms.txt exactly once per window", async () => {
     const writes: string[] = [];
     const { ctx } = makeCtx(null, {
         write: async (pathname) => {
@@ -3316,7 +3319,7 @@ test("{§http-llms-txt} a successful GET piggybacks the origin's llms.txt exactl
     ], "the companion materializes as its own origin entry");
 });
 
-test("{§http-llms-txt} the companion is the operator's to allow: switched off, a READ makes only its own request", async () => {
+test("{§http-lifecycle} the companion is the operator's to allow: switched off, a READ makes only its own request", async () => {
     const prior = process.env.PLURNK_SCHEMES_HTTP_LLMS_TXT;
     const requested: string[] = [];
     const { ctx } = makeCtx(null, { write: async () => ({ status: 201, created: true, entryId: 1 }) });
@@ -3342,7 +3345,7 @@ test("{§http-llms-txt} the companion is the operator's to allow: switched off, 
     }
 });
 
-test("{§http-llms-txt} a missing llms.txt is quiet, non-recurring, and never fails the READ", async () => {
+test("{§http-lifecycle} a missing llms.txt is quiet, non-recurring, and never fails the READ", async () => {
     const writes: string[] = [];
     const { ctx } = makeCtx(null, {
         write: async (pathname) => {
@@ -3366,4 +3369,63 @@ test("{§http-llms-txt} a missing llms.txt is quiet, non-recurring, and never fa
     }, true, true);
     assert.equal(llmsRequests, 1, "the failed probe is remembered, not retried");
     assert.deepEqual(writes, ["/plain", "/plain"], "no companion entry is fabricated");
+});
+
+test("{§revalidation}: address cancellation includes concurrent acquisitions without crossing workspaces", () => {
+    const live = new LiveAcquisitions();
+    const first = new AbortController();
+    const second = new AbortController();
+    const foreign = new AbortController();
+    const key = LiveAcquisitions.key(1, "https://example.com/resource");
+    const release = live.track(key, first);
+    live.track(key, second);
+    live.track(LiveAcquisitions.key(2, "https://example.com/resource"), foreign);
+    assert.equal(live.cancel(key), true);
+    assert.equal(first.signal.aborted, true);
+    assert.equal(second.signal.aborted, true);
+    assert.equal(foreign.signal.aborted, false);
+    const next = new AbortController();
+    live.track(key, next);
+    release();
+    assert.equal(live.cancel(key), true, "old cleanup cannot untrack a subsequent acquisition");
+    assert.equal(next.signal.aborted, true);
+    assert.equal(live.cancel(key), false);
+});
+
+test("{§http-lifecycle} a standard bundle uses lazy materializer discovery without a daemon module", async (t) => {
+    const root = await mkdtemp(join(tmpdir(), "materializer-extension-"));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const plugin = join(root, "plugin");
+    await mkdir(join(plugin, "ai.plurnk"), { recursive: true });
+    await writeFile(join(plugin, "package.json"), JSON.stringify({ name: "@plurnk/example-plugin", type: "module" }));
+    await writeFile(join(plugin, "plugin.json"), JSON.stringify({
+        $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", name: "example-plugin",
+        extensions: { "ai.plurnk": { kind: "http-materializer", materializers: [{ id: "fixture", module: "ai.plurnk/materializer.mjs" }] } },
+    }));
+    const registry = await new MaterializerRegistry().discover({ packageDirs: [{ dir: plugin, name: "@plurnk/example-plugin" }] });
+    const found = registry.materializerFor("fixture");
+    assert.ok(found, "discovery does not import the implementation");
+    await writeFile(join(plugin, "ai.plurnk/materializer.mjs"), `export default {
+        id: "fixture", eligible: () => "fixture:v1",
+        extract: async () => ({ outcome: "success", body: "native body", identity: "fixture:v1", evidence: [] }),
+    };`);
+    assert.equal(await found.eligible("https://example.com/", {}), "fixture:v1");
+    assert.deepEqual(await found.extract("https://example.com/", {}), {
+        outcome: "success", body: "native body", identity: "fixture:v1", evidence: [],
+    });
+    assert.equal(await registry.discover({ packageDirs: [{ dir: plugin, name: "@plurnk/example-plugin" }] }), registry);
+    assert.equal(await registry.materializerFor("fixture")?.eligible("https://example.com/", {}), "fixture:v1");
+    const competitor = join(root, "competitor");
+    await mkdir(competitor);
+    await writeFile(join(competitor, "package.json"), JSON.stringify({
+        name: "@plurnk/competitor", plurnk: { kind: "http-materializer", materializers: [{ id: "fixture", module: "unused.mjs" }] },
+    }));
+    await assert.rejects(new MaterializerRegistry().discover({ packageDirs: [
+        { dir: plugin, name: "@plurnk/example-plugin" }, { dir: competitor, name: "@plurnk/competitor" },
+    ] }), /claimed by both @plurnk\/example-plugin and @plurnk\/competitor/);
+    await rm(join(plugin, "ai.plurnk/materializer.mjs"));
+    await writeFile(join(root, "outside.mjs"), "throw new Error('must not import');");
+    await symlink(join(root, "outside.mjs"), join(plugin, "ai.plurnk/materializer.mjs"));
+    await assert.rejects(new MaterializerRegistry().discover({ packageDirs: [{ dir: plugin, name: "@plurnk/example-plugin" }] }),
+        /native module resolves outside the plugin root/);
 });

@@ -93,7 +93,7 @@ contribution types live in its framework's package, so this package never depend
 | --- | --- | --- |
 | `ModuleSetupSeam` | `@plurnk/plurnk-modules` | Workspace paths; operator, workspace and session environment; the workspace state directory; module actions |
 | `FunctionalitySeam<Runtime, SchemeFacet>` | `@plurnk/plurnk-modules` | `registerFunctionalityAdapter` |
-| `SchemeRegistrationSeam`, `ResourceTreeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§scheme-module-slice}) | Scheme and read-only tree registration, and the facet a runtime or a family manager exposes |
+| `SchemeRegistrationSeam`, `ResourceTreeRegistrationSeam`, `RuntimeSchemeFacet` | `@plurnk/plurnk-schemes` ({§resource-tree-scheme}) | Scheme and read-only tree registration, and the facet a runtime or a family manager exposes |
 | `Executor`, `RuntimeRegistration` | `@plurnk/plurnk-execs` ({§executor-module-slice}) | The runtimes a resident family prepares |
 | `WorkspacePluginsSeam`, `WorkspacePluginSet` | `@plurnk/plurnk-agent-plugins` ({§plugin-set-module-slice}) | `readWorkspacePlugins` |
 | `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills` |

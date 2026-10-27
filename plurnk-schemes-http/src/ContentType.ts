@@ -1,4 +1,4 @@
-// HTTP response media-type normalization {§http-text-decoding}. Classification
+// HTTP response media-type normalization {§http-lifecycle}. Classification
 // consumes the WHATWG MIME essence; invalid or absent metadata is not text proof.
 
 import { MIMEType } from "node:util";

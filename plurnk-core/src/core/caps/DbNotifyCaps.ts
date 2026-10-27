@@ -1,7 +1,7 @@
 // Db-backed implementation of the trusted extension notification capability.
 // plurnk-schemes {§capability-ctx}; core {§notifications}.
 // Session wake belongs to subscriptions.close because only that seam owns the
-// complete conclusion context. {§scheme-subscriptions}
+// complete conclusion context. {§capability-ctx}
 //
 // streamEvent is sync per the cap contract, but the StreamEventPayload's entryId
 // needs an async pathname→entryId lookup. The event is advisory (not a state

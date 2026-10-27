@@ -525,7 +525,7 @@ test("{§core-extension-composition} SchemeRegistry: register(name) on already-r
     );
 });
 
-test("{§manifest-capability-traits} SchemeRegistry exposes scheme traits without owning capability admission", () => {
+test("{§manifest} SchemeRegistry exposes scheme traits without owning capability admission", () => {
     const r = new SchemeRegistry();
     class Http {
         static manifest: SchemeManifest = {

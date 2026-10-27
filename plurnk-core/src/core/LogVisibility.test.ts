@@ -78,7 +78,7 @@ test("{§log-kill-scope} LogVisibility rejects character regions but treats abse
 });
 
 // {§log-kill-scope} {§diagnostic-observation} — every refusal ends in the same forms; the written scope is never rebuilt.
-test("{§log-kill-scope} {§range-starts-at-one}: a zero or backward log-body scope is refused with the forms that work on the row", () => {
+test("{§log-kill-scope} {§slicer-text-algebra}: a zero or backward log-body scope is refused with the forms that work on the row", () => {
     const refusal = (marks: [number] | [number, number], content = "a\nb\nc") => LogVisibility.resolveScope({ marks }, "log:///1/9/2/READ", content);
     assert.deepEqual(refusal([0, -1]), {
         ok: false,

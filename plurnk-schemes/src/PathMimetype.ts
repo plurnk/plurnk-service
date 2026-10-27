@@ -1,4 +1,4 @@
-// {§path-extension-mimetype}: recognized suffixes precede the caller's supplied type.
+// {§network-address}: recognized suffixes precede the caller's supplied type.
 
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import MimetypeClassifier from "./MimetypeClassifier.ts";

@@ -81,7 +81,7 @@ export default class HttpRequester {
             );
         }
 
-        // Local AbortController: the subscription handle and a KILL of the address both abort it ({§http-kill}).
+        // Local AbortController: the subscription handle and a KILL of the address both abort it ({§revalidation}).
         const local = new AbortController();
         const release = this.#live.track(LiveAcquisitions.key(ctx.workspaceId, url), local);
         const handle: SubscriptionHandle = { cancel: () => local.abort() };
@@ -119,7 +119,7 @@ export default class HttpRequester {
 
             const responseMime = responseMimetype(response.headers.get("content-type"));
 
-            // {§http-binary-source} — completed binary input uses ordinary entry byte storage;
+            // {§http-lifecycle} — completed binary input uses ordinary entry byte storage;
             // text responses retain their incremental subscription path.
             const header = this.#responseHeader(method, response.status, response.statusText, [...response.headers], headers);
             await subscription.notifyChunk("header", header, "text/plain");
@@ -162,7 +162,7 @@ export default class HttpRequester {
                 await subscription.close({ status: 200 }, `HTTP ${response.status}; ${projected.bytes.byteLength} bytes`);
                 return { shape: "passthrough", status: 102 };
             }
-            // {§http-text-decoding} Fetch text is replacement-mode UTF-8;
+            // {§http-lifecycle} Fetch text is replacement-mode UTF-8;
             // Content-Type charset remains response evidence, not a second decoder.
             let bytes = 0;
             const decoder = new TextDecoder();

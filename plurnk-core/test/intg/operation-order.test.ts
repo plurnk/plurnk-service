@@ -869,7 +869,7 @@ test("{§capability-admission} a literal execution target is a tool identifier, 
     } finally { await exec.idle(); await db.close(); }
 });
 
-test("{§manifest-capability-traits} runtime scheme traits participate in the same selector space", async () => {
+test("{§manifest} runtime scheme traits participate in the same selector space", async () => {
     const { db, workspaceId, sessionId, loopId, turnId, engine, exec } = await setup();
     const interactive: Executor = {
         ...fixtureExecutor,
@@ -1382,7 +1382,7 @@ test("{§packet} manifest build survives a malformed application/json entry — 
     } finally { await db.close(); }
 });
 
-test("{§scheme-catalog-parse-issues} catalog quietly marks parser recovery without disabling the derivation", async () => {
+test("{§network-address} catalog quietly marks parser recovery without disabling the derivation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-parse-issues-${crypto.randomUUID()}`);

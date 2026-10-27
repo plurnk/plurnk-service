@@ -1,4 +1,4 @@
-// Db-backed implementation of plurnk-schemes {§scheme-subscriptions}.
+// Db-backed implementation of plurnk-schemes {§capability-ctx}.
 // The streaming lifecycle a sibling drives:
 //   open(pathname, handle) → registers the subscription and hands back a
 //     session+teardown-composed StreamSubscription; a session abort also

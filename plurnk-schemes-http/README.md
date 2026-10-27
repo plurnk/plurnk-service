@@ -26,7 +26,7 @@ The verbs that change a remote resource — POST, PUT, the remote DELETE, and a
 WebSocket frame (EDIT or SEND on an open `ws(s)://` socket) — propose before
 anything leaves the process, the same way a subprocess does;
 `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or runs
-unattended ({§http-outbound-proposes}). GET and the socket open are observation
+unattended ({§http-manifest}). GET and the socket open are observation
 and are ungated.
 
 ## HTTP channels
@@ -50,7 +50,7 @@ byte-readable. Input above the common binary ceiling returns `413`.
 - WebFetcher checks automatic byte targets and redirects; direct HTTP and
   WebSocket retain their explicit-target authority.
 - Generic GETs negotiate origin Markdown first. When the origin returns HTML,
-  a selected materializer extension ({§http-materializer-extensions}) produces
+  a selected materializer extension ({§http-lifecycle}) produces
   `readable`; otherwise the installed HTML reader is the local route. Recoverable
   materializer failures use that same reader as a `203` recovery floor. Hard
   provider failures do not silently change producers.

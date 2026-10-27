@@ -135,7 +135,7 @@ test("{§matcher-dispatch} source unparseable for its mimetype → 203 soft fall
     assert.ok((r.reason ?? "").includes("Failed to parse content for query"));  // the handler's templated reason
 });
 
-test("{§problems-schemes} malformed matcher expression → 400 (model-facing, not a 500)", async () => {
+test("{§slicer-text-algebra} malformed matcher expression → 400 (model-facing, not a 500)", async () => {
     const r = await Matcher.matchAgainstContent(
         { dialect: "xpath", raw: "//[" }, "<root><a/></root>", "text/html",
         stubQuery(async () => { throw new InvalidExpressionError({ dialect: "xpath", expression: "//[" }); }));
@@ -144,7 +144,7 @@ test("{§problems-schemes} malformed matcher expression → 400 (model-facing, n
     assert.equal(r.problem?.stage, "matcher");
     assert.equal(r.problem?.dialect, "xpath");
     assert.equal("diagnostic" in (r.problem ?? {}), false, "an unavailable native cause is not guessed");
-    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
+    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§slicer-text-algebra}
     assert.equal(r.problem?.retryable, false);
 });
 

@@ -782,7 +782,7 @@ export default class ProposalLifecycle {
             const proposalTarget = ProposalLifecycle.#proposalTargetOf(attrs?.proposalTarget);
             const authoredTarget = operand.target;
             // The manifest is resolved AT the target, not for the scheme name: a runtime scheme's
-            // facet claims its own subtree with its own channels ({§executor-scheme-output}), and a
+            // facet claims its own subtree with its own channels ({§network-address}), and a
             // settlement that applied under the executor's manifest would publish the facet's
             // resources into channels it never declared.
             const manifest = this.#schemes.manifestAt(schemeName, authoredTarget, workspaceId);

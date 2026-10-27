@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-// {§resource-publication-names} One allocator per resource collection. A stable
+// {§scheme-operation-dispatch} One allocator per resource collection. A stable
 // identity lets a live collection reconstruct its paths on subsequent READs.
 export default class ResourceNames {
     readonly #used = new Set<string>();

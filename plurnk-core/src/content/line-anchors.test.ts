@@ -247,7 +247,7 @@ test("{§line-anchors}: residual short-hash ambiguity is refused rather than cho
     });
 });
 
-test("{§resolved-edit-statement} LineAnchors: unresolved model syntax fails hard at the scheme boundary", () => {
+test("{§scheme-operation-dispatch} LineAnchors: unresolved model syntax fails hard at the scheme boundary", () => {
     const statement: EditStatement = {
         op: "EDIT",
         aside: null,

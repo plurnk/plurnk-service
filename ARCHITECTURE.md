@@ -412,7 +412,7 @@ same-turn receipt ({§exec-lifetime}). `read`/`pure` runtimes auto-run;
 `host` runtimes propose — and so does any other operation that declares the
 host effect, because the effect is the rule and the op is not: an outbound
 POST, PUT or DELETE leaves the machine exactly as a subprocess does
-({§http-outbound-proposes}). An accepted proposal's settlement replaces the
+({§http-manifest}). An accepted proposal's settlement replaces the
 202 with the applied operation's result, preserving failures
 ({§proposal}).
 

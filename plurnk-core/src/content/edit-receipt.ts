@@ -303,7 +303,7 @@ const sourceLineRange = (
     const first = marker.marks[0];
     const last = marker.marks[1];
     if (last !== undefined) {
-        if (first < 1) throw new Error(`EDIT receipt range <${first},${last}> reached settlement; the slicer refuses a range starting below 1 ({§range-starts-at-one}).`);
+        if (first < 1) throw new Error(`EDIT receipt range <${first},${last}> reached settlement; the slicer refuses a range starting below 1 ({§slicer-text-algebra}).`);
         const end = last === -1 ? total : last;
         return { start: first, end, removed: Math.max(0, end - first + 1) };
     }

@@ -33,7 +33,7 @@ const makeTree = async (specs: Array<[string, unknown]>): Promise<string> => {
 
 const scheme = (pkgName: string, name: string) => ({ name: pkgName, plurnk: { kind: "scheme", name } });
 
-test("{§executor-trust} discover: scope-agnostic — finds @plurnk, third-party scopes, AND unscoped; skips non-scheme", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: scope-agnostic — finds @plurnk, third-party scopes, AND unscoped; skips non-scheme", async () => {
     const cwd = await makeTree([
         ["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")],
         ["@acme/acme-scheme-foo", scheme("@acme/acme-scheme-foo", "foo")],
@@ -50,7 +50,7 @@ test("{§executor-trust} discover: scope-agnostic — finds @plurnk, third-party
     assert.equal(skipped.length, 0);
 });
 
-test("{§executor-trust} discover: normalizes attribution once per package; descriptors carry identity only", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: normalizes attribution once per package; descriptors carry identity only", async () => {
     const cwd = await makeTree([
         ["one-credit", { name: "one-credit", plurnk: { kind: "scheme", name: "one", attribution: "Ada Lovelace" } }],
         ["many-credit", { name: "many-credit", plurnk: { kind: "scheme", name: "many", attribution: ["Ada", "Grace"] } }],
@@ -67,7 +67,7 @@ test("{§executor-trust} discover: normalizes attribution once per package; desc
     ]);
 });
 
-test("{§executor-trust} discover: trusted malformed or reserved attribution fails before scheme admission", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: trusted malformed or reserved attribution fails before scheme admission", async () => {
     const invalid = await makeTree([
         ["bad-credit", { name: "bad-credit", plurnk: { kind: "scheme", name: "bad", attribution: { who: "nope" } } }],
     ]);
@@ -82,7 +82,7 @@ test("{§executor-trust} discover: trusted malformed or reserved attribution fai
     await assert.rejects(SchemeDiscovery.discover({ cwd: reserved }), /'@plurnk\/' is reserved/);
 });
 
-test("{§executor-trust} discover: trust withholding precedes attribution and declaration-field validation", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: trust withholding precedes attribution and declaration-field validation", async () => {
     const cwd = await makeTree([
         ["@acme/broken", {
             name: "@acme/broken",
@@ -103,7 +103,7 @@ test("{§executor-trust} discover: trust withholding precedes attribution and de
 });
 
 // ── multi-scheme packages: plurnk.schemes ─────────────────────────────────
-test("{§executor-trust} discover: plurnk.schemes surfaces one SchemeInfo per named scheme, with exportName", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: plurnk.schemes surfaces one SchemeInfo per named scheme, with exportName", async () => {
     const cwd = await makeTree([
         ["@plurnk/plurnk-schemes-http", {
             name: "@plurnk/plurnk-schemes-http",
@@ -116,13 +116,13 @@ test("{§executor-trust} discover: plurnk.schemes surfaces one SchemeInfo per na
     assert.deepEqual(schemes.find((s) => s.name === "wss"), { name: "wss", packageName: "@plurnk/plurnk-schemes-http", exportName: "Ws" });
 });
 
-test("{§executor-trust} discover: plurnk.name sugar omits exportName (consumer defaults to \"default\")", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: plurnk.name sugar omits exportName (consumer defaults to \"default\")", async () => {
     const cwd = await makeTree([["solo-pkg", scheme("solo-pkg", "solo")]]);
     const { schemes } = await SchemeDiscovery.discover({ cwd });
     assert.equal("exportName" in schemes.find((s) => s.name === "solo")!, false);
 });
 
-test("{§executor-trust} discover: a multi-scheme package contributes one package attribution fact", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: a multi-scheme package contributes one package attribution fact", async () => {
     const cwd = await makeTree([["p", {
         name: "p",
         plurnk: { kind: "scheme", attribution: "Grace", schemes: [{ name: "a", export: "default" }, { name: "b", export: "B" }] },
@@ -132,7 +132,7 @@ test("{§executor-trust} discover: a multi-scheme package contributes one packag
     assert.deepEqual([...packageAttributions], [["p", ["Grace"]]]);
 });
 
-test("{§executor-trust} discover: a package of another kind declares no scheme extension", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: a package of another kind declares no scheme extension", async () => {
     const cwd = await makeTree([
         ["other-kind", { name: "other-kind", plurnk: { kind: "exec", name: "nope" } }],
     ]);
@@ -140,7 +140,7 @@ test("{§executor-trust} discover: a package of another kind declares no scheme 
     assert.deepEqual(schemes, []);
 });
 
-test("{§executor-trust} discover: a malformed plurnk.schemes fails hard (never a silent skip)", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: a malformed plurnk.schemes fails hard (never a silent skip)", async () => {
     for (const bad of [
         { kind: "scheme", schemes: [] },
         { kind: "scheme", schemes: "http" },
@@ -153,14 +153,14 @@ test("{§executor-trust} discover: a malformed plurnk.schemes fails hard (never 
     }
 });
 
-test("{§executor-trust} discover: a missing node_modules yields an empty result", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: a missing node_modules yields an empty result", async () => {
     const cwd = await mkTmp("schemes-empty-");
     const { schemes, skipped } = await SchemeDiscovery.discover({ cwd });
     assert.deepEqual(schemes, []);
     assert.deepEqual(skipped, []);
 });
 
-test("{§executor-trust} discover: PLURNK_EXTENSIONS_TRUSTED_ONLY withholds untrusted third parties, keeps @plurnk", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: PLURNK_EXTENSIONS_TRUSTED_ONLY withholds untrusted third parties, keeps @plurnk", async () => {
     const cwd = await makeTree([
         ["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")],
         ["@acme/acme-scheme-foo", scheme("@acme/acme-scheme-foo", "foo")],
@@ -177,7 +177,7 @@ test("{§executor-trust} discover: PLURNK_EXTENSIONS_TRUSTED_ONLY withholds untr
     }
 });
 
-test("{§executor-trust} discover: two external packages claiming one prefix fail-hard (unresolvable ambiguity)", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: two external packages claiming one prefix fail-hard (unresolvable ambiguity)", async () => {
     const cwd = await makeTree([
         ["@acme/one", scheme("@acme/one", "foo")],
         ["@beta/two", scheme("@beta/two", "foo")],
@@ -185,7 +185,7 @@ test("{§executor-trust} discover: two external packages claiming one prefix fai
     await assert.rejects(SchemeDiscovery.discover({ cwd }), /scheme name collision: 'foo'/);
 });
 
-test("{§executor-trust} discover: an already-aborted signal rejects with AbortError before scanning", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: an already-aborted signal rejects with AbortError before scanning", async () => {
     const cwd = await makeTree([["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")]]);
     await assert.rejects(
         SchemeDiscovery.discover({ cwd, signal: AbortSignal.abort() }),
@@ -193,7 +193,7 @@ test("{§executor-trust} discover: an already-aborted signal rejects with AbortE
     );
 });
 
-test("{§executor-trust} discover: a signal aborted mid-scan surfaces, not masked as an empty result", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: a signal aborted mid-scan surfaces, not masked as an empty result", async () => {
     const root = await makeTree([["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")]]);
     const dir = path.join(root, "node_modules", "@plurnk", "plurnk-schemes-http");
     const controller = new AbortController();
@@ -205,7 +205,7 @@ test("{§executor-trust} discover: a signal aborted mid-scan surfaces, not maske
     );
 });
 
-test("{§executor-trust} discover: packageDirs bypasses the node_modules scan", async () => {
+test("{§scheme-discovery} {§executor-trust} discover: packageDirs bypasses the node_modules scan", async () => {
     const root = await makeTree([["@plurnk/plurnk-schemes-http", scheme("@plurnk/plurnk-schemes-http", "http")]]);
     const dir = path.join(root, "node_modules", "@plurnk", "plurnk-schemes-http");
     const { schemes } = await SchemeDiscovery.discover({ packageDirs: [dir] });

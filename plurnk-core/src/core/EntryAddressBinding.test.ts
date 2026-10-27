@@ -37,7 +37,7 @@ const manifest: SchemeManifest = {
     category: "data", writableBy: ["model"], volatile: false, modelVisible: true,
 };
 
-test("{§entry-address-resolution} canonical coordinates carry no storage principal", async () => {
+test("{§scheme-operation-dispatch} canonical coordinates carry no storage principal", async () => {
     let received: ParsedPath | undefined;
     const handler: SchemeHandler = {
         async resolveEntryAddress(address) {
@@ -53,7 +53,7 @@ test("{§entry-address-resolution} canonical coordinates carry no storage princi
     });
 });
 
-test("{§entry-address-resolution} address resolution receives identity but no storage capabilities", async () => {
+test("{§scheme-operation-dispatch} address resolution receives identity but no storage capabilities", async () => {
     let received: SchemeAddressCtx | undefined;
     const handler: SchemeHandler = {
         async resolveEntryAddress(_address, ctx) {
@@ -65,7 +65,7 @@ test("{§entry-address-resolution} address resolution receives identity but no s
     assert.deepEqual(Object.keys(received ?? {}).toSorted(), ["loopId", "sessionId", "signal", "turnId", "workspaceId", "writer"]);
 });
 
-test("{§entry-address-resolution} intrinsic read-only resources reject writes before storage binding", async () => {
+test("{§scheme-operation-dispatch} intrinsic read-only resources reject writes before storage binding", async () => {
     const seen: Array<string | undefined> = [];
     const denied = Results.failure("scheme:test", "read-only", 403, "This address is read-only.");
     const handler: SchemeHandler = {
@@ -81,7 +81,7 @@ test("{§entry-address-resolution} intrinsic read-only resources reject writes b
     assert.deepEqual(seen, ["read", "write"]);
 });
 
-test("{§entry-address-resolution} default resolution preserves literal authority for every caller", async () => {
+test("{§scheme-operation-dispatch} default resolution preserves literal authority for every caller", async () => {
     for (const sessionId of [22, 99]) {
         assert.deepEqual(await new EntryAddressBinding().resolve({
             target, routedScheme: "test", handler: {}, manifest, ctx: { ...context, sessionId },
@@ -90,7 +90,7 @@ test("{§entry-address-resolution} default resolution preserves literal authorit
 });
 
 for (const invalid of [{ authority: "", pathname: "/item", owner: "session" }, { authority: "", pathname: "/item", extra: 99 }]) {
-    test(`{§entry-address-resolution} rejects non-coordinate fields: ${JSON.stringify(invalid)}`, async () => {
+    test(`{§scheme-operation-dispatch} rejects non-coordinate fields: ${JSON.stringify(invalid)}`, async () => {
         await assert.rejects(new EntryAddressBinding().resolve({
             target, routedScheme: "test", handler: { async resolveEntryAddress() { return invalid; } }, manifest, ctx: context,
         }), /invalid entry coordinate/);

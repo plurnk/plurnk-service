@@ -1431,7 +1431,7 @@ test("{§message-source-scheme} native message views reject mutations without ca
         for (const row of rows.filter(({ op }) => ["EDIT", "MOVE", "COPY", "KILL"].includes(op))) {
             assert.match(JSON.parse(row.rx).problem.type, /message-immutable$/);
         }
-        // {§message-immutable} {§diagnostic-observation} — the refusal says what the message is and offers nothing.
+        // {§message-source-scheme} {§diagnostic-observation} — the refusal says what the message is and offers nothing.
         const kill = JSON.parse(rows.find(({ op }) => op === "KILL")!.rx).problem;
         assert.equal(kill.detail, `\`${path}\` is a received message; it cannot be edited, moved or killed.`);
         assert.equal(kill.recovery, undefined);

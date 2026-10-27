@@ -25,7 +25,7 @@ const context = (content: string | undefined): PlurnkSchemeContext => ({
     },
 } as unknown as PlurnkSchemeContext);
 
-test("{§scheme-projection} readable preserves a present empty projection and reserves null for absence", async () => {
+test("{§network-address} readable preserves a present empty projection and reserves null for absence", async () => {
     assert.deepEqual(
         await new DbProjectionCaps(context("")).readable("<div></div>", "text/html"),
         {
@@ -41,7 +41,7 @@ test("{§scheme-projection} readable preserves a present empty projection and re
     );
 });
 
-test("{§scheme-projection} binary retains the bounded source beside an optional readable projection", async () => {
+test("{§network-address} binary retains the bounded source beside an optional readable projection", async () => {
     async function* bytes() {
         yield Uint8Array.of(1, 2, 3);
     }
@@ -63,7 +63,7 @@ test("{§scheme-projection} binary retains the bounded source beside an optional
     });
 });
 
-test("{§scheme-projection} projection identity delegates to the configured mimetype framework", async () => {
+test("{§network-address} projection identity delegates to the configured mimetype framework", async () => {
     assert.equal(
         await new DbProjectionCaps(context("")).identity("application/pdf"),
         "application/pdf-identity",

@@ -1,6 +1,6 @@
 import type { EntryData, ProjectionCaps } from "./ctx.ts";
 
-// {§web-materialization-contract} — the framework-owned shapes of web acquisition and
+// {§scheme-operation-dispatch} — the framework-owned shapes of web acquisition and
 // materialization; the https handler implements them and core reaches them through the registry.
 
 export interface WebResponseBody {

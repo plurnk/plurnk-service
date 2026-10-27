@@ -530,7 +530,7 @@ test("{§read} Log.read: an empty-extent 416 on an execution log item carries th
 
 // {§read} — no recorded stream, no naming: the generic slicer problem
 // is byte-identical, the condition the augmentation must not disturb.
-test("{§problems-schemes} Log.read: an empty-extent 416 without a recorded stream keeps the generic slicer problem", async () => {
+test("{§slicer-text-algebra} Log.read: an empty-extent 416 without a recorded stream keeps the generic slicer problem", async () => {
     const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         await insertExecutionRow(db, { sessionId, loopId, turnId }, 1, {}, null);
@@ -542,7 +542,7 @@ test("{§problems-schemes} Log.read: an empty-extent 416 without a recorded stre
         assert.equal(miss.problem?.type, "https://problems.plurnk.xyz/schemes/slicer/range-not-satisfiable");
         assert.deepEqual(miss.problem?.range, { unit: "line", total: 0, requested: [2, 3] });
         assert.equal(Object.hasOwn(miss.problem ?? {}, "stream"), false);
-        assert.equal(miss.problem?.recovery, "Choose a range within the available extent."); // {§problems-schemes}
+        assert.equal(miss.problem?.recovery, "Choose a range within the available extent."); // {§slicer-text-algebra}
         assert.equal(miss.problem?.detail, "Range 2,3 cannot select from empty content.");
         assert.equal(miss.problem?.retryable, false);
     } finally { db.close(); }
@@ -2449,7 +2449,7 @@ test("{§log-kill-scope}: trimming invalidates search and a racing derivation ca
 });
 
 // {§log-kill-scope} — the recorded emission replayed through the parser and the engine.
-test("{§log-kill-scope} {§range-starts-at-one}: `KILL (log:///…/READ) <0, -1>` is refused 416 with the forms a log body takes, which then work", async (t) => {
+test("{§log-kill-scope} {§slicer-text-algebra}: `KILL (log:///…/READ) <0, -1>` is refused 416 with the forms a log body takes, which then work", async (t) => {
     const { dispatch } = await runtime(t);
     await dispatch("````EDIT (workspace:///source.txt)\none\ntwo\n````");
     await dispatch("````READ (workspace:///source.txt) <1,-1>````");

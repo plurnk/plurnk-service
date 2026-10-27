@@ -330,7 +330,7 @@ const setup = async (mimetypes = DEFAULT_MIMETYPES) => {
 for (const transfer of [copyStmt, moveStmt]) {
     const op = transfer(urlPath("workspace", "/src"), urlPath("workspace", "/dst")).op;
     for (const binary of [false, true]) {
-        test(`{§mimetype-verbatim-transfer}: ${op} honors a handler's ${binary ? "binary" : "textual"} classification over the MIME prefix`, async () => {
+        test(`{§network-address}: ${op} honors a handler's ${binary ? "binary" : "textual"} classification over the MIME prefix`, async () => {
             const mimetype = binary ? "text/x-encoded" : "application/x-treeish";
             const body = binary ? "AP+A" : content;
             const mimetypes = new Mimetypes({
@@ -361,7 +361,7 @@ for (const transfer of [copyStmt, moveStmt]) {
     }
 
     for (const pathname of ["/notes.txt", "/notes.md", "/notes"]) {
-        test(`{§mimetype-verbatim-transfer}: ${op} plain text to new ${pathname} preserves content and resolves the destination type`, async () => {
+        test(`{§network-address}: ${op} plain text to new ${pathname} preserves content and resolves the destination type`, async () => {
             const { db, seed, read, dispatch } = await setup();
             try {
                 const body = content.replaceAll("\n", "\r\n");
@@ -416,7 +416,7 @@ for (const transfer of [copyStmt, moveStmt]) {
         ["text/vnd.plurnk", "text/plain"],
         ["application/json", "text/markdown"],
     ] as const) {
-        test(`{§mimetype-verbatim-transfer}: scoped ${op} ${sourceMimetype} → ${destinationMimetype} preserves both declared types`, async () => {
+        test(`{§network-address}: scoped ${op} ${sourceMimetype} → ${destinationMimetype} preserves both declared types`, async () => {
             const { db, seed, read, dispatch } = await setup();
             try {
                 await seed("/src", sourceMimetype);
@@ -441,7 +441,7 @@ for (const transfer of [copyStmt, moveStmt]) {
         ["text/html", "<p>value</p>"],
         ["text/csv", "k,v\n1,2\n"],
     ] as const) {
-        test(`{§mimetype-verbatim-transfer}: ${op} from ${mimetype} to Markdown preserves the original text without conversion`, async () => {
+        test(`{§network-address}: ${op} from ${mimetype} to Markdown preserves the original text without conversion`, async () => {
             const { db, seed, read, dispatch } = await setup();
             try {
                 await seed("/src", mimetype, body);
@@ -587,7 +587,7 @@ for (const transfer of [copyStmt, moveStmt]) {
         } finally { await db.close(); }
     });
 
-    test(`{§mimetype-verbatim-transfer}: ${op} creates a declared plain channel from Markdown without relabeling or disturbing siblings`, async () => {
+    test(`{§network-address}: ${op} creates a declared plain channel from Markdown without relabeling or disturbing siblings`, async () => {
         const { db, seed, read, dispatch } = await setup();
         try {
             const content = "# Finding\n\tverbatim <text> → result\n";
@@ -1551,7 +1551,7 @@ const binaryReadStmt = (pathname: string): ReadStatement => ({
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("{§scheme-source-bytes} bytes declared as text retain exact UTF-8 rather than exposing base64", async () => {
+test("{§scheme-operation-dispatch} bytes declared as text retain exact UTF-8 rather than exposing base64", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "text-bytes");
@@ -1865,7 +1865,7 @@ test("{§fs-write-surface} {§copy}: COPY workspace:/// → file proposes then l
 for (const transfer of [copyStmt, moveStmt]) {
     const op = transfer(urlPath("workspace", "/note"), localPath("copied.txt")).op;
     for (const decision of ["accept", "reject"] as const) {
-        test(`{§mimetype-verbatim-transfer}: ${op} plain text to a file respects ${decision} before changing either resource`, async () => {
+        test(`{§network-address}: ${op} plain text to a file respects ${decision} before changing either resource`, async () => {
             await withWorkspace(async (root, ctx) => {
                 const content = "## Result\r\n\t<verbatim> café\r\n";
                 await seedEntryWithChannel(ctx.db, { workspaceId: ctx.workspaceId, pathname: "/note", content, mimetype: "text/plain" });

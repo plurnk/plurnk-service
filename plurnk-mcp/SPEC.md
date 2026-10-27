@@ -854,7 +854,7 @@ Resource publication is passive; completion of the originating execution retains
 its ordinary wake semantics. A single `resources/read` content item becomes the
 resource's typed body; multiple items become named children under its `resources/`
 folder and a directory of links. Each response retains its complete `#json` evidence;
-reconstructing the same collection preserves child paths ({§resource-publication-names}).
+reconstructing the same collection preserves child paths ({§scheme-operation-dispatch}).
 Generated catalogs and prompt documents use two-space
 JSON indentation; individual text resources preserve their source layout. A
 standalone `blob` content block is not a modern `tools/call` content member

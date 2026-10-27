@@ -4,7 +4,7 @@ import Slicer from "./Slicer.ts";
 
 const TEXT = "alpha\nbeta\ngamma\ndelta\n";
 
-test("{§slicer-window} window resolves a positional marker against a total with the algebra of lines()", () => {
+test("{§slicer-text-algebra} window resolves a positional marker against a total with the algebra of lines()", () => {
     assert.deepEqual(Slicer.window({ marks: [1, 16] }, 40, "byte"), { status: 200, start: 1, end: 16, range: { unit: "byte", total: 40, requested: [1, 16], returned: [1, 16] } });
     assert.deepEqual(Slicer.window({ marks: [17, -1] }, 40, "byte"), { status: 200, start: 17, end: 40, range: { unit: "byte", total: 40, requested: [17, -1], returned: [17, 40] } });
     assert.deepEqual(Slicer.window({ marks: [7] }, 40, "byte").start, 7);
@@ -359,10 +359,10 @@ test("{§slicer-text-algebra} page rejects fractional result positions instead o
 });
 
 for (const marks of [[2, 1, 4], [1620, 1, 1660, 1]] as Array<[number, ...number[]]>) {
-    test(`{§pinned-wording-schemes} {§text-region} page rejects ${marks.length} positions, naming them as written and no extent`, () => {
+    test(`{§slicer-text-algebra} {§text-region} page rejects ${marks.length} positions, naming them as written and no extent`, () => {
         const result = Slicer.page(["a", "b"], { marks });
         assert.equal(result.status, 416);
-        assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§pinned-wording-schemes}
+        assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§slicer-text-algebra}
         assert.deepEqual(result.problem?.requestedPositions, marks);
         assert.equal(result.range, undefined, "an extent holds one or two positions");
         assert.equal(result.problem?.range, undefined);
@@ -403,14 +403,14 @@ test("{§slicer-text-algebra} lineMarkerEditBatch composes disjoint line and exa
     assert.equal(result.result, "aBcde\nsecond\nTHIRD\n");
 });
 
-test("{§problems-schemes} lineMarkerEditBatch rejects every kind of overlap atomically", () => {
+test("{§slicer-text-algebra} lineMarkerEditBatch rejects every kind of overlap atomically", () => {
     const rangeOverlap = Slicer.lineMarkerEditBatch(TEXT, [
         { marker: { marks: [2, 3] }, body: "middle" },
         { marker: { marks: [3, 4] }, body: "tail" },
     ]);
     assert.equal(rangeOverlap.status, 409);
     assert.equal(rangeOverlap.result, undefined);
-    assert.equal(rangeOverlap.problem?.detail, "Two EDIT regions overlap."); // {§problems-schemes}
+    assert.equal(rangeOverlap.problem?.detail, "Two EDIT regions overlap."); // {§slicer-text-algebra}
     assert.deepEqual(rangeOverlap.problem?.conflictingRegions, [[2, 3], [3, 4]]);
     assert.equal(rangeOverlap.problem?.conflictingRanges, undefined, "one coordinate representation owns the conflict");
 
@@ -425,7 +425,7 @@ test("{§problems-schemes} lineMarkerEditBatch rejects every kind of overlap ato
     assert.deepEqual(insertions.merges, [{ index: 1, rule: "same-insertion-point", after: 0 }]);
 });
 
-test("{§problems-schemes} lineMarkerEditBatch rejects a whole-resource replacement mixed with another edit", () => {
+test("{§slicer-text-algebra} lineMarkerEditBatch rejects a whole-resource replacement mixed with another edit", () => {
     const result = Slicer.lineMarkerEditBatch("one\ntwo\n", [
         { marker: { marks: [1, -1] }, body: "all" },
         { marker: { marks: [-1] }, body: "tail" },
@@ -445,7 +445,7 @@ test("{§slicer-text-algebra} an empty result set satisfies any well-formed page
     assert.equal(inverted.status, 416, "an inverted range is the one unsatisfiable page");
 });
 
-test("{§problems-schemes} an overlap receipt carries the whole conflict graph, the clean regions, and the applied count (#428)", () => {
+test("{§slicer-text-algebra} an overlap receipt carries the whole conflict graph, the clean regions, and the applied count (#428)", () => {
     const six = "a\nb\nc\nd\ne\nf\n";
     const result = Slicer.lineMarkerEditBatch(six, [
         { marker: { marks: [1, 4] }, body: "outer" },
@@ -454,7 +454,7 @@ test("{§problems-schemes} an overlap receipt carries the whole conflict graph, 
         { marker: { marks: [6, 6] }, body: "clean" },
     ]);
     assert.equal(result.status, 409);
-    assert.equal(result.problem?.detail, "Two EDIT regions overlap."); // {§problems-schemes}
+    assert.equal(result.problem?.detail, "Two EDIT regions overlap."); // {§slicer-text-algebra}
     assert.deepEqual(result.problem?.conflictingRegions, [[1, 4], [2, 2]], "conflictingRegions names the first pair");
     assert.deepEqual(result.problem?.conflicts, [
         { regions: [[1, 4], [2, 2]], relation: "one contains the other" },
@@ -564,7 +564,7 @@ test("{§op-methods-op-dispatch} containment whose inner lines occur twice in th
     assert.equal(result.status, 409);
     assert.match(String(result.problem?.recovery), /one contains the other/);
 });
-test("{§slicer-window} an empty byte source returns no coordinates, never the invalid [1,0] range", () => {
+test("{§slicer-text-algebra} an empty byte source returns no coordinates, never the invalid [1,0] range", () => {
     for (const marks of [[1, 16], [1, -1], [0], [-1]] satisfies [number, ...number[]][]) {
         assert.deepEqual(Slicer.window({ marks }, 0, "byte"), {
             status: 200, start: null, end: null, range: { unit: "byte", total: 0, requested: marks.length === 1 ? [marks[0], marks[0]] : marks },
@@ -572,17 +572,17 @@ test("{§slicer-window} an empty byte source returns no coordinates, never the i
     }
 });
 
-// {§range-starts-at-one} (#853)
+// {§slicer-text-algebra} (#853)
 const HEAD = Array.from({ length: 800 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
-test("{§range-starts-at-one} {§diagnostic-observation} EDIT <0,795> is refused 416 with the working line forms, never a rebuilt range; the file is untouched", () => {
+test("{§slicer-text-algebra} {§diagnostic-observation} EDIT <0,795> is refused 416 with the working line forms, never a rebuilt range; the file is untouched", () => {
     const result = Slicer.lineMarkerEdit(HEAD, { marks: [0, 795] }, "def test_new():\n    pass");
     assert.equal(result.status, 416);
     assert.equal(result.result, undefined, "no content is produced");
-    assert.equal(result.problem?.detail, "Range <0,795> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§pinned-wording-schemes}
+    assert.equal(result.problem?.detail, "Range <0,795> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§slicer-text-algebra}
     assert.equal(
         result.problem?.recovery,
         "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.",
-    ); // {§pinned-wording-schemes}
+    ); // {§slicer-text-algebra}
     assert.deepEqual(result.problem?.range, { unit: "line", total: 800, requested: [0, 795] });
 });
 
@@ -598,12 +598,12 @@ test("{§zero-width-column-one-insert} wholeLineBody appends the content's separ
     assert.equal(Slicer.lineMarkerEdit("a\nb", { marks: [2, 1, 2, 1] }, Slicer.wholeLineBody("a\nb", { marks: [2, 1, 2, 1] }, "X")).result, "a\nX\nb");
 });
 
-test("{§range-starts-at-one} the strict slicing and mutation algebra rejects <0,-1>, including on empty content", () => {
-    const recovery = "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything."; // {§pinned-wording-schemes}
+test("{§slicer-text-algebra} the strict slicing and mutation algebra rejects <0,-1>, including on empty content", () => {
+    const recovery = "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything."; // {§slicer-text-algebra}
     for (const content of [HEAD, ""]) {
         const edit = Slicer.lineMarkerEdit(content, { marks: [0, -1] }, "replacement");
         assert.equal(edit.status, 416, `EDIT on ${content.length} chars`);
-        assert.equal(edit.problem?.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§pinned-wording-schemes}
+        assert.equal(edit.problem?.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the <0> prepend position."); // {§slicer-text-algebra}
         assert.equal(edit.problem?.recovery, recovery);
         assert.equal(Slicer.lines(content, { marks: [0, -1] }).problem?.recovery, recovery);
         assert.equal(Slicer.linesRaw(content, { marks: [0, -1] }).problem?.recovery, recovery);
@@ -611,23 +611,23 @@ test("{§range-starts-at-one} the strict slicing and mutation algebra rejects <0
     assert.equal(Slicer.lineMarkerEdit("", { marks: [1, -1] }, "all").result, "all", "the documented whole-content form still writes empty content");
 });
 
-test("{§range-starts-at-one} lines() requires the READ projection to normalize a zero start before slicing", () => {
+test("{§slicer-text-algebra} lines() requires the READ projection to normalize a zero start before slicing", () => {
     const result = Slicer.lines(HEAD, { marks: [0, 30] });
     assert.equal(result.status, 416);
     assert.equal(result.text, undefined);
     assert.equal(result.problem?.recovery, "<L,M> selects lines L through M; <0> prepends and <-1> appends without replacing anything.");
 });
 
-test("{§range-starts-at-one} pages and byte windows refuse a zero start in their own unit", () => {
+test("{§slicer-text-algebra} pages and byte windows refuse a zero start in their own unit", () => {
     const page = Slicer.page(["a", "b"], { marks: [0, -1] }, { unit: "resource" });
     assert.equal(page.status, 416);
-    assert.equal(page.problem?.detail, "Range <0,-1> starts at 0; resource positions are numbered from 1."); // {§pinned-wording-schemes}
-    assert.equal(page.problem?.recovery, "Choose a range within the available extent."); // {§problems-schemes}
+    assert.equal(page.problem?.detail, "Range <0,-1> starts at 0; resource positions are numbered from 1."); // {§slicer-text-algebra}
+    assert.equal(page.problem?.recovery, "Choose a range within the available extent."); // {§slicer-text-algebra}
     assert.equal(Slicer.page([], { marks: [0, 5] }, { unit: "resource" }).status, 416, "an empty result set does not excuse a zero start");
     const window = Slicer.window({ marks: [0, 16] }, 40, "byte");
     assert.equal(window.status, 416);
-    assert.equal(window.problem?.detail, "Range <0,16> starts at 0; byte positions are numbered from 1."); // {§pinned-wording-schemes}
-    assert.equal(window.problem?.recovery, "Choose a range within the available extent."); // {§problems-schemes}
+    assert.equal(window.problem?.detail, "Range <0,16> starts at 0; byte positions are numbered from 1."); // {§slicer-text-algebra}
+    assert.equal(window.problem?.recovery, "Choose a range within the available extent."); // {§slicer-text-algebra}
     assert.equal(Slicer.window({ marks: [0] }, 40, "byte").start, null, "the single <0> position stays a sentinel");
 });
 

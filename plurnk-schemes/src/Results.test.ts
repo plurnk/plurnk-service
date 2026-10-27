@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { EntryResult, PassthroughResult, ProposalResult, SchemeResult } from "./Results.ts";
 import Results from "./Results.ts";
 
-test("{§result-shape-guards} shape discriminator narrows each family", () => {
+test("{§slicer-text-algebra} shape discriminator narrows each family", () => {
     const entry: EntryResult = { shape: "entry", status: 201, entryId: 7, channel: "body" };
     const proposal: ProposalResult = { shape: "proposal", status: 202, body: "preview", diff: "@@ -1 +1 @@" };
     const passthrough: PassthroughResult = { shape: "passthrough", status: 200, content: "row", mimetype: "application/json" };
@@ -19,7 +19,7 @@ test("{§result-shape-guards} shape discriminator narrows each family", () => {
     assert.equal(Results.isProposal(passthrough), false);
 });
 
-test("{§result-shape-guards} shape guards are mutually exclusive and optional on a scheme result", () => {
+test("{§slicer-text-algebra} shape guards are mutually exclusive and optional on a scheme result", () => {
     const results: SchemeResult[] = [
         { shape: "entry", status: 200, entryId: 1, channel: "body" },
         { shape: "proposal", status: 202 },
@@ -35,7 +35,7 @@ test("{§result-shape-guards} shape guards are mutually exclusive and optional o
     assert.equal(Results.isPassthrough(results[3]), false);
 });
 
-test("{§result-shape-guards} SchemeResult permits extension-owned metadata without adopting a conventional shape", () => {
+test("{§slicer-text-algebra} SchemeResult permits extension-owned metadata without adopting a conventional shape", () => {
     const result: SchemeResult = {
         status: 207,
         cursor: "next-page",
@@ -45,7 +45,7 @@ test("{§result-shape-guards} SchemeResult permits extension-owned metadata with
     assert.deepEqual(result.diagnostics, { source: "plugin" });
 });
 
-test("{§result-error-status} isErrorStatus marks 4xx/5xx and only those", () => {
+test("{§slicer-text-algebra} isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(200), false);
     assert.equal(Results.isErrorStatus(201), false);
     assert.equal(Results.isErrorStatus(304), false);
@@ -93,7 +93,7 @@ test("{§diagnostic-observation} assert rejects a bare failure and a mismatched 
     );
 });
 
-test("{§read-preparation} representation preparation distinguishes ready, live, and terminal outcomes", () => {
+test("{§scheme-operation-dispatch} representation preparation distinguishes ready, live, and terminal outcomes", () => {
     for (const result of [
         { status: 200 },
         { status: 102 },
@@ -115,7 +115,7 @@ test("{§read-preparation} representation preparation distinguishes ready, live,
     }
 });
 
-test("{§read-preparation} channel producer results are terminal and cannot preempt core projection", () => {
+test("{§scheme-operation-dispatch} channel producer results are terminal and cannot preempt core projection", () => {
     const result = { status: 203, producer: "specimen" };
     assert.equal(Results.assertChannelProducerResult(result), result);
     assert.throws(
@@ -176,7 +176,7 @@ test("{§slicer-text-algebra} assert validates schemes-owned scope normalization
     );
 });
 
-test("{§read-zero-start}: normalization evidence admits only an exact recoverable start correction", () => {
+test("{§slicer-text-algebra}: normalization evidence admits only an exact recoverable start correction", () => {
     for (const end of [1, 120, -1]) {
         const result = { status: 200, scopeNormalizations: [{ requested: [0, end] as const, canonical: [1, end] as const }] };
         assert.equal(Results.assert(result), result);

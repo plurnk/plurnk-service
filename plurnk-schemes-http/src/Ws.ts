@@ -1,5 +1,5 @@
-// WebSocket handler. {§ws} owns its operation surface; {§ws-lifecycle} owns
-// address claims and settlement. Retained sockets follow {§handler-lifecycle}
+// WebSocket handler. {§ws-lifecycle} owns its operation surface; {§ws-lifecycle} owns
+// address claims and settlement. Retained sockets follow {§scheme-operation-dispatch}
 // and use the canonical network identity {§network-address}.
 
 import { Validator } from "@plurnk/plurnk-contracts";
@@ -66,7 +66,7 @@ interface SocketOwner {
     readonly acquisition: Promise<RepresentationPreparationResult>;
 }
 
-// An admitted frame target, or the refusal that stands in for one ({§http-outbound-proposes}).
+// An admitted frame target, or the refusal that stands in for one ({§http-manifest}).
 type OpenSocket = { ok: true; address: NetworkAddress; socket: Socket } | { ok: false; result: PassthroughResult };
 
 const SOCKET_OPEN = 1;
@@ -481,7 +481,7 @@ export default class Ws implements SchemeHandler {
         return Ws.#propose("SEND", statement.target, statement.body?.raw ?? "");
     }
 
-    // {§http-outbound-proposes} — a frame is data leaving the process, so EDIT and SEND propose
+    // {§http-manifest} — a frame is data leaving the process, so EDIT and SEND propose
     // and write on the settlement. The socket is live, so this admission runs twice: once before
     // the proposal, so nobody is asked to approve a frame on a socket that is not open, and again
     // at apply, because it may have closed while the question was open.

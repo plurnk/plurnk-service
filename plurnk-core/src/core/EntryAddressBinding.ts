@@ -13,7 +13,7 @@ export interface EntryAddressResolution {
     readonly result: SchemeResult | null;
 }
 
-// {§entry-address-resolution} One canonical resource address in the workspace.
+// {§scheme-operation-dispatch} One canonical resource address in the workspace.
 export default class EntryAddressBinding {
     static addressContext({ workspaceId, sessionId, loopId, turnId, writer, signal }: PlurnkSchemeContext): SchemeAddressCtx {
         return { workspaceId, sessionId, loopId, turnId, writer, signal };

@@ -213,7 +213,7 @@ const prepareRepresentation = (ws: Ws, statement: ReadStatement, ctx: SchemeCtx)
 const sendStmt = (target: UrlPath, body?: string): SendStatement => ({ op: "SEND", aside: null, target, metadata: null, lineMarker: null, body: body === undefined ? null : { raw: body, json: null }, position: { line: 0, column: 0 } });
 const killStmt = (target: UrlPath): KillStatement => ({ op: "KILL", aside: null, target, metadata: null, lineMarker: null, matcher: null, body: null, position: { line: 0, column: 0 } });
 
-// {§http-outbound-proposes} — a frame is data leaving the process, so EDIT and SEND propose. A test
+// {§http-manifest} — a frame is data leaving the process, so EDIT and SEND propose. A test
 // that means to observe the FRAME settles the proposal the way the dispatcher does on accept; a
 // refusal (no socket, socket not open, host policy) arrives before any proposal and passes through.
 const settle = async (ws: Ws, ctx: SchemeCtx, result: PassthroughResult | ProposalResult) =>
@@ -726,7 +726,7 @@ test("{§ws-lifecycle} WebSocket userinfo is rejected before connection", async 
     assert.equal(connected, false);
 });
 
-test("{§pinned-wording-http} EDIT and SEND: no claimed socket → 409", async () => {
+test("{§http-manifest} EDIT and SEND: no claimed socket → 409", async () => {
     const { ctx } = makeCtx();
     const ws = new Ws(() => fakeSocket());
     const target = wss(PUB, "/feed");
@@ -735,7 +735,7 @@ test("{§pinned-wording-http} EDIT and SEND: no claimed socket → 409", async (
     for (const result of [edit, send]) {
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/no-open-socket");
-        assert.equal(result.problem?.recovery, "READ the WebSocket URL before sending a message."); // {§pinned-wording-http}
+        assert.equal(result.problem?.recovery, "READ the WebSocket URL before sending a message."); // {§http-manifest}
     }
 });
 
@@ -776,7 +776,7 @@ test("{§ws-lifecycle} EDIT: ranges and multi-edit pseudo-atomicity are rejected
     assert.equal(multiple.problem?.type, "https://problems.plurnk.xyz/scheme/wss/non-atomic-edit-batch");
 });
 
-test("{§pinned-wording-http} SEND: a socket send throw becomes a structured transport failure", async () => {
+test("{§http-manifest} SEND: a socket send throw becomes a structured transport failure", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => ({
         ...sock,
@@ -791,7 +791,7 @@ test("{§pinned-wording-http} SEND: a socket send throw becomes a structured tra
     const result = await wsSend(ws, sendStmt(wss(PUB, "/feed"), "ping"), ctx);
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/send-failed");
-    assert.equal(result.problem?.detail, "The WebSocket message could not be sent."); // {§pinned-wording-http}
+    assert.equal(result.problem?.detail, "The WebSocket message could not be sent."); // {§http-manifest}
     assert.equal(result.problem?.stage, "transfer");
     sock.close(1000);
     await read;
@@ -837,7 +837,7 @@ test("{§ws-lifecycle} KILL: no claimed socket → 404", async () => {
     assert.equal(r.problem?.type, "https://problems.plurnk.xyz/scheme/wss/no-open-socket");
 });
 
-test("{§pinned-wording-http} KILL: a socket close throw becomes a structured transport failure", async () => {
+test("{§http-manifest} KILL: a socket close throw becomes a structured transport failure", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => ({
         ...sock,
@@ -849,7 +849,7 @@ test("{§pinned-wording-http} KILL: a socket close throw becomes a structured tr
     const result = await ws.kill(killStmt(wss(PUB, "/feed")), ctx);
     assert.equal(result.status, 502);
     assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/wss/close-failed");
-    assert.equal(result.problem?.detail, "The WebSocket connection could not be closed."); // {§pinned-wording-http}
+    assert.equal(result.problem?.detail, "The WebSocket connection could not be closed."); // {§http-manifest}
 });
 
 test("{§ws-lifecycle} READ: message persistence failure settles with a structured problem", async () => {
@@ -1029,7 +1029,7 @@ test("{§ws-lifecycle} handler close settles every READ and aggregates transport
     assert.deepEqual((await Promise.all(reads)).map(({ status }) => status), [499, 499]);
 });
 
-test("{§http-outbound-proposes} EDIT and SEND propose with the host effect, and no frame leaves before settlement", async () => {
+test("{§http-manifest} EDIT and SEND propose with the host effect, and no frame leaves before settlement", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, awaitClosed } = makeCtx();
@@ -1064,7 +1064,7 @@ test("{§http-outbound-proposes} EDIT and SEND propose with the host effect, and
     await awaitClosed();
 });
 
-test("{§http-outbound-proposes} a socket that closed while the proposal was open refuses at apply", async () => {
+test("{§http-manifest} a socket that closed while the proposal was open refuses at apply", async () => {
     const sock = fakeSocket();
     const ws = new Ws(() => sock);
     const { ctx, awaitClosed } = makeCtx();

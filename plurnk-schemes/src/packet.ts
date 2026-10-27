@@ -1,4 +1,4 @@
-// {§scheme-packet-transform} — public authoring surface for trusted packet
+// {§network-address} — public authoring surface for trusted packet
 // transforms. Measurement remains core-owned.
 
 export interface PacketSectionDraft {

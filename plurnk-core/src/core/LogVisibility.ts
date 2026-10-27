@@ -116,7 +116,7 @@ export default class LogVisibility {
 
         const rawEnd = marks[1];
         const written = `<${first},${rawEnd}>`;
-        // {§range-starts-at-one} — one rule with the file slicer: a range never starts at 0 and is
+        // {§slicer-text-algebra} — one rule with the file slicer: a range never starts at 0 and is
         // never clamped; the refusal is its 416 in its words, naming the forms a log body takes.
         if (first < 1) return { ...refuse(`Range ${written} starts at ${first}, which is not a line; lines are numbered from 1.`), status: 416, code: "range-not-satisfiable" };
         if (rawEnd !== -1 && rawEnd < 1) {

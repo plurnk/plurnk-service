@@ -1082,7 +1082,7 @@ test("{§operation-results} Engine.dispatch: a scoped READ anchor includes nearb
     } finally { await db.close(); }
 });
 
-test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor resolution and landing is an edit collision", async () => {
+test("{§scheme-operation-dispatch} Engine.dispatch: a mutation between anchor resolution and landing is an edit collision", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `anchor-race-${crypto.randomUUID()}`);
     const target = urlPath("racy", "/unit.md");
@@ -1855,7 +1855,7 @@ second
 describe("File.reviewed-batch", () => {
 const execFileP = promisify(execFile);
 
-test("{§scheme-edit-proposal-receipt} {§edit-result-receipt-projection} {§op-methods-op-dispatch}: reviewer replacement supersedes only its EDIT; the next scope addresses the landed content", async () => {
+test("{§capability-ctx} {§edit-result-receipt-projection} {§op-methods-op-dispatch}: reviewer replacement supersedes only its EDIT; the next scope addresses the landed content", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-reviewed-batch-"));
     try {
         await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });

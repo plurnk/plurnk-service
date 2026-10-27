@@ -54,7 +54,7 @@ export const makeHandlerCtx = async (
         authority,
     });
 
-// {§http-outbound-proposes} — POST, PUT and the remote DELETE propose before anything leaves the
+// {§http-manifest} — POST, PUT and the remote DELETE propose before anything leaves the
 // process. A test that drives a scheme directly (no dispatcher, so no settlement arrives) and
 // means to observe the REQUEST settles the proposal itself, exactly as the dispatcher would on
 // an accept. A non-proposal result passes through, so a refusal keeps its own status.
@@ -68,7 +68,7 @@ export const settleOutbound = async <T extends { status: number; attrs?: object 
     return handler.applyResolution({ attrs: result.attrs ?? {}, metadata }, ctx as never);
 };
 
-// {§http-outbound-proposes} — a session's operation that proposes needs a settlement: its owner answers
+// {§http-manifest} — a session's operation that proposes needs a settlement: its owner answers
 // the `loop/proposal` event it receives. A test that only means to observe the operation does the same.
 // A dispatch that never proposes passes straight through.
 interface ProposalSettler {

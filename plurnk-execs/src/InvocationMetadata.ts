@@ -6,7 +6,7 @@ type Parsed = { options: Options } | { failure: SchemeResult };
 
 // {§executor-metadata} The executor framework READS the heading's `[metadata]` as a JSON array
 // of option objects — house policy, not a language rule ({§slot-order}); the
-// default executor contract owns no metadata keys beyond the service's ({§service-metadata-keys}).
+// default executor contract owns no metadata keys beyond the service's ({§manifest}).
 export default class InvocationMetadata {
     static parse(input: ExecInput): Parsed {
         const fail = (code: string, detail: string, recovery?: string): Parsed => ({
@@ -23,7 +23,7 @@ export default class InvocationMetadata {
     }
 
     // {§executor-metadata} — an unsupported field's recovery names every field the run takes, the
-    // service's ({§service-metadata-keys}), and no guess at the field the author meant ({§diagnostic-observation}).
+    // service's ({§manifest}), and no guess at the field the author meant ({§diagnostic-observation}).
     static #fields(): string {
         const names = MetadataOptions.SERVICE_KEYS.map((name) => `\`${name}\``);
         return names.length === 1

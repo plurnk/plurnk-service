@@ -1276,7 +1276,7 @@ test("a tolerated three-coordinate scope reports its exact canonical region on t
     } finally { await db.close(); }
 });
 
-test("{§read-zero-start}: a zero-start READ delivers its body and one warning without a failed operation", async () => {
+test("{§slicer-text-algebra}: a zero-start READ delivers its body and one warning without a failed operation", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         await seedEntryWithChannel(db, { workspaceId, pathname: "/zero-start", content: "alpha\nbeta\ngamma", mimetype: "text/plain" });

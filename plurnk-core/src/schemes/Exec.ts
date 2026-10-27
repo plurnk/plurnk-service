@@ -119,7 +119,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     // The web-fetch the entry sink calls on content:null ({§execution-output-identity}); default = the
     // registry's web materializer, injectable for tests. Materialization always goes through
-    // the registry ({§web-materialization-contract}): core names no extension package.
+    // the registry ({§scheme-operation-dispatch}): core names no extension package.
     readonly #fetchWeb: WebFetch;
     readonly #materializer: () => WebMaterializer;
     #execution: { scheduler: ExecScheduler } | null = null;
@@ -148,7 +148,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         await Promise.allSettled([...this.#activeSpawns.values()]);
     }
 
-    // {§handler-lifecycle} — idle is the streaming drain barrier.
+    // {§scheme-operation-dispatch} — idle is the streaming drain barrier.
     async close(): Promise<void> {
         await this.idle();
     }

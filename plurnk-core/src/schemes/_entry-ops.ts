@@ -20,7 +20,7 @@ import FileAddress from "../core/FileAddress.ts";
 // follows SPEC {§channel-selection}: path.fragment ?? manifest.defaultChannel.
 
 // Produce the aggregate scheme receipt owned by
-// {§scheme-edit-batch-receipt}; core projects each authored row under
+// {§scheme-operation-dispatch}; core projects each authored row under
 // {§edit-result-receipt-projection}.
 export type EditResult = SchemeResultBase & { entryId: number | null; channel: string | null; editReceipt?: EditBatchReceipt | null };
 // startLine = 1-indexed position the content starts at in the original

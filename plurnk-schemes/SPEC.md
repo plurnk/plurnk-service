@@ -1,177 +1,41 @@
-# plurnk-schemes — Specification
+# `@plurnk/plurnk-schemes` Specification
 
-Contract for `@plurnk/plurnk-schemes-*` sibling packages. Audience: implementer of a URI scheme handler. Consumer: [plurnk-service](https://github.com/plurnk/plurnk-service) (SPEC.md §3).
+Contract for `@plurnk/plurnk-schemes-*` sibling packages, entry/channel handler dispatch, text/window slicing, and third-party scheme discovery.
 
-## §manifest §1 Manifest
+## §manifest Scheme manifest
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§manifest-authority} | `authority?` — URI-authority disposition: `"namespace"` folds authored authority into pathname; `"resource"`… |
-| {§manifest-metadata-modifier} | `metadataModifier?` — `true` declares `[metadata]` on resource operations. |
-| {§manifest-capability-traits} | `traits?` — Unique lowercase capability facts (for example `web` or `interaction`). |
-| {§manifest-client-display} | `glyph?` — Non-empty opaque client presentation glyph. |
-| {§service-metadata-keys} | The service's reserved keys are withheld from every owner. |
-| {§manifest-self-doc} | Discoverable scheme references. |
-<!-- /map -->
-
-```json
-{
-    "name": "@plurnk/plurnk-schemes-<name>",
-    "plurnk": { "kind": "scheme", "name": "<scheme name>" }
-}
-```
-
-Class-level manifest (static field on the default export):
-
-```ts
-import type { SchemeManifest } from "@plurnk/plurnk-schemes";
-
-class Notes {
-    static manifest: SchemeManifest = {
-        name: "notes",
-        authority: "namespace",
-        channels: { body: "text/markdown", preview: "text/markdown" },
-        defaultChannel: "body",
-        category: "data",
-        writableBy: ["model", "client"],
-        volatile: false,
-        modelVisible: true,
-        textEditScopes: true,
-        traits: ["web"],
-    };
-}
-```
+Every scheme package declares `plurnk: { "kind": "scheme", "name": "<scheme>" }` (or `plurnk.schemes: [{ name, export }]`) in `package.json` and exposes a static or instance `manifest: SchemeManifest` validated by `Manifest.of`:
 
 | Field | Constraint |
 |---|---|
-| `name` | Matches `package.json#plurnk.name`. Addressing/routing identity (the URI prefix). |
-| §manifest-authority `authority?` | URI-authority disposition: `"namespace"` folds authored authority into pathname; `"resource"` preserves it as the entry authority. Absent means `"namespace"`. |
-| `channels` | `Record<channelName, mimetype>` for declared channel types. Channel names lowercase; an untyped default may coexist with typed siblings. |
-| `defaultChannel` | Lowercase channel targeted when path has no `#fragment`. Its omission from `channels` means its type is determined per resource; empty means no default. |
-| `category` | `"data"` (entry-bearing) \| `"logging"` (`log://` rows) \| `"control"` (owns no entries). |
-| `writableBy` | Subset of `["model", "client", "_plurnk"]`; empty declares a scheme no operation writes, such as a runtime's output, which its execution writes through its own stream. Consumer returns 403 for outside-set writes. |
+| `name` | Matches `package.json#plurnk.name` (the addressing/routing URI prefix). |
+| `authority?` | `"namespace"` (default — folds authored authority into pathname) or `"resource"` (preserves it as the entry authority). |
+| `channels` | `Record<channelName, mimetype>` for declared channel types. Channel names are lowercase; an untyped default may coexist with typed siblings. |
+| `defaultChannel` | Lowercase channel targeted when a path has no `#fragment`. Omission from `channels` means its type is determined per resource; empty string means no default. |
+| `category` | `"data"` (entry-bearing), `"logging"` (`log://` rows), or `"control"` (owns no entries). |
+| `writableBy` | Subset of `["model", "client", "_plurnk"]`; empty declares a scheme no operation writes (such as runtime output). Consumer returns `403` for outside-set writes. |
 | `volatile` | Boolean. |
 | `modelVisible` | Boolean. |
-| `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
-| `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring EDIT support. |
-| `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. It implies published anchors only on resources authorized for model writes by {§entry-address-resolution}; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
-| §manifest-metadata-modifier `metadataModifier?` | `true` declares `[metadata]` on resource operations. Absent/false rejects it at dispatch; admitted turns first apply {§outside-text}. SEND recipients own their message metadata independently; accepting SEND options does not enable resource-read options. |
-| §manifest-capability-traits `traits?` | Unique lowercase capability facts (for example `web` or `interaction`). The scheme declares facts only; the consumer's general capability-policy cascade decides admission. |
-| `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `workspace:///_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
-| §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§mcp-server-definition}; omission delegates identity fallback to the client. It never enters model teaching. |
-| `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
+| `folderScopes?` | `true` declares that a trailing slash on `FIND` is a collection scope; absent/`false` treats `/` as ordinary resource syntax. |
+| `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring `EDIT` support. |
+| `textEditScopes?` | `true` declares the shared textual `EDIT` coordinate and collision contract (`{§line-anchors}`). Handlers receive numeric coordinates only and route standard entry mutation through `ctx.entries.operations.editBatch`. |
+| `metadataModifier?` | `true` opts into `[metadata]` on resource operations (`{§slot-order}`). Absent/`false` rejects `[metadata]` at dispatch with non-retryable `400 scheme-metadata-unsupported`. |
+| `traits?` | Unique lowercase capability facts matching `^[a-z][a-z0-9-]*$` (e.g. `web`, `interaction`) consumed by `{§capability-admission}`. |
+| `documentation?` | Deep reference Markdown (loaded from `docs/<name>.md`) with an exact H2 `Summary`, materialized on demand at `workspace:///_plurnk/plurnk/<name>.md` (`FIND` projects H2 `Summary`; `READ` retrieves the body). |
+| `glyph?` | Non-empty opaque client presentation glyph projected through `{§mcp-server-definition}`; never enters model teaching. |
+| `storedScheme?` | Non-null string persisted to `entries.scheme` when different from `name` (defaults to `name`). |
 
-The manifest is closed: unknown top-level fields fail admission. Every entry
-belongs to the operation's workspace. Resource coordinates and intrinsic
-mutability are resolved through {§entry-address-resolution}.
+- The manifest is closed: unknown top-level fields fail admission.
+- **Reserved service metadata keys:** `MetadataOptions.SERVICE_KEYS` (`["lifetime"]`) are stripped from every owner's `options` and surfaced raw beside `options` so no scheme or executor interprets or refuses `lifetime` (`{§exec-lifetime}`).
 
-{§manifest-metadata-modifier} is the scheme's explicit opt-in to
-{§slot-order}. Core never parses or moves metadata into the
-target. Direct operation methods receive it on `statement.metadata`; exact
-resource preparation receives the same ordered raw blocks on
-`request.metadata`. A present modifier on any scheme that did not opt in is a
-non-retryable `400 scheme-metadata-unsupported`, and the handler is not called.
-
-The invoked handler owns this admission, not an address it consumes internally.
-An execution delegates its blocks to the selected executor under {§executor-metadata};
-its source acquisition is a separate READ without inherited execution metadata.
-
-§service-metadata-keys **The service's reserved keys are withheld from every owner.**
-`MetadataOptions.SERVICE_KEYS` names `lifetime`: the reader strips it from
-every owner's `options` and surfaces it raw beside it, so no scheme or executor
-interprets or refuses it and the service alone owns its shape — how long live work may run.
-
-{§manifest-capability-traits} `traits` are closed manifest data, not a policy
-channel. Names match `^[a-z][a-z0-9-]*$`, are unique, and carry through a
-synthesized runtime-output scheme. A handler never interprets policy or a named
-client mode. The consumer combines operation, access class, scheme, runtime,
-tool, and these declared facts into its general capability descriptor; the
-same decision governs dispatch and teaching visibility.
-
-Proposal behavior is orthogonal to capabilities. A handler proposes by
-returning 202; the consumer's proposal lifecycle routes it to the session
-owner's review unless the server disposition `PLURNK_SERVICE_PROPOSALS` accepts
-or rejects it, with timeout as a lifecycle bound.
-
-§manifest-self-doc **Discoverable scheme references.** `documentation` contains the scheme's operation contracts and examples. The consumer materializes it as **`workspace:///_plurnk/plurnk/<name>.md`**: FIND projects its exact H2 `Summary`, and READ retrieves its body on demand. Reference availability follows the registered capabilities, not illustrative operations. `glyph` is client display metadata under {§manifest-client-display}, not self-documentation.
-
-**Authoring convention — `docs/<name>.md`.** The contract field stays a plain `string`, but a sibling SHOULD keep the deep doc in a **`docs/<name>.md`** file at the package root rather than inline, and load it into the manifest at module init — e.g. `documentation: await readFile(new URL("../docs/<name>.md", import.meta.url), "utf-8")` (top-level await; `../` resolves identically from `src/` in test and `dist/` once built). Ship it by adding `docs/**/*` to `files`. This keeps prose out of the handler source and gives editors real Markdown; the consumer materializes it at `workspace:///_plurnk/plurnk/<name>.md`. A missing file fails-hard at import (no silent empty doc).
-
-## §2 Interface
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§resource-publication-names} | Published resources have names, not invented ordinals. |
-| {§scheme-source-bytes} | Original bytes retain the full resource identity. |
-| {§web-materialization-contract} | Web materialization is a handler capability, not a package name. |
-| {§scheme-operation-dispatch} | Sister scheme handlers implement op methods consumed by plurnk-service via dispatch. |
-| {§resolved-edit-statement} | `ResolvedEditStatement` is the scheme-facing EDIT shape: its `lineMarker` is `LineMarker \| null` and… |
-| {§read-preparation} | `prepareRepresentation?` is the optional, operation-neutral acquisition seam for one exact resource. |
-| {§entry-address-resolution} | `resolveEntryAddress?` defines canonical addresses for client and model operations. |
-| {§handler-lifecycle} | A registered handler object is a process-lived shared instance and may receive overlapping operation calls. |
-| {§scheme-ctx-entries} | The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use… |
-| {§scheme-edit-batch-receipt} | Regional mutation receipts. |
-<!-- /map -->
-
-§resource-publication-names **Published resources have names, not invented ordinals.**
-`ResourceNames` allocates one URI-encoded component per resource: a supplied name
-is preserved; no name produces eight hexadecimal characters. A repeated name
-gets an eight-character hash suffix, never overwrites a sibling. Passing stable
-identities in collection order reconstructs the same names. Allocation neither
-creates entries nor changes their ownership or publication policy.
-
-§scheme-source-bytes **Original bytes retain the full resource identity.**
-`byteSource({authority, pathname}, ctx)` supplies a `ByteSource`: `size()` returns
-the byte count or `null` for an absent source; `read(first, last)` returns the
-one-based inclusive byte window. The context carries the invoking actor and
-workspace. READ, FIND, transfers, and native model attachments
-use this same source contract. Public `EntryData` also accepts `bytes` beside
-an empty `content`; the consumer owns its storage encoding. Binary channels retain
-those bytes exactly. Textual channels accept exact UTF-8 (including BOM and line
-endings); invalid text bytes fail before replacing the stored resource.
-
-An optional `nativePath()` identifies the original regular file, or `null` when
-absent. It never creates a copy. The resource owner resolves it under the same
-identity and admission as the byte source; only an admitted consumer may use
-it. `FileByteSource` implements this for filesystem-backed schemes. Consumers
-must not substitute the file for a selected derived channel. Native execution
-preserves the file's name and surrounding filesystem; it grants no new
-capability, changes no working directory, and performs no automatic copying.
-
-§web-materialization-contract **Web materialization is a handler capability, not a package name.**
-A handler may publish `webMaterializer`: `fetch(url, {signal})` acquires a checked
-`WebFetchResult` (`null` for a dead source), `materialize(fetched, projection)` produces
-the entry's `WebMaterializedResult`, and `materializedChannels(result, request?)` lays it
-out as entry channels. The result and error shapes (`WebFetchResult`,
-`WebMaterializedResult`, `WebMaterializationError`) are this framework's. The `https`
-handler publishes it; the service's entry sink resolves it through the scheme registry and
-names no extension package, so a compatible extension replaces it through the ordinary installation
-and discovery path.
-
-§scheme-operation-dispatch Sister scheme handlers implement op methods consumed by plurnk-service via
-dispatch. The consumer owns READ for every `category: "data"` scheme and owns
-exact-resource FIND over its canonical representation; no handler method can
-replace either projection. Other absent operation methods return **501**. The
-exported **`SchemeHandler`** interface gives operation methods their grammar
-statement and `ctx`, including KILL's target, scope, metadata and aside. Bundled
-adapters use the same interface; no positional pathname/scope overload exists.
-Representation preparation receives a deliberately narrower request.
-`editBatch` returns the typed `EditBatchResult`
-specialization:
+## §scheme-operation-dispatch Handler interface and operation dispatch
 
 ```ts
-import type { EditBatchResult, ResolvedEditStatement, SchemeAddressCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
-
 export interface SchemeHandler {
     ready?(): Promise<void>;
     close?(): Promise<void>;
     resolveEntryAddress?(target: ParsedPath, ctx: SchemeAddressCtx, access?: "read" | "write"): Promise<EntryAddress | SchemeResult | null>;
-    prepareRepresentation?(
-        request: RepresentationPreparationRequest,
-        ctx: SchemeCtx,
-    ): Promise<RepresentationPreparationResult>;
+    prepareRepresentation?(request: RepresentationPreparationRequest, ctx: SchemeCtx): Promise<RepresentationPreparationResult>;
     prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
@@ -182,612 +46,124 @@ export interface SchemeHandler {
 }
 ```
 
-§resolved-edit-statement `ResolvedEditStatement` is the scheme-facing EDIT
-shape: its `lineMarker` is `LineMarker | null` and therefore contains numbers
-only. Core resolves the model-facing {§matcher-prefix-claims} before invoking
-`SchemeHandler.editBatch` or `EntryOperationCaps.editBatch`; an unresolved
-anchor crossing that boundary is an internal contract violation. Core also
-prepares authored body syntax before this boundary ({§zero-width-column-one-insert});
-handlers apply the supplied replacement literally, including at zero-width spans.
-The anchor precondition remains core-private. A public handler declaring
-`textEditScopes: true` MUST route its standard textual mutation through
-`ctx.entries.operations.editBatch`, which rechecks that precondition at the
-snapshot owner and lands with the consumer's compare-and-swap. Applying the
-numeric coordinates independently would discard the declared collision
-contract. Core-owned special resources enforce the equivalent invariant inside
-their mutation adapter.
+| Seam / helper | Contract |
+|---|---|
+| Operation dispatch | Core owns `READ` for every `category: "data"` scheme and exact-resource `FIND` over its canonical representation; unimplemented optional methods return `501`. Log-targeted `KILL`, `WORK`, `FORK`, and native dispositions (`NOTE`, `WAIT`) are core-owned and never dispatch to scheme handlers. |
+| `prepareRepresentation?(request, ctx)` | Operation-neutral acquisition seam for one exact resource (`{ target, metadata, authority, pathname }`, with no scope, matcher, or channel fragment). Writes canonical channels via `ctx.entries` and returns `200`, `102` while a live `StreamSubscription` remains active (`{§exec-stream}`), or an exact terminal result. Shared by exact `READ`, exact `FIND`, and exact `COPY`/`MOVE` sources. |
+| `prepareFind?(statement, ctx)` | Broad-scope discovery seam invoked before standard entry selection when no custom `find()` is implemented. |
+| `ResourceNames` | Allocates one URI-encoded component per published resource: preserves supplied names, generates 8-hex characters when unnamed, and appends an 8-hex hash suffix on collision without overwriting siblings. |
+| `ByteSource` (`FileByteSource`, `GeneratedByteSource`) | Supplies `size()` (byte count or `null` when absent), 1-based inclusive `read(first, last)`, and optional `nativePath()` (original regular file path or `null`, never creating a copy). Binary channels preserve exact bytes; textual channels require valid UTF-8. |
+| `webMaterializer` | Optional handler capability (`{ fetch, materialize, materializedChannels }` returning `WebFetchResult`, `WebMaterializedResult`, or `WebMaterializationError`) published by `https` and resolved through the scheme registry without hardcoding an extension package name. |
 
-§read-preparation `prepareRepresentation?` is the optional, operation-neutral
-acquisition seam for one exact resource. Core first resolves its canonical
-authority and pathname, binds `ctx.entries`/channels/subscriptions to
-that exact workspace coordinate, and removes the channel fragment. The request
-is exactly `{ target, metadata, authority, pathname }`: the target remains pure
-resource identity while `metadata` is the exact opaque modifier or `null`.
-READ coordinates, FIND matchers, the selected channel, and operation intent are
-structurally unavailable.
-
-A stored scheme omits the hook. An acquired scheme writes its complete channel
-topology through `ctx.entries` and returns `200` readiness. A live scheme first
-seeds those same canonical channels, opens a subscription, and may return `102`
-only while production remains live. Other statuses are exact terminal results.
-Per-channel producer status belongs durably on that channel as
-`producerResult`; no transient preparation result may carry content, channel
-selection, or channel outcomes. Neither preparation nor producer results supply
-the READ's `terminal` flag: core derives it from channel state under
-{§exec-stream}. After `200`, core alone selects the authored
-channel, applies tag/binary/text rules (including {§packet}), and
-composes that channel's producer evidence. Cold and warm reads therefore have
-identical semantics.
-
-FIND classifies the target after canonical address resolution; a resolved
-collection remains broad when `folderScopes` is declared, even when the authored
-path omitted its trailing slash. Exact FIND uses the same `prepareRepresentation?`
-seam and then the standard entry query; the queried default channel's durable producer result composes
-with that exact query just as it does with exact READ. `prepareFind?` is only
-the optional broad-scope discovery seam
-used before standard entry selection when no custom broad `find()` exists. A
-custom `find()` may own genuinely different candidate enumeration, but never
-exact-resource materialization or READ coordinates. Every standard query uses
-the same canonical identity as `ctx.entries`; URL authority cannot disappear
-between preparation and lookup.
-
-An exact COPY/MOVE source also resolves and prepares through this seam before
-core selects its canonical stored channel. COPY/MOVE retain their own source
-scope algebra: an absent source scope means the complete channel and an explicit
-scope preserves raw source separators. Neither distinction is exposed to the
-producer. A live `102` leaves the composition unapplied; a ready representation
-is selected from the same channels used by READ and exact FIND. A selected
-channel's producer failure aborts before destination mutation; successful
-non-`200` content remains eligible for transfer.
-
-§entry-address-resolution `resolveEntryAddress?` defines canonical addresses for client and model operations. Core removes the channel fragment and target-slot escapes {§path-syntax} before invocation; other identity components remain exact. The hook receives capability-free `SchemeAddressCtx` and returns only the resource coordinate. The optional access argument defaults to `read`; `write` checks intrinsic mutability before a mutation or proposal. Resolution is observational and has no effects.
+`resolveEntryAddress?(target, ctx, access)` receives capability-free `SchemeAddressCtx` and `access` (`"read"` default, or `"write"`). Core strips `#fragment` and `{§path-syntax}` target parentheses before invocation:
 
 | Return | Meaning |
 |---|---|
-| Hook absent | Use the standard coordinate from {§manifest-authority}. |
+| Hook absent | Use the standard coordinate from `{§manifest}` `authority`. |
 | `{ authority, pathname }` | Bind this exact resource in the operation's workspace. |
 | Non-success `SchemeResult` | Preserve the expected address or mutability refusal exactly. |
 | `null` | No resource at this selector. |
 
-Entry, channel, notification, subscription, mutation, proposal, client-read, and cancellation capabilities use that same workspace coordinate. Caller identity supplies provenance, not resource ownership or an alternate namespace. READ checks model write eligibility only to publish EDIT anchors ({§line-anchors}); COPY checks the destination and MOVE also checks source mutability before any destination effect.
+Handler lifecycle invariants for process-lived `SchemeHandler` instances:
 
-A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. Log-targeted KILL is core-owned curation, and WORK/FORK and the native dispositions are core-owned session/program operations; none is dispatchable to an extension scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
+| Concern | Contract |
+|---|---|
+| Readiness (`ready?`) | Runs after registration and before capability advertisement; establishes that advertised resources are usable. |
+| Hook cardinality | Invoked once per unique handler object identity, even when multiple registered names share that object. |
+| Operation context | `SchemeCtx` and capabilities extracted from it are operation-owned; only `StreamSubscription` from `subscriptions.open` is retainable. |
+| Retained state & live ownership | Tenant- or address-selectable state keys every isolation coordinate; conflicting live acquisition fails explicitly without overwriting the existing owner. |
+| Shutdown (`close?`) | Runs after in-flight scheme work drains and before backing stores close; the consumer awaits every unique handler close and aggregates failures. |
 
-§handler-lifecycle A registered handler object is a process-lived shared
-instance and may receive overlapping operation calls. Retained handler state is
-ordinary; handlers must make concurrent access and semantic isolation explicit.
+Regional mutation receipts (`ResolvedEditStatement`, `EditBatchResult`): Core resolves `{§matcher-prefix-claims}` line anchors and `{§zero-width-column-one-insert}` bodies before calling `editBatch`, so `ResolvedEditStatement.lineMarker` contains numbers only. Regional `editBatch` returns `EditBatchResult` carrying `EditBatchReceipt` (`revision`, `unit: "lines" | "codePoints"`, `before`, `after`, optional advisory `parseIssues: { before, after }`, `{§op-shapes}`):
 
-| Concern            | Contract |
-| ------------------ | -------- |
-| Readiness          | `ready?()` runs after registration and before capability advertisement. It establishes that advertised resources are usable. |
-| Hook cardinality   | The consumer invokes each hook once per unique handler object identity, even when multiple registered names share that object. |
-| Operation context  | `SchemeCtx` and capabilities extracted from it remain operation-owned under {§scheme-ctx-lifetime}; only the `StreamSubscription` returned by `subscriptions.open` is retainable. |
-| Retained state     | Tenant- or address-selectable state keys every semantic isolation coordinate. A global pool is valid only when it carries no cross-tenant session state. |
-| Live ownership     | An address-selectable live resource has one unambiguous owner. Conflicting acquisition fails explicitly; it never overwrites the existing owner. |
-| Shutdown           | After in-flight scheme work drains and before backing stores close, `close?()` releases partially or fully initialized handler resources. The consumer attempts and awaits every unique handler close, then aggregates every failure. |
+| Batch outcome | Authored correlation | Landed effects |
+|---|---|---|
+| Applied as proposed (`AppliedEditBatchReceipt`) | `effects[N]` describes authored `EDIT` `N` (`requested`, `source`, `result`, `removed`, `inserted`, source-numbered `context`) | One truthful effect per authored `EDIT` |
+| Resolver replaced proposed body (`ReviewerReplacementEditBatchReceipt`) | `disposition: "reviewer-replaced"`; `superseded[N]` retains authored marker `N` | One `replacement` effect describes the bytes that actually landed |
 
-Handlers without initialization or retained resources omit the corresponding
-hook.
+## §network-address Network address and media helpers
 
-§scheme-ctx-entries The entry CRUD primitives (`readEntry`/`writeEntry`/`deleteEntry`) are not handler operations; schemes use the manifest-bound `ctx.entries` (`read`, `write`, and `delete`), and the engine drives that same capability for COPY/MOVE/KILL orchestration when a `data` scheme omits resource-specific storage hooks. Proposal application is the optional `applyResolution` handler hook described in §3.bis.
+`NetworkAddress.from(target)` normalizes `http`, `https`, `ws`, and `wss` targets into `{ scheme, authority, pathname, url, hasCredentials }`, and `NetworkAddress.render({ scheme, authority, pathname })` reconstructs the model-facing address with `{§path-syntax}` target escaping:
 
-A log-targeted KILL is not a handler method. Core owns that active-projection
-curation; an entry scheme has no log visibility state and never receives it.
+| Component | Entry identity (`authority` / `pathname`) | Transport `url` | Plurnk channel |
+|---|---|---|---|
+| Scheme (`http`, `https`, `ws`, `wss`) | Exact addressed scheme | Yes | No |
+| Host & non-default port | `<host>[:<port>]` in `authority` (WHATWG canonical host) | Yes | No |
+| Path (`%28`/`%29` $\to$ `(` / `)`) & query | `<path>[?<query>]` in `pathname` (preserving order, duplicates, and empty `?`) | Yes | No |
+| `#fragment` | No | No | Yes |
+| Userinfo | Rejected (`hasCredentials: true`) | No | No |
 
-§scheme-edit-batch-receipt **Regional mutation receipts.** COPY and MOVE are not
-handler methods. The engine composes their source and
-destination resource selections over `ctx.entries` and uses `editBatch` for a
-scoped destination or source mutation. This keeps channel selection, snapshot
-ordering, cross-scheme failures, and proposal sequencing uniform for every data
-scheme. Scheme hooks return their ordinary mutation result and, for a regional
-`editBatch`, an `EditBatchResult` carrying its aggregate `EditBatchReceipt`:
+Additional framework helpers:
 
-```ts
-type EditReceiptUnit = "lines" | "codePoints";
+- **`MimetypeClassifier` & `PathMimetype`:** `isBinary(mimetype)` (delegates to `@plurnk/plurnk-mimetypes`), `isHtml(mimetype)` (`text/html`, `application/xhtml+xml`), `isJson(mimetype)` (`application/json` and `+json`, excluding NDJSON), `normalizeAutoText(mimetype)` (`text/plain` / `null` / `undefined` $\to$ `TEXT_PRIMITIVE_MIMETYPE` `"text/markdown"`), and `isTransferCompatible(source, destination, sourceClassification?)` (permits verbatim `COPY`/`MOVE` between equal mimetypes or from any textual source into `text/plain` or `text/markdown`, `{§mimetype-classification}`). `PathMimetype.resolve(pathname, defaultMimetype, mimetypes)` detects by extension and auto-normalizes `text/plain` to `text/markdown`.
+- **Packet transformation (`PacketSections`):** A scheme implementing `transformSections(sections: PacketSectionDraft[])` may add, remove, or reorder `{ name, slot: "system" | "user" | "assistant", header: string | null, content }` drafts before core token measurement (`{§packet-assembly}`), validated before and after by `PacketSections.assertDrafts` (unique non-empty names).
+- **Executor output schemes (`OutputScheme`, `Summarize`):** `OutputScheme.manifestFromRuntime(decl)` derives a read-only volatile data `SchemeManifest` from an executor `RuntimeDecl` (preserving `glyph` and `traits`); `Summarize.summarize(content, mimetype) -> OrientIndex` produces structural-only receipt indices.
+- **Resource capture (`ctx.resources.capture`, `MessageAttachments`):** Acquires ordered snapshots (`{ name, mediaType, contentHash, target, bytes }`) without performing `SEND` or transferring ownership (`{§op-methods-op-dispatch}`).
 
-interface EditEffectReceipt {
-    readonly requested: string;
-    readonly source: string;
-    readonly result: string;
-    readonly removed: number;
-    readonly inserted: number;
-    readonly context: string;
-}
+`ctx.projection` delegates model-facing projection to the configured mimetype framework (`ProjectionInputLimitError` exports its bounded-input failure):
 
-interface ParseIssueTransition {
-    readonly before: number;
-    readonly after: number;
-}
+| Surface | Contract |
+|---|---|
+| `readable(content, mimetype)` | Project an acquired Unicode representation (`""` is present; only `null` denotes absence). |
+| `binary(chunks, mimetype)` | Return bounded source `bytes`, nullable `readable: ProjectedText`, and `projectionIdentity`, consuming one async byte source under `{§mimetype-binary-input}`. |
+| `identity(mimetype)` | Return opaque identity of configured projection behavior for cache and materialization freshness. |
+| `isBinary(mimetype)` | Classify through the configured registry so installed handler declarations remain authoritative. |
+| `parseIssues(content, mimetype)` | Return nonnegative parser-recovery count, or `undefined` when unavailable (`{§mimetype-parse-issues}`). |
+| `ProjectedText` | Derived Unicode plus output mimetype, source mimetype, and opaque projection identity. |
 
-interface AppliedEditBatchReceipt {
-    readonly revision: string;
-    readonly unit: EditReceiptUnit;
-    readonly before: number;
-    readonly after: number;
-    readonly parseIssues?: ParseIssueTransition;
-    readonly effects: readonly EditEffectReceipt[];
-}
+## §slicer-text-algebra Text, window, and pagination slicing
 
-interface ReviewerReplacementEditBatchReceipt {
-    readonly revision: string;
-    readonly unit: EditReceiptUnit;
-    readonly before: number;
-    readonly after: number;
-    readonly parseIssues?: ParseIssueTransition;
-    readonly disposition: "reviewer-replaced";
-    readonly superseded: readonly string[];
-    readonly replacement: EditEffectReceipt;
-}
-
-type EditBatchReceipt =
-    | AppliedEditBatchReceipt
-    | ReviewerReplacementEditBatchReceipt;
-
-interface EditBatchResult extends SchemeResult {
-    readonly editReceipt?: EditBatchReceipt | null;
-}
-```
-
-| Batch outcome                        | Authored correlation                              | Landed effects                                                        |
-| ------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------------- |
-| Applied as proposed                  | `effects[N]` describes authored EDIT `N`          | One truthful effect per authored EDIT                                 |
-| Resolver replaced the proposed body  | `superseded[N]` retains authored marker `N`       | One `replacement` effect describes the bytes that actually landed     |
-
-`requested` retains the admitted scope. `source` and `result` are resolved
-scope strings using {§op-shapes}: `<line>`, `<first,last>`, or
-`<startLine,startColumn,endLine,endColumn>`. Empty selections use an exact
-zero-width region at the source insertion point or landed deletion join;
-they never invent a line beyond an unterminated EOF. Producers resolve these
-coordinates from the respective revision, not from another formatted receipt.
-
-The replacement form is not a heuristic attribution. An arbitrary resolver
-body supersedes every authored EDIT because its correspondence to those edits
-cannot be known. The consumer projects the replacement once on the durable
-proposal-owning row and projects each authored marker's superseded disposition
-on its own row.
-
-`context` is an ordered, source-numbered projection of the landed result. For a
-consumer-selected count `C`, it contains up to `C` surrounding lines and the
-first and last `C` landed lines at each result boundary. Overlapping windows
-coalesce and coordinate jumps expose an omitted middle. A deletion instead
-contains up to `C` lines on each side of its join.
-
-The engine validates that receipt and owns the ordered COPY/MOVE resource
-effects shown to consumers; extensions do not invent a second effect envelope.
-`parseIssues`, when present, carries nonnegative parser-recovery counts for the
-complete source and resulting revisions. It is omitted when both are clean or
-either inspection is unavailable. The hint is advisory: inspection failure
-does not reverse a landed mutation.
-
-## §3 Helpers exported by this repo
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§scheme-packet-transform} | Packet-section transformation. |
-| {§executor-scheme-output} | Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a… |
-| {§scheme-catalog-parse-issues} | An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported… |
-| {§network-address} | Network address identity |
-| {§mimetype-classifier} | Mimetype classification — `MimetypeClassifier` |
-| {§mimetype-verbatim-transfer} | `MimetypeClassifier.isTransferCompatible(source, destination, sourceClassification?)` permits verbatim… |
-| {§scheme-projection} | Projection capability |
-| {§scheme-resource-capture} | `ctx.resources.capture(addresses)` acquires ordered exact resource/channel snapshots through Core's shared… |
-| {§slicer-window} | Positional windows without content - `Slicer.window` |
-| {§slicer-text-algebra} | Text-region slicing and replacement - `Slicer` |
-| {§range-starts-at-one} | A two-coordinate range starts at 1. |
-| {§read-zero-start} | The shared READ projection tolerates a two-coordinate `<0,M>` when `M` is a positive safe integer or `-1`: it… |
-| {§path-extension-mimetype} | Path-extension mimetype — `PathMimetype` |
-| {§result-shape-guards} | `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional… |
-| {§result-error-status} | `Results.isErrorStatus(status)` — `status >= 400`, and only those. |
-| {§capability-ctx} | §3.bis Capability ctx — the stable trusted-extension surface |
-| {§scheme-ctx-workspace-environment} | `workspaceId` selects shared Functionality and admission policy; `sessionId` attributes the operation and… |
-| {§scheme-interactions} | `interactions` — `request(ClientInteractionRequest, signal?)` awaits the contracts-owned interaction and… |
-| {§scheme-subscriptions} | `subscriptions` — one streaming lifecycle: |
-| {§scheme-ctx-lifetime} | `SchemeCtx` belongs to one operation call. |
-| {§scheme-edit-proposal-receipt} | An accepted EDIT proposal may return its final aggregate `editReceipt` alongside its per-row model-facing… |
-<!-- /map -->
-
-### Types
-
-- Manifest: `SchemeManifest`, `SchemeAuthority`, `EntryCoordinate`, and `WriterTier`.
-- Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, `EditReceiptUnit`, and `ParseIssueTransition`.
-- §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"|"assistant"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet. Slots are message roles; their order determines the envelope ({§packet-assembly}).
-- Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `ContinuationStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement` under {§resolved-edit-statement}.
-- Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-syntax}.
-- Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
-- §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring). Executor output is a canonical entry and therefore inherits core's exact READ projection under {§read-preparation}; no executor-specific READ helper exists. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only execution-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
-- Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
-- Standard `EntryFindResult` exposes only its paged `results`, complete `matchingPathCount` / `matchLocationCount`, `itemsWeightTotal` / `returnedItemsWeightTotal`, and typed range. `EntryCatalogChannel.weight` and `EntryCatalogScope.weight` are model-independent curation weights; model-facing JSON may project them under its own vocabulary. Each resource-mode `EntryCatalogItem` is a nonempty, default-first array of flat `EntryCatalogChannel` objects; a scope is the one-element `EntryCatalogScopeGroup`. Exact matcher mode returns flat `MatchEvidence` locations. Pagination is the materialization bound; no path-owning channel wrapper, hidden `matches`, `pathnames`, or overflow-only result collection exists.
-- §scheme-catalog-parse-issues An `EntryCatalogChannel` may carry a positive `parseIssues` count when its exact content projection reported parser recovery sites. Zero and unavailable evidence are omitted. This is advisory metadata and never a validity gate or operation failure.
-- Capability ctx (see §3.bis): `SchemeCtx`, `StreamSubscription`, and the domain capabilities. Entry authors additionally receive `EntryOperationCaps`, `EntryAddress`, and typed standard-operation results. `editBatch` receives the numeric splices of one operation for one canonical resource and channel; it validates against one snapshot and commits one revision or none ({§op-methods-op-dispatch}). Core calls it separately for each authored EDIT, in execution order.
-
-Behavior ships as `export default class` (one class per file, static methods) — the ecosystem class paradigm. Type-only modules and the barrel are the only non-class files.
-
-### §network-address Network address identity
-
-`NetworkAddress.from(target)` is the single non-secret normalization path for
-HTTP and WebSocket targets. It returns the exact addressed `scheme`, canonical
-entry `authority` and `pathname`, a fragmentless and credential-free transport
-`url`, and whether userinfo was present so the handler can reject it.
-
-| Component        | Entry identity                                      | Transport URL | Plurnk channel |
-|------------------|-----------------------------------------------------|---------------|----------------|
-| Scheme           | Exact `http`, `https`, `ws`, or `wss`               | Yes           | No             |
-| Host             | Canonical WHATWG hostname                            | Yes           | No             |
-| Port             | Non-default port                                     | Yes           | No             |
-| Path             | Canonical pathname                                   | Yes           | No             |
-| Query            | Serialized order, duplicates, and explicit empty `?` | Yes           | No             |
-| Fragment         | No                                                   | No            | Yes            |
-| Userinfo         | No                                                   | No            | No             |
-
-The canonical storage coordinate is authority `<host>[:<port>]` plus pathname
-`<path>[?<query>]`, keyed together with workspace and the exact
-addressed scheme. `NetworkAddress.render({ scheme, authority, pathname })` is
-its model-facing inverse: it applies the Plurnk lexical target spelling
-{§path-syntax} after reconstructing the exact address. Transport URLs and
-storage identity never carry that syntax layer. Routing aliases select a
-handler; they do not collapse resource identity.
-Scheme metadata is statement-level input under {§slot-order}; it
-is never a `NetworkAddress` component.
-
-### §mimetype-classifier Mimetype classification — `MimetypeClassifier`
-
-- `MimetypeClassifier.isBinary(mimetype)` — pure taxonomy for a registry-free boundary. Delegates to `classifyMimetype` from `@plurnk/plurnk-mimetypes`; a consumer with a configured `Mimetypes` service uses `Mimetypes.classify()` so installed handler declarations remain authoritative ({§mimetype-classification}).
-- `MimetypeClassifier.isHtml(mimetype)` — recognizes the normalized web-projection family: `text/html` and `application/xhtml+xml`.
-- `MimetypeClassifier.isJson(mimetype)` - `application/json` plus `+json` variants, used only by result summarization.
-- `MimetypeClassifier.normalizeAutoText(mimetype)` — `text/plain` / null / undefined → `TEXT_PRIMITIVE_MIMETYPE` (`text/markdown`).
-- §mimetype-verbatim-transfer `MimetypeClassifier.isTransferCompatible(source, destination, sourceClassification?)` permits verbatim COPY/MOVE between equal mimetypes, or from any textual source into `text/plain` or `text/markdown`. Unequal structured or binary destination types remain incompatible. Configured consumers supply the source's resolved `{ binary }` classification; registry-free callers use the shared taxonomy. Compatibility never converts content or changes either channel's declared type.
-- `TEXT_PRIMITIVE_MIMETYPE` — `"text/markdown"` (named export from the same module).
-
-### §scheme-projection Projection capability
-
-§scheme-resource-capture `ctx.resources.capture(addresses)` acquires ordered
-exact resource/channel snapshots through Core's shared source-selection path.
-It returns bytes plus immutable receipt descriptors, or the acquisition failure
-without delivering anything. It neither performs SEND nor transfers resource
-ownership. `MessageAttachments` opts a message recipient into the common
-metadata shape under {§op-methods-op-dispatch}; other recipients retain
-their own metadata vocabulary.
-
-Acquisition schemes delegate model-facing projection to the consumer's one
-configured mimetype framework. They neither instantiate readers nor discard source
-bytes merely because no readable projection exists.
-
-| Surface                           | Contract                                                                                              |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `readable(content, mimetype)`     | Project an acquired Unicode representation.                                                           |
-| `binary(chunks, mimetype)` | Return bounded source `bytes`, nullable `readable: ProjectedText`, and the configured `projectionIdentity`, even without a reader; consume one async byte source under {§mimetype-binary-input}. |
-| `identity(mimetype)`              | Return the opaque identity of configured projection behavior for cache and materialization freshness. |
-| `isBinary(mimetype)`              | Classify through the configured registry; installed handler declarations remain authoritative.        |
-| `parseIssues(content, mimetype)`  | Return a nonnegative parser-recovery count, or omit unavailable evidence, under {§mimetype-parse-issues}. |
-| `ProjectedText`                   | Derived Unicode plus its output mimetype, source mimetype, and opaque projection identity.            |
-
-A readable projection is present even when its `content` is `""`; only `null`
-denotes absence. Consumers must not infer projection presence from content
-length. Thrown readable, identity, and classification calls are execution
-failures whose causes propagate; they must never be converted to `null`.
-Parser-recovery inspection is deliberately non-gating: successful clean
-inspection returns `0`; tooling failure or structural degradation surfaces a
-Notice where available and returns `undefined`.
-`ProjectionInputLimitError` is the projection boundary's exported name for the
-configured mimetype framework's typed bounded-input failure.
-
-### §slicer-window Positional windows without content - `Slicer.window`
-
-`Slicer.window(marker, total, unit)` resolves a one- or two-coordinate marker against a
-total alone, with the exact normalization, sentinels, extents, and 416 facts of `lines()`, for
-a resource whose positions are not text lines in memory: the byte view of a binary
-(`unit: "byte"`, {§binary-parity} in core). A sentinel selects nothing (`start: null`); a
-region of four coordinates has no meaning over a window and is refused.
-
-### §slicer-text-algebra Text-region slicing and replacement - `Slicer`
-
-`Slicer` owns one text algebra for every textual mimetype:
+`Slicer` owns one coordinate algebra across textual lines, code-point regions, positional byte windows (`Slicer.window`), and ordered result pagination (`Slicer.page`):
 
 | Scope | Meaning |
 |---|---|
-| `<N>` | whole physical line `N` |
-| `<N,M>` | inclusive whole physical lines `N..M` |
-| `<SL,SC,EL,EC>` | exact exclusive-end region using 1-based Unicode code-point columns |
-| `<0>` / `<-1>` | mutation anchors before the first / after the final line |
+| `<N>` | Whole 1-based physical line, byte (`unit: "byte"`), or result item `N` |
+| `<N,M>` | Inclusive 1-based range `N..M` (`M = -1` selects through the end) |
+| `<SL,SC,EL,EC>` | Exact exclusive-end text region using 1-based Unicode code-point columns (`{§text-region}`) |
+| `<0>` / `<-1>` | Single-position mutation anchors before the first / after the final line (`start: null` on `window()`) |
 
-Every replacement inserts its body verbatim. `Slicer.wholeLineBody(content, marker, body)` is
-the pure helper core applies where a fenced EDIT body becomes inserted content
-({§zero-width-column-one-insert}): it appends the content's separator only for a non-empty body
-without a trailing newline at a zero-width column-1 region, and returns every other body unchanged.
+- **One-based ranges (`range-starts-at-one`):** A two-coordinate range starts at `1`. `<0,M>` is refused `416 range-not-satisfiable` by `lines()`, `linesRaw()`, `textReplacement()`, `lineMarkerEdit[Batch]()`, `window()`, and `page()` (even on empty content/results) and never clamped to `<1,M>`. As a shared `READ` projection tolerance, `<0,M>` (for positive safe integer `M` or `-1`) selects `<1,M>`, retains `[0,M]` as requested, and emits scope-normalization evidence.
+- **3-coordinate lowering and end clamping:** `<startLine,startColumn,endLine>` lowers to `<startLine,startColumn,endLine,endCol>` with boundary-validated normalization evidence. Harmless end-bound overshoots clamp to EOF / final code point; start-bound overshoots and inverted ranges fail `416`.
+- **`Slicer.wholeLineBody(content, marker, body)`:** Appends the content's line separator only for a non-empty body without a trailing newline at a zero-width column-1 region (`{§zero-width-column-one-insert}`).
+- **Batch edits (`lineMarkerEditBatch`):** Validates all replacements against one snapshot; resolves identical twins, co-located insertions, and evidenced 1-line shared endpoints (recorded in `merges`); rejects any other overlap with `409 overlapping-edits` (`conflicts`, `cleanRegions`, `conflictingRegions`, `editCount`, `applied: 0`) and applies all or none.
+- **Results and Matcher (`Results`, `Matcher`):** `Results.isErrorStatus(status)` is `status >= 400`; `Results.isEntry`, `isProposal`, and `isPassthrough` guard optional result shapes; `Results.assert`, `assertReadResult`, and `assertMatchEvidenceList` enforce RFC 9457 `ProblemDetails` on `400..599` and `{ locator?, region?, enclosingRegion?, matched? }` on matches. `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, diagnostic?)` adapts `Mimetypes.query` (`200` matches, `204` empty, `400 invalid-expression` with bounded `diagnostic`, `415 unsupported-dialect`, `203` raw-text fallback with `reason`, `{§matcher-dispatch}`).
 
-§range-starts-at-one A two-coordinate range starts at 1. `<0>` is a single-position
-prepend anchor, never a range start: `<0,M>` is refused 416 by `lines()`,
-`linesRaw()`, `textReplacement()`, `lineMarkerEdit[Batch]()`, `window()` and
-`page()`, on empty content and empty result sets too, and never clamped to
-`<1,M>`. The refusal's detail states the zero start in the range's unit; its
-`recovery` never rebuilds the refused range ({§diagnostic-observation}):
-
-| Unit | `recovery` |
-|---|---|
-| line | the line forms `<L,M>`, `<0>` and `<-1>` |
-| byte, result, resource | the fixed `range-not-satisfiable` recovery ({§problems-schemes}) |
-
-§read-zero-start The shared READ projection tolerates a two-coordinate `<0,M>`
-when `M` is a positive safe integer or `-1`: it selects `<1,M>`, retains `[0,M]`
-as the receipt's requested range, and returns scope-normalization evidence for
-the ordinary non-striking warning. Text and byte views, including empty resources,
-use the same rule. The strict algebra above remains unchanged for mutation,
-removal, and transfer operands. Single-position sentinels, character regions,
-and other invalid endpoints are not reinterpreted.
-
-As an unadvertised ingestion tolerance, `Slicer` accepts
-`<startLine,startColumn,endLine>` and immediately lowers it to the complete
-four-coordinate region ending after the final code point of `endLine`.
-Successful results carry schemes-owned, boundary-validated normalization
-evidence containing both the authored and canonical coordinates. Producers do
-not emit or proactively teach the tolerated form.
-
-A harmless end-bound overshoot clamps rather than erroring: an oversized line
-range ends at the final line, an exact end line beyond the content ends at EOF,
-and an oversized end column ends at its line's final code point. Start-line and
-start-column overshoots remain 416 errors.
-
-- `Slicer.lines(content, marker)` returns the selected text, source
-  `startLine`, and complete resolved `region`; `Slicer.linesRaw` preserves
-  original newline separators for COPY/MOVE source transfer.
-- `Slicer.textReplacement(content, marker, body)` lowers a line shorthand or
-  exact region to one `{start,end,body}` replacement against the source
-  snapshot.
-- `Slicer.lineMarkerEdit` applies one replacement.
-- `Slicer.lineMarkerEditBatch` validates all replacements against one snapshot,
-  resolves an identical twin, two insertions at one point, and an evidenced one-line shared
-  endpoint (reported in `merges`, receipts from `applied`), rejects every other overlap, and
-  applies all or none. An overlap Problem states the
-  failure once for the whole batch: every conflicting pair with its relation in
-  `conflicts`, the regions that conflict with nothing in `cleanRegions`, the
-  first pair in `conflictingRegions`, plus `editCount` and `applied: 0`. The
-  prose states counts and, for a shared endpoint, the line both regions claim,
-  its text and the two regions; it adds no second line-only representation.
-- `Slicer.page(items, marker, options?)` is the separate ordered-result
-  pagination helper; it accepts only one or two integer positions and can name
-  an operation-owned range unit. An empty result set satisfies any well-formed
-  request as an empty page; only an inverted range fails.
-- `Slicer.coversAvailable(range)` derives whether a successful range selected
-  the complete available extent; that fact is never serialized separately.
-
-A successful line or pagination selection carries the contracts-owned
-`RangeExtent` {§text-region}; a 416 carries the same extent without
-`returned`. Exact regions use `region` instead. An exact-region failure,
-including a failed tolerated three-coordinate scope, carries
-`requestedCoordinates` exactly as authored; an invalid-arity text scope does
-likewise. Both carry `columnKind: "unicodeCodePoints"`. A pagination request of
-neither one nor two positions carries `requestedPositions` exactly as authored
-and no extent.
-
-### §path-extension-mimetype Path-extension mimetype — `PathMimetype`
-
-- `PathMimetype.resolve(pathname, defaultMimetype, mimetypes)` — pathname extension → `Mimetypes.detect({ ext })`; falls back to `defaultMimetype` when no extension. text/plain auto-normalizes to text/markdown.
-
-### Result families — `Results`
-
-- §result-shape-guards `Results.isEntry` / `Results.isProposal` / `Results.isPassthrough` — guards for the optional conventional result shapes; at most one matches a result, none matches a bare one, and extension-owned fields may ride beside `status` without adopting a shape.
-- §result-error-status `Results.isErrorStatus(status)` — `status >= 400`, and only those.
-- `Results.problem(owner, code, status, detail, extensions?)` — build and validate RFC 9457 Problem Details with a stable `https://problems.plurnk.xyz/<owner>/<code>` type.
-- `Results.failure(owner, code, status, detail, fields?, extensions?)` — build and validate a failed operation result; its type carries the fields it was given.
-- `Results.assert(result)` — validate the complete success/failure discrimination and reject malformed extension output.
-- `Results.assertMatchEvidence(evidence)` / `assertMatchEvidenceList(evidence)` - enforce the exact `{ locator?, region?, enclosingRegion?, matched? }` shape and shared `TextRegion` contract.
-- `Results.assertReadResult(result)` - validate the universal operation result plus any `region` and `matches` it exposes.
-- `Results.attachInstance(result, uri)` — attach the durable occurrence URI to a failed result.
-
-A handler owns its failure classification and explanation. A retained failure's
-`instance` continues to identify its original occurrence; reading it does not create
-a different failure. When absent, the daemon adds the committed log coordinate. A
-malformed handler result is an extension contract violation and fails hard; the
-consumer does not invent a fallback error or reinterpret arbitrary fields.
-The same discrimination applies to every `SchemeCtx` capability result:
-entries and channels never return a bare failure status.
-
-### Matcher dispatch - `Matcher` {§matcher-dispatch}
-
-- `Matcher.matchAgainstContent(body, content, mimetype, mimetypes, diagnostic?)` is the body-matcher adapter over `Mimetypes.query` (glob/regex/jsonpath/xpath). The optional projector supplies one bounded caught-parser `diagnostic` extension without transferring error-formatting policy into this package or splicing implementation text into Problem prose.
-- A match returns status 200 and `matches: MatchEvidence[]`.
-  `MatchEvidence` is `{locator?, region?, enclosingRegion?, matched?}`. `locator` preserves a structural locator;
-  `matched` is the matched text itself, present for the regex and glob dialects so a match row
-  reads without a READ;
-  `region` is the exact selected source span; `enclosingRegion` is context when
-  the handler can locate only the containing text. Both are complete four-coordinate
-  `TextRegion` values. Context does not authorize exact-source mutation.
-  Each item must contain at least one of `locator`, `region`, or `enclosingRegion`; other fields violate
-  the shared evidence contract.
-- The matcher is a boolean resource selector. It does not replace content with matched values or choose a retrieval window. FIND owns selection and pagination; exact READ owns text projection.
-- Empty results return 204 with `matches: []`; `UnsupportedDialectError` maps to 415; `InvalidExpressionError` maps to 400 with the bounded native parser cause when one was projected; `QueryParseFailureError` maps to 203 with raw content, text/markdown, and `reason`.
-- A multi-resource matcher omits candidates that return 415 when at least one candidate supports the dialect. If no candidate supports it, the matcher returns the first exact 415 Problem. An unreadable binary marker therefore cannot poison a repository-wide text search or masquerade as a match.
-
-### §capability-ctx §3.bis Capability ctx — the stable trusted-extension surface
-
-Scheme extensions are trusted in-process Node.js code. `SchemeCtx` is not a
-sandbox or a security boundary; an installed extension already has the process's
-authority. It is the stable semantic API that keeps extensions independent of
-database schemas, prepared-statement names, and private service modules.
-**Interfaces only**: this repo exports the contract and the consumer injects
-its implementation.
-
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`sessionId`/`loopId`/`turnId`/`writer`/`signal`, and during proposal application `logEntryId`, the operation row being settled, so a scheme can keep what it did on that row, {§log-wire-format}) plus capability namespaces:
-
-§scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `sessionId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§execution-output-identity}).
-
-- `entries` — direct storage over the scheme and authority already bound by core
-  (`address`/`read`/`write`/`delete`) plus `operations`, the standard PLURNK
-  `EDIT`/`FIND`/`SEND` implementations for entry-bearing schemes. READ selection
-  and model-facing projection belong to the consumer's universal dispatch
-  ({§scheme-surface}); `entries.read` returns stored channels, not
-  a projected READ receipt.
-  `address(pathname)` returns the bound resource's URI without fetching or
-  creating it. Links preserve the bound resource authority, never a
-  caller-relative namespace.
-  A write may omit channel state to select the `static` default; a successful
-  storage read always returns each channel's persisted lifecycle state.
-  Optional `attributes` are scheme-private durable metadata. They are scoped to
-  that entry, replaced only when explicitly written, and never projected into
-  model content, catalogs, or client entry data.
-  Standard operations are bound to the canonical workspace coordinate selected
-  before the handler receives this context. A handler may implement its own op method
-  instead. In particular, a handler with `find()` owns FIND; one without it
-  receives the standard stored-entry behavior.
-- `channels` — content writes + state (`append`/`replace`/`setState`).
-- `notify` — between-turn client signal (`streamEvent`, metadata-only); not model-facing. Wake delivery belongs to stream settlement, not notification.
-- `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the readers. `null` means no readable projection.
-- §scheme-interactions `interactions` — `request(ClientInteractionRequest, signal?)`
-  awaits the contracts-owned interaction and returns its
-  `ClientInteractionResolution` ({§provider-request-accounting}). Core binds the
-  current operation identity, persistence, client projection, and cancellation;
-  the scheme retains no callback, interaction identity, or private lifecycle.
-  An optional signal narrows, never replaces, the operation's cancellation scope.
-- §scheme-subscriptions `subscriptions` — one streaming lifecycle:
-
-| Surface                           | Lifetime   | Contract                                                                                                   |
-| --------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------- |
-| `open(pathname, handle)`          | Operation  | Bind durable and live identity, return the exact object, and route cancellation through its signal/handle. |
-| Returned `StreamSubscription`     | Retainable | `AbortSignal` plus fused chunk publication and terminal settlement; the only retainable capability.        |
-
-`notifyChunk` appends and emits one stream event. Its optional stateless
-`mimetype` retypes the channel only when the stored type differs.
-`close(result, summary?, channelResults?)` validates and persists the exact
-universal `ChannelProducerResult`, settles every channel with an exact named
-result override or that universal default, unregisters the live handle, and
-wakes the session. Channel state is derived from its settled result.
-`summary` is presentation only; it never replaces or reconstructs the result.
-An override names an existing channel and is itself an exact
-`ChannelProducerResult`; invalid overrides fail before any settlement changes.
-This permits one multi-channel producer to preserve successful evidence beside
-an independently failed representation without inventing another settlement
-path or reducing a result to a state label.
-
-`EntryCoordinates.resolve(target, authority)` supplies the same canonical
-coordinate Core binds ({§scheme-address}); handlers do not invent another
-interpretation of namespace authorities.
-
-The consumer passes exactly this public context to every handler. Bundled
-adapters that also implement daemon-owned lifecycle behavior receive those
-collaborators separately at construction or binding time; consumers must not
-decorate `SchemeCtx` with database handles, registries, tokenizers, notifier
-callbacks, or other private service state.
-
-§scheme-ctx-lifetime `SchemeCtx` belongs to one operation call. A handler may
-use it for the duration of that call, including asynchronous work awaited by
-the call, but must not retain the context or any other extracted capability
-after the handler returns. A streaming handler may retain only the exact
-`StreamSubscription` returned by `subscriptions.open`; its bound methods carry
-that subscription's identity without retaining the general context. Other
-retained handler-owned resources follow {§handler-lifecycle}.
-
-**Proposals are not a capability.** A side-effecting scheme proposes by *returning* a `ProposalResult` (status 202); the engine owns the resolution lifecycle. On acceptance it calls the handler's optional `applyResolution({ attrs, metadata, body }, ctx)` hook. `attrs` is the payload returned by the proposing operation, `metadata` is the exact statement-level scheme metadata retained only across the live proposal pause, and `body` is the resolver-approved body, when present. Metadata is never added to proposal attrs or client projection. The hook returns a `ProposalApplyResult`: a status below 400 completes the accept; a failure preserves the applying scheme's Problem Details as the proposal's final result.
-
-§scheme-edit-proposal-receipt An accepted EDIT proposal may return its final
-aggregate `editReceipt` alongside its per-row model-facing `result`. A resolver
-replacement must use the reviewer-replaced form from
-{§scheme-edit-batch-receipt}. Core consumes that aggregate as transient batch
-coordination and COPY/MOVE composition input; it persists only per-row receipts
-or ordered resource effects.
-
-## §4 What's NOT in this repo
-
-DB-coupled entry/channel machinery — CRUD + write-time tokenization, the
-standard entry operations, channel writes, and subscription registry — lives
-in the consumer. This package defines their stable interfaces and pure helpers
-({§scheme-ctx-entries}).
-
-## §5 Trusted extension contract
-
-Installed schemes may legitimately own network connections, subprocesses,
-caches, pools, or other host resources under {§handler-lifecycle}. These powers
-are why installation is a trust decision and why contained interoperability
-belongs in MCP rather than an in-process extension.
-
-The supported compatibility boundary is `@plurnk/plurnk-schemes`. Extensions
-should not import private service modules, depend on database layout, or call
-prepared statements directly: those are unstable implementation details, not
-additional extension capabilities. Use `SchemeCtx` or propose a new semantic
-capability when the public surface cannot express a coherent extension.
-
-## Module slice
-
-§scheme-module-slice **A daemon module contributes to the scheme kind through types this package
-owns.** They complete the module contract's slices ({§module-seam-slices}).
-
-| Type | Contract |
-| --- | --- |
-| `SchemeRegistrationSeam` | `registerScheme(name, handler)` adds one process-wide addressable `SchemeHandler`; scheme readiness and model-facing capability publication remain the host's. |
-| `ResourceTreeRegistrationSeam` | `registerResourceTreeScheme(name, source)` exposes named read-only resource trees through {§resource-tree-scheme}, without giving the module a storage interface. |
-| `RuntimeSchemeFacet` | A scheme face over a module's own resources. It claims only its own path subtree and there is the scheme's whole live half: READ and FIND preparation, FIND, EDIT, SEND and KILL are its own wherever it implements them, and its `manifest` states what the executor's output contract does not — the resource authority, channels, default channel and `writableBy` that govern every claimed coordinate. Unclaimed coordinates keep the standard executor-output behavior. A runtime carries one on its registration ({§executor-module-slice}), and a Functionality family's manager may expose one ({§functionality-adapter}). |
-
-§resource-tree-scheme **A tree supplies resources; the host supplies their entry projections.**
-`ResourceTreeSource.trees(workspaceId)` returns the currently available trees keyed by URI
-authority. Each tree lists relative resource paths and supplies a {§scheme-source-bytes}
-`ByteSource` for a relative path. Listing is authoritative; a source's null size means absent.
-The source owns containment and acquisition, including optional native-file identity.
-
-| Concern | Contract |
-| --- | --- |
-| Addressing | `name://authority/path`; resource authority, ordinary folder scopes, a dynamic MIME `body` channel. READ and source transfers share exact-resource preparation. |
-| Publication | Demand-loaded entries, not eagerly injected bodies. Model and client writes are forbidden; only the host writes projections. |
-| Projection | The host detects MIME, applies the configured input bound, and uses the installed MIME projection. Original bytes remain the source of byte views, transfers and attachments. Refresh replaces obsolete projection metadata too. |
-| FIND | The host refreshes resources in the requested path/authority scope, including descendants needed for shallow folder summaries, then performs ordinary pattern selection. |
-| Withdrawal | FIND removes cached projections for withdrawn authorities and absent resources in its refreshed scope. An exact missing READ never returns cached content. Historical log receipts are unchanged. |
-| Failures | Optional `refusal(cause, address)` translates recognized source failures into ordinary failure results (status ≥400); null preserves the host's missing-file result or propagates the original unexpected exception. Projection and persistence failures must not be recast as source failures. |
-
-The module does not receive scopes, matchers, database handles, or entry lifecycle controls through
-this source interface. A tree registration uses the ordinary scheme registry, with the same unique
-name, readiness, capability and lifecycle rules as other schemes.
-
-## §scheme-discovery §6 Discovery & registration (third-party)
-
-A scheme handler is discovered and registered with **zero first-party involvement** — install it, it lights up. The contract:
-
-- **Declare** the exact string `plurnk.kind: "scheme"` in `package.json` ({§extension-kind}). Then name the scheme(s) it owns in one of two forms: `plurnk.schemes: [{ name, export }, …]` (canonical — one entry per scheme, `export` naming the handler-class export) or `plurnk.name: "<scheme>"` (one-scheme shorthand for the `default` export). One package may own several names inside this kind; each name has exactly one owner.
-- **`SchemeDiscovery` owns the scan (this package).** `SchemeDiscovery.discover({ cwd? })` walks *all* of `node_modules` — scoped (`@acme/foo`) and unscoped — and returns `{ schemes: {name, packageName, exportName?}[], packageAttributions, skipped }` for every package declaring `plurnk.kind === "scheme"`. Scope-agnostic, so a third party under their own scope is found with no first-party allow-list; two names claiming one prefix fail-hard (across packages or within one), as does a malformed `plurnk.schemes` (locality of error, not a silent skip). It returns **descriptors, not handlers** — contract-only, it never imports a scheme package; the consumer imports each `packageName` and registers `new mod[exportName ?? "default"]()`, applying in-tree precedence. The scan primitives — package enumeration, the `PLURNK_EXTENSIONS_TRUSTED_ONLY` trust gate, the deployment-root `node_modules` walk — are one implementation in `@plurnk/plurnk-meta`, shared by every kind's scanner; `SchemeDiscovery` adds only the scheme-descriptor shape on top.
-- **Attribution is package-authored.** `packageAttributions` carries one canonical validated static tag list per admitted package; a loaded handler may additionally implement the shared runtime `attributions` function ({§extension-attribution}). The consumer owns no other attribution policy.
-- **The framework stays contract-only.** `@plurnk/plurnk-schemes` does not depend on scheme extensions. The daemon declares its bundled extensions as direct dependencies, and additional scheme extensions are installed at the application root. Each declares the framework as a peer dependency using the repository's normal same-minor compatibility range; the framework itself is ignored by discovery because it has no `plurnk.kind`.
-- **The default bundle is the daemon's own `dependencies`**, not an aggregator package. Installing `plurnk-core` surfaces the first-party schemes; any other leaf — first-party or third-party — is added by installing it, and scope-agnostic discovery lights it up identically. No bundle is ever a gate.
-- **Trust.** The scanner enforces the shared predicate before attribution or scheme-field validation and returns withheld package names in `skipped`; the host owns presentation ({§extension-trust-boundary}).
-
-## Message sources
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§message-source-scheme} | Protocol modules register `MessageScheme` or compose its hooks into their existing scheme. |
-| {§message-immutable} | An EDIT, COPY or MOVE onto, or KILL of, a message address is refused 405 `message-immutable` with no… |
-| {§problems-schemes} | Selection and metadata Problems. |
-| {§pinned-wording-schemes} | Pinned wording. |
-<!-- /map -->
-
-§message-source-scheme Protocol modules register `MessageScheme` or compose its hooks into
-their existing scheme. Core's `SchemeCtx.messages` materializes retained messages in that
-scheme for ordinary READ/FIND/COPY and delivers exact-address SEND replies under
-{§message-completion}. The materialization is a derived representation, never the source
-of message body or reply state. The protocol module owns URI identity; Core owns durable
-admission and correlation. Message representations reject mutation while remaining SEND
-recipients. Scratch entries and protocol artifacts retain their own existing write contracts.
-
-§message-immutable An EDIT, COPY or MOVE onto, or KILL of, a message address is
-refused 405 `message-immutable` with no `recovery` ({§diagnostic-observation}); its detail
-names the address as an immutable received message:
-`` `message://tester/bde40185` is a received message; it cannot be edited, moved or killed. ``
-
-§problems-schemes **Selection and metadata Problems.** Every code minted here, its status, and the sentence that is its contract (placeholders in *italics* are filled at emission; a fixed recovery follows its detail).
-
-| code | status | contract |
+| Problem code | Status | Contract & pinned wording |
 |---|---:|---|
-| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line; a result page names the unit it pages). Recovery: Choose a range within the available extent. Some refusals state the extent or show the working form of the construct instead; none rebuilds the input into another scope ({§diagnostic-observation}): a result position outside its page the page's bound (`Choose positions within 1..3.`), a region holding a zero line or column the counting rule of {§op-shapes} (`Lines and columns count from 1.`), an inverted region the form's order (`An exact region names its earlier position first: <SL,SC,EL,EC>.`), a `<-N,-1>` range the line extent (`-1 is the only position counted from the end; lines run 1..92.`), and a line range from 0 the line forms ({§range-starts-at-one}). |
-| `overlapping-edits` | 409 | Two EDIT regions overlap, or a whole-resource replacement cannot coexist with another EDIT. Recovery: Submit the whole-resource replacement by itself. |
-| `invalid-expression` | 400 | The *dialect* matcher expression is invalid. Recovery: Revise the matcher expression. |
-| `unsupported-dialect` | 415 | The *dialect* matcher is not supported for *mimetype*. Recovery: Use a matcher supported by the resource mimetype. |
-| `metadata-unsupported` | 400 | Message metadata accepts only attachments. |
-| `attachments-invalid` | 400 | attachments must be an array of non-empty resource addresses. |
-| `metadata-invalid` | 400 | [metadata] must be a JSON array of option objects; every element is an object. |
+| `range-not-satisfiable` | `416` | Range lies outside available extent (`Lines and columns count from 1.`, `An exact region names its earlier position first: <SL,SC,EL,EC>.`, `-1 is the only position counted from the end; lines run 1..N.`, `Choose positions within 1..N.`, or ``Range <0,end> starts at 0, which is not a line; lines are numbered from 1 and 0 is only the `<0>` prepend position. Recovery: `<L,M>` selects lines L through M; `<0>` prepends and `<-1>` appends without replacing anything.`` / `Range <0,end> starts at 0; <unit> positions are numbered from 1.`). Unsupported scope arity: `A scope requires one position or an inclusive two-position range.` |
+| `overlapping-edits` | `409` | Two `EDIT` regions overlap, or a whole-resource replacement coexists with another `EDIT`. `Recovery: Submit the whole-resource replacement by itself.` |
+| `invalid-expression` | `400` | `The <dialect> matcher expression is invalid. Recovery: Revise the matcher expression.` |
+| `unsupported-dialect` | `415` | `The <dialect> matcher is not supported for <mimetype>. Recovery: Use a matcher supported by the resource mimetype.` |
+| `metadata-invalid` | `400` | `[metadata] must be a JSON array.` or `[metadata] must be a JSON array of option objects; every element is an object.` |
+| `metadata-unsupported` | `400` | `Message metadata accepts only attachments.` |
+| `attachments-invalid` | `400` | `attachments must be an array of non-empty resource addresses.` |
 
-§pinned-wording-schemes **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
+## §capability-ctx Capability context and subscriptions
 
-| sentence | arises when |
+`SchemeCtx` is the operation-scoped capability surface (`{ workspaceId, sessionId, loopId, turnId, writer, signal, logEntryId? }`, `{§execution-output-identity}`) injected by the consumer:
+
+| Capability | Contract |
 |---|---|
-| `Range <0,end>` starts at 0, which is not a line; lines are numbered from 1 and 0 is only the `<0>` prepend position. Recovery: `<L,M>` selects lines L through M; `<0>` prepends and `<-1>` appends without replacing anything. / `Range <0,end>` starts at 0; *unit* positions are numbered from 1. | a range whose start is 0 ({§range-starts-at-one}) |
-| [metadata] must be a JSON array. | a malformed JSON metadata modifier |
-| [metadata] must be a JSON array of option objects; every element is an object. | a non-object element supplied to an object-only metadata owner |
-| A scope requires one position or an inclusive two-position range. | a scope of unsupported arity |
+| `entries` & `channels` | Direct storage (`address`, `read`, `write`, `delete`, optional scheme-private `attributes`) and standard `operations` (`editBatch`, `find`, `send`), plus `channels` (`append`, `replace`, `setState`), bound by Core to the resolved workspace coordinate (`{§scheme-surface}`). |
+| `notify`, `projection`, `resources`, `messages` | `notify.streamEvent` (between-turn client metadata signal), `projection`, `resources.capture`, and `messages`. |
+| `interactions` | `request(ClientInteractionRequest, signal?) -> Promise<ClientInteractionResolution>` (`{§provider-request-accounting}`). |
+| `subscriptions` | `open(pathname, handle)` returns the sole capability retainable after the handler call returns: `StreamSubscription` (`AbortSignal` + `notifyChunk(channel, chunk, mimetype?)` + `close(result, summary?, channelResults?)` that validates `ChannelProducerResult` overrides, settles channel states, unregisters the live handle, and wakes the session). |
+| Proposals (`applyResolution`) | A side-effecting scheme proposes by returning `status: 202`; on acceptance, Core calls `applyResolution({ attrs, metadata, body }, ctx)` (`{§log-wire-format}`). Accepted `EDIT` proposals may return an aggregate `editReceipt` (using `reviewer-replaced` when the resolver replaced the body). |
+
+## §resource-tree-scheme Module slice and resource trees
+
+| Type / concern | Contract |
+|---|---|
+| `SchemeRegistrationSeam` | `registerScheme(name, handler)` registers a process-wide `SchemeHandler` (`{§module-seam-slices}`). |
+| `RuntimeSchemeFacet` | Claims a path subtree under an executor or Functionality scheme (`{§executor-module-slice}`, `{§functionality-adapter}`) with its own `manifest` (`authority`, `channels`, `defaultChannel`, `writableBy`) and live `prepareRepresentation`, `prepareFind`, `find`, `editBatch`, `send`, and `kill` hooks while unclaimed coordinates keep standard executor-output behavior. |
+| `ResourceTreeRegistrationSeam` | `registerResourceTreeScheme(name, source)` exposes read-only `ResourceTreeSource.trees(workspaceId)` keyed by URI authority (`name://authority/path`, resource authority, folder scopes, dynamic MIME `body` channel). |
+| Tree publication & projection | Demand-loaded entries on `READ` and `COPY`; model/client writes are forbidden (`403`). The host detects MIME, applies the input bound, and runs the installed MIME projection while keeping original `ByteSource` bytes for byte views, transfers, and attachments. |
+| Tree `FIND`, withdrawal & failures | `FIND` refreshes resources in the requested authority/path scope and evicts withdrawn authorities or absent paths (an exact missing `READ` never returns cached content). Optional `refusal(cause, address)` translates recognized source errors into failure results (`status >= 400`). |
+
+## §scheme-discovery Third-party discovery
+
+`SchemeDiscovery.discover({ cwd? })` scans `node_modules` via `@plurnk/plurnk-meta` (`{§extension-kind}`, `{§extension-trust-boundary}`, `{§extension-attribution}`) for packages declaring `plurnk.kind === "scheme"` (`plurnk.schemes: [{ name, export }]` or `plurnk.name`), failing hard on duplicate scheme prefixes or malformed declarations and returning `{ schemes, packageAttributions, skipped }` descriptors without importing handler modules.
+
+## §message-source-scheme Message sources
+
+Protocol modules register `MessageScheme` or compose its hooks so `SchemeCtx.messages` materializes retained inbound messages for `READ`, `FIND`, and `COPY` and routes exact-address `SEND` replies under `{§message-completion}`. Any `EDIT`, `COPY`/`MOVE` onto, or `KILL` of a message address is refused `405 message-immutable` with no `recovery` (`{§diagnostic-observation}`): `` `<address>` is a received message; it cannot be edited, moved or killed. ``

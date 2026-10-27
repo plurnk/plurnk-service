@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import Meta from "@plurnk/plurnk-meta";
 
-// {§http-materializer-extensions} — the pluggable page-materialization contract.
+// {§http-lifecycle} — the pluggable page-materialization contract.
 // A third-party package declares `plurnk: { kind: "http-materializer", materializers:
 // [{ id, module }] }` and exports one HttpMaterializer per entry. The operator
 // selects one by id (`PLURNK_SCHEMES_HTTP_MATERIALIZER`); unset means the built-in

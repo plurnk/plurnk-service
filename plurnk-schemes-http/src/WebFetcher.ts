@@ -30,7 +30,7 @@ export const MARKDOWN_ACCEPT = "text/markdown, text/html;q=0.9, */*;q=0.1";
 export const PROJECTION_ID_HEADER = "x-plurnk-projection-id";
 export const CACHE_VARIANT_HEADER = "x-plurnk-cache-variant";
 export const MATERIALIZER_ID_HEADER = "x-plurnk-materializer-id";
-// The operator's materializer selection ({§http-materializer-extensions}): a
+// The operator's materializer selection ({§http-lifecycle}): a
 // discovered materializer id; unset/empty means the built-in local projection
 // is the only body producer.
 export const MATERIALIZER_ENV = "PLURNK_SCHEMES_HTTP_MATERIALIZER";
@@ -58,7 +58,7 @@ const rewriteAcquisitionTarget = (url: string): string => {
         : `https://raw.githubusercontent.com/${gh[1]}/${gh[2]}/${gh[3]}`;
 };
 
-// {§web-materialization-contract} — the shapes are the framework's; this leaf implements them.
+// {§scheme-operation-dispatch} — the shapes are the framework's; this leaf implements them.
 export { WebMaterializationError };
 export type { WebChannelOutcome, WebFetchResult, WebMaterializedResult, WebResponseBody };
 
@@ -100,7 +100,7 @@ export default class WebFetcher implements WebMaterializer {
         return (process.env[MATERIALIZER_ENV]?.trim() ?? "").length > 0;
     }
 
-    // {§http-materializer-extensions} — resolve the operator-selected materializer
+    // {§http-lifecycle} — resolve the operator-selected materializer
     // and consult its per-request eligibility; null → built-in projection.
     static async #selectedMaterializer(url: string, signal?: AbortSignal): Promise<{ materializer: HttpMaterializer; identity: string } | null> {
         const id = (process.env[MATERIALIZER_ENV]?.trim() ?? "");
@@ -140,7 +140,7 @@ export default class WebFetcher implements WebMaterializer {
         };
     }
 
-    // {§channel-selection}/{§http-binary-source} — source and projection have the same channel
+    // {§channel-selection}/{§http-lifecycle} — source and projection have the same channel
     // identities here as in the durable entry, regardless of the source format.
     static materializedChannels(
         materialized: WebMaterializedResult,
@@ -212,7 +212,7 @@ export default class WebFetcher implements WebMaterializer {
         signal?: AbortSignal,
     ): Promise<WebMaterializedResult> {
         // One materializer owns page-body production and independent channel
-        // outcomes {§html-materialization}/{§http-channel-outcomes}.
+        // outcomes {§http-lifecycle}/{§http-lifecycle}.
         if (fetched.originUnavailable === true) {
             return WebFetcher.#materializeHtml(fetched, projection, signal);
         }
@@ -311,7 +311,7 @@ export default class WebFetcher implements WebMaterializer {
                     ? result.problem
                     : (result.problem ?? {
                         status: 502,
-                        code: "materializer-recoverable", // {§problems-http}
+                        code: "materializer-recoverable", // {§http-lifecycle}
                         detail: `The materializer could not extract ${fetched.url} (${result.reason}).`,
                         retryable: true,
                     });

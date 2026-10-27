@@ -251,7 +251,7 @@ test("{§find} Session.find with regex matcher filters by CONTENT", async () => 
     } finally { db.close(); }
 });
 
-test("{§problems-schemes} Session.find preserves an invalid matcher's parser cause and recovery facts", async () => {
+test("{§slicer-text-algebra} Session.find preserves an invalid matcher's parser cause and recovery facts", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
         await seedEntries(db, workspaceId, sessionId, [["a.json", "{\"answer\":42}"]]);
@@ -262,7 +262,7 @@ test("{§problems-schemes} Session.find preserves an invalid matcher's parser ca
         assert.equal(r.status, 400);
         assert.equal(r.problem?.stage, "matcher");
         assert.equal(r.problem?.dialect, "jsonpath");
-        assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
+        assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§slicer-text-algebra}
         assert.equal(r.problem?.retryable, false);
         assert.equal(r.problem?.detail, "The jsonpath matcher expression is invalid.", "the parser's actual cause survives the FIND boundary");
     } finally {

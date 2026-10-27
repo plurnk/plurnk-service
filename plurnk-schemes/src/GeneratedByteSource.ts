@@ -1,6 +1,6 @@
 import type { ByteSource } from "./ByteSource.ts";
 
-// {§scheme-source-bytes} One demand-loaded snapshot, with no native file identity.
+// {§scheme-operation-dispatch} One demand-loaded snapshot, with no native file identity.
 export default class GeneratedByteSource implements ByteSource {
     readonly #generate: () => Promise<Uint8Array | null>;
     #bytes: Promise<Uint8Array | null> | undefined;

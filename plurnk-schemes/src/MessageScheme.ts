@@ -17,7 +17,7 @@ export default class MessageScheme implements SchemeHandler {
     }
 
     async resolveEntryAddress(target: ParsedPath, _ctx: SchemeAddressCtx, access: "read" | "write" = "read"): Promise<EntryAddress | SchemeResult | null> {
-        // {§message-immutable} — immutable evidence is neither a reply nor a lifecycle control.
+        // {§message-source-scheme} — immutable evidence is neither a reply nor a lifecycle control.
         if (access === "write") return Results.failure(
             `scheme:${this.manifest.name}`, "message-immutable", 405,
             `\`${target.raw}\` is a received message; it cannot be edited, moved or killed.`,

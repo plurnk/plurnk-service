@@ -49,7 +49,7 @@ interface RuntimeSchemeRegistration {
 }
 
 // What the registry holds: a scheme handler, which may carry the packet-section hook the registry reads
-// ({§scheme-packet-transform}).
+// ({§network-address}).
 export type RegisteredScheme = SchemeHandler & Partial<PacketSectionTransformer>;
 
 interface WorkspaceSchemeSnapshot {
@@ -324,7 +324,7 @@ export default class SchemeRegistry {
         throw new Error(`scheme name '${name}' is claimed by both ${existing.label} and ${incoming.label}`);
     }
 
-    // {§web-materialization-contract} — the https handler publishes web materialization; core
+    // {§scheme-operation-dispatch} — the https handler publishes web materialization; core
     // reaches it here and names no extension package. Absent is a defect of the installation, not a fallback.
     webMaterializer(): WebMaterializer {
         const handler = this.#handlers.get("https");
@@ -360,7 +360,7 @@ export default class SchemeRegistry {
         return [...this.#effectiveHandlers(workspaceId).keys()].toSorted();
     }
 
-    // {§handler-lifecycle} — discovery proves importability; one successful
+    // {§scheme-operation-dispatch} — discovery proves importability; one successful
     // ready() per object identity proves advertised resources are usable.
     async ready(): Promise<void> {
         for (const handler of this.#allHandlers()) await this.#readyHandler(handler);
@@ -378,7 +378,7 @@ export default class SchemeRegistry {
         return readiness;
     }
 
-    // {§handler-lifecycle} — aliases may share a handler. Attempt and await every
+    // {§scheme-operation-dispatch} — aliases may share a handler. Attempt and await every
     // unique close once, then surface all failures together.
     async close(): Promise<void> {
         const closures = [...this.#allHandlers()].map((handler) => {
@@ -440,7 +440,7 @@ export default class SchemeRegistry {
     }
 
 
-    // {§scheme-packet-transform} {§packet-assembly}.
+    // {§network-address} {§packet-assembly}.
     async transformSections(sections: PacketSectionDraft[], workspaceId?: number): Promise<PacketSectionDraft[]> {
         let current = PacketSections.assertDrafts(sections, "core packet defaults");
         for (const [name, handler] of this.#effectiveHandlers(workspaceId)) {

@@ -35,7 +35,7 @@ test("{§scheme-address} foldAuthorityIntoPath folds a namespace authority into 
     assert.equal(foldAuthorityIntoPath(null, "/docs/x.md"), "/docs/x.md");
 });
 
-test("{§manifest-authority} {§scheme-address} entryCoordinateOf distinguishes namespace and resource authority", () => {
+test("{§manifest} {§scheme-address} entryCoordinateOf distinguishes namespace and resource authority", () => {
     const notes = parsePath("notes://docs/fact.md");
     const mcp = parsePath("mcp://researcher/tasks/t-1");
     const session = parsePath("session://ada/task");

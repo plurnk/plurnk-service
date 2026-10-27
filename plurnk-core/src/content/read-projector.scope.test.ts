@@ -27,7 +27,7 @@ const project = (marks: LineMarker["marks"], content: string, binary = false) =>
 
 for (const binary of [false, true]) {
     for (const end of [2, 120, -1]) {
-        test(`{§read-zero-start}: ${binary ? "byte" : "text"} <0,${end}> returns content with exact recovery evidence`, async () => {
+        test(`{§slicer-text-algebra}: ${binary ? "byte" : "text"} <0,${end}> returns content with exact recovery evidence`, async () => {
             const canonical = await project([1, end], "one\ntwo\nthree", binary);
             const recovered = await project([0, end], "one\ntwo\nthree", binary);
             assert.equal(recovered.status, 200);
@@ -37,7 +37,7 @@ for (const binary of [false, true]) {
             assert.equal(Results.assert(recovered), recovered);
         });
     }
-    test(`{§read-zero-start}: empty ${binary ? "bytes" : "text"} remains an empty successful read`, async () => {
+    test(`{§slicer-text-algebra}: empty ${binary ? "bytes" : "text"} remains an empty successful read`, async () => {
         const recovered = await project([0, -1], "", binary);
         assert.equal(recovered.status, 204);
         assert.equal(recovered.content, "");
@@ -47,14 +47,14 @@ for (const binary of [false, true]) {
 }
 
 for (const marks of [[0, 0], [0, -2], [0, 1, 1, 2], [1, 0, 1, 2]] satisfies LineMarker["marks"][]) {
-    test(`{§read-zero-start}: <${marks.join(",")}> does not guess another invalid coordinate`, async () => {
+    test(`{§slicer-text-algebra}: <${marks.join(",")}> does not guess another invalid coordinate`, async () => {
         const result = await project(marks, "one\ntwo");
         assert.equal(result.status, 416);
         assert.equal(result.scopeNormalizations, undefined);
     });
 }
 
-test("{§read-zero-start}: the single <0> sentinel still selects no text", async () => {
+test("{§slicer-text-algebra}: the single <0> sentinel still selects no text", async () => {
     const result = await project([0], "one\ntwo");
     assert.equal(result.status, 204);
     assert.equal(result.content, "");

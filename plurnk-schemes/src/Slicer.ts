@@ -75,7 +75,7 @@ export interface WindowResult extends SchemeResult {
 }
 
 export default class Slicer {
-    // {§read-zero-start} Projection tolerance is separate from the strict mutation algebra.
+    // {§slicer-text-algebra} Projection tolerance is separate from the strict mutation algebra.
     static readScope(marker: LineMarker): ScopeNormalization | undefined {
         const [first, last] = marker.marks;
         return marker.marks.length === 2 && first === 0 && Number.isSafeInteger(last) && (last === -1 || last > 0)
@@ -161,7 +161,7 @@ export default class Slicer {
         return range.total === 0
             || (range.returned?.[0] === 1 && range.returned[1] === range.total);
     }
-    // {§slicer-window} — the positional contract of `lines()` over any 1-based unit whose content
+    // {§slicer-text-algebra} — the positional contract of `lines()` over any 1-based unit whose content
     // is not text in memory (a resource's bytes): the same normalization, extents, sentinels, and
     // 416s, resolved against a total alone. A null start is a sentinel selection of nothing.
     static window(marker: LineMarker, total: number, unit: RangeUnit): WindowResult {
@@ -373,7 +373,7 @@ export default class Slicer {
         };
     }
 
-    // {§range-starts-at-one} A two-coordinate range never starts at 0. The refusal says so in the
+    // {§slicer-text-algebra} A two-coordinate range never starts at 0. The refusal says so in the
     // range's unit; a line range's recovery shows the working line forms, never a range rebuilt
     // from the refused one ({§diagnostic-observation}).
     static #zeroStart(last: number, unit: RangeUnit): ScopeError {

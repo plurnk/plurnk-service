@@ -45,16 +45,16 @@ export interface SchemeHandler extends ExtensionAttributionSource {
     // Per-instance manifest option. Every handler must expose either this or a
     // class-level `static manifest`; Manifest.of validates the resolved value at
     // registration. Per-tag executor schemes derive this instance value from
-    // their runtime declaration ({§executor-scheme-output}).
+    // their runtime declaration ({§network-address}).
     readonly manifest?: SchemeManifest;
 
-    // Optional process hooks under {§handler-lifecycle}: readiness precedes
+    // Optional process hooks under {§scheme-operation-dispatch}: readiness precedes
     // advertisement; shutdown follows dispatch drain and precedes store closure.
     // Both run once per unique handler object identity.
     ready?(): Promise<void>;
     close?(): Promise<void>;
 
-    // {§web-materialization-contract}: the handler that acquires and materializes web resources
+    // {§scheme-operation-dispatch}: the handler that acquires and materializes web resources
     // publishes it here; the entry sink resolves it through the registry, never a package by name.
     readonly webMaterializer?: WebMaterializer;
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<ProposalApplyResult>;

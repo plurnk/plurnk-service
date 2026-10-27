@@ -98,7 +98,7 @@ test("{§operation-results} NoticeChannel broadcasts every provider checkpoint b
 });
 
 describe("results", () => {
-test("{§result-shape-guards} shape discriminator narrows each family", () => {
+test("{§slicer-text-algebra} shape discriminator narrows each family", () => {
     const entry: EntryResult = { shape: "entry", status: 201, entryId: 7, channel: "body" };
     const proposal: ProposalResult = { shape: "proposal", status: 202, body: "preview", diff: "@@ -1 +1 @@" };
     const passthrough: PassthroughResult = { shape: "passthrough", status: 200, content: "row", mimetype: "application/json" };
@@ -114,7 +114,7 @@ test("{§result-shape-guards} shape discriminator narrows each family", () => {
     assert.equal(Results.isProposalResult(passthrough), false);
 });
 
-test("{§result-shape-guards} shape guards are mutually exclusive and optional on a scheme result", () => {
+test("{§slicer-text-algebra} shape guards are mutually exclusive and optional on a scheme result", () => {
     const results: SchemeResult[] = [
         { shape: "entry", status: 200, entryId: 1, channel: "body" },
         { shape: "proposal", status: 202 },

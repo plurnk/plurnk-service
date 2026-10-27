@@ -4,7 +4,7 @@
 // the registry-free surface; a consumer with a configured Mimetypes service
 // uses Mimetypes.classify() so installed handler declarations remain authoritative.
 //
-// {§mimetype-classifier} What stays local is scheme semantics, not filetype fact:
+// {§network-address} What stays local is scheme semantics, not filetype fact:
 //   isJson           - JSON receipt summarization (RFC 6839).
 //   normalizeAutoText — the text-primitive policy (auto-derived text is markdown).
 
@@ -21,24 +21,24 @@ import { classifyMimetype } from "@plurnk/plurnk-mimetypes";
 export const TEXT_PRIMITIVE_MIMETYPE = "text/markdown";
 
 export default class MimetypeClassifier {
-    // Pure taxonomy for registry-free boundaries (SPEC {§mimetype-classifier}).
+    // Pure taxonomy for registry-free boundaries (SPEC {§network-address}).
     static isBinary(mimetype: string): boolean {
         return classifyMimetype(mimetype).binary;
     }
 
     // JSON-family check used by receipt summarization.
     // Matches application/json plus +json suffix variants per RFC 6839.
-    // {§mimetype-classifier} Scheme semantics, deliberately NOT delegated.
+    // {§network-address} Scheme semantics, deliberately NOT delegated.
     static isJson(mimetype: string): boolean {
         return mimetype === "application/json" || mimetype.endsWith("+json");
     }
 
-    // Exact normalized HTML family used by web acquisition {§html-materialization}.
+    // Exact normalized HTML family used by web acquisition {§http-lifecycle}.
     static isHtml(mimetype: string): boolean {
         return mimetype === "text/html" || mimetype === "application/xhtml+xml";
     }
 
-    // {§mimetype-verbatim-transfer}
+    // {§network-address}
     static isTransferCompatible(
         source: string,
         destination: string,

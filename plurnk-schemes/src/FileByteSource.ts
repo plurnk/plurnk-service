@@ -2,7 +2,7 @@ import { errnoCode } from "@plurnk/plurnk-contracts";
 import { open, stat } from "node:fs/promises";
 import type { ByteSource } from "./ByteSource.ts";
 
-// {§scheme-source-bytes} Location and original bytes share their resource owner.
+// {§scheme-operation-dispatch} Location and original bytes share their resource owner.
 export default class FileByteSource implements ByteSource {
     readonly #locate: () => Promise<string | null>;
 

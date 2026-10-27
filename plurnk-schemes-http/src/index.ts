@@ -2,7 +2,7 @@
 export { default } from "./Http.ts";
 export { default as Http } from "./Http.ts";
 
-// The registered WebSocket handler {§ws}.
+// The registered WebSocket handler {§ws-lifecycle}.
 export { default as Ws } from "./Ws.ts";
 
 // Automatic entry-acquisition primitive {§prefetch} and its URL check.

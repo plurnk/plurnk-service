@@ -1,31 +1,32 @@
-// Automatic-fetch URL-check coverage {§automatic-fetch-check}. Fully hermetic:
+// Automatic-fetch URL-check coverage {§http-host-policy}. Fully hermetic:
 // pure range checks and IP-literal URLs (net.isIP short-circuits DNS). Hop count reads
 // PLURNK_SCHEMES_HTTP_REDIRECTS from .env.defaults via --env-file.
 
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import Guard, { GuardBlockedError } from "./Guard.ts";
+import HostPolicy, { HOSTS_ENV, HostPolicyError } from "./HostPolicy.ts";
 import { requestUrl } from "../../scripts/lib/test-fetch.ts";
 
-test("{§automatic-fetch-check} isPublicAddress: blocks RFC-reserved v4 ranges", () => {
+test("{§http-host-policy} isPublicAddress: blocks RFC-reserved v4 ranges", () => {
     for (const ip of ["0.0.0.0", "10.0.0.1", "127.0.0.1", "169.254.169.254", "172.16.0.1", "172.31.255.255", "192.168.1.1", "100.64.0.1", "100.127.0.1"]) {
         assert.equal(Guard.isPublicAddress(ip), false, `${ip} should be non-public`);
     }
 });
 
-test("{§automatic-fetch-check} isPublicAddress: allows public v4 (incl. range boundaries)", () => {
+test("{§http-host-policy} isPublicAddress: allows public v4 (incl. range boundaries)", () => {
     for (const ip of ["8.8.8.8", "93.184.216.34", "1.1.1.1", "11.0.0.1", "172.15.0.1", "172.32.0.1", "100.63.0.1", "100.128.0.1"]) {
         assert.equal(Guard.isPublicAddress(ip), true, `${ip} should be public`);
     }
 });
 
-test("{§automatic-fetch-check} isPublicAddress: blocks non-global v4 ranges", () => {
+test("{§http-host-policy} isPublicAddress: blocks non-global v4 ranges", () => {
     for (const ip of ["192.0.0.1", "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.51.100.1", "203.0.113.1", "224.0.0.1", "240.0.0.1", "255.255.255.255"]) {
         assert.equal(Guard.isPublicAddress(ip), false, `${ip} should be non-global`);
     }
 });
 
-test("{§automatic-fetch-check} isPublicAddress: blocks non-global v6 and canonical v4-mapped forms", () => {
+test("{§http-host-policy} isPublicAddress: blocks non-global v6 and canonical v4-mapped forms", () => {
     for (const ip of ["::", "::1", "100::1", "2001::1", "2001:db8::1", "3fff::1", "5f00::1", "fc00::1", "fd12:3456::1", "fe80::1", "ff02::1", "::ffff:127.0.0.1", "::ffff:7f00:1", "::ffff:a9fe:a9fe"]) {
         assert.equal(Guard.isPublicAddress(ip), false, `${ip} should be private`);
     }
@@ -35,7 +36,7 @@ test("{§automatic-fetch-check} isPublicAddress: blocks non-global v6 and canoni
     assert.equal(Guard.isPublicAddress("not-an-address"), false);
 });
 
-test("{§automatic-fetch-check} isPublicUrl: protocol / localhost / IP-literal, no DNS", async () => {
+test("{§http-host-policy} isPublicUrl: protocol / localhost / IP-literal, no DNS", async () => {
     for (const bad of ["ftp://8.8.8.8/", "file:///etc/passwd", "http://localhost/", "http://x.localhost/", "http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://[::ffff:127.0.0.1]/", "https://user:secret@8.8.8.8/", "ws://8.8.8.8/", "wss://93.184.216.34/", "not a url"]) {
         assert.equal(await Guard.isPublicUrl(bad), false, `${bad} should be refused`);
     }
@@ -43,7 +44,7 @@ test("{§automatic-fetch-check} isPublicUrl: protocol / localhost / IP-literal, 
     assert.equal(await Guard.isPublicUrl("http://[2606:4700:4700::1111]/"), true);
 });
 
-test("{§automatic-fetch-check} Guard.fetch: a private target is refused before any fetch", async () => {
+test("{§http-host-policy} Guard.fetch: a private target is refused before any fetch", async () => {
     const orig = globalThis.fetch;
     let called = false;
     globalThis.fetch = (async () => { called = true; return new Response("x"); });
@@ -56,7 +57,7 @@ test("{§automatic-fetch-check} Guard.fetch: a private target is refused before 
     } finally { globalThis.fetch = orig; }
 });
 
-test("{§automatic-fetch-check} Guard.fetch: a redirect INTO private space is re-guarded and refused", async () => {
+test("{§http-host-policy} Guard.fetch: a redirect INTO private space is re-guarded and refused", async () => {
     const orig = globalThis.fetch;
     globalThis.fetch = (async (u: string | URL | Request) =>
         requestUrl(u).includes("8.8.8.8")
@@ -70,7 +71,7 @@ test("{§automatic-fetch-check} Guard.fetch: a redirect INTO private space is re
     } finally { globalThis.fetch = orig; }
 });
 
-test("{§automatic-fetch-check} Guard.fetch: follows only Fetch redirect statuses", async () => {
+test("{§http-host-policy} Guard.fetch: follows only Fetch redirect statuses", async () => {
     const orig = globalThis.fetch;
     let calls = 0;
     globalThis.fetch = (async () => {
@@ -88,7 +89,7 @@ test("{§automatic-fetch-check} Guard.fetch: follows only Fetch redirect statuse
     } finally { globalThis.fetch = orig; }
 });
 
-test("{§automatic-fetch-check} Guard.fetch: redirect method, body, and body-header changes follow Fetch", async (t) => {
+test("{§http-host-policy} Guard.fetch: redirect method, body, and body-header changes follow Fetch", async (t) => {
     const cases = [
         { status: 301, method: "POST", body: "payload", expectedMethod: "GET", expectedBody: undefined, contentType: null },
         { status: 302, method: "PUT", body: "payload", expectedMethod: "PUT", expectedBody: "payload", contentType: "text/plain" },
@@ -97,7 +98,7 @@ test("{§automatic-fetch-check} Guard.fetch: redirect method, body, and body-hea
         { status: 307, method: "POST", body: "payload", expectedMethod: "POST", expectedBody: "payload", contentType: "text/plain" },
     ] as const;
     for (const specimen of cases) {
-        await t.test(`${specimen.status} ${specimen.method}`, async () => {
+        await t.test(`{§http-host-policy} ${specimen.status} ${specimen.method}`, async () => {
             const orig = globalThis.fetch;
             const seen: Array<{ method?: string; body?: BodyInit | null; headers: Headers }> = [];
             globalThis.fetch = (async (_target, init) => {
@@ -126,7 +127,7 @@ test("{§automatic-fetch-check} Guard.fetch: redirect method, body, and body-hea
     }
 });
 
-test("{§automatic-fetch-check} Guard.fetch: strips Authorization only after a cross-origin redirect", async () => {
+test("{§http-host-policy} Guard.fetch: strips Authorization only after a cross-origin redirect", async () => {
     const run = async (location: string): Promise<Headers> => {
         const orig = globalThis.fetch;
         const seen: Headers[] = [];
@@ -153,7 +154,7 @@ test("{§automatic-fetch-check} Guard.fetch: strips Authorization only after a c
     assert.equal(crossOrigin.get("x-trace"), "kept");
 });
 
-test("{§automatic-fetch-check} Guard.fetch: cancels a followed redirect response body", async () => {
+test("{§http-host-policy} Guard.fetch: cancels a followed redirect response body", async () => {
     const orig = globalThis.fetch;
     let cancelled = false;
     let calls = 0;
@@ -172,3 +173,38 @@ test("{§automatic-fetch-check} Guard.fetch: cancels a followed redirect respons
         assert.equal(cancelled, true);
     } finally { globalThis.fetch = orig; }
 });
+
+{
+const withPolicy = (value: string | undefined, run: () => void): void => {
+    const prior = process.env[HOSTS_ENV];
+    if (value === undefined) delete process.env[HOSTS_ENV]; else process.env[HOSTS_ENV] = value;
+    try { run(); } finally { if (prior === undefined) delete process.env[HOSTS_ENV]; else process.env[HOSTS_ENV] = prior; }
+};
+
+test("{§http-host-policy} unset or empty admits every host", () => {
+    for (const value of [undefined, "", "  "]) withPolicy(value, () => {
+        assert.equal(HostPolicy.permits("https://raw.githubusercontent.com/a/b"), true);
+    });
+});
+
+test("{§http-host-policy} [] admits no host; a list admits exact hosts and wildcard subdomains", () => {
+    withPolicy("[]", () => {
+        assert.equal(HostPolicy.permits("https://api.github.com/search/issues"), false);
+        assert.throws(() => HostPolicy.require("https://api.github.com/x"), HostPolicyError);
+    });
+    withPolicy('["api.example.com", "*.docs.example.org"]', () => {
+        assert.equal(HostPolicy.permits("https://api.example.com/v1"), true);
+        assert.equal(HostPolicy.permits("https://API.EXAMPLE.COM/v1"), true);
+        assert.equal(HostPolicy.permits("https://www.api.example.com/v1"), false);
+        assert.equal(HostPolicy.permits("https://a.docs.example.org/x"), true);
+        assert.equal(HostPolicy.permits("https://docs.example.org/x"), false);
+        assert.equal(HostPolicy.permits("not a url"), false);
+    });
+});
+
+test("{§http-host-policy} a malformed policy fails at first use", () => {
+    for (const value of ["github.com", '[""]', '[1]', '{"hosts":[]}']) withPolicy(value, () => {
+        assert.throws(() => HostPolicy.permits("https://github.com"), /must be a JSON array of host names/);
+    });
+});
+}

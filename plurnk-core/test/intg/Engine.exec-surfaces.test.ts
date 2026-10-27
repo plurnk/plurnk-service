@@ -697,7 +697,7 @@ test("{§packet} KILLing a terminal observation cannot erase its subscription de
 });
 
 describe("exec-conclude-honesty", () => {
-// {§scheme-subscriptions} {§exec-stream} A rejecting executor must still conclude
+// {§capability-ctx} {§exec-stream} A rejecting executor must still conclude
 // its stream, and cancellation outranks an executor's later 2xx claim. A stub
 // runtime drives the real dispatch path; nothing below the executor is mocked.
 

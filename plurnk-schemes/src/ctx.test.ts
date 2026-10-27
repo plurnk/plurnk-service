@@ -23,6 +23,15 @@ import type {
     ChannelState,
 } from "./ctx.ts";
 import Results from "./Results.ts";
+import {
+    PacketSections,
+    type EditBatchReceipt,
+    type EditBatchResult,
+    type PacketSectionDraft,
+    type PacketSectionTransformer,
+    type RepresentationPreparationResult,
+    type SchemeHandler,
+} from "./index.ts";
 import { schemeCtx } from "../test/scheme-ctx.ts";
 
 // ── a minimal in-memory conformant implementation ─────────────────────────
@@ -232,7 +241,7 @@ test("{§capability-ctx} ctx: channels append accumulates (append-only store)", 
     assert.equal(r.entry?.channels.body.content, "foobar");
 });
 
-test("{§scheme-subscriptions} ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
+test("{§capability-ctx} ctx: subscriptions.open returns an awaitable AbortSignal", async () => {
     const { ctx } = makeCtx();
     const handle: SubscriptionHandle = { cancel() {} };
     const signal = await ctx.subscriptions.open("/r-1", handle);
@@ -240,7 +249,7 @@ test("{§scheme-subscriptions} ctx: subscriptions.open returns an awaitable Abor
     assert.equal(signal.aborted, false);
 });
 
-test("{§scheme-subscriptions} ctx: the opened subscription is the retainable chunk and settlement capability", async () => {
+test("{§capability-ctx} ctx: the opened subscription is the retainable chunk and settlement capability", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
 
@@ -251,7 +260,7 @@ test("{§scheme-subscriptions} ctx: the opened subscription is the retainable ch
     assert.deepEqual(inspect().closed, { result: { status: 200 }, summary: "detached complete" });
 });
 
-test("{§scheme-subscriptions} ctx: notifyChunk is fused — one call appends AND emits an event", async () => {
+test("{§capability-ctx} ctx: notifyChunk is fused — one call appends AND emits an event", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
     await subscription.notifyChunk("stdout", "line1\n");
@@ -263,7 +272,7 @@ test("{§scheme-subscriptions} ctx: notifyChunk is fused — one call appends AN
     assert.match(events[0], /stdout:active:6/);
 });
 
-test("{§scheme-subscriptions} ctx: notifyChunk carries an optional per-call mimetype (channel retype)", async () => {
+test("{§capability-ctx} ctx: notifyChunk carries an optional per-call mimetype (channel retype)", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
     await subscription.notifyChunk("body", "<html>hi</html>", "text/html");
@@ -273,7 +282,7 @@ test("{§scheme-subscriptions} ctx: notifyChunk carries an optional per-call mim
     assert.equal(chunks[1].mimetype, undefined);
 });
 
-test("{§scheme-subscriptions} ctx: the subscription's close composites state + wake (stream concluded)", async () => {
+test("{§capability-ctx} ctx: the subscription's close composites state + wake (stream concluded)", async () => {
     const { ctx, inspect } = makeCtx();
     const subscription = await ctx.subscriptions.open("/r-1", { cancel() {} });
     await subscription.close(
@@ -306,4 +315,121 @@ test("{§capability-ctx} ctx: ProposalAware hook applies a resolution and return
     const out = await scheme.applyResolution({ attrs: { pathname: "file://x" }, metadata: null, body: "applied" }, ctx);
     assert.equal(out.status, 200);
     assert.equal((await ctx.entries.read("file://x")).entry?.channels.body.content, "applied");
+});
+
+const httpLike: SchemeHandler = {
+    async prepareRepresentation(_request, _ctx): Promise<RepresentationPreparationResult> {
+        return { status: 102 };
+    },
+    async send(_statement, _ctx) {
+        return { status: 200 };
+    },
+};
+
+// @ts-expect-error Scheme handlers cannot replace core-owned READ projection.
+const invalidReadHandler: SchemeHandler = { async read() { return { status: 200 }; } };
+void invalidReadHandler;
+
+const editReceipt: EditBatchReceipt = {
+    revision: "a".repeat(64),
+    unit: "codePoints",
+    before: 3,
+    after: 4,
+    effects: [{
+        requested: "<1,2,1,2>",
+        source: "<1,2,1,2>",
+        result: "<1,2,1,3>",
+        removed: 0,
+        inserted: 1,
+        context: "1:xay",
+    }],
+};
+
+const editResult: EditBatchResult = {
+    status: 200,
+    editReceipt,
+};
+
+const editable: SchemeHandler = {
+    async editBatch() {
+        return editResult;
+    },
+};
+
+const addressable: SchemeHandler = {
+    async resolveEntryAddress(target) {
+        return target.kind === "url"
+            ? { authority: "", pathname: target.pathname }
+            : null;
+    },
+};
+
+test("{§scheme-operation-dispatch} SchemeHandler: preparation cannot replace core-owned READ projection", () => {
+    assert.equal(typeof httpLike.prepareRepresentation, "function");
+    assert.equal(typeof httpLike.send, "function");
+    assert.equal("read" in httpLike, false);
+    assert.equal(httpLike.find, undefined);
+    assert.equal(httpLike.exec, undefined);
+});
+
+test("{§scheme-operation-dispatch} SchemeHandler: editBatch exposes the typed aggregate receipt contract", () => {
+    assert.equal(typeof editable.editBatch, "function");
+    assert.equal(editResult.editReceipt?.unit, "codePoints");
+    assert.ok(editResult.editReceipt !== null && editResult.editReceipt !== undefined);
+    assert.ok("effects" in editResult.editReceipt);
+    assert.equal(editResult.editReceipt.effects[0]?.requested, "<1,2,1,2>");
+});
+
+test("{§scheme-operation-dispatch} SchemeHandler: entry address resolution returns the resource coordinate", () => {
+    assert.equal(typeof addressable.resolveEntryAddress, "function");
+});
+
+const section = (over: Partial<PacketSectionDraft> = {}): PacketSectionDraft =>
+    ({ name: "x", slot: "system", header: null, content: "", ...over });
+
+test("{§network-address} PacketSectionTransformer: a scheme reshapes the section list (add/reorder)", async () => {
+    const t: PacketSectionTransformer = {
+        transformSections(sections) {
+            return [...sections, section({ name: "footer", slot: "user", content: "fin" })];
+        },
+    };
+    const out = await t.transformSections([section({ name: "tools" })]);
+    assert.equal(out.length, 2);
+    assert.deepEqual(out.map((s) => s.name), ["tools", "footer"]);
+});
+
+test("{§network-address} PacketSectionTransformer: async transform + removal supported", async () => {
+    const t: PacketSectionTransformer = {
+        async transformSections(sections) {
+            return sections.filter((s) => s.slot === "system");
+        },
+    };
+    const out = await t.transformSections([section({ slot: "system" }), section({ name: "u", slot: "user" })]);
+    assert.equal(out.length, 1);
+    assert.equal(out[0].slot, "system");
+});
+
+test("{§network-address} PacketSections: exact valid drafts preserve their list", () => {
+    const drafts = [section({ name: "definition" }), section({ name: "prompt", slot: "user" }), section({ name: "authored", slot: "assistant" })];
+    assert.equal(PacketSections.assertDrafts(drafts), drafts);
+});
+
+test("{§network-address} PacketSections: malformed draft lists fail with their exact location", () => {
+    assert.throws(() => PacketSections.assertDrafts(null), /packet section drafts must be an array/);
+    assert.throws(
+        () => PacketSections.assertDrafts([{ name: "x", slot: "tool", header: null, content: "" }]),
+        /packet section drafts\[0\]\.slot must be system, user or assistant/,
+    );
+    assert.throws(
+        () => PacketSections.assertDrafts([{ name: "x", slot: "user", header: null }]),
+        /packet section drafts\[0\] is missing field 'content'/,
+    );
+    assert.throws(
+        () => PacketSections.assertDrafts([{ ...section(), tokens: 0 }]),
+        /packet section drafts\[0\] has unexpected field 'tokens'/,
+    );
+    assert.throws(
+        () => PacketSections.assertDrafts([section(), section()]),
+        /packet section drafts has duplicate section name 'x'/,
+    );
 });

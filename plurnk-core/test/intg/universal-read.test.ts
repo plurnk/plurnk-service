@@ -341,7 +341,7 @@ test("{§packet} preparation capabilities bind to the already-resolved canonical
     }
 });
 
-test("{§read-preparation} scope-blind preparation durably composes producer status with cold and warm core projection", async () => {
+test("{§scheme-operation-dispatch} scope-blind preparation durably composes producer status with cold and warm core projection", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("archive", new ArchiveScheme());
@@ -1410,7 +1410,7 @@ test("{§tools-resource-materialization} Turn0 catalogs the skill; only a reques
 });
 
 describe("scheme-education", () => {
-test("{§manifest-client-display} {§tools-resource-materialization}: stored packets carry language and policy without an injected resource catalogue", async () => {
+test("{§manifest} {§tools-resource-materialization}: stored packets carry language and policy without an injected resource catalogue", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `scheme-edu-${crypto.randomUUID()}`);

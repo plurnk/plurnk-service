@@ -29,7 +29,7 @@ import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
 
 // {§execution-output-identity}: the web-fetch the sink calls when the executor hands content:null —
-// the registry's web materializer ({§web-materialization-contract}: checked byte acquisition,
+// the registry's web materializer ({§scheme-operation-dispatch}: checked byte acquisition,
 // dead-as-null; caller cancellation rejects per {§prefetch}).
 // Injectable because automatic acquisition refuses localhost.
 export type WebFetch = (url: string, opts?: { signal?: AbortSignal }) => Promise<WebFetchResult | null>;

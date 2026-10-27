@@ -110,7 +110,7 @@ The framework constructs one executor per matched runtime tag with
 `{ runtime, glyph }`. A package that declares several tags may branch on
 `this.runtime`; it must not retain per-run state on the executor instance. The
 derived addressable runtime scheme retains `glyph` for client discovery
-({§manifest-client-display}); runtime aliases remain excluded from scheme
+({§manifest}); runtime aliases remain excluded from scheme
 model-teaching because the execution invocation directory owns that hot-path
 surface.
 
@@ -145,7 +145,7 @@ authored READ retains its own source-scheme metadata contract.
 | Stage | Contract |
 | ----- | -------- |
 | Preparation | Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. It validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure. No hook means no metadata support. |
-| Framework default | `BaseExecutor.prepare` validates that no unsupported metadata fields or duplicates are present. Unknown fields, duplicates, and malformed values are refused. An unknown field's recovery names every field the run takes, the service's ({§service-metadata-keys}), and nothing more ({§diagnostic-observation}): `` Its field is `lifetime`. `` Tools can override preparation to own different metadata. |
+| Framework default | `BaseExecutor.prepare` validates that no unsupported metadata fields or duplicates are present. Unknown fields, duplicates, and malformed values are refused. An unknown field's recovery names every field the run takes, the service's ({§manifest}), and nothing more ({§diagnostic-observation}): `` Its field is `lifetime`. `` Tools can override preparation to own different metadata. |
 | Execution | `run()` receives the prepared cwd, realized target, unchanged body, and original metadata; cwd is already prepared and is not resolved a second time. |
 | Evidence | Raw metadata follows the existing transient proposal handoff, never added to proposal attrs or emitted as receipt metadata. Expected preparation failures retain the tool's Problem; malformed preparation results are internal contract failures. |
 
@@ -285,7 +285,7 @@ slicer, or index. Workspace-stable resource addresses and packet projection
 belong to core's {§execution-output-identity} and {§exec-stream} contracts.
 Address resolution binds the workspace without requiring an exact stored row:
 FIND patterns and descendant resource paths participate in ordinary discovery;
-an exact READ reports its own missing resource ({§entry-address-resolution}).
+an exact READ reports its own missing resource ({§scheme-operation-dispatch}).
 
 `publishedChannel` selects one declared channel for automatic stream observations;
 absent/null selects all channels. Non-published channels remain READ-addressable.
@@ -670,7 +670,7 @@ The consumer:
 §executor-module-slice **A host binds to `Executor`, the contract `BaseExecutor` implements, not to the
 class.** A daemon module contributes runtimes as `RuntimeRegistration`s: a namespace owner, the
 runtime declaration ({§executor-runtime-declaration}), the executor, its availability, and an
-optional scheme facet ({§scheme-module-slice}). The host arbitrates the namespace
+optional scheme facet ({§resource-tree-scheme}). The host arbitrates the namespace
 ({§core-extension-composition}) and publishes each registration; these types complete the
 module contract's slices ({§module-seam-slices}).
 

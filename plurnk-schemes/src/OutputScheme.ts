@@ -1,4 +1,4 @@
-// {§executor-scheme-output} Derive an output-scheme manifest from an executor's
+// {§network-address} Derive an output-scheme manifest from an executor's
 // per-tag runtime declaration. An
 // executor authors NO SchemeManifest: its `plurnk.runtimes[]` entry already
 // carries name / glyph / output-channels, and everything else is the shared
@@ -18,7 +18,7 @@ export interface RuntimeDecl {
 }
 
 export default class OutputScheme {
-    // {§executor-scheme-output}: read-only model access to extension-produced data.
+    // {§network-address}: read-only model access to extension-produced data.
     // Per-call output mimetypes override the declared channel seeds at stream time.
     static manifestFromRuntime(decl: RuntimeDecl): SchemeManifest {
         return {

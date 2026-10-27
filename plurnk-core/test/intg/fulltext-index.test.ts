@@ -977,7 +977,7 @@ test("{§channel-selection}: a matcher FIND location names its channel only off 
 
 describe("http-response-materialization", () => {
 // Composed HTTP response representation coverage {§http-lifecycle} and
-// {§http-text-decoding}: direct
+// {§http-lifecycle}: direct
 // acquisition writes through real SchemeCtx capabilities to SQLite, then
 // universal READ observes the durable marker through the binary boundary.
 
@@ -1048,7 +1048,7 @@ acquisition pending
     return item.statement;
 };
 
-test("{§http-channel-outcomes} finite origin statuses never become nonterminal channel states", async (t) => {
+test("{§http-lifecycle} finite origin statuses never become nonterminal channel states", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const server = createServer((request, response) => {
@@ -1180,7 +1180,7 @@ const readablePdf = () => new Uint8Array(Buffer.from(
 ));
 
 for (const mode of ["complete", "oversize", "interrupted"] as const) {
-    test(`{§http-binary-source} mutation response (${mode}) preserves headers and publishes only complete binary content`, async (t) => {
+    test(`{§http-lifecycle} mutation response (${mode}) preserves headers and publishes only complete binary content`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, `http-mutation-${crypto.randomUUID()}`);
@@ -1265,7 +1265,7 @@ const plainTextStatement = (): ReadStatement => ({
 
 for (const status of [200, 202, 404]) {
 for (const size of [0, 3]) {
-    test(`{§http-binary-source} a ${status} binary response with ${size} bytes preserves its source outcome`, async (t) => {
+    test(`{§http-lifecycle} a ${status} binary response with ${size} bytes preserves its source outcome`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const bytes = Uint8Array.from([1, 2, 3].slice(0, size));
@@ -1286,7 +1286,7 @@ for (const size of [0, 3]) {
 }
 }
 
-test("{§http-binary-source} an invalid image remains byte-readable without invented native media", async () => {
+test("{§http-lifecycle} an invalid image remains byte-readable without invented native media", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const http = new Http();
@@ -1321,7 +1321,7 @@ test("{§http-binary-source} an invalid image remains byte-readable without inve
 
 // {§mimetype-pdf-facts} (#542) — a fetched PDF's readable body is its header facts, never extracted
 // text; the bytes ride the packet as a native document part on a route that accepts one.
-test("{§http-binary-source} a direct PDF retains its complete bytes beside facts and projection evidence", async () => {
+test("{§http-lifecycle} a direct PDF retains its complete bytes beside facts and projection evidence", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const http = new Http();
@@ -1399,7 +1399,7 @@ test("{§http-lifecycle} a direct textual response durably preserves Fetch UTF-8
     }
 });
 
-test("{§http-channel-outcomes}: a hard materializer failure is the readable channel's; the source reads whole", async () => {
+test("{§http-lifecycle}: a hard materializer failure is the readable channel's; the source reads whole", async () => {
     const db = await openMigrated();
     const originalFetch = globalThis.fetch;
     const originalMaterializer = process.env.PLURNK_SCHEMES_HTTP_MATERIALIZER;
@@ -2387,7 +2387,7 @@ test("{§revalidation} exact URL FIND acquires live HTTP resources, reuses them,
     }
 });
 
-test("{§http-outbound-proposes} HTTP mutation responses cannot satisfy later READ or exact FIND acquisition", async (t) => {
+test("{§http-manifest} HTTP mutation responses cannot satisfy later READ or exact FIND acquisition", async (t) => {
     serverProposals(t, "accept");
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -2414,7 +2414,7 @@ test("{§http-outbound-proposes} HTTP mutation responses cannot satisfy later RE
     try {
         const workspaceId = await insertWorkspace(db, `http-method-provenance-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
-        // {§http-outbound-proposes} — the SEND below is an outbound mutation, so it proposes. This
+        // {§http-manifest} — the SEND below is an outbound mutation, so it proposes. This
         // test is about method provenance, not consent: the test configures server acceptance.
         const loopId = await insertLoop(db, sessionId, 1, "");
         const turnId = await insertTurn(db, loopId, 1, 102);

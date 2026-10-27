@@ -176,7 +176,7 @@ test("{§matcher-dispatch} matcher: malformed extension evidence fails at the ad
     );
 });
 
-test("{§problems-schemes} matcher: UnsupportedDialectError → 415", async () => {
+test("{§slicer-text-algebra} matcher: UnsupportedDialectError → 415", async () => {
     const mts = stubMimetypes(async () => {
         throw new UnsupportedDialectError({
             mimetype: "image/png", dialect: "regex", reason: "binary content",
@@ -184,13 +184,13 @@ test("{§problems-schemes} matcher: UnsupportedDialectError → 415", async () =
     });
     const r = await Matcher.matchAgainstContent(regexBody, "x", "image/png", mts);
     assert.equal(r.status, 415);
-    assert.equal(r.problem?.detail, "The regex matcher is not supported for image/png."); // {§problems-schemes}
+    assert.equal(r.problem?.detail, "The regex matcher is not supported for image/png."); // {§slicer-text-algebra}
     assert.equal(r.problem?.mimetype, "image/png");
     assert.equal(r.problem?.dialect, "regex");
-    assert.equal(r.problem?.recovery, "Use a matcher supported by the resource mimetype."); // {§problems-schemes}
+    assert.equal(r.problem?.recovery, "Use a matcher supported by the resource mimetype."); // {§slicer-text-algebra}
 });
 
-test("{§problems-schemes} matcher: InvalidExpressionError → 400", async () => {
+test("{§slicer-text-algebra} matcher: InvalidExpressionError → 400", async () => {
     const mts = stubMimetypes(async () => {
         throw new InvalidExpressionError({
             dialect: "regex", expression: "/[/", cause: new Error("unclosed bracket"),
@@ -204,10 +204,10 @@ test("{§problems-schemes} matcher: InvalidExpressionError → 400", async () =>
         (cause) => cause instanceof Error ? cause.message : String(cause),
     );
     assert.equal(r.status, 400);
-    assert.equal(r.problem?.detail, "The regex matcher expression is invalid."); // {§problems-schemes}
+    assert.equal(r.problem?.detail, "The regex matcher expression is invalid."); // {§slicer-text-algebra}
     assert.equal(r.problem?.diagnostic, "unclosed bracket");
     assert.equal(r.problem?.dialect, "regex");
-    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§problems-schemes}
+    assert.equal(r.problem?.recovery, "Revise the matcher expression."); // {§slicer-text-algebra}
     assert.equal("expression" in (r.problem ?? {}), false);
 });
 

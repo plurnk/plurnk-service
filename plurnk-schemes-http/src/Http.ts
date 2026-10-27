@@ -1,6 +1,6 @@
-// HTTP(S) handler. Operation-to-method semantics live in {§op-surface};
+// HTTP(S) handler. Operation-to-method semantics live in {§http-manifest};
 // acquisition, materialization, publication, and query flow live in
-// {§http-lifecycle}. The implementation depends only on SchemeCtx capabilities.
+// {§http-lifecycle} and {§http-status}. The implementation depends only on SchemeCtx capabilities.
 
 import { Validator } from "@plurnk/plurnk-contracts";
 import { createParser, type ParseError } from "eventsource-parser";
@@ -21,7 +21,7 @@ import HostPolicy from "./HostPolicy.ts";
 // The channel the response body streams into, and the header metadata channel.
 // Package-owned metadata appended after untrusted origin headers. Readers take
 // the last value so an origin using the same field name cannot override it.
-// {§http-outbound-proposes} — the only methods this scheme proposes, and so the only ones a
+// {§http-manifest} — the only methods this scheme proposes, and so the only ones a
 // settlement may perform.
 const OUTBOUND_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE"]);
 const DELTA_SECONDS_LIMIT = 2_147_483_648n;
@@ -218,9 +218,9 @@ export default class Http implements SchemeHandler {
     };
 
     readonly #webFetcher: WebFetcher;
-    // {§web-materialization-contract}: published for the entry sink; reached through the registry.
+    // {§scheme-operation-dispatch}: published for the entry sink; reached through the registry.
     readonly webMaterializer: WebMaterializer;
-    // {§http-llms-txt} — one opportunistic origin-companion attempt per TTL
+    // {§http-lifecycle} — one opportunistic origin-companion attempt per TTL
     // window; success and failure share the timer so a 404 does not re-probe
     // on every READ.
     readonly #get: HttpGet;
@@ -299,7 +299,7 @@ export default class Http implements SchemeHandler {
         return this.editBatch([statement], ctx);
     }
 
-    // {§http-kill} — KILL follows the entry rule: a live acquisition of the address is
+    // {§revalidation} — KILL follows the entry rule: a live acquisition of the address is
     // cancelled, otherwise the stored response is forgotten. The remote DELETE is its own
     // spelling, `KILL (https://…) [{"remote": true}]`; any other metadata keys are its headers.
     async kill(statement: KillStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
@@ -324,7 +324,7 @@ export default class Http implements SchemeHandler {
         return Http.#passthrough(await ctx.entries.delete(address.pathname));
     }
 
-    // {§http-outbound-proposes} — a request that changes a remote resource declares the host
+    // {§http-manifest} — a request that changes a remote resource declares the host
     // effect and proposes; `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent
     // or runs unattended. The headers stay OUT of attrs: they ride the statement metadata across
     // the pause, so an `Authorization` value never enters durable proposal evidence.
@@ -729,7 +729,7 @@ export default class Http implements SchemeHandler {
         const isHtml = MimetypeClassifier.isHtml(sourceMimetype);
         const materializerIdentity = Http.#materializerIdentity(header);
         if (materializerIdentity !== undefined) {
-            // {§http-materializer-extensions} — a stored body produced by the current
+            // {§http-lifecycle} — a stored body produced by the current
             // configured materializer (or the built-in producers) is current.
             return WebFetcher.materializerCurrent(materializerIdentity);
         }

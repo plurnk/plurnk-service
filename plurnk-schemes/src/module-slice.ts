@@ -1,4 +1,4 @@
-// {§scheme-module-slice} — what a daemon module contributes to the scheme kind: a scheme handler,
+// {§resource-tree-scheme} — what a daemon module contributes to the scheme kind: a scheme handler,
 // or a scheme facet over a runtime's own resources. The base module contract is
 // `@plurnk/plurnk-modules` ({§module-seam-slices}).
 import type { FindStatement, KillStatement, SendStatement } from "@plurnk/plurnk-contracts";
@@ -29,7 +29,7 @@ export interface RuntimeSchemeFacet {
     editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
-    // An operation the facet proposed is also the facet's to apply ({§http-outbound-proposes}),
+    // An operation the facet proposed is also the facet's to apply ({§http-manifest}),
     // routed by the proposal's own `target`.
     applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<SchemeResult>;
 }

@@ -1030,7 +1030,7 @@ test("{§operation-results} End-to-end: synthetic streaming scheme — KILL tear
 });
 
 describe("caps-subscriptions", () => {
-// Conformance: plurnk-schemes {§scheme-subscriptions} — the streaming
+// Conformance: plurnk-schemes {§capability-ctx} — the streaming
 // open → notifyChunk → close lifecycle an extension drives against real
 // SQLite: content appends + stream/events, terminal channel state, registry
 // close, session wake with the summary, and session abort → signal + handle cancel.

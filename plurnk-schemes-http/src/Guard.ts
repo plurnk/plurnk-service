@@ -1,4 +1,4 @@
-// {§automatic-fetch-check} — WebFetcher's initial byte target and every
+// {§http-host-policy} — WebFetcher's initial byte target and every
 // redirect hop must resolve only to ordinary globally reachable unicast
 // addresses. Redirects are followed manually so checking and Fetch-standard
 // request transitions share one automatic-acquisition seam.

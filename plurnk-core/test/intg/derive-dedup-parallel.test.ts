@@ -554,7 +554,7 @@ test("{§execution-output-identity} search-prefetched https content is matcher-q
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§http-binary-source} executor acquisition preserves binary source and native READ facts", async (t) => {
+test("{§http-lifecycle} executor acquisition preserves binary source and native READ facts", async (t) => {
     const pdf = Buffer.from(buildPdf({ title: "Executor acquisition" }));
     t.mock.method(globalThis, "fetch", async () => new Response(pdf, { headers: {
         "content-type": "application/pdf", "cache-control": "max-age=600",
@@ -805,7 +805,7 @@ test("{§execution-output-identity} entry(content:null) admits only HTTP acquisi
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§html-materialization}: server HTML keeps its source as body and materializes #readable", async () => {
+test("{§http-lifecycle}: server HTML keeps its source as body and materializes #readable", async () => {
     const fetchWeb: WebFetch = async (url) =>
         url.includes("/dead") ? null : {
             url,

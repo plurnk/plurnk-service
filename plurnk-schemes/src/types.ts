@@ -39,7 +39,7 @@ interface SchemeManifestBase {
     // True only when EDIT accepts the shared textual <scope> contract. Core
     // then lowers rendered line anchors to numeric coordinates before dispatch.
     readonly textEditScopes?: boolean;
-    // Resource-option admission ({§manifest-metadata-modifier}); SEND recipients
+    // Resource-option admission ({§manifest}); SEND recipients
     // own their input independently. Core preserves ordered blocks.
     readonly metadataModifier?: boolean;
     // True when the scheme's stable textual representations publish and accept
@@ -49,7 +49,7 @@ interface SchemeManifestBase {
     // General policy facts consumed by CapabilitySelector.trait. The scheme
     // declares facts only; it never interprets policy or named modes.
     readonly traits?: ReadonlyArray<string>;
-    // Discoverable reference material ({§manifest-self-doc}).
+    // Discoverable reference material ({§manifest}).
     readonly documentation?: string;
     // Opaque client presentation metadata. It is deliberately absent from
     // model-facing scheme teaching; clients choose rendering and fallback.
