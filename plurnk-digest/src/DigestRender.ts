@@ -255,7 +255,7 @@ export default class DigestRender {
         return `Storage: ${mb(storage.bytes)} (free ${mb(storage.free_bytes)}, auto_vacuum ${mode}) · largest: ${storage.tables.map(({ name, bytes }) => `${name} ${mb(bytes)}`).join(", ")}`;
     }
 
-    // {§loop-claim-latency} — claim to first model turn: a stall between them is a number, not a gap.
+    // {§session-wait-timing} — claim to first model turn: a stall between them is a number, not a gap.
     static #wakeLatency(loop: LoopRow, m: DigestModel): string | null {
         if (loop.claimed_at === null) return null;
         const first = (m.turnsByLoop.get(loop.id) ?? []).filter((t) => t.kind === "inference").toSorted((a, b) => a.sequence - b.sequence)[0];

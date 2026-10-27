@@ -57,7 +57,7 @@ export const getBuildInfo = async (): Promise<BuildInfo> => {
 
     try {
         const git = (...args: string[]): string =>
-            // {§membership-git-hermetic} — the installation repository is inspected
+            // {§membership} — the installation repository is inspected
             // through the same boundary as a workspace: no ambient GIT_*, no global
             // config, no repository-supplied fsmonitor helper or hooks (#568).
             execFileSync("git", ["-C", packageRoot, ...args], {

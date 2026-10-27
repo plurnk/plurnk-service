@@ -291,7 +291,7 @@ try {
         throw new Error(`installed CLI returned the wrong semantic record\n${cli.stdout}`);
     }
     process.stdout.write("installed one-shot CLI journey GREEN: workspace + Turn 0 + delivered response + observed completion\n");
-    // {§file-publication} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
+    // {§file-snapshot-revision} {§file-snapshot-revision}: real packed code, SQLite and disk, with client acceptance.
     const files = await runClient(clientBin, [
         "--json", "--yolo", "--workspace", "installed-files", "--session", "File_Session",
         "--project-root", project, "--model", "journey", "--max-turns", "4", "--timeout", "20",

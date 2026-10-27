@@ -60,7 +60,7 @@ DO UPDATE SET membership_origin = excluded.membership_origin
 RETURNING id;
 
 -- PREP: crud_register_workspace_members
--- {§membership-reconcile-sets}: the desired file members land as one set — $members is a JSON
+-- {§membership-auto-add}: the desired file members land as one set — $members is a JSON
 -- array of {pathname, origin} — with the same idempotent provenance update as the single form.
 INSERT INTO entries (workspace_id, scheme, authority, pathname, membership_origin)
 SELECT $workspace_id, 'file', '', json_extract(member.value, '$.pathname'), json_extract(member.value, '$.origin')
@@ -70,7 +70,7 @@ ON CONFLICT (workspace_id, scheme, authority, pathname)
 DO UPDATE SET membership_origin = excluded.membership_origin;
 
 -- PREP: crud_unregister_stale_members
--- {§membership-reconcile-sets}: every overlay-owned file member outside the desired set leaves in
+-- {§membership-auto-add}: every overlay-owned file member outside the desired set leaves in
 -- one statement. The row's body content rides out with it, so a path that also left disk truth
 -- (not a candidate at all) reports its prior content as a divergence; a mere exclusion is silent.
 DELETE FROM entries
@@ -81,7 +81,7 @@ RETURNING id, pathname,
           (SELECT content FROM entry_channels c WHERE c.entry_id = entries.id AND c.name = 'body') AS prior;
 
 -- PREP: crud_get_member_sig
--- SPEC {§membership-change-gated-sync} — the member's last-synced disk signature
+-- SPEC {§file-snapshot-revision} — the member's last-synced disk signature
 -- read before materializing so an unchanged file short-circuits
 -- before projection. File members store scheme='file' ({§entry-identity-no-null}).
 SELECT e.id, e.synced_sig, e.membership_origin, e.attributes, c.mimetype
@@ -165,20 +165,20 @@ WHERE workspace_id = $workspace_id
 ORDER BY effect, glob;
 
 -- PREP: crud_constraint_excluding
--- {§membership-glob-in-sql}: the first exclusion covering a key, evaluated where the constraints live.
+-- {§membership-auto-add}: the first exclusion covering a key, evaluated where the constraints live.
 SELECT glob FROM workspace_constraints
 WHERE workspace_id = $workspace_id AND effect = 'exclude' AND glob_match($key, glob)
 ORDER BY glob
 LIMIT 1;
 
 -- PREP: crud_constraint_including_by_definition
--- {§membership-glob-in-sql}: whether a members definition (not a creation record) includes the key.
+-- {§membership-auto-add}: whether a members definition (not a creation record) includes the key.
 SELECT 1 AS included FROM workspace_constraints
 WHERE workspace_id = $workspace_id AND effect = 'include' AND source = 'members' AND glob_match($key, glob)
 LIMIT 1;
 
 -- PREP: crud_untracked_member_marks
--- {§membership-glob-in-sql}: for each untracked path, whether it is a registered member and which
+-- {§membership-auto-add}: for each untracked path, whether it is a registered member and which
 -- inclusion owns it — a creation record by exact path, else the first matching definition.
 SELECT path.value AS pathname,
        EXISTS (

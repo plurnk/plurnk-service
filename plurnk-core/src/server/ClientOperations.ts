@@ -50,7 +50,7 @@ export default class ClientOperations {
     readonly #loops = new Map<number, {
         readonly workspaceId: number; readonly scope: AbortController; readonly settled: Promise<void>;
     }>();
-    // {§session-lifecycle-total-reap} Every client operation's scope descends from this one, which shutdown aborts:
+    // {§session-causal-admission} Every client operation's scope descends from this one, which shutdown aborts:
     // an operation still dispatching, and every execution an operation started, ends with the daemon.
     #scope = new AbortController();
 
@@ -72,7 +72,7 @@ export default class ClientOperations {
         this.#emitLogEntry = emitLogEntry;
     }
 
-    // A boot opens a fresh scope for the operations that follow; shutdown aborts it ({§session-lifecycle-total-reap}).
+    // A boot opens a fresh scope for the operations that follow; shutdown aborts it ({§session-causal-admission}).
     start(): void {
         this.#scope = new AbortController();
     }

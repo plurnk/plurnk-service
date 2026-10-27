@@ -85,7 +85,7 @@ test("{§op-execution-order} internal programs may omit a disposition without in
     assert.equal(TurnOps.renderInternal(parsed), "```READ (workspace:///notes.md)\n```");
 });
 
-test("{§turn-ops-admission-path} TurnOps: internal source round-trips through the public parser", () => {
+test("{§turn-record} TurnOps: internal source round-trips through the public parser", () => {
     const statements: [FindStatement, DispositionStatement] = [
         {
             op: "FIND", aside: "workspace files",
@@ -112,7 +112,7 @@ test("{§turn-ops-admission-path} TurnOps: internal source round-trips through t
     assert.equal(parsed[1]?.op === "WAIT" ? parsed[1].body : null, statements[1].body);
 });
 
-test("{§turn-ops-admission-path} TurnOps: internal source preserves trailing body newlines across a section boundary", () => {
+test("{§turn-record} TurnOps: internal source preserves trailing body newlines across a section boundary", () => {
     const edit: EditStatement = {
         op: "EDIT", aside: null,
         target: { kind: "local", raw: "AGENTS.md" }, metadata: null, lineMarker: null,

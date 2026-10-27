@@ -10,7 +10,7 @@ SELECT * FROM workspaces ORDER BY id;
 SELECT * FROM sessions ORDER BY id;
 
 -- PREP: digest_loops
--- `*` so a database made before {§loop-claim-latency} still digests; its loops simply carry no claim.
+-- `*` so a database made before {§session-wait-timing} still digests; its loops simply carry no claim.
 SELECT * FROM loops ORDER BY session_id, sequence;
 
 -- PREP: digest_turns

@@ -156,7 +156,7 @@ export default class LoopLifecycle {
             : Results.fromRow(row.terminal_result);
     }
 
-    // {§session-cancel-trigger} Whether the loop's terminal is a cancellation's.
+    // {§session-causal-admission} Whether the loop's terminal is a cancellation's.
     async cancelled(loopId: number): Promise<boolean> {
         const row = await this.#db.lifecycle_loop_status.get<{ terminated_by: string | null }>({
             loop_id: loopId,
@@ -234,7 +234,7 @@ export default class LoopLifecycle {
                 ? [{ loop_id: loopId, elapsed_ms: this.#stopExecution(loopId) }]
                 : []);
         if (executions.length > 0) await this.#db.lifecycle_checkpoint_executions.run({ executions: JSON.stringify(executions) });
-        // {§session-cancel-trigger} — one bound statement; the trigger retires the live loops inside it.
+        // {§session-causal-admission} — one bound statement; the trigger retires the live loops inside it.
         await this.#db.lifecycle_cancel_sessions.run({ session_ids, result: JSON.stringify(cancellation) });
         const loops = await this.#db.lifecycle_cancelled_loops.all<{
             loop_id: number;

@@ -70,7 +70,7 @@ FROM subscriptions
 WHERE entry_id = $entry_id AND closed_at IS NULL;
 
 -- PREP: find_open_subscriptions_for_session
--- The session's still-open subscriptions — the registry-routed reap ({§session-lifecycle-total-reap}):
+-- The session's still-open subscriptions — the registry-routed reap ({§session-causal-admission}):
 -- loop.cancel / KILL / shutdown iterate these and abort each via the owning scheme, so a
 -- backgrounded exec is reaped independent of any in-process AbortSignal-listener timing.
 SELECT id, scheme

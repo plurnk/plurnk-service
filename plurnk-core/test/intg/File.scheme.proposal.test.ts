@@ -487,7 +487,7 @@ test("{§edit-result-reviewer-replacement}: reviewer-modified acceptance receipt
     });
 });
 
-test("{§membership-create-parents}: accepted file creation creates missing parent directories", async () => {
+test("{§membership}: accepted file creation creates missing parent directories", async () => {
     // The write-back edge creates the target's missing parent directories.
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "tasks/nested/extract_config_values.md";

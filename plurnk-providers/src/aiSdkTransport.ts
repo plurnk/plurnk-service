@@ -377,7 +377,7 @@ export const normalizeRetryAttemptError = (error: unknown): unknown => {
     // any status carrying Retry-After; those live in headers the engine never
     // sees. Every other failure — a bare 408/409/5xx, a network error, and the
     // 2xx invalid-response #446 once promoted — surfaces at once;
-    // {§provider-recovery} owns re-issue.
+    // {§engine-rails} owns re-issue.
     const policy = directed
         ?? (error.statusCode === 429 || retryAfterPresent(error.responseHeaders ?? {}));
     if (policy === error.isRetryable) return error;

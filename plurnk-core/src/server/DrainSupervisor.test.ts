@@ -240,7 +240,7 @@ for (const { name, includeRoot, cancel } of cancellationCases) {
     });
 }
 
-test("{§session-lifecycle-durable-disposition}: stopping during wait selection preserves the parked loop", async (t) => {
+test("{§session-causal-admission}: stopping during wait selection preserves the parked loop", async (t) => {
     const selecting = Promise.withResolvers<void>();
     const selected = Promise.withResolvers<Array<{ id: number; wait_revision: number }>>();
     let wakes = 0;
@@ -268,7 +268,7 @@ const delivery = {
     effort: "adaptive", systemPrompt: "system",
 } as const;
 
-test("{§session-lifecycle-durable-disposition}: stopping during prompt delivery preserves admission without waking", async () => {
+test("{§session-causal-admission}: stopping during prompt delivery preserves admission without waking", async () => {
     const writing = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     let wakes = 0;

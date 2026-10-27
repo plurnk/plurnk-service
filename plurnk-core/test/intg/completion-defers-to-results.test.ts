@@ -146,7 +146,7 @@ for (const kind of ["sessions", "streams", "failed-stream-results", "late-failed
     });
 }
 
-test("{§session-cancel-trigger} explicit scope cancellation does not wait for result observation", async (t) => {
+test("{§session-causal-admission} explicit scope cancellation does not wait for result observation", async (t) => {
     const { engine, db, workspaceId, sessionId, loopId } = await fixture(t);
     const childId = await insertSession(db, workspaceId, sessionId, "child");
     const childLoop = await insertLoop(db, childId, 1, "Still working.");

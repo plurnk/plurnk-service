@@ -136,10 +136,10 @@ test("{§membership-read-refusal} a non-member an exclusion covers or the reposi
     assert.match(excluded.problem.recovery ?? "", /!secret\.md/u, "the refusal names the exclusion");
 });
 
-// {§membership-ignore-source} Each place an ignore rule lives, named by its file and line: the repository's `.gitignore`,
+// {§membership} Each place an ignore rule lives, named by its file and line: the repository's `.gitignore`,
 // its `.git/info/exclude`, git's default excludes file under the daemon user's configuration home, and a `core.excludesFile`
-// that user configures ({§membership-git-hermetic}); a negated pattern re-includes and is no ignore.
-test("{§membership-ignore-source} an ignored file's refusal names the rule's file and line, wherever the rule lives", async (t) => {
+// that user configures ({§membership}); a negated pattern re-includes and is no ignore.
+test("{§membership} an ignored file's refusal names the rule's file and line, wherever the rule lives", async (t) => {
     const { root, dispatch } = await runtime(t);
     const prior = { HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
     const homes = await mkdtemp(join(tmpdir(), "ignore-homes-"));

@@ -4,7 +4,7 @@
 // shell-path glob, `!glob` excludes, and the glob is the definition's identity
 // ({§functionality-addressing}): `add` names globs; enable, disable and remove name one. Definitions
 // are workspace desired state and the membership overlay is their projection ({§members-projection})
-// — the one truth every session sees ({§membership-baseline}). A model's `add` is admitted against
+// — the one truth every session sees ({§membership}). A model's `add` is admitted against
 // the service ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the
 // workspace.
 import { stat } from "node:fs/promises";
@@ -309,7 +309,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
             return {
                 ...candidate,
                 provenance: { kind: "ignored", source: key },
-                // {§membership-ignore-source}
+                // {§membership}
                 summary: `not a member — git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}); a client or operator definition can include it, a model definition cannot`,
             };
         }

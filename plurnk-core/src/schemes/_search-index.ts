@@ -155,7 +155,7 @@ export default class SearchIndex {
             );
         } catch (error) {
             if (ctx.signal?.aborted === true) throw error;
-            // {§derivation-member-failure}: a typed invalid-source rejection and a handler's own
+            // {§derivation-dedup-parallel}: a typed invalid-source rejection and a handler's own
             // defect on this one member ({§mimetype-derivation-evidence}) are both that member's
             // terminal disposition, never the pass's. Anything else thrown here — a grammar not
             // installed, a contract violation outside the handler — stays fatal.
@@ -476,7 +476,7 @@ export default class SearchIndex {
             if (memberFailures.length === 0) {
                 publish("complete", "Repository search index is ready");
             } else {
-                // {§derivation-member-failure}: the pass completes; the terminal notice names the
+                // {§derivation-dedup-parallel}: the pass completes; the terminal notice names the
                 // first failed member and carries the count.
                 const [first] = memberFailures;
                 const rest = memberFailures.length - 1;

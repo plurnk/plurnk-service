@@ -21,7 +21,7 @@ export interface AcquiredFile extends FileObservation {
     readonly bytes: Buffer | null;
 }
 
-// {§file-snapshot-revision}, {§file-commit-serialization}, {§file-external-race}
+// {§file-snapshot-revision}, {§file-snapshot-revision}, {§file-snapshot-revision}
 export default class FileSnapshot {
     static readonly #commits = new Map<string, Promise<void>>();
 

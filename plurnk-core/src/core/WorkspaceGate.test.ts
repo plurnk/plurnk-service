@@ -135,7 +135,7 @@ test("{§module-workspace-quiescence} a capability replacement acquires only at 
     settled.release();
 });
 
-test("{§loop-execution-allowance} cancelling a queued turn removes its request without waiting for the workspace", async () => {
+test("{§session-wait-timing} cancelling a queued turn removes its request without waiting for the workspace", async () => {
     const gate = new WorkspaceGate(async () => true);
     const exclusive = gate.requestExclusive(1);
     await exclusive.acquired;
@@ -155,7 +155,7 @@ test("{§loop-execution-allowance} cancelling a queued turn removes its request 
     (await gate.acquireTurn(1, 2))();
 });
 
-test("{§loop-execution-allowance} cancellation during an asynchronous lineage check cannot admit the cancelled turn", async () => {
+test("{§session-wait-timing} cancellation during an asynchronous lineage check cannot admit the cancelled turn", async () => {
     const checking = Promise.withResolvers<void>();
     const checked = Promise.withResolvers<boolean>();
     const gate = new WorkspaceGate(async () => { checking.resolve(); return checked.promise; });
@@ -180,7 +180,7 @@ test("{§loop-execution-allowance} cancellation during an asynchronous lineage c
     (await gate.acquireTurn(1, 3))();
 });
 
-test("{§loop-execution-allowance} a changed exclusive root invalidates an asynchronous lineage permission", async () => {
+test("{§session-wait-timing} a changed exclusive root invalidates an asynchronous lineage permission", async () => {
     const checking = Promise.withResolvers<void>();
     const checked = Promise.withResolvers<boolean>();
     const reconsidered = Promise.withResolvers<void>();
@@ -203,7 +203,7 @@ test("{§loop-execution-allowance} a changed exclusive root invalidates an async
     (await waiting)();
 });
 
-test("{§loop-execution-allowance} turn cancellation is admission-scoped, not an implicit release of an already acquired workspace", async () => {
+test("{§session-wait-timing} turn cancellation is admission-scoped, not an implicit release of an already acquired workspace", async () => {
     const gate = new WorkspaceGate(async () => true);
     const aborted = new AbortController();
     aborted.abort(new Error("cancelled before admission"));

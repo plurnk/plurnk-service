@@ -178,7 +178,7 @@ export default class Dispatcher {
     // indexed dialect met a still-deriving index.
     #settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
     readonly #notify: EngineNotifications;
-    // Per-turn running-session READ obligations. {§join-blocking-collect}
+    // Per-turn running-session READ obligations. {§session-loop-lifecycle}
     #liveSubscriptions: LiveSubscriptions;
     #lifecycle: LoopLifecycle;
     #resourceMutations: ResourceMutations;
@@ -698,7 +698,7 @@ export default class Dispatcher {
         // Persist log curation for forensics; packet rendering suppresses its
         // successful receipts while the exact state effects remain durable.
         // A running-session READ arms this turn's blocking collect.
-        // {§join-blocking-collect}
+        // {§session-loop-lifecycle}
         const logEntryId = await this.#logWriter.writeLog({
             statement,
             emissionIndex: context.emissionIndex,

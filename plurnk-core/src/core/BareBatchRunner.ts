@@ -119,7 +119,7 @@ export default class BareBatchRunner {
             if ("result" in item) return { ...item, modelCallId: null };
             const { statement, prompt, providerSessionId } = item;
             let { modelCall } = item;
-            // {§provider-recovery} — an isolated call takes the loop's recovery: each re-issue is its
+            // {§engine-rails} — an isolated call takes the loop's recovery: each re-issue is its
             // own model call on the ledger, under the same window and backoff as the loop's inference.
             const recovery = { budget: ProviderRecovery.budget(), backoff: ProviderRecovery.backoff(), startedAt: null as number | null, failures: 0 };
             for (let attempt = 1; ; attempt += 1) {

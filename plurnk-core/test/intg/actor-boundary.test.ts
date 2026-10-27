@@ -2206,7 +2206,7 @@ const downProvider = (): Mock => {
     return provider;
 };
 
-// {§provider-recovery} A park waits for a person: approving alone, as a yolo client does, attends nothing.
+// {§engine-rails} A park waits for a person: approving alone, as a yolo client does, attends nothing.
 for (const [label, owner] of [
     ["parks for an interactive owner", { tools: ["request_approval", "question", "mcp_input_required"], interactive: true }],
     ["concludes for an owner that approves but is not interactive", { tools: ["request_approval"], interactive: false }],

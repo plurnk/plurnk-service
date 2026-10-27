@@ -44,7 +44,7 @@ RETURNING id, sequence, prompt, max_turns;
 SELECT max_turns FROM loops WHERE id = $loop_id;
 
 -- PREP: drain_message_recipient
--- {§loop-addressed-admission} {§loop-wake-identity}
+-- {§session-wait-timing} {§session-wait-timing}
 SELECT id, sequence FROM loops
 WHERE session_id = $session_id
   AND (($loop_id IS NULL AND status IN (102, 202))
@@ -164,7 +164,7 @@ SELECT model_route_id, spawn_model_route_id, effort FROM loops WHERE id = $loop_
 
 -- PREP: session_parent_id
 -- A session's parent (session:// spawn / fork set parent_session_id, {§lifecycle-terms}). NULL = a root session.
--- {§session-lifecycle-child-wake}: direct parent of a terminal task's session.
+-- {§session-causal-admission}: direct parent of a terminal task's session.
 SELECT parent_session_id FROM sessions WHERE id = $session_id;
 
 -- PREP: session_lineage_contains

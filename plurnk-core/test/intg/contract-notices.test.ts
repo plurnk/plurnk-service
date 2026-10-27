@@ -313,7 +313,7 @@ test("{§packet} a thrown ProviderError is persisted as one exact operation fail
     } finally { await db.close(); }
 });
 
-test("{§provider-recovery} provider error: a terminal kind is durable product truth, never a notices notice", async () => {
+test("{§engine-rails} provider error: a terminal kind is durable product truth, never a notices notice", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -328,7 +328,7 @@ test("{§provider-recovery} provider error: a terminal kind is durable product t
         const provider = new Mock({ contextWindow: 100000, responses: [] });
         provider.generate = async () => { throw new ProviderError("plurnk", "network_failure", "connection refused"); };
 
-        // {§provider-recovery} — a transient infra failure never ends the loop: the turn retries with
+        // {§engine-rails} — a transient infra failure never ends the loop: the turn retries with
         // backoff (the Mock tier's budget is 1.5 s) and, still failing, parks as a 202 wait.
         const turn = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
         assert.equal(turn.status, 202, "the turn parks instead of failing the loop");

@@ -619,7 +619,7 @@ test("{§env-delta-filesystem-narration} an out-of-band disk change is runtime e
     }
 });
 
-test("{§membership-change-gated-sync}: deletion removes stale content and records private runtime evidence", async () => {
+test("{§file-snapshot-revision}: deletion removes stale content and records private runtime evidence", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-envdelta-delete-"));
     const db = await openMigrated();
     try {

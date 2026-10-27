@@ -194,7 +194,7 @@
 - 1fc7b1f: Membership honors the daemon user's own git excludes file, the configured
   `core.excludesFile` or git's default, and a refusal or `discover` verdict for an
   ignored file names the rule's file and line instead of "the repository"
-  ({§membership-git-hermetic}, {§membership-ignore-source}).
+  ({§membership}, {§membership}).
 - 6c197b2: A model worker's initialization opens with the plan `1. Survey the environment.`
   `2. Evaluate and react to the Open Message.` and closes with its second step. A
   survey that would select nothing is left out of the program, and the program no

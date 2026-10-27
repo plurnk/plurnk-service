@@ -10,7 +10,7 @@ export type PublishedFile =
     | { readonly status: "published"; readonly revision: FileRevision }
     | { readonly status: "failed"; readonly published: boolean; readonly cause: unknown };
 
-// {§file-publication}: caller holds the physical path's commit boundary through projection settlement.
+// {§file-snapshot-revision}: caller holds the physical path's commit boundary through projection settlement.
 export default class FilePublication {
     static async write(requested: string, canonical: string, baseline: FileRevision | null, bytes: Uint8Array): Promise<PublishedFile> {
         let directory: string | undefined;

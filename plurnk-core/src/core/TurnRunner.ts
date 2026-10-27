@@ -187,7 +187,7 @@ type EngineTurnResult = {
     progressed: boolean;
     fingerprint: string;
     capacityHardStop: boolean;
-    // {§provider-recovery} — the recovery budget is spent: the loop parks instead of failing.
+    // {§engine-rails} — the recovery budget is spent: the loop parks instead of failing.
     providerParked: boolean;
     providerFailure?: SchemeResult;
     emptyTurn: boolean;
@@ -346,7 +346,7 @@ type TurnRequest = PacketFacts & {
 };
 
 // Phase 4 — the attempt loop's bookkeeping: every logical provider call's durable
-// identities, the recovery clock ({§provider-recovery}) and the wire spend, shared
+// identities, the recovery clock ({§engine-rails}) and the wire spend, shared
 // with the failure handler.
 type BodyCheck = (runtime: string, body: string) => boolean;
 
@@ -597,7 +597,7 @@ export default class TurnRunner {
         );
     }
 
-    // {§turn-exception-outcome}: cancellation must be the cause, not merely concurrent.
+    // {§turn-record}: cancellation must be the cause, not merely concurrent.
     static #failureStatus(cause: unknown, signal: AbortSignal | undefined): 499 | 500 | 504 {
         if (signal?.aborted !== true) return 500;
         const seen = new Set<unknown>();
@@ -1182,7 +1182,7 @@ export default class TurnRunner {
     // Phase 4's bookkeeping: the wire request, the recovery knobs, the signal the
     // provider sees, the client id and the session's provider identity.
     async #prepareProviderAttempts({ sessionId, loopId, signal }: TurnArgs, request: TurnRequest, wire: MaterializedModelRequest): Promise<ProviderAttempts> {
-        // {§provider-recovery} — this turn's recovery clock: the first recoverable provider
+        // {§engine-rails} — this turn's recovery clock: the first recoverable provider
         // failure starts it; the budget and backoff are the operator's.
         const recoveryBudget = ProviderRecovery.budget();
         const recoveryBackoff = ProviderRecovery.backoff();
@@ -1271,7 +1271,7 @@ export default class TurnRunner {
     }
 
     // One logical provider call: its durable model call and attempt row, the exchange
-    // under the reasoning observer, and its classification. {§provider-recovery}
+    // under the reasoning observer, and its classification. {§engine-rails}
     // re-issues the same emission attempt; the parser's admission is the one verdict
     // on a completed exchange.
     async #issueProviderCall(
@@ -1451,7 +1451,7 @@ export default class TurnRunner {
         );
     }
 
-    // {§provider-recovery} — a transient provider failure never ends the loop: record
+    // {§engine-rails} — a transient provider failure never ends the loop: record
     // it, wait, and re-issue the same turn; once the budget is spent the failure
     // handler parks the loop instead of failing it.
     async #recoverProviderFailure(
@@ -1495,7 +1495,7 @@ export default class TurnRunner {
         await delay(wait, undefined, { signal: attempts.signal }).catch(() => undefined);
         // The response is still owed for this exact input. Failure rows remain
         // durable, but recursively materializing them would mutate and cache-bust
-        // the request being recovered. {§provider-recovery}
+        // the request being recovered. {§engine-rails}
     }
 
     // The attempt row's verdict: accepted, or rejected with the parser's errors. The
@@ -1570,7 +1570,7 @@ export default class TurnRunner {
         await Turn.complete(this.#db, turnId, attempts.parked ? 202 : recorded.result.status);
         const { emissionAttempts } = attempts;
         if (attempts.parked) {
-            // {§provider-recovery} — the recovery budget is spent: the loop parks exactly like a
+            // {§engine-rails} — the recovery budget is spent: the loop parks exactly like a
             // [202] wait and resumes on the next prompt or wake; the failure stays durable.
             const recoverable = await SessionOwners.interactive(this.#db, loopId);
             this.#notices.push(workspaceId, sessionId, loopId, {

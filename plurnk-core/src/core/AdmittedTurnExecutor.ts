@@ -60,7 +60,7 @@ export default class AdmittedTurnExecutor {
         this.#bareBatch = bareBatch;
     }
 
-    // {§turn-ops-admission-path} — source acquisition ends before this seam.
+    // {§turn-record} — source acquisition ends before this seam.
     // Every admitted producer program is scheduled, dispatched, recorded, and
     // completed here; inference is only the model-specific way one program is
     // acquired and supplied with BARE capability.

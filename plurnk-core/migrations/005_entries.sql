@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS entries (
     -- == members; 'constraint' rows are reconciled from ordinary pick policy.
     -- NULL = not a file member (other schemes don't carry origin).
     membership_origin TEXT                   CHECK (membership_origin IS NULL OR membership_origin IN ('git', 'constraint')),
-    -- SPEC {§membership-change-gated-sync} {§file-snapshot-revision} — the per-member sync
+    -- SPEC {§file-snapshot-revision} {§file-snapshot-revision} — the per-member sync
     -- revision of the disk file at its last materialization, or `absent` after an observed
     -- deletion. The pre-turn sync stat()s every member but re-reads/re-tokenizes/rewrites
     -- only one whose signature changed; an unchanged member is a no-op. NULL = never synced.

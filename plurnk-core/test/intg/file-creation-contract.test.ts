@@ -143,11 +143,11 @@ test("{§fs-create-git}: an active Git create is incorporated by an exact genera
         await acceptCreate(file, ctx, "tracked.md");
         await assert.rejects(
             execFileP("git", ["ls-files", "--error-unmatch", "--", "tracked.md"], { cwd: root, env: hermeticGitEnv() }),
-            "Plurnk never runs `git add`: the created file stays untracked ({§membership-baseline})",
+            "Plurnk never runs `git add`: the created file stays untracked ({§membership})",
         );
         assert.deepEqual(await constraints(db, workspaceId), [
             { effect: "include", glob: "tracked.md", source: "create" },
-        ], "the exact generated pick is the incorporation ({§membership-model-universe})");
+        ], "the exact generated pick is the incorporation ({§membership})");
         const member = await db.test_get_origin.get<{ membership_origin: string | null }>({
             workspace_id: workspaceId,
             pathname: "tracked.md",

@@ -32,7 +32,7 @@ import {
     type ProposalApplyResult,
 } from "@plurnk/plurnk-schemes";
 
-// Resolved + {§membership-change-gated-sync} disk-write target, or the error status to return.
+// Resolved + {§file-snapshot-revision} disk-write target, or the error status to return.
 type AdmittedCreation = Extract<FileCreationAdmission, { ok: true }>;
 type WriteTarget =
     | { ok: true; canonical: string; rel: string; fileExists: boolean; original: string; mimetype: string; baseSig: string | null; creationAdmission: AdmittedCreation | null }
@@ -239,7 +239,7 @@ export default class File extends CoreSchemeAdapterBase {
                     ? exclusion !== null
                         ? `A members exclusion (\`!${exclusion}\`) covers it: only the user can lift it.`
                         : ignoredBy !== null
-                            // {§membership-ignore-source}
+                            // {§membership}
                             ? `Git ignores it (\`${ignoredBy.file}\` line ${ignoredBy.line}): a client or operator members definition can include it, a model definition cannot.`
                             : "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."
                     : fileMissRecovery(named),
@@ -276,7 +276,7 @@ export default class File extends CoreSchemeAdapterBase {
     // overlay (→ 403), and binary (→ 415); reads current content for the diff. A
     // not-found path is fine — we propose to CREATE. ONE home for the gate: an edit
     // and a copy into file:/// are the same disk write under the same review.
-    // {§membership-edit-membership-gate} — membership/containment/read-only/binary gate before any disk write
+    // {§membership} — membership/containment/read-only/binary gate before any disk write
     async #resolveWriteTarget(pathname: string, ctx: PlurnkSchemeContext, bytesMode = false): Promise<WriteTarget> {
         const root = await FileAddress.projectRoot(ctx);
         if (root === null) {
@@ -388,7 +388,7 @@ export default class File extends CoreSchemeAdapterBase {
             if (currentMaterialization.disposition === "input-limit") {
                 return { ok: false, ...FileMaterialization.rejection(rel, currentMaterialization) };
             }
-            // {§membership-edit-write-revision}: retain the materialized baseline through approval.
+            // {§file-snapshot-revision}: retain the materialized baseline through approval.
             const revision = FileSnapshot.decode(member.synced_sig);
             if (revision === null || revision.hash === null || member.content === null || member.source_mimetype === null) {
                 const conflict = EditCollision.result(rel);
@@ -422,7 +422,7 @@ export default class File extends CoreSchemeAdapterBase {
         return { ok: true, canonical, rel, fileExists, original, mimetype, baseSig, creationAdmission };
     }
 
-    // {§membership-edit-write-revision}, {§proposal-202-pauses}: return status=202
+    // {§file-snapshot-revision}, {§proposal-202-pauses}: return status=202
     // with a udiff body for client review and attrs carrying the full patched
     // content. Engine pauses dispatch and calls applyResolution() after accept.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
@@ -936,7 +936,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (selectedRevision !== undefined && selectedRevision !== member.synced_sig) return EditCollision.result(rel);
         const baseline = FileSnapshot.decode(member.synced_sig);
         if (baseline === null) return EditCollision.result(rel);
-        // {§file-delete-revision}: an oversized marker has no body; deletion still captures exact bytes.
+        // {§file-snapshot-revision}: an oversized marker has no body; deletion still captures exact bytes.
         const acquired = baseline.hash === null ? await FileSnapshot.acquire(join(root, rel), null) : null;
         if (baseline.hash === null && (acquired === null || !FileSnapshot.matches(baseline, acquired.revision))) {
             return EditCollision.result(rel);

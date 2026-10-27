@@ -41,7 +41,7 @@ WHERE id = $id
 RETURNING id;
 
 -- INIT: turns_capture_wake_revision
--- {§loop-wake-identity}: each program starts independently. Inference refines
+-- {§session-wait-timing}: each program starts independently. Inference refines
 -- this boundary after materializing the evidence available to its producer.
 DROP TRIGGER IF EXISTS turns_capture_wake_revision;
 CREATE TRIGGER turns_capture_wake_revision
@@ -53,7 +53,7 @@ BEGIN
 END;
 
 -- PREP: turn_observe_completions
--- {§loop-wake-identity}: acknowledge only published evidence, atomically with
+-- {§session-wait-timing}: acknowledge only published evidence, atomically with
 -- the revision read. An arrival beyond either observation snapshot stays owed.
 UPDATE loops
 SET observed_wake_revision = (SELECT wake_revision FROM sessions WHERE id = loops.session_id)

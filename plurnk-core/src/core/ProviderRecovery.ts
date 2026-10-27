@@ -3,7 +3,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 
 const readMilliseconds = (key: string): number => Knob.integer(key, 0);
 
-// {§provider-recovery} — the one owner of what a recoverable provider failure is and how long a
+// {§engine-rails} — the one owner of what a recoverable provider failure is and how long a
 // call keeps being re-issued: the loop's own inference and BARE's isolated calls both read it here.
 export default class ProviderRecovery {
     // {§provider-retryable-truth} — the provider owns the set, so its Problems' `retryable` is what happens here.

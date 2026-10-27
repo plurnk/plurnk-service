@@ -16981,9 +16981,9 @@
           "liveShape": "heading",
           "codeCitations": 8,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Primary section heading for workspace file membership, baseline allowlist, native Git boundary, and web retrieval prefetch."
         },
         "web-search-retrieval": {
           "spec": "plurnk-core/SPEC.md",
@@ -16993,9 +16993,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold web search MCP discovery and WebFetcher HTTP entry prefetch contract into the parent §membership section."
         },
         "membership-baseline": {
           "spec": "plurnk-core/SPEC.md",
@@ -17005,9 +17005,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold the three-state baseline allowlist rule ((tracked ∪ include ∪ created) − exclude) into the parent §membership section."
         },
         "membership-model-universe": {
           "spec": "plurnk-core/SPEC.md",
@@ -17017,9 +17017,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold the exception register for creation records, AGENTS.md instruction projections, and model proposals into §membership."
         },
         "membership-git-membership": {
           "spec": "plurnk-core/SPEC.md",
@@ -17029,9 +17029,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold the project_root Git repository tracking boundary and monorepo root-relative rule into §membership."
         },
         "git-native-default": {
           "spec": "plurnk-core/SPEC.md",
@@ -17041,9 +17041,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold the native Git binary execution requirement for membership and status reads into §membership."
         },
         "membership-git-hermetic": {
           "spec": "plurnk-core/SPEC.md",
@@ -17053,9 +17053,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold hermetic Git environment scrubbing, core.excludesFile preservation, and filter-driver refusal into §membership."
         },
         "membership-ignore-source": {
           "spec": "plurnk-core/SPEC.md",
@@ -17065,9 +17065,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold git check-ignore -v rule attribution for ignore refusals and discover verdicts into §membership."
         },
         "membership-edit-membership-gate": {
           "spec": "plurnk-core/SPEC.md",
@@ -17077,9 +17077,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold the 403 non-member edit gate and snapshot baseline requirement into §membership."
         },
         "membership-create-parents": {
           "spec": "plurnk-core/SPEC.md",
@@ -17089,9 +17089,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold recursive parent directory creation on accepted EDIT/COPY/MOVE file creations into §membership."
         },
         "membership-auto-add": {
           "spec": "plurnk-core/SPEC.md",
@@ -17101,9 +17101,9 @@
           "liveShape": "list",
           "codeCitations": 11,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Sub-heading for overlay inclusions/exclusions, PLURNK_MEMBERS_AUTO_ADD universe admission, and SQL set reconciliation."
         },
         "membership-overlay-include": {
           "spec": "plurnk-core/SPEC.md",
@@ -17113,9 +17113,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership-auto-add",
+          "reason": "Fold workspace_constraints include sources (members, model, create) and Git-ignore override rules into §membership-auto-add."
         },
         "membership-overlay-exclude": {
           "spec": "plurnk-core/SPEC.md",
@@ -17125,9 +17125,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership-auto-add",
+          "reason": "Fold !glob exclusion subtraction and creation-record masking into §membership-auto-add."
         },
         "membership-reconcile-sets": {
           "spec": "plurnk-core/SPEC.md",
@@ -17137,9 +17137,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership-auto-add",
+          "reason": "Fold the two-statement SQL json_each reconciliation and disk-absence divergence rule into §membership-auto-add."
         },
         "membership-glob-in-sql": {
           "spec": "plurnk-core/SPEC.md",
@@ -17149,9 +17149,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership-auto-add",
+          "reason": "Fold the SQLite glob_match(pathname, glob) constraint evaluation function into §membership-auto-add."
         },
         "membership-source-projection": {
           "spec": "plurnk-core/SPEC.md",
@@ -17161,9 +17161,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "derivation-dedup-parallel",
+          "reason": "Fold text/binary/oversized source projection and durable Unicode channel rules into §derivation-dedup-parallel."
         },
         "membership-materialization-limit": {
           "spec": "plurnk-core/SPEC.md",
@@ -17173,9 +17173,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "derivation-dedup-parallel",
+          "reason": "Fold PLURNK_SERVICE_FILE_MATERIALIZE_MAX_BYTES 413 degradation and stat-gated reconsideration into §derivation-dedup-parallel."
         },
         "derivation-dedup-parallel": {
           "spec": "plurnk-core/SPEC.md",
@@ -17185,9 +17185,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Sub-heading for source projection, materialization byte limits, content-hash search deduplication, and parallel derivation."
         },
         "derivation-member-failure": {
           "spec": "plurnk-core/SPEC.md",
@@ -17197,9 +17197,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "derivation-dedup-parallel",
+          "reason": "Fold member-local MimetypeDerivationError/MimetypeInputError terminal failed disposition and warn notice into §derivation-dedup-parallel."
         },
         "membership-change-gated-sync": {
           "spec": "plurnk-core/SPEC.md",
@@ -17209,9 +17209,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "file-snapshot-revision",
+          "reason": "Fold idempotent physical-identity and byte-digest change-gated materialization into §file-snapshot-revision."
         },
         "membership-emi-divergence-signal": {
           "spec": "plurnk-core/SPEC.md",
@@ -17221,9 +17221,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "file-snapshot-revision",
+          "reason": "Fold source='file' EDIT divergence row recording and native-write suppression into §file-snapshot-revision."
         },
         "membership-edit-write-revision": {
           "spec": "plurnk-core/SPEC.md",
@@ -17233,9 +17233,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "file-snapshot-revision",
+          "reason": "Fold conditional write-back against captured revision and 409 edit-collision refusal into §file-snapshot-revision."
         },
         "file-snapshot-revision": {
           "spec": "plurnk-core/SPEC.md",
@@ -17245,9 +17245,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Sub-heading for materialized file revisions, EMI divergence rows, per-path commit serialization, and atomic file publication."
         },
         "file-commit-serialization": {
           "spec": "plurnk-core/SPEC.md",
@@ -17257,9 +17257,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "file-snapshot-revision",
+          "reason": "Fold per-physical-path commit and revalidation serialization within the daemon into §file-snapshot-revision."
         },
         "file-publication": {
           "spec": "plurnk-core/SPEC.md",
@@ -17269,9 +17269,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "file-snapshot-revision",
+          "reason": "Fold staged temp-file atomic rename publication and partial-effect reporting into §file-snapshot-revision."
         },
         "file-delete-revision": {
           "spec": "plurnk-core/SPEC.md",
@@ -17281,9 +17281,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "file-snapshot-revision",
+          "reason": "Fold KILL/MOVE source revision validation before unlink and unchanged-creation rollback into §file-snapshot-revision."
         },
         "file-external-race": {
           "spec": "plurnk-core/SPEC.md",
@@ -17293,9 +17293,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "file-snapshot-revision",
+          "reason": "Fold the optimistic external filesystem race boundary and physical-path symlink revalidation into §file-snapshot-revision."
         },
         "membership-git-flags": {
           "spec": "plurnk-core/SPEC.md",
@@ -17305,9 +17305,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "membership",
+          "reason": "Fold PLURNK_SERVICE_GIT_ALLOWED and PLURNK_SERVICE_GIT_AUTO permission ceiling flags into §membership."
         },
         "session-loop-lifecycle": {
           "spec": "plurnk-core/SPEC.md",
@@ -17317,9 +17317,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Primary section heading for session loop state transitions, existential liveness, terminal results, and stream/child wake matrices."
         },
         "join-blocking-collect": {
           "spec": "plurnk-core/SPEC.md",
@@ -17329,9 +17329,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold 425 Too Early non-blocking child collection and independent WAIT joining into §session-loop-lifecycle."
         },
         "session-lifecycle-state-machine": {
           "spec": "plurnk-core/SPEC.md",
@@ -17341,9 +17341,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold guarded 100/102/202/terminal state transitions and immutable terminal ownership into §session-loop-lifecycle."
         },
         "session-lifecycle-live": {
           "spec": "plurnk-core/SPEC.md",
@@ -17353,9 +17353,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold existential session liveness across any unresolved 100/102/202 loop into §session-loop-lifecycle."
         },
         "session-wait-timing": {
           "spec": "plurnk-core/SPEC.md",
@@ -17365,9 +17365,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 7,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Sub-heading for durable WAIT deadlines, wake generation identity, claim latency, execution allowance, and message admission."
         },
         "loop-wake-identity": {
           "spec": "plurnk-core/SPEC.md",
@@ -17377,9 +17377,9 @@
           "liveShape": "paragraph",
           "codeCitations": 7,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-wait-timing",
+          "reason": "Fold per-loop wait generation binding and session completion-revision acknowledgement into §session-wait-timing."
         },
         "loop-claim-latency": {
           "spec": "plurnk-core/SPEC.md",
@@ -17389,9 +17389,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-wait-timing",
+          "reason": "Fold the trigger-stamped loops.claimed_at first-claim latency timestamp into §session-wait-timing."
         },
         "loop-execution-allowance": {
           "spec": "plurnk-core/SPEC.md",
@@ -17401,9 +17401,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-wait-timing",
+          "reason": "Fold cumulative monotonic PLURNK_SERVICE_LOOP_TIMEOUT consumption and 504 exhaustion into §session-wait-timing."
         },
         "session-message-admission": {
           "spec": "plurnk-core/SPEC.md",
@@ -17413,9 +17413,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-wait-timing",
+          "reason": "Fold atomic running/parked/queued recipient selection and compatibility checking into §session-wait-timing."
         },
         "loop-addressed-admission": {
           "spec": "plurnk-core/SPEC.md",
@@ -17425,9 +17425,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-wait-timing",
+          "reason": "Fold explicit loopId admission targeting and 409 loop-not-open refusal into §session-wait-timing."
         },
         "stream-catalog-lifecycle": {
           "spec": "plurnk-core/SPEC.md",
@@ -17437,9 +17437,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold durable stream subscription state projection on catalog default channels into §session-loop-lifecycle."
         },
         "session-lifecycle-subscription-matrix": {
           "spec": "plurnk-core/SPEC.md",
@@ -17449,9 +17449,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold the open/closed/cancelled stream subscription state matrix at WAIT into §session-loop-lifecycle."
         },
         "session-lifecycle-poll-matrix": {
           "spec": "plurnk-core/SPEC.md",
@@ -17461,9 +17461,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold the stream poll and turn-lifetime reap matrix into §session-loop-lifecycle."
         },
         "session-lifecycle-child-matrix": {
           "spec": "plurnk-core/SPEC.md",
@@ -17473,9 +17473,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold the child session state and undelivered-result wake matrix at parent WAIT into §session-loop-lifecycle."
         },
         "session-lifecycle-terminal-result": {
           "spec": "plurnk-core/SPEC.md",
@@ -17485,9 +17485,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold loops.terminal_result RFC 9457 persistence and compact loops.status projection into §session-loop-lifecycle."
         },
         "session-lifecycle-single-drain": {
           "spec": "plurnk-core/SPEC.md",
@@ -17497,9 +17497,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold single registered per-session drain ownership and serialized sequence allocation into §session-causal-admission."
         },
         "session-lifecycle-total-reap": {
           "spec": "plurnk-core/SPEC.md",
@@ -17509,9 +17509,9 @@
           "liveShape": "list",
           "codeCitations": 6,
           "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold recursive subtree loop cancellation, open-subscription reaping, and daemon_stopping proposal abort into §session-causal-admission."
         },
         "session-lifecycle-exec-epoch-bound": {
           "spec": "plurnk-core/SPEC.md",
@@ -17521,9 +17521,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold spawn-time session cancellation scope binding and post-wire abort recheck into §session-causal-admission."
         },
         "session-lifecycle-no-resurrection": {
           "spec": "plurnk-core/SPEC.md",
@@ -17533,9 +17533,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold the prohibition on torn-down streams, timers, or cancelled messages reviving a cancelled session into §session-causal-admission."
         },
         "session-cancel-trigger": {
           "spec": "plurnk-core/SPEC.md",
@@ -17545,9 +17545,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold the single-statement lifecycle_cancel_sessions and sessions_cancel_live_loops INIT trigger into §session-causal-admission."
         },
         "session-causal-admission": {
           "spec": "plurnk-core/SPEC.md",
@@ -17557,9 +17557,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Sub-heading for single-drain serialization, recursive subtree cancellation, optimistic settlement, and boot owner-loss recovery."
         },
         "session-lifecycle-wake-liveness": {
           "spec": "plurnk-core/SPEC.md",
@@ -17569,9 +17569,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold terminal stream persistence and in-place 202 loop wake liveness into §session-causal-admission."
         },
         "session-lifecycle-child-wake": {
           "spec": "plurnk-core/SPEC.md",
@@ -17581,9 +17581,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold direct-parent wake notification on each child task completion without prompt injection into §session-causal-admission."
         },
         "session-optimistic-settlement": {
           "spec": "plurnk-core/SPEC.md",
@@ -17593,9 +17593,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold PLURNK_SERVICE_OPTIMISTIC_WAIT_MS initiating-turn stream settlement and sibling-obligation wake holds into §session-causal-admission."
         },
         "session-lifecycle-idle-is-concluded": {
           "spec": "plurnk-core/SPEC.md",
@@ -17605,9 +17605,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold the rule that concluded sessions stay concluded until a new addressed arrival starts a fresh loop into §session-causal-admission."
         },
         "session-lifecycle-no-lost-loop": {
           "spec": "plurnk-core/SPEC.md",
@@ -17617,9 +17617,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold lock-held empty-queue verification before drain slot relinquishment into §session-causal-admission."
         },
         "session-lifecycle-durable-disposition": {
           "spec": "plurnk-core/SPEC.md",
@@ -17629,9 +17629,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold durable 202 park precedence over racing process-local shutdown aborts into §session-causal-admission."
         },
         "session-lifecycle-restart-recovery": {
           "spec": "plurnk-core/SPEC.md",
@@ -17641,9 +17641,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-causal-admission",
+          "reason": "Fold DaemonLock exclusive claim and atomic boot owner-loss reconciliation into §session-causal-admission."
         },
         "turn-record": {
           "spec": "plurnk-core/SPEC.md",
@@ -17653,9 +17653,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Sub-heading for the producer-neutral turn record, shared program admission executor, selection snapshot, and exception outcomes."
         },
         "turn-exception-outcome": {
           "spec": "plurnk-core/SPEC.md",
@@ -17665,9 +17665,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "turn-record",
+          "reason": "Fold open-turn settlement (499/504/500) and cause preservation on exceptional inference exits into §turn-record."
         },
         "turn-ops-admission-path": {
           "spec": "plurnk-core/SPEC.md",
@@ -17677,9 +17677,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "turn-record",
+          "reason": "Fold the shared admitted-turn parse, dispatch, and turn_sources preservation seam into §turn-record."
         },
         "turn-ops-selection-snapshot": {
           "spec": "plurnk-core/SPEC.md",
@@ -17689,9 +17689,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "turn-record",
+          "reason": "Fold pre-dispatch log high-water mark capture preventing self-curation of same-turn rows into §turn-record."
         },
         "engine-notifications": {
           "spec": "plurnk-core/SPEC.md",
@@ -17701,9 +17701,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-loop-lifecycle",
+          "reason": "Fold the EngineNotifications daemon callback bundle into the parent §session-loop-lifecycle section."
         },
         "engine-rails": {
           "spec": "plurnk-core/SPEC.md",
@@ -17713,9 +17713,9 @@
           "liveShape": "heading",
           "codeCitations": 5,
           "testCitations": 11,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Sub-heading for post-turn strike assessment, cycle detection, progress immunity, provider recovery, and durable rail continuity."
         },
         "engine-cycle-evidence": {
           "spec": "plurnk-core/SPEC.md",
@@ -17725,9 +17725,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "engine-rails",
+          "reason": "Fold operation+result cycle fingerprinting and empty-turn text cycle detection into §engine-rails."
         },
         "provider-recovery": {
           "spec": "plurnk-core/SPEC.md",
@@ -17737,9 +17737,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "engine-rails",
+          "reason": "Fold retryable provider failure backoff, frozen-message reissue, and 202 interactive park fallback into §engine-rails."
         },
         "strike-progress-immunity": {
           "spec": "plurnk-core/SPEC.md",
@@ -17749,9 +17749,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "engine-rails",
+          "reason": "Fold hard-result strike immunity and streak reset when a task-acting operation succeeds into §engine-rails."
         },
         "loop-rail-continuity": {
           "spec": "plurnk-core/SPEC.md",
@@ -17761,9 +17761,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "engine-rails",
+          "reason": "Fold durable loop strike-streak persistence and park/allowance cycle-window closure into §engine-rails."
         }
       },
       "tests": {
@@ -17778,9 +17778,9 @@
           "citedTags": [
             "file-commit-serialization"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for FileSnapshot revision digests, change-gated sync, and per-path commit serialization."
         },
         "plurnk-core/src/core/StrikeRail.activity.test.ts": {
           "tier": "unit",
@@ -17793,9 +17793,9 @@
           "citedTags": [
             "engine-cycle-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/StrikeRail.test.ts",
+          "reason": "Merge StrikeRail cycle-activity fingerprint normalization tests into the canonical StrikeRail unit suite."
         },
         "plurnk-core/src/core/StrikeRail.test.ts": {
           "tier": "unit",
@@ -17808,9 +17808,9 @@
           "citedTags": [
             "engine-cycle-evidence"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for StrikeRail strike sources, cycle detection, activity normalization, and streak continuity."
         },
         "plurnk-core/src/core/TurnDispositionHandler.test.ts": {
           "tier": "unit",
@@ -17823,9 +17823,9 @@
           "citedTags": [
             "session-wait-timing"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for TurnDispositionHandler WAIT/SEND/park/conclusion lifecycle transitions."
         },
         "plurnk-core/src/core/TurnOps.test.ts": {
           "tier": "unit",
@@ -17841,9 +17841,9 @@
             "outside-text",
             "turn-ops-admission-path"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for TurnOps shared program admission, selection snapshots, and turn completion."
         },
         "plurnk-core/src/core/glob_match.test.ts": {
           "tier": "unit",
@@ -17856,9 +17856,9 @@
           "citedTags": [
             "membership-glob-in-sql"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for SQLite glob_match path-glob evaluation."
         },
         "plurnk-core/src/server/DaemonLock.test.ts": {
           "tier": "unit",
@@ -17871,9 +17871,9 @@
           "citedTags": [
             "session-lifecycle-restart-recovery"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for DaemonLock exclusive PID acquisition and dead-owner recovery."
         },
         "plurnk-core/src/server/DrainSupervisor.test.ts": {
           "tier": "unit",
@@ -17891,9 +17891,9 @@
             "session-lifecycle-durable-disposition",
             "session-wait-timing"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for DrainSupervisor single-drain serialization, wake routing, and subtree cancellation."
         },
         "plurnk-core/test/intg/Daemon.causal-admission.test.ts": {
           "tier": "intg",
@@ -17906,9 +17906,9 @@
           "citedTags": [
             "session-lifecycle-no-resurrection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge causal message admission and subtree cancellation ordering tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/Daemon.exec-wake.test.ts": {
           "tier": "intg",
@@ -17928,9 +17928,9 @@
             "session-lifecycle-wake-liveness",
             "session-wait-timing"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge stream completion wake and session liveness tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/Daemon.execution-budget.test.ts": {
           "tier": "intg",
@@ -17943,9 +17943,9 @@
           "citedTags": [
             "loop-execution-allowance"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge cumulative monotonic loop execution allowance and 504 timeout tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/Daemon.lifecycle-recovery.test.ts": {
           "tier": "intg",
@@ -17965,9 +17965,9 @@
             "session-lifecycle-restart-recovery",
             "session-obligations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge daemon restart owner-loss reconciliation and parked-loop recovery tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/Daemon.loop-address.test.ts": {
           "tier": "intg",
@@ -17980,9 +17980,9 @@
           "citedTags": [
             "loop-addressed-admission"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge explicit loopId addressed admission and 409 loop-not-open refusal tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/Daemon.stop-pending-proposal.test.ts": {
           "tier": "intg",
@@ -17995,9 +17995,9 @@
           "citedTags": [
             "session-lifecycle-total-reap"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge daemon shutdown pending-proposal abort and drain teardown tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/Daemon.wait-obligations.test.ts": {
           "tier": "intg",
@@ -18011,9 +18011,9 @@
             "loop-wake-identity",
             "session-lifecycle-no-resurrection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge durable wait obligation tracking and completion-revision acknowledgement tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/Daemon.wait-rails.test.ts": {
           "tier": "intg",
@@ -18029,9 +18029,9 @@
             "extra-path-slot",
             "matcher-refusal"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge WAIT rail continuity and cycle-window boundary tests into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/Engine.cycles.test.ts": {
           "tier": "intg",
@@ -18044,9 +18044,9 @@
           "citedTags": [
             "engine-cycle-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge operation+result cycle detection and 508 Loop Detected termination tests into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/Engine.idle-parks-on-obligation.test.ts": {
           "tier": "intg",
@@ -18060,9 +18060,9 @@
             "send-idle-turn",
             "session-optimistic-settlement"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge live-obligation parking versus empty-turn rail evaluation tests into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/Engine.join-rails.test.ts": {
           "tier": "intg",
@@ -18080,9 +18080,9 @@
             "matcher-refusal",
             "session-obligations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge 425 Too Early non-striking collection and WAIT join rail tests into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/Engine.rail-lifecycle.test.ts": {
           "tier": "intg",
@@ -18098,9 +18098,9 @@
             "matcher-refusal",
             "session-lifecycle-state-machine"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge durable strike-streak and cycle-history rail continuity across wakes/restarts into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/Engine.run-loop.test.ts": {
           "tier": "intg",
@@ -18126,9 +18126,9 @@
             "session-lifecycle-durable-disposition",
             "session-lifecycle-total-reap"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge Engine.runLoop turn ceiling, strike threshold, and completion dispatch tests into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/Engine.strike-executor-evidence.test.ts": {
           "tier": "intg",
@@ -18142,9 +18142,9 @@
             "engine-rails",
             "executor-exit-code"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge soft executor-failure evidence versus hard contract-violation strike tests into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/StrikeRail.test.ts": {
           "tier": "intg",
@@ -18162,9 +18162,9 @@
             "output-allowance-notice",
             "strike-progress-immunity"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for engine strike rails, cycle detection, progress immunity, provider recovery, and join/wait rail edges."
         },
         "plurnk-core/test/intg/cancel-provenance.test.ts": {
           "tier": "intg",
@@ -18184,9 +18184,9 @@
             "session-lifecycle-total-reap",
             "turn-record"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge session cancellation trigger and Problem provenance tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/contract-workspace.test.ts": {
           "tier": "intg",
@@ -18209,9 +18209,9 @@
             "membership-materialization-limit",
             "operator-config-git-ceiling"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for workspace file membership, Git boundary, overlays, auto-add, and file revision integrity."
         },
         "plurnk-core/test/intg/derive-dedup-parallel.test.ts": {
           "tier": "intg",
@@ -18224,9 +18224,9 @@
           "citedTags": [
             "derivation-dedup-parallel"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for search derivation deduplication, parallel scheduling, member failure isolation, and HTTP entry prefetch."
         },
         "plurnk-core/test/intg/exec-entry-sink.test.ts": {
           "tier": "intg",
@@ -18245,9 +18245,9 @@
             "readable-channel",
             "web-search-retrieval"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/derive-dedup-parallel.test.ts",
+          "reason": "Merge executor WebFetcher HTTP entry sink prefetch tests into derive-dedup-parallel.test.ts."
         },
         "plurnk-core/test/intg/exec-kill-reap.test.ts": {
           "tier": "intg",
@@ -18260,9 +18260,9 @@
           "citedTags": [
             "session-lifecycle-total-reap"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge recursive stream subscription reaping and epoch-bound kill tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/exec-wait.test.ts": {
           "tier": "intg",
@@ -18279,9 +18279,9 @@
             "session-optimistic-settlement",
             "subscriptions-subscription-registry-routes-cancellation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge stream subscription WAIT parking and closure wake matrix tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/file-integrity.test.ts": {
           "tier": "intg",
@@ -18302,9 +18302,9 @@
             "membership-edit-write-revision",
             "membership-source-projection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-workspace.test.ts",
+          "reason": "Merge file snapshot revision, atomic publication, and collision integrity tests into contract-workspace.test.ts."
         },
         "plurnk-core/test/intg/git-env-hermetic.test.ts": {
           "tier": "intg",
@@ -18318,9 +18318,9 @@
             "executor-spawn-account",
             "membership-git-hermetic"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-workspace.test.ts",
+          "reason": "Merge hermetic Git environment scrubbing, excludesFile, and filter-driver refusal tests into contract-workspace.test.ts."
         },
         "plurnk-core/test/intg/git-state.test.ts": {
           "tier": "intg",
@@ -18335,9 +18335,9 @@
             "operator-config-git-ceiling",
             "packet-git-status"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-workspace.test.ts",
+          "reason": "Merge native Git membership and status inspection tests into contract-workspace.test.ts."
         },
         "plurnk-core/test/intg/instructions-exclusions.test.ts": {
           "tier": "intg",
@@ -18351,9 +18351,9 @@
             "members-configuration",
             "membership-model-universe"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/contract-workspace.test.ts",
+          "reason": "Merge AGENTS.md / AGENTS.local.md instruction projection exclusion tests into contract-workspace.test.ts."
         },
         "plurnk-core/test/intg/loop-claim-latency.test.ts": {
           "tier": "intg",
@@ -18366,9 +18366,9 @@
           "citedTags": [
             "loop-claim-latency"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge loops.claimed_at trigger stamping and first-claim latency tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/loop-lifecycle.test.ts": {
           "tier": "intg",
@@ -18386,9 +18386,9 @@
             "session-lifecycle-terminal-result",
             "session-wait-timing"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical integration suite for session loop scheduling, waits, wakes, cancellation, optimistic settlement, restart recovery, and turn records."
         },
         "plurnk-core/test/intg/operator-timeouts.test.ts": {
           "tier": "intg",
@@ -18403,9 +18403,9 @@
             "operator-config-loop-timeout",
             "session-lifecycle-state-machine"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge operator wait and loop timeout bound enforcement tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/optimistic-settlement.test.ts": {
           "tier": "intg",
@@ -18418,9 +18418,9 @@
           "citedTags": [
             "session-optimistic-settlement"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge PLURNK_SERVICE_OPTIMISTIC_WAIT_MS initiating-turn and wake-hold coalescing tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/provider-recovery.test.ts": {
           "tier": "intg",
@@ -18433,9 +18433,9 @@
           "citedTags": [
             "provider-recovery"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge retryable provider failure backoff, frozen-message reissue, and 202 park recovery tests into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/scheduled-occurrence.test.ts": {
           "tier": "intg",
@@ -18451,9 +18451,9 @@
             "schedule-delivery",
             "schedule-residency"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge scheduled occurrence delivery and parked-loop wake identity tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/search-artifact-interruption.test.ts": {
           "tier": "intg",
@@ -18468,9 +18468,9 @@
             "derivation-member-failure",
             "mimetype-derivation-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/derive-dedup-parallel.test.ts",
+          "reason": "Merge interrupted derivation retry and member-local handler failure isolation tests into derive-dedup-parallel.test.ts."
         },
         "plurnk-core/test/intg/search-index-acquisition.test.ts": {
           "tier": "intg",
@@ -18483,9 +18483,9 @@
           "citedTags": [
             "derivation-dedup-parallel"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/derive-dedup-parallel.test.ts",
+          "reason": "Merge content-hash identity judgement and zero-copy unchanged channel acquisition tests into derive-dedup-parallel.test.ts."
         },
         "plurnk-core/test/intg/search-maintenance.test.ts": {
           "tier": "intg",
@@ -18499,9 +18499,9 @@
             "derivation-dedup-parallel",
             "derivation-exhaustive"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/derive-dedup-parallel.test.ts",
+          "reason": "Merge aggregate derivation progress lifecycle, search exclusion, and smallest-first scheduling tests into derive-dedup-parallel.test.ts."
         },
         "plurnk-core/test/intg/send-200-failed-ops.test.ts": {
           "tier": "intg",
@@ -18515,9 +18515,9 @@
             "completion-defers-to-results",
             "turn-record"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge failed-operation observation deferral before explicit completion or cancellation into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/session-topology.test.ts": {
           "tier": "intg",
@@ -18538,9 +18538,9 @@
             "session-owner-resolution",
             "wait-obligation-matrix"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge parent-child session topology wakes, recursive abandonment, and sequential child completion tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/strike-progress-immunity.test.ts": {
           "tier": "intg",
@@ -18555,9 +18555,9 @@
             "matcher-refusal",
             "strike-progress-immunity"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/StrikeRail.test.ts",
+          "reason": "Merge hard-400 strike progress immunity beside a successful operation into StrikeRail.test.ts."
         },
         "plurnk-core/test/intg/turn-preparation.test.ts": {
           "tier": "intg",
@@ -18571,9 +18571,9 @@
             "context-fit",
             "turn-exception-outcome"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge exceptional turn-preparation exit status settlement (499/504/500) tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/turns.test.ts": {
           "tier": "intg",
@@ -18587,9 +18587,9 @@
             "packet-items",
             "turn-record"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge turns table constraints, producer/kind immutability, and Turn lifecycle tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/undelivered-child-term.test.ts": {
           "tier": "intg",
@@ -18603,9 +18603,9 @@
             "send-undelivered-child-term",
             "session-lifecycle-child-matrix"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge undelivered child termination observation-cursor gate tests into loop-lifecycle.test.ts."
         },
         "plurnk-core/test/intg/wait-duration.test.ts": {
           "tier": "intg",
@@ -18620,9 +18620,9 @@
             "session-lifecycle-poll-matrix",
             "session-wait-timing"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/loop-lifecycle.test.ts",
+          "reason": "Merge WAIT duration expiry, WAIT [0] continuation, and stream-closure wake tests into loop-lifecycle.test.ts."
         }
       }
     },

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import FileSnapshot from "./FileSnapshot.ts";
 
-test("{§file-commit-serialization}: unrelated paths progress and failure releases the next same-path commit", async () => {
+test("{§file-snapshot-revision}: unrelated paths progress and failure releases the next same-path commit", async () => {
     const started = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const events: string[] = [];

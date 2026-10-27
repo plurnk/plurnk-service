@@ -1,5 +1,5 @@
 -- Process-bound lifecycle recovery, before client transports open or drains resume.
--- {§session-lifecycle-restart-recovery}: database settlement is one idempotent transaction.
+-- {§session-causal-admission}: database settlement is one idempotent transaction.
 
 -- TX: recovery_settle_process_owners
 -- 102 is a claim held by a process-local drain. After restart that owner is gone;
@@ -54,7 +54,7 @@ SET status = 500,
     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 WHERE completed_at IS NULL;
 
--- {§session-lifecycle-restart-recovery} Every proposed row depended on a
+-- {§session-causal-admission} Every proposed row depended on a
 -- process-local resolution waiter. At boot that owner is necessarily gone, so
 -- terminalize the occurrence before {§proposal-list} can open to clients.
 UPDATE log_entries
@@ -115,7 +115,7 @@ SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
     channel_results = '{}'
 WHERE closed_at IS NULL;
 
--- {§loop-wake-identity}: a persisted completion beats a future observation. Otherwise
+-- {§session-wait-timing}: a persisted completion beats a future observation. Otherwise
 -- only a now-empty join wakes here; observation ownership is restored below
 -- through the same scheduler used after a live park.
 UPDATE loops

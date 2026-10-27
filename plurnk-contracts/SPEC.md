@@ -1192,7 +1192,7 @@ statements remain recoverable when their boundaries are trustworthy.
   `matcher.dialect = "unreadable"` carrying the authored text, the diagnostic as `message`, and the
   dialect's working form as `recovery` ({§parse-recovery}); the operation lands as its own `400` row,
   `grammar/matcher/unreadable-pattern`, with that message and recovery, its siblings run, and the
-  rail treats it as soft ({§strike-progress-immunity} in the core SPEC). An unreadable matcher
+  rail treats it as soft ({§engine-rails} in the core SPEC). An unreadable matcher
   renders back as written ({§statement-rendering}).
 - §regex-dialect-readings **Three habits of other regex dialects are read, with one advisory each.**
   `\|` is alternation, `|`, and a literal pipe is `[|]`; `-flags` after the closing slash are the
@@ -1842,7 +1842,7 @@ of it ({§machine-processes}).
 §application-loop-observation Loop observation exposes the durable scheduler
 state of work loops (excluding maintenance-only administrative loops), nullable
 `waitUntil` (the durable observation deadline in Unix milliseconds), the times a loop first
-ran (`claimedAt`, {§loop-claim-latency}) and concluded (`terminatedAt`), ISO 8601 UTC and null
+ran (`claimedAt`, {§session-wait-timing}) and concluded (`terminatedAt`), ISO 8601 UTC and null
 until they happen, exact terminal `OperationResult`, the operation that opened the loop
 (`invocation`: its Session and log address, {§session-obligations}; null when no Session's operation did),
 and exact count of packet-bearing

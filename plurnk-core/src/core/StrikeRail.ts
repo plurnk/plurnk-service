@@ -28,7 +28,7 @@ const isExecutorEvidence = ({ problemType }: StrikeOutcome): boolean =>
     typeof problemType === "string" && problemType.startsWith(EXECUTOR_EVIDENCE_PREFIX);
 const isUnreadablePattern = ({ problemType }: StrikeOutcome): boolean => problemType === UNREADABLE_PATTERN;
 
-// {§strike-progress-immunity} — only an operation that acts on the task and succeeds is progress;
+// {§engine-rails} — only an operation that acts on the task and succeeds is progress;
 // NOTE, WAIT and a targetless SEND do not act on task resources.
 export const isProgress = (statement: PlurnkStatement, status: number): boolean => status < 400
     && statement.op !== "NOTE"
@@ -37,7 +37,7 @@ export const isProgress = (statement: PlurnkStatement, status: number): boolean 
 
 const SOURCE_DECORATION = new Set(["aside", "position"]);
 
-// A NOTE's result without the source coordinate storage assigned it ({§engine-cycle-evidence}).
+// A NOTE's result without the source coordinate storage assigned it ({§engine-rails}).
 const withoutResource = ({ resource: _resource, ...observed }: OperationResult): OperationResult => observed;
 
 const observedResult = (result: OperationResult | undefined): unknown => result?.problem === undefined
@@ -48,7 +48,7 @@ const observedResult = (result: OperationResult | undefined): unknown => result?
 // cycle history. The model sees admitted operation and engine-rail failures,
 // never this private accounting.
 export default class StrikeRail {
-    // {§engine-cycle-evidence}: compare operational inputs and observed results,
+    // {§engine-rails}: compare operational inputs and observed results,
     // not an interpretation of the model's intent. Optional results support the
     // syntax-only Engine fingerprint helper; admitted turns always supply them.
     static fingerprintTurn(ops: ReadonlyArray<PlurnkStatement>, results?: ReadonlyArray<OperationResult>): string {
@@ -59,7 +59,7 @@ export default class StrikeRail {
             const operation = Object.fromEntries(Object.entries(statement).filter(([key]) =>
                 !SOURCE_DECORATION.has(key)));
             const result = results?.[index];
-            // {§engine-cycle-evidence}: NOTE's assigned source coordinate is storage,
+            // {§engine-rails}: NOTE's assigned source coordinate is storage,
             // not an observation; its complete authored content remains in operation.
             const evidence = statement.op === "NOTE" && result !== undefined ? withoutResource(result) : result;
             return [[operation, observedResult(evidence)]];
@@ -71,7 +71,7 @@ export default class StrikeRail {
         return createHash("sha256").update(canonical).digest("hex");
     }
 
-    // {§engine-cycle-evidence} — an empty turn performed no activity, so its text IS its
+    // {§engine-rails} — an empty turn performed no activity, so its text IS its
     // observable output and is what the detector compares. Fingerprinting the empty program
     // instead makes every empty turn identical, and the detector then reports a cycle over a
     // model that merely spoke three different times ({§empty-turn}) — 508 "loop detected" for a
@@ -127,7 +127,7 @@ export default class StrikeRail {
         waitRevision: number;
         fingerprint: string;
         outcomes: ReadonlyArray<StrikeOutcome>;
-        // {§strike-progress-immunity} — at least one operation acted on the task and succeeded.
+        // {§engine-rails} — at least one operation acted on the task and succeeded.
         progressed: boolean;
         emptyTurn?: boolean;
         // {§output-allowance-notice} — the output allowance ended the turn's final emission.
@@ -142,7 +142,7 @@ export default class StrikeRail {
         const state = await this.#state(loopId);
         // The ending turn remains in its opening wait revision. A real park
         // closes that window even if a wake already reclaimed the same drain.
-        // {§loop-rail-continuity} — so does a cut: the engine's ceiling, not the model, ended that
+        // {§engine-rails} — so does a cut: the engine's ceiling, not the model, ended that
         // turn, so it is no repetition evidence and no repetition spans it.
         const history: string[] = !turn.cut && state.cycle_wait_revision === turn.waitRevision
             ? JSON.parse(state.cycle_history) : [];

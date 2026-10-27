@@ -21,13 +21,13 @@ CREATE TABLE IF NOT EXISTS loops (
     spawn_model_route_id INTEGER          REFERENCES model_routes(id),
     effort           TEXT                 CHECK (effort IS NULL OR length(effort) > 0),
     max_turns        INTEGER NOT NULL     CHECK (max_turns >= -1),
-    -- {§loop-execution-allowance}: initialized on first execution, charged with disposition.
+    -- {§session-wait-timing}: initialized on first execution, charged with disposition.
     execution_budget_ms INTEGER CHECK (execution_budget_ms IS NULL OR execution_budget_ms > 0),
     execution_elapsed_ms REAL NOT NULL DEFAULT 0 CHECK (execution_elapsed_ms >= 0),
-    -- {§loop-wake-identity}: the wait generation; wait_poll_at below is the next inherited
+    -- {§session-wait-timing}: the wait generation; wait_poll_at below is the next inherited
     -- observation of the session's open streams ({§exec-lifetime}), epoch milliseconds.
     wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (wait_revision >= 0),
-    -- {§loop-rail-continuity}: one loop-owned streak and bounded repetition window.
+    -- {§engine-rails}: one loop-owned streak and bounded repetition window.
     strike_streak INTEGER NOT NULL DEFAULT 0 CHECK (strike_streak >= 0),
     cycle_history TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(cycle_history) AND json_type(cycle_history) = 'array'),
     cycle_wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (cycle_wait_revision >= 0 AND cycle_wait_revision <= wait_revision),
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- {§message-loop-containment}: one queued recovery loop may carry the
     -- complete unpublished message set of one concluded source loop.
     orphan_source_loop_id INTEGER,
-    -- {§loop-claim-latency}: the first time the loop was claimed to run (status 102), stamped by
+    -- {§session-wait-timing}: the first time the loop was claimed to run (status 102), stamped by
     -- trigger; its first model turn's start minus this is the wake latency a stall shows up as.
     claimed_at       TEXT,
     -- {§session-scheme} loop-termination delta: terminated_at is stamped by the trigger

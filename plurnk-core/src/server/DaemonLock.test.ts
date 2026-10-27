@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import DaemonLock from "./DaemonLock.ts";
 
-test("{§session-lifecycle-restart-recovery} DaemonLock permits exactly one live daemon owner and releases cleanly", async () => {
+test("{§session-causal-admission} DaemonLock permits exactly one live daemon owner and releases cleanly", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-daemon-lock-"));
     const dbPath = join(dir, "plurnk.db");
     try {
@@ -23,7 +23,7 @@ test("{§session-lifecycle-restart-recovery} DaemonLock permits exactly one live
     }
 });
 
-test("{§session-lifecycle-restart-recovery} DaemonLock replaces a crash-stale owner without a timeout guess", async () => {
+test("{§session-causal-admission} DaemonLock replaces a crash-stale owner without a timeout guess", async () => {
     const dir = await mkdtemp(join(tmpdir(), "plurnk-daemon-lock-"));
     const dbPath = join(dir, "plurnk.db");
     const path = `${dbPath}.lock`;

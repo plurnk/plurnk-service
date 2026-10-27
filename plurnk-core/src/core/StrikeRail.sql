@@ -1,4 +1,4 @@
--- {§loop-rail-continuity}: StrikeRail owns private per-loop assessment state.
+-- {§engine-rails}: StrikeRail owns private per-loop assessment state.
 
 -- PREP: strike_rail_state
 SELECT strike_streak, cycle_history, cycle_wait_revision

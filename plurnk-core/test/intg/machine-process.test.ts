@@ -646,7 +646,7 @@ test("{§loop-terminals} loops: status enum accepts 100 (queued) — drain prere
     } finally { await db.close(); }
 });
 
-test("{§session-lifecycle-terminal-result} loops: one terminal-result constraint rejects incomplete failures on insert and update", async () => {
+test("{§session-loop-lifecycle} loops: one terminal-result constraint rejects incomplete failures on insert and update", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await seedSession(db, "ws-loops-terminal-result");

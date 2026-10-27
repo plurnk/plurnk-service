@@ -296,7 +296,7 @@ for (const policy of ["review", "accept", "reject"] as const) {
     });
 }
 
-test("{§session-lifecycle-total-reap} shutdown cancels a person's operation still dispatching and reaps a command still running after its operation returned", async (t) => {
+test("{§session-causal-admission} shutdown cancels a person's operation still dispatching and reaps a command still running after its operation returned", async (t) => {
     const priorTimeout = process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS;
     process.env.PLURNK_SERVICE_STOP_TIMEOUT_MS = "3000";
     t.after(() => {

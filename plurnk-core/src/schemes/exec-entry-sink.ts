@@ -108,7 +108,7 @@ export default class ExecEntrySink {
         const binding = requestedPath === null
             ? Promise.resolve({ address: { scheme: runtime, authority: "", pathname: parsed.pathname }, result: null })
             : this.#deps.bindEntryAddress(parsed, ctx);
-        // {§exec-entry-sink}/{§web-search-retrieval} — start content:null
+        // {§exec-entry-sink}/{§membership} — start content:null
         // acquisition before the write chain so fetches run in parallel;
         // only durable entry writes serialize. A null result rejects the sink.
         let materialized: Promise<WebFetchResult | null> | undefined;

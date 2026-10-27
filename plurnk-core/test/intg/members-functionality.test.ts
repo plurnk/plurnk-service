@@ -266,7 +266,7 @@ test("{§members-functionality} {§functionality-addressing} client and model sh
                 ["add", "disable", "discover", "enable", "list", "remove"].map((verb) => `workspace.members.${verb}`),
             );
 
-            // The baseline: tracked is a member, loose is not ({§membership-baseline}).
+            // The baseline: tracked is a member, loose is not ({§membership}).
             assert.equal(await memberOf(db, workspaceId, "README.md"), true);
             assert.equal(await memberOf(db, workspaceId, "loose.md"), false, "an untracked file is dark until added");
             // Service definitions from the operator's env ride like PLURNK_MCP_*: docs/** is enabled by

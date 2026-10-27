@@ -30,7 +30,7 @@ END;
 
 -- PREP: place_scope
 -- The sessions a hide covers, a session and every session beneath it or every session of a workspace, each with its live
--- loops ({§session-lifecycle-live}) and open streams.
+-- loops ({§session-loop-lifecycle}) and open streams.
 WITH RECURSIVE scope(id) AS (
     SELECT id FROM sessions WHERE workspace_id = $workspace_id AND ($session_id IS NULL OR id = $session_id)
     UNION

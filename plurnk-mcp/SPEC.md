@@ -125,7 +125,7 @@ retry, and teardown retain one connection-level owner.
 
 Task handles belong to the connection and operation that created them. They
 are process-local, never persisted or automatically replayed. Ordinary host
-lifecycle owns interruption and recovery ({§session-lifecycle-restart-recovery});
+lifecycle owns interruption and recovery ({§session-causal-admission});
 MCP adds no second scheduler or client-disconnect policy.
 
 | Boundary | Behaviour |

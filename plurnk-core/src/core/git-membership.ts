@@ -1,4 +1,4 @@
-// SPEC {§membership} D4 — git-ls-files workspace membership. {§membership-git-membership}
+// SPEC {§membership} D4 — git-ls-files workspace membership. {§membership}
 //
 // When a workspace's `project_root` is a git working tree, the git-tracked
 // files (`git ls-files`) are workspace MEMBERS without any definition.
@@ -13,9 +13,9 @@
 //   D4 — git present → ls-files membership. Git absent → no ambient fs-walk;
 //        member definitions and creation records remain the membership substrate.
 //        The overlay (workspace_constraints: include | exclude) composes here:
-//        `(ls-files ∪ include) − exclude` ({§membership-overlay-include}).
+//        `(ls-files ∪ include) − exclude` ({§membership-auto-add}).
 //   D5 — source verification is exhaustive; projection and indexing are
-//        change-gated ({§membership-change-gated-sync}).
+//        change-gated ({§file-snapshot-revision}).
 //
 // Git resolution uses native Git (subprocess + hermeticGitEnv,
 // AbortSignal-respecting).
@@ -35,7 +35,7 @@ import Namespace from "./namespace.ts";
 import FileCreationPolicy from "./file-creation-policy.ts";
 import MembershipMaterialization from "./MembershipMaterialization.ts";
 
-// {§membership-emi-divergence-signal} — a disk divergence captured at pre-turn:
+// {§file-snapshot-revision} — a disk divergence captured at pre-turn:
 // the entry's content before the Git-membership refresh versus its materialized
 // representation after. The runtime session retains it as source=file evidence.
 export interface FsDivergence {
@@ -66,7 +66,7 @@ export interface MemberSnapshot {
 }
 
 interface MembershipResolution {
-    // {§membership-git-hermetic} (#568): the `filter.*` key that made automatic inspection refuse the repository.
+    // {§membership} (#568): the `filter.*` key that made automatic inspection refuse the repository.
     refusedFilter?: string;
     members: string[];
     removed: FsDivergence[];
@@ -95,7 +95,7 @@ export type OverlayResolution = {
 export type FileCreationAdmission =
     | {
         ok: true;
-        // {§membership-baseline}: a creation is never incorporated by Git — an exact creation
+        // {§membership}: a creation is never incorporated by Git — an exact creation
         // record, or a projected member definition that already covers the path; never `git add`.
         incorporation: "definition" | "creation";
     }
@@ -153,7 +153,7 @@ export default class GitMembership {
             const { stdout } = await GitMembership.#execFileP("git", ["rev-parse", "--show-toplevel"], { cwd: dir, signal, env: hermeticGitEnv(dir) });
             return stdout.trim();
         } catch (cause) {
-            // {§membership-git-hermetic} — a repository git refuses as another account's is not "no repository":
+            // {§membership} — a repository git refuses as another account's is not "no repository":
             // the daemon was pointed at it and cannot read it, which the operator must hear.
             const raw = isRecord(cause) ? cause.stderr : undefined;
             const stderr = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : "";
@@ -164,7 +164,7 @@ export default class GitMembership {
         }
     }
 
-    // {§membership-git-hermetic} (#568): the repository automatic inspection may run Git in. A supplied
+    // {§membership} (#568): the repository automatic inspection may run Git in. A supplied
     // repository declaring a `filter.<name>.clean|process` program is refused — treated as no
     // repository — because `git status` index refresh could run that program as the daemon.
     static async #automaticRepository(
@@ -228,7 +228,7 @@ export default class GitMembership {
         return (await db.crud_constraint_excluding.get<{ glob: string }>({ workspace_id: workspaceId, key }))?.glob ?? null;
     }
 
-    // {§membership-model-universe} entry (3): a standards-backed instruction file (AGENTS.md) is
+    // {§membership} entry (3): a standards-backed instruction file (AGENTS.md) is
     // projected from disk, but the standard never outranks the operator's exclusions — a path the
     // active repository ignores, or an exclusion matches, contributes nothing.
     static async excludesInstruction(db: Db, workspaceId: number, key: string, signal?: AbortSignal): Promise<boolean> {
@@ -314,13 +314,13 @@ export default class GitMembership {
                 };
             }
         }
-        // {§membership-baseline}: not ignored, in root, admitted — still a record, never a stage.
+        // {§membership}: not ignored, in root, admitted — still a record, never a stage.
         return { ok: true, incorporation: "creation" };
     }
 
     // {§file-create-transaction}: this is the only incorporation owner. The caller has already
     // created and materialized the entry; the record row is the transaction's final fallible state
-    // change. {§membership-baseline}: Plurnk never runs `git add` — a created file is a member
+    // change. {§membership}: Plurnk never runs `git add` — a created file is a member
     // because a record says so, exactly like every other added file in the model's universe.
     static async incorporateCreation(
         db: Db,
@@ -339,7 +339,7 @@ export default class GitMembership {
         return db.crud_delete_generated_workspace_constraint.run({ workspace_id: workspaceId, glob: key });
     }
 
-    // {§membership-baseline}: the repository contributes exactly its TRACKED files. An untracked
+    // {§membership}: the repository contributes exactly its TRACKED files. An untracked
     // file — however convenient — is never an ambient member; a member definition is the only
     // other grantor.
     static async #projectMembers(root: string, repoRoot: string, signal: AbortSignal | undefined): Promise<string[]> {
@@ -402,7 +402,7 @@ export default class GitMembership {
             else admitted.push(pathname);
         }
         // {§members-projection}: a model definition is a pattern scan like a human one, but it never
-        // outranks the repository's ignore rules ({§membership-model-universe}).
+        // outranks the repository's ignore rules ({§membership}).
         for (const pattern of modelGlobs) {
             const scan = await GitMembership.#scanIncluded(root, [pattern], signal);
             scans.set(pattern, scan);
@@ -411,7 +411,7 @@ export default class GitMembership {
                 else admitted.push(pathname);
             }
         }
-        const included = [...new Set([...defined, ...admitted])]; // {§membership-overlay-include}
+        const included = [...new Set([...defined, ...admitted])]; // {§membership-auto-add}
         return { root, gitMembers, included, masked, excludeGlobs, scans, refusedFilter };
     }
 
@@ -453,7 +453,7 @@ export default class GitMembership {
         if (inputs === null) return { members: [], removed: [] };   // headless — no disk surface to resolve
         const { gitMembers: members, included, masked, excludeGlobs, refusedFilter } = inputs;
 
-        // Compose: (git ∪ include) − exclude ({§membership-overlay-exclude}). An inclusion wins
+        // Compose: (git ∪ include) − exclude ({§membership-auto-add}). An inclusion wins
         // provenance when both grantors admit a path; outside-root write authority
         // must not collapse into a read-only Git origin.
         const includedSet = new Set(included);
@@ -466,7 +466,7 @@ export default class GitMembership {
         // Reconcile so entries == members (the constitutive invariant): register the
         // desired with their origin, then un-register any overlay-owned member ('git'
         // or 'constraint') no longer desired — untracked, unmatched, or newly excluded.
-        // {§membership-reconcile-sets} — two set statements: the desired land with their origin;
+        // {§membership-auto-add} — two set statements: the desired land with their origin;
         // every overlay-owned member outside the desired set leaves, its prior body riding out.
         if (desired.length > 0) {
             await db.crud_register_workspace_members.run({
@@ -575,7 +575,7 @@ export default class GitMembership {
         };
     }
 
-    // {§membership-ignore-source} The ignore rule that excludes `key`, as git reports it: its file, shown beneath the
+    // {§membership} The ignore rule that excludes `key`, as git reports it: its file, shown beneath the
     // repository or the home as `~/`, and its line; null when nothing ignores it or no automatic repository governs it.
     static async ignoreSource(db: Db, workspaceId: number, key: string, signal: AbortSignal | undefined): Promise<{ file: string; line: number } | null> {
         const root = await GitMembership.#loadWorkspaceRoot(db, workspaceId);
@@ -713,7 +713,7 @@ export default class GitMembership {
         return run;
     }
 
-    // {§membership-git-hermetic} (#568): one notice per refused repository per workspace, re-announced only
+    // {§membership} (#568): one notice per refused repository per workspace, re-announced only
     // when the declared key changes or after the refusal clears.
     static #announcedRefusals = new WeakMap<Db, Map<number, string>>();
 

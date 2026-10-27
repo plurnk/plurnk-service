@@ -34,7 +34,7 @@ const groups = async (db: Db, workspaceId: number): Promise<Record<number, numbe
 
 const NO_GATES: PlaceGates = async () => ({ proposals: [], questions: [] });
 
-// The work a place can hold, and what of it is live: a loop queued, running or parked ({§session-lifecycle-live}), an
+// The work a place can hold, and what of it is live: a loop queued, running or parked ({§session-loop-lifecycle}), an
 // open stream, detached or not, and a gate the engine reports.
 const WORK = ["none", "queued", "running", "parked", "concluded", "stream", "detached stream", "closed stream", "proposal", "question"] as const;
 type Work = typeof WORK[number];

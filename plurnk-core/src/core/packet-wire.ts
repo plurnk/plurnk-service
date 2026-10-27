@@ -1246,7 +1246,7 @@ export default class PacketWire {
     }
 
     // {§packet-git-status}: the count line, then one bounded line per non-empty class. Untracked paths are
-    // named because they are NOT members ({§membership-baseline}) — the user admits them.
+    // named because they are NOT members ({§membership}) — the user admits them.
     static #renderGitState(git: GitStatusView): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";
         const position = git.branch === null ? "detached HEAD" : `branch \`${git.branch}\`${git.unborn ? " (no commits)" : ""}`;

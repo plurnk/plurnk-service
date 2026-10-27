@@ -400,7 +400,7 @@ export default class ProposalLifecycle {
         }
     }
 
-    // {§session-lifecycle-total-reap}: shutdown cancels every process-local proposal waiter.
+    // {§session-causal-admission}: shutdown cancels every process-local proposal waiter.
     cancelAll(outcome: string): void {
         for (const logEntryId of [...this.#pending.keys()]) {
             void this.resolve(logEntryId, { decision: "cancel", outcome });

@@ -51,7 +51,7 @@ for (const [name, first, detail] of [
     });
 }
 
-test("{§join-blocking-collect} a not-ready READ continues until an explicit WAIT joins the child", async (t) => {
+test("{§session-loop-lifecycle} a not-ready READ continues until an explicit WAIT joins the child", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "independent-join");

@@ -87,7 +87,7 @@ WHERE $include_root = 1 OR tree.id <> $session_id
 ORDER BY tree.depth DESC, tree.id;
 
 -- PREP: lifecycle_checkpoint_executions
--- Consumption measured by the process-local monotonic timers ({§loop-execution-allowance}) lands
+-- Consumption measured by the process-local monotonic timers ({§session-wait-timing}) lands
 -- before the cutoff, so the cancellation trigger finds every live loop's charge already durable.
 UPDATE loops
 SET execution_elapsed_ms = (
@@ -114,7 +114,7 @@ WHERE loops.sequence > json_extract(cutoff.value, '$.cancelled_through_sequence'
 ORDER BY loops.id;
 
 -- INIT: loops_stamp_claimed_at_insert
--- {§loop-claim-latency}: a loop inserted running is claimed at its insertion; the first claim stays.
+-- {§session-wait-timing}: a loop inserted running is claimed at its insertion; the first claim stays.
 DROP TRIGGER IF EXISTS loops_stamp_claimed_at_insert;
 CREATE TRIGGER loops_stamp_claimed_at_insert
 AFTER INSERT ON loops
@@ -124,7 +124,7 @@ BEGIN
 END;
 
 -- INIT: loops_stamp_claimed_at_update
--- {§loop-claim-latency}: a queued loop is claimed when it first moves to 102.
+-- {§session-wait-timing}: a queued loop is claimed when it first moves to 102.
 DROP TRIGGER IF EXISTS loops_stamp_claimed_at_update;
 CREATE TRIGGER loops_stamp_claimed_at_update
 AFTER UPDATE OF status ON loops
@@ -148,7 +148,7 @@ BEGIN
 END;
 
 -- INIT: sessions_cancel_live_loops
--- {§session-cancel-trigger}: writing a session's cancellation retires its live loops in the same
+-- {§session-causal-admission}: writing a session's cancellation retires its live loops in the same
 -- statement — 499, waits cleared, the
 -- Problem instanced per loop. Loops already terminal keep their own outcome.
 DROP TRIGGER IF EXISTS sessions_cancel_live_loops;

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileP = promisify(execFile);
 
-// {§membership-git-hermetic} — native Git receives no ambient GIT_* or
+// {§membership} — native Git receives no ambient GIT_* or
 // global/system configuration, and the repository's own program-running keys are
 // pinned off at the highest precedence: `core.fsmonitor` (a helper a supplied
 // repository can name in `.git/config`, executed by index refresh) and
@@ -19,7 +19,7 @@ const PINNED_CONFIG: ReadonlyArray<readonly [string, string]> = Object.freeze([
     ["core.hooksPath", "/dev/null"],
 ]);
 
-// {§membership-git-hermetic} The daemon user's excludes file is the one global setting native Git keeps, so a model
+// {§membership} The daemon user's excludes file is the one global setting native Git keeps, so a model
 // sees what that user's git shows: the configured `core.excludesFile`, else git's default beneath the XDG
 // configuration home (#1181). Resolved once per home.
 const excludesFiles = new Map<string, string>();
@@ -64,7 +64,7 @@ export const hermeticGitEnv = (trusted: string | null = null): NodeJS.ProcessEnv
     };
 };
 
-// {§membership-git-hermetic} (#568): the pins above cannot cover a supplied
+// {§membership} (#568): the pins above cannot cover a supplied
 // repository's `filter.<name>.clean` / `filter.<name>.process` drivers — the
 // name is arbitrary, and `git status` index refresh may run one as the daemon.
 // Automatic inspection asks the repository's own config first and refuses when

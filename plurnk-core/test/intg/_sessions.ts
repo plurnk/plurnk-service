@@ -39,7 +39,7 @@ export const modelOperation = async (
     return result;
 };
 
-// {§session-message-admission} Admissions that each open a loop of their own: the session's drain claims none of them until
+// {§session-wait-timing} Admissions that each open a loop of their own: the session's drain claims none of them until
 // every one is admitted, since an unaddressed arrival joins a loop already running. Later claims pass straight through.
 export const admitTogether = async <T>(t: TestContext, sessionId: number, admissions: ReadonlyArray<() => Promise<T>>): Promise<T[]> => {
     const admitted = Promise.withResolvers<void>();

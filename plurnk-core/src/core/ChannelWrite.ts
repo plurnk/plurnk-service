@@ -39,7 +39,7 @@ export interface StreamEventPayload {
 
 export type StreamEventNotify = (workspaceId: number, event: StreamEventPayload) => void;
 
-// {§session-lifecycle-wake-liveness}: subscription closure announces a durable
+// {§session-causal-admission}: subscription closure announces a durable
 // outcome. The scheduler may resume eligible unfinished loops, never create a
 // task from the stream's summary or resurrect a terminal loop.
 export interface WakeSessionPayload {
@@ -261,7 +261,7 @@ export default class ChannelWrite {
     }
 
     // The session's still-open subscriptions — the registry-routed reap
-    // ({§session-lifecycle-total-reap}). A cancel iterates these durable identities
+    // ({§session-causal-admission}). A cancel iterates these durable identities
     // and invokes each exact callable through LiveSubscriptions, so a
     // backgrounded exec is reaped regardless of AbortSignal-listener timing.
     static async findOpenSubscriptionsForSession(

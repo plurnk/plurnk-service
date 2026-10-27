@@ -146,7 +146,7 @@ See [`.env.defaults`](./.env.defaults) for all controls and
 
 ## Demo fixture
 
-Web discovery is an ordinary MCP attachment ({§web-search-retrieval}). The demo
+Web discovery is an ordinary MCP attachment ({§membership}). The demo
 story that researches through it adds Brave Search to its fixture workspace, and
 runs only when `BRAVE_API_KEY` is in the environment:
 

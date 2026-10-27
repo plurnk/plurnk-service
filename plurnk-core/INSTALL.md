@@ -92,7 +92,7 @@ Do not overwrite a live database or pair a restored file with old sidecars.
 
 | Restored input | Startup behaviour |
 | --- | --- |
-| Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects ({§session-lifecycle-restart-recovery}). |
+| Database | Retained history, approval decisions, attachments and workspace/session configuration return. Interrupted work is settled without replaying uncertain effects ({§session-causal-admission}). |
 | Project files and service configuration | Restore separately. Current files remain authoritative; startup reads the current configuration, not an earlier ambient environment captured in history. |
 | Schedules | Enabled definitions rearm from the present; missed occurrences are not replayed ({§schedule-residency}, {§schedule-first-arming}). |
 | Interactive MCP authorization | Reauthorize. Tokens and pending sign-ins are process-local, not part of the database backup ({§oauth-lifetime}). |

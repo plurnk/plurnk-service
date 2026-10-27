@@ -1,11 +1,38 @@
-// {§derivation-dedup-parallel}: each identity derives once under bounded
-// concurrency, and its duplicate resources attach without a global tail barrier.
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import SearchIndex from "../../src/schemes/_search-index.ts";
-import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel } from "./_db.ts";
-import { makeSchemeCtx, DEFAULT_MIMETYPES } from "./_scheme.ts";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import PacketWire from "../../src/core/packet-wire.ts";
+import Results from "../../src/core/results.ts";
+import EntryCrud from "../../src/schemes/_entry-crud.ts";
+import Workspace from "../../src/schemes/Workspace.ts";
+import { openMigrated, insertWorkspace, insertSession, seedEntryWithChannel, insertLoop, insertTurn } from "./_db.ts";
+import { makeSchemeCtx, DEFAULT_MIMETYPES, mimetypesFixture, seedStaticChannel } from "./_scheme.ts";
 import { waitForDb } from "./_rpc.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { type ExecStatement, type PlurnkStatement, type RuntimeTag, type Notice, type UrlPath } from "@plurnk/plurnk-contracts";
+import { WebFetcher } from "@plurnk/plurnk-schemes-http";
+import { type WebFetch } from "../../src/schemes/Exec.ts";
+import { executionAddress, testExecutors, quiesceExecs } from "./_execs.ts";
+import { fixtureExecutors } from "./_mock.ts";
+import { parseLogRecords } from "../LogRecords.ts";
+import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
+import { BaseHandler, Mimetypes, ParserCoordinateError } from "@plurnk/plurnk-mimetypes";
+import { Mock } from "@plurnk/plurnk-providers";
+import { type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
+import { completeStmt } from "./_dsl.ts";
+import { packetSection } from "./_packet.ts";
+import { type Db } from "../../src/core/Db.ts";
+
+describe("derive-dedup-parallel", () => {
+// {§derivation-dedup-parallel}: each identity derives once under bounded
+// concurrency, and its duplicate resources attach without a global tail barrier.
+
+
+
+
+
 
 const runPump = async (concurrency: string): Promise<{ stamped: number; maxActive: number }> => {
     const prev = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
@@ -105,4 +132,1305 @@ test("{§derivation-dedup-parallel} a completed representative releases its dupl
         if (previousConcurrency === undefined) delete process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY; else process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = previousConcurrency;
         await db.close();
     }
+});
+});
+
+describe("exec-entry-sink", () => {
+// {§exec-entry-sink} — a stub runtime drives the real consumer-owned materialization
+// and ambience path; nothing below the executor is mocked.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const execStmt = (runtime: string, body: string): ExecStatement => ({
+    metadata: null,
+    runtime: (runtime ?? "sh") as RuntimeTag, aside: null, target: null,
+    lineMarker: null, body, position: { line: 1, column: 1 },
+});
+
+const parseOne = (input: string): PlurnkStatement => {
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
+    const item = parsed.items.find((x) => x.kind === "statement");
+    if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
+    return item.statement;
+};
+
+const wire = async (opts?: {
+    fetchWeb?: WebFetch;
+    nullContent?: boolean;
+    cancelledNullContent?: (failure: unknown, signal: AbortSignal) => void;
+    unsupportedNullUrl?: string;
+    tag?: string;
+    encodedPath?: boolean;
+    entryFailure?: boolean;
+    resources?: boolean;
+}) => {
+    // testExecutors() is a module singleton, so each wire() must claim a DISTINCT runtime tag —
+    // {§executor-runtime-declaration}: one canonical runtime tag has one owner.
+    const tag = opts?.tag ?? "stubsearch";
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry(opts?.fetchWeb ? { fetchWeb: opts.fetchWeb } : undefined);
+    // entry() materializes through the addressed scheme just as production
+    // does after daemon discovery; this fixture must assemble that same seam.
+    await schemes.discoverExternal(process.cwd());
+    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+    engine.setExecutors(await testExecutors());
+    schemes.registerRuntimeSchemes(await testExecutors());
+    // The stub runtime: fetches nothing — materializes two "pages" through the sink, one of
+    // which fails (pruned executor-side), then returns clean. Effect 'pure' so no proposal gate.
+    // With nullContent, it instead hands content:null so core fetches through the sink's WebFetch.
+    engine.registerRuntime(tag, {
+        executor: {
+            runtime: tag,
+            glyph: "?",
+            get manifest() { return { name: tag, channels: { results: "text/plain" }, defaultChannel: "results", category: "data", writableBy: [], volatile: true, modelVisible: true } as never; },
+            get defaultChannel() { return "results"; },
+            get channels() { return { results: { mimetype: "text/plain" } }; },
+            effect: () => "pure" as const,
+            probe: async () => ({ available: true as const, detail: undefined }),
+            run: async (args) => {
+                if (opts?.resources) {
+                    assert.ok(args.entry);
+                    const paths = await Promise.all([
+                        args.entry(null, "first", { mimetype: "text/plain", name: "note.txt" }),
+                        args.entry(null, new Uint8Array([1, 2, 255]), { mimetype: "application/octet-stream" }),
+                        args.entry(null, "second", { mimetype: "text/plain", name: "note.txt" }),
+                    ]);
+                    args.write("results", JSON.stringify(paths), "application/json");
+                    return { status: 200 };
+                }
+                if (opts?.entryFailure) {
+                    let pruned = false;
+                    try {
+                        await args.entry?.("https://example.org/rejected", "rejected", {
+                            mimetype: "text/plain",
+                        });
+                    } catch {
+                        pruned = true;
+                    }
+                    args.write("results", JSON.stringify([{ pruned }]), "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
+                if (opts?.encodedPath) {
+                    await args.entry?.("https://example.org/people_%28current%29", "heading\nspouse: Example Person\nfooter", { mimetype: "text/markdown" });
+                    args.write("results", "[]", "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
+                if (opts?.unsupportedNullUrl !== undefined) {
+                    const entry = args.entry;
+                    let rejected = false;
+                    try {
+                        await entry?.(opts.unsupportedNullUrl, null, {});
+                    } catch {
+                        rejected = true;
+                    }
+                    args.write("results", JSON.stringify([{ rejected }]), "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
+                if (opts?.cancelledNullContent !== undefined) {
+                    const entry = args.entry;
+                    try {
+                        await entry?.("https://93.184.216.34/cancelled", null, {});
+                    } catch (failure) {
+                        opts.cancelledNullContent(failure, args.signal);
+                    }
+                    args.setState("results", "closed");
+                    return Results.failure(
+                        `executor:${tag}`,
+                        "cancelled",
+                        499,
+                        "The test execution was cancelled.",
+                    );
+                }
+                if (opts?.nullContent) {
+                    const entry = args.entry;
+                    await entry?.("https://example.org/live", null, {});
+                    let pruned = false;
+                    try { await entry?.("https://example.org/dead", null, {}); } catch { pruned = true; }
+                    args.write("results", JSON.stringify([{ title: "Live", url: "https://example.org/live", pruned }]), "application/json");
+                    args.setState("results", "closed");
+                    return { status: 200, exitCode: 0 };
+                }
+                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds</p>", { mimetype: "text/html" });
+                await args.entry?.("https://example.org/turkeys", "<p>wild turkeys are large birds, revised</p>", { mimetype: "text/html" });
+                let pruned = false;
+                try { await args.entry?.("not a url at all", "junk", { mimetype: "text/html" }); } catch { pruned = true; }
+                args.write("results", JSON.stringify([{ title: "Turkeys", url: "https://example.org/turkeys", pruned }]), "application/json");
+                args.setState("results", "closed");
+                return { status: 200, exitCode: 0 };
+            },
+        },
+        namespaceOwner: { kind: "module", name: `${tag} fixture` },
+        glyph: "?", summary: "Entry sink fixture.", invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } }, details: "", available: true, detail: undefined,
+    });
+    const workspaceId = await insertWorkspace(db, `sink-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId, null, "researcher");
+    const loopId = await insertLoop(db, sessionId, 1, "sink test");
+    const turnId = await insertTurn(db, loopId, 1, 102);
+    return { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag };
+};
+
+test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overwrite, and remain workspace-shared", async () => {
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire({ resources: true, tag: "resourcepublisher" });
+    try {
+        const result = await engine.dispatch({ statement: execStmt("resourcepublisher", "publish"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.ok(result.status < 400);
+        await quiesceExecs(schemes);
+        const output = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "resourcepublisher", name: "results" });
+        const paths = JSON.parse(output!.content) as string[];
+        assert.match(paths[0], /^resourcepublisher:\/\/\/[a-f0-9]{8}\/resources\/note\.txt$/u);
+        assert.match(paths[1], /\/resources\/[a-f0-9]{8}$/u);
+        assert.match(paths[2], /\/resources\/note\.txt\.[a-f0-9]{8}$/u);
+        const contents = [];
+        for (const path of paths) {
+            const read = await engine.dispatch({ statement: parseOne(`\`\`\`\`READ (${path}) <1,-1>\`\`\`\``), workspaceId, sessionId, loopId, turnId, sequence: contents.length + 2, origin: "model" });
+            assert.equal(read.status, 200);
+            contents.push(Results.assertReadResult(read).content);
+        }
+        assert.deepEqual(contents, ["first", "01\n02\nff", "second"]);
+        const directory = paths[0].slice(0, paths[0].lastIndexOf("/") + 1);
+        const found = await engine.dispatch({ statement: parseOne(`\`\`\`\`FIND (${directory}*)\`\`\`\``), workspaceId, sessionId, loopId, turnId, sequence: 5, origin: "model" });
+        assert.equal(found.status, 200, JSON.stringify(found));
+        assert.ok("results" in found && Array.isArray(found.results));
+        assert.equal(found.results.length, 3, "the published resources participate in ordinary pattern discovery");
+        const peerId = await insertSession(db, workspaceId, null, "peer");
+        const peerLoopId = await insertLoop(db, peerId, 1, "inspect peer resource");
+        const peerTurnId = await insertTurn(db, peerLoopId, 1, 102);
+        const peer = { workspaceId, sessionId: peerId, loopId: peerLoopId, turnId: peerTurnId, origin: "model" as const };
+        const shared = await engine.dispatch({ ...peer, statement: parseOne(`\`\`\`\`READ (${paths[0]})\`\`\`\``), sequence: 2 });
+        assert.equal(shared.status, 200, "the same resource address remains meaningful to another Session");
+    } finally {
+        await quiesceExecs(schemes);
+        await db.close();
+    }
+});
+
+test("{§env-delta-entry-materialization} entry() materializes an https resource as plurnk narration rows", async () => {
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire();
+    try {
+        const result = await engine.dispatch({
+            statement: execStmt("stubsearch", "turkeys"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
+        // The spawn streams — run() completes in the background. idle() is the complete barrier:
+        // it drains the tail INCLUDING the entry()/narration writes, so both narration rows are
+        // committed and no write is left in flight to race the db.close below.
+        await quiesceExecs(schemes);
+        const resultChannel = await db.test_get_channel_by_pathname_scheme.get<{
+            content: string;
+            mimetype: string;
+        }>({ pathname: new URL(await executionAddress(db, turnId)).pathname, scheme: "stubsearch", name: "results" });
+        assert.equal(resultChannel?.mimetype, "application/json", "the consumer persists the executor's per-write output type");
+        assert.deepEqual(JSON.parse(resultChannel?.content ?? "null"), [{
+            title: "Turkeys",
+            url: "https://example.org/turkeys",
+            pruned: true,
+        }]);
+        // The entry exists with the second write's content.
+        const entry = await db.test_get_entry_by_coordinate.get<{
+            id: number;
+            scheme: string;
+            authority: string;
+        }>({ scheme: "https", authority: "example.org", pathname: "/turkeys" });
+        assert.ok(entry !== undefined, "the https entry materialized at its exact resource coordinate");
+        assert.equal(entry.scheme, "https");
+        assert.equal(entry.authority, "example.org");
+        // The ambience: the runtime session carries ONE narration row per write (2 here), the
+        // fs-fiction shape — origin _plurnk, source = the calling session, weight on the meta line.
+        const plurnkSession = await db.envelope_get_session_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "_plurnk" });
+        assert.ok(plurnkSession !== undefined, "the runtime session exists");
+        const narrationLoop = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: plurnkSession.id });
+        assert.ok(narrationLoop !== undefined);
+        const [narrationTurn] = await db.test_list_turns_in_loop.all<{
+            producer: string; kind: string; status: number; completed_at: string | null;
+        }>({ loop_id: narrationLoop.id });
+        assert.deepEqual(
+            { producer: narrationTurn?.producer, kind: narrationTurn?.kind, status: narrationTurn?.status },
+            { producer: "_plurnk", kind: "operation", status: 200 },
+            "the entry batch is one completed ordinary producer turn",
+        );
+        assert.match(narrationTurn?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
+        const rows = await db.test_log_entries_by_session_op.all<{
+            hostname: string | null;
+            pathname: string;
+            source: string;
+            weight: number;
+            attrs: string;
+        }>({ session_id: plurnkSession.id, op: "EDIT" });
+        const narrations = rows.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys");
+        assert.equal(narrations.length, 2, "one narration row per entry() write");
+        assert.equal(narrations[0]?.source, "session://researcher", "source uses the calling session's control identity");
+        assert.ok((narrations[0]?.weight ?? 0) > 0, "the row carries the write's real curation weight");
+        assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
+        // {§env-delta-entry-materialization} — durable narration retains the
+        // write statement and its source-numbered resulting span.
+        const full = await db.test_log_entries_by_session_op_full.all<{
+            hostname: string | null;
+            pathname: string;
+            tx: string;
+            rx: string;
+        }>({ session_id: plurnkSession.id, op: "EDIT" });
+        const second = full.filter((r) => r.hostname === "example.org" && r.pathname === "/turkeys")[1];
+        assert.ok(second !== undefined, "the second narration row is present");
+        const tx = JSON.parse(second.tx) as { op: string; body: string };
+        assert.equal(tx.body, "<p>wild turkeys are large birds, revised</p>", "tx.body IS the raw transmitted content — the journal can replay the write");
+        const rx = JSON.parse(second.rx) as { status: number; span: string };
+        assert.equal(rx.span, "1:wild turkeys are large birds, revised", "rx.span is the DECISIVE stored form (the readable projection), line-numbered — not the raw markup");
+
+        // The packet gate (the render the model actually sees): body-suppressed by default, the metadata line
+        // projects the machine-created entry as an ordinary system READ. Durable storage remains
+        // the typed EDIT above; only the currently visible row contributes tokens.
+        const view = (initial_folded: readonly (readonly [number, number])[]): object[] => [{
+            coordinate: "1/1/2", origin: "_plurnk", op: "EDIT",
+            target: { scheme: "https", username: null, password: null, hostname: "example.org", port: null, pathname: "/turkeys", query: null, fragment: null },
+            status: rx.status, rx, mimetype_rx: "application/json", tx, mimetype_tx: "application/json",
+            initial_folded, source: "session://researcher", attrs: { kind: "entry_materialized" },
+        }];
+        const countTokens = (t: string): number => Math.ceil(t.length / 4);
+        const foldedLine = PacketWire.renderLog(view([[1, -1]]), countTokens);
+        const [folded] = parseLogRecords(foldedLine);
+        assert.equal(folded?.logPath, "log:///1/1/2/READ", "machine acquisition presents the resulting readable resource at the projected operation handle");
+        assert.equal(folded?.tokens, countTokens(foldedLine), "metadata-only observations still report their full context cost");
+        assert.equal(Object.hasOwn(folded ?? {}, "body"), false, "the suppressed body is withheld");
+        assert.equal(folded?.lines, 1, "metadata carries the line count for slice planning");
+        assert.ok(!foldedLine.includes("wild turkeys"), "suppressed = no body rides the packet");
+        const openLine = PacketWire.renderLog(view([]), countTokens);
+        const [open] = parseLogRecords(openLine);
+        assert.equal(open?.body, "1:wild turkeys are large birds, revised\n", "when visible, the full written content renders line-numbered");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its durable narration row", async (t) => {
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
+        tag: "stubsearch-entry-failure",
+        entryFailure: true,
+    });
+    const writeEntry = EntryCrud.writeEntry.bind(EntryCrud);
+    t.mock.method(EntryCrud, "writeEntry", async (...args: Parameters<typeof EntryCrud.writeEntry>) => {
+        const [, , , scheme] = args;
+        return scheme === "https"
+            ? Results.failure(
+                "scheme:https",
+                "materialization-refused",
+                422,
+                "The fetched resource has no model-facing content.",
+                { created: false, entryId: null },
+                {
+                    stage: "materialization",
+                    target: "https://example.org/rejected",
+                    retryable: false,
+                },
+            )
+            : writeEntry(...args);
+    });
+    try {
+        const accepted = await engine.dispatch({
+            statement: execStmt(tag, "rejected"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(accepted.status < 400);
+        await quiesceExecs(schemes);
+
+        const plurnkSession = await db.envelope_get_session_by_name.get<{ id: number }>({
+            workspace_id: workspaceId,
+            name: "_plurnk",
+        });
+        assert.ok(plurnkSession !== undefined);
+        const narrationLoop = await db.test_get_loop_by_session.get<{ id: number }>({ session_id: plurnkSession.id });
+        assert.ok(narrationLoop !== undefined);
+        const [narrationTurn] = await db.test_list_turns_in_loop.all<{
+            producer: string; kind: string; status: number; completed_at: string | null;
+        }>({ loop_id: narrationLoop.id });
+        assert.deepEqual(
+            { producer: narrationTurn?.producer, kind: narrationTurn?.kind, status: narrationTurn?.status },
+            { producer: "_plurnk", kind: "operation", status: 422 },
+            "a rejected entry sink preserves its exact operation disposition",
+        );
+        assert.match(narrationTurn?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
+        const narrationLoopState = (await db.test_list_loops_all.all<{
+            id: number; status: number; terminal_result: string | null;
+        }>()).find(({ id }) => id === narrationLoop.id);
+        assert.equal(narrationLoopState?.status, 500, "the loop projects the exact 422 into its failure class");
+        const narrationTerminal = JSON.parse(narrationLoopState?.terminal_result ?? "null") as {
+            status: number; problem?: { type?: string };
+        };
+        assert.equal(narrationTerminal.status, 422);
+        assert.equal(
+            narrationTerminal.problem?.type,
+            "https://problems.plurnk.xyz/scheme/https/materialization-refused",
+            "the administrative loop retains the exact failed operation result",
+        );
+        const rows = await db.test_log_entries_by_session_op_full.all<{
+            hostname: string | null;
+            pathname: string;
+            rx: string;
+            status_rx: number;
+        }>({ session_id: plurnkSession.id, op: "EDIT" });
+        const failure = rows.find((row) => row.hostname === "example.org" && row.pathname === "/rejected");
+        assert.ok(failure !== undefined, "the rejected materialization remains durable evidence");
+        assert.equal(failure.status_rx, 422);
+        const result = JSON.parse(failure.rx) as {
+            status: number;
+            problem: {
+                type: string;
+                detail: string;
+                instance?: string;
+                target?: string;
+            };
+        };
+        assert.equal(result.status, 422);
+        assert.equal(
+            result.problem.type,
+            "https://problems.plurnk.xyz/scheme/https/materialization-refused",
+        );
+        assert.equal(result.problem.detail, "The fetched resource has no model-facing content.");
+        assert.equal(result.problem.target, "https://example.org/rejected");
+        assert.match(result.problem.instance ?? "", /^log:\/\/\/\d+\/\d+\/\d+\/READ$/);
+    } finally {
+        await quiesceExecs(schemes);
+        await schemes.close();
+        await db.close();
+    }
+});
+
+test("{§exec-entry-sink} search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query" });
+    try {
+        const search = await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(search.status < 400);
+        await quiesceExecs(schemes);
+
+        // This must query the decisive markdown entry search already
+        // materialized. Calling Http.read here would hit the network and make a
+        // deterministic integration test impossible by construction.
+        const queried = await engine.dispatch({
+            statement: parseOne("````FIND (https://example.org/turkeys) *large birds*````"),
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(queried.status, 200);
+
+        const delivered = await db.log_read_by_coordinate.get<{ scheme: string; pathname: string; rx: string }>({
+            session_id: sessionId, loop_seq: 1, turn_seq: 1, sequence: 2,
+        });
+        assert.equal(delivered?.scheme, "https");
+        assert.equal(delivered?.pathname, "/turkeys");
+        const deliveredResult = JSON.parse(delivered?.rx ?? "") as {
+            matchingPathCount: number;
+            matchLocationCount: number;
+            results: Array<{ region?: unknown }>;
+        };
+        assert.equal(deliveredResult.matchingPathCount, 1);
+        assert.equal(deliveredResult.matchLocationCount, 1);
+        assert.equal(deliveredResult.results.length, 1);
+        assert.ok(deliveredResult.results[0]?.region !== undefined);
+        const stored = await db.test_get_entry_by_coordinate.get<{ scheme: string }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/turkeys",
+        });
+        assert.equal(stored?.scheme, "https", "the stored identity retains protocol + authority + path");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§http-binary-source} executor acquisition preserves binary source and native READ facts", async (t) => {
+    const pdf = Buffer.from(buildPdf({ title: "Executor acquisition" }));
+    t.mock.method(globalThis, "fetch", async () => new Response(pdf, { headers: {
+        "content-type": "application/pdf", "cache-control": "max-age=600",
+    } }));
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
+        tag: "binary-prefetch", nullContent: true,
+        fetchWeb: (url) => url.endsWith("/dead") ? Promise.resolve(null) : new WebFetcher().fetch(url, { guarded: false }),
+    });
+    try {
+        const result = await engine.dispatch({ statement: execStmt(tag, "fetch"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
+        assert.ok(result.status < 400);
+        await quiesceExecs(schemes);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+        const entry = await EntryCrud.readEntry({ authority: "example.org", pathname: "/live" }, ctx, "https");
+        assert.equal(entry.status, 200);
+        assert.deepEqual(Buffer.from(entry.entry!.channels.body.content, "base64"), pdf);
+        assert.equal(entry.entry!.channels.body.mimetype, "application/pdf");
+        assert.match(entry.entry!.channels.readable.content, /^PDF document, 1 page,/u);
+        const read = await engine.dispatch({
+            statement: parseOne("````READ (https://example.org/live#readable)````"),
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(read.status, 200);
+        const logged = await db.log_read_by_coordinate.get<{ rx: string }>({ session_id: sessionId, loop_seq: 1, turn_seq: 1, sequence: 2 });
+        const receipt = JSON.parse(logged!.rx);
+        assert.deepEqual(receipt.document, { mimetype: "application/pdf", pages: 1, bytes: pdf.byteLength });
+        assert.match(receipt.nativeContentHash, /^[a-f0-9]+$/u);
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§exec-entry-sink} search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
+        tag: "stubsearch-encoded-path",
+        encodedPath: true,
+    });
+    try {
+        await engine.dispatch({
+            statement: execStmt(tag, "people"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        await quiesceExecs(schemes);
+
+        const stored = await db.test_get_entry_by_coordinate.get<{ pathname: string }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/people_(current)",
+        });
+        assert.equal(stored?.pathname, "/people_(current)",
+            "ingestion stores one canonical decoded identity");
+        const read = await engine.dispatch({
+            statement: parseOne("````READ (https://example.org/people_%28current%29) <2,2>````"),
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(read.status, 200);
+        const delivered = await db.log_read_by_coordinate.get<{ rx: string }>({
+            session_id: sessionId, loop_seq: 1, turn_seq: 1, sequence: 2,
+        });
+        assert.match(delivered?.rx ?? "", /spouse: Example Person/,
+            "the grammar-safe address resolves the canonical entry and applies its scope");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§exec-entry-sink} an exact HTTPS full-text FIND cannot leak or retarget a match from another authority", async () => {
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ tag: "stubsearch-fulltext-scope" });
+    try {
+        await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        await quiesceExecs(schemes);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, loopId, turnId, mimetypes: DEFAULT_MIMETYPES });
+        await EntryCrud.writeEntry({ authority: "other.example", pathname: "/cake" }, {
+            channels: { body: { content: "preheat the oven and frost the birthday cake", mimetype: "text/markdown" } },
+        }, ctx, "https");
+        await SearchIndex.maintain(ctx);
+
+        const queried = await engine.dispatch({
+            statement: parseOne("````FIND (https://example.org/turkeys) ~birthday cake````"),
+            workspaceId, sessionId, loopId, turnId, sequence: 2, origin: "model",
+        });
+        assert.equal(queried.status, 204);
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§exec-entry-sink} an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire({ tag: "stubsearch-web-root" });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("publisher home", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+    }));
+    try {
+        const result = await engine.dispatch({
+            statement: parseOne("````READ (https://example.org/)````"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.equal(result.status, 200, "the finite HTTP representation settled through exact READ");
+        assert.equal(result.content, "publisher home");
+        const stored = await db.test_get_entry_by_coordinate.get<{ scheme: string; id: number }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/",
+        });
+        assert.equal(stored?.scheme, "https");
+        const body = stored === undefined ? undefined : await db.test_get_channel.get<{ content: string }>({ entry_id: stored.id, name: "body" });
+        assert.equal(body?.content, "publisher home");
+    } finally {
+        globalThis.fetch = originalFetch;
+        await quiesceExecs(schemes);
+        await schemes.close();
+        await db.close();
+    }
+});
+
+test("{§exec-entry-sink}: content:null materializes a live page and prunes an unavailable one", async () => {
+    // The sink's WebFetch is faked: automatic acquisition blocks localhost, so no live server can stand in for
+    // the fetch. A /dead URL resolves null; anything else returns useful server XHTML.
+    const fetchWeb: WebFetch = async (url) =>
+        url.includes("/dead") ? null : {
+            url,
+            body: "<p>fetched live turkeys</p>",
+            mimetype: "application/xhtml+xml",
+            header: [
+                "HTTP 200 OK",
+                "content-type: application/xhtml+xml",
+                "x-plurnk-projection-id: origin-spoof",
+                "x-plurnk-request-method: GET",
+                `x-plurnk-fetched-at: ${new Date().toISOString()}`,
+            ].join("\n"),
+        };
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ fetchWeb, nullContent: true, tag: "stubsearch2" });
+    try {
+        const result = await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(result.status < 400, `the stub spawn resolved; got ${result.status}`);
+        await quiesceExecs(schemes);
+
+        // The LIVE url: content:null drove a fetch through the sink → { body, mimetype } → the entry materialized.
+        const live = await db.test_get_entry_by_coordinate.get<{ id: number; scheme: string }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/live",
+        });
+        assert.ok(live !== undefined, "content:null triggered the fetch and materialized the exact resource authority");
+        assert.equal(live.scheme, "https");
+        // {§readable-channel} — the fetched page's source is its body; its Markdown is #readable.
+        const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "body" });
+        assert.equal(body?.mimetype, "application/xhtml+xml", "the body is the server source under its served type");
+        const readable = await db.test_get_channel.get<{ content: string; mimetype: string }>({ entry_id: live.id, name: "readable" });
+        assert.equal(readable?.mimetype, "text/markdown", "the fetched html projected to #readable");
+        assert.match(readable?.content ?? "", /fetched live turkeys/, "the projection carries the fetched content, not the raw markup alone");
+        const header = await db.test_get_channel.get<{ content: string }>({ entry_id: live.id, name: "header" });
+        const projectionEvidence = [
+            ...(header?.content ?? "").matchAll(/^x-plurnk-projection-id:[ \t]*(.*)$/gim),
+        ];
+        assert.match(
+            projectionEvidence.at(-1)?.[1] ?? "",
+            /^[a-f0-9]{64}$/,
+            "the shared materializer appends authoritative installed-reader identity after origin metadata",
+        );
+
+        // {§exec-entry-sink} {§membership}: the sink rejects an unavailable URL,
+        // creates no HTTP entry, and lets the executor prune that candidate.
+        const dead = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/dead",
+        });
+        assert.equal(dead, undefined, "a null fetch rejects the sink so no page body materializes");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§exec-entry-sink} entry(content:null) preserves caller cancellation through the real WebFetcher", async () => {
+    const started = Promise.withResolvers<void>();
+    const webFetcher = new WebFetcher();
+    let preserved = false;
+    const fetchWeb: WebFetch = (url, opts) => webFetcher.fetch(url, opts);
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
+        fetchWeb,
+        tag: "stubsearch-cancelled-fetch",
+        cancelledNullContent: (failure, signal) => { preserved = failure === signal.reason; },
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (!(signal instanceof AbortSignal)) {
+            reject(new Error("checked fetch did not receive its acquisition signal"));
+            return;
+        }
+        const cancel = () => reject(signal.reason);
+        if (signal.aborted) cancel();
+        else signal.addEventListener("abort", cancel, { once: true });
+        started.resolve();
+    }));
+    try {
+        const result = await engine.dispatch({
+            statement: execStmt(tag, "cancelled"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(result.status < 400);
+        await started.promise;
+        const subscription = await db.test_open_subscription_for_session.get<{ id: number }>({ session_id: sessionId });
+        assert.ok(subscription !== undefined);
+        await engine.cancelSubscription(subscription.id);
+        await quiesceExecs(schemes);
+        assert.equal(preserved, true, "the entry sink received the caller signal's exact reason, not a dead-URL error");
+        const stored = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "93.184.216.34",
+            pathname: "/cancelled",
+        });
+        assert.equal(stored, undefined);
+    } finally {
+        globalThis.fetch = originalFetch;
+        await quiesceExecs(schemes);
+        await schemes.close();
+        await db.close();
+    }
+});
+
+test("{§exec-entry-sink} entry(content:null) admits only HTTP acquisition targets", async () => {
+    let fetches = 0;
+    const fetchWeb: WebFetch = async (url) => {
+        fetches += 1;
+        return { url, body: "unexpected", mimetype: "text/plain" };
+    };
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
+        fetchWeb,
+        unsupportedNullUrl: "wss://example.org/events?topic=updates",
+        tag: "stubsearch-non-http-null",
+    });
+    try {
+        const result = await engine.dispatch({
+            statement: execStmt(tag, "events"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        assert.ok(result.status < 400);
+        await quiesceExecs(schemes);
+        assert.equal(fetches, 0, "the HTTP fetcher never receives a WebSocket target");
+        const stored = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "wss",
+            authority: "example.org",
+            pathname: "/events?topic=updates",
+        });
+        assert.equal(stored, undefined, "a rejected acquisition does not materialize an entry");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+
+test("{§html-materialization}: server HTML keeps its source as body and materializes #readable", async () => {
+    const fetchWeb: WebFetch = async (url) =>
+        url.includes("/dead") ? null : {
+            url,
+            body: "<html><body><h1>Headline</h1><p>useful article</p></body></html>",
+            mimetype: "text/html",
+        };
+    const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
+        fetchWeb, nullContent: true, tag: "stubsearch3",
+    });
+    try {
+        await engine.dispatch({
+            statement: execStmt(tag, "turkeys"),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+        });
+        await quiesceExecs(schemes);
+
+        const live = await db.test_get_entry_by_coordinate.get<{ id: number }>({
+            scheme: "https",
+            authority: "example.org",
+            pathname: "/live",
+        });
+        assert.ok(live !== undefined);
+        const body = await db.test_get_channel.get<{ content: string; mimetype: string }>({
+            entry_id: live.id, name: "body",
+        });
+        assert.equal(body?.mimetype, "text/html", "the source is the body");
+        assert.ok((body?.content ?? "").includes("<html>"));
+        const readable = await db.test_get_channel.get<{ content: string; mimetype: string }>({
+            entry_id: live.id, name: "readable",
+        });
+        assert.equal(readable?.mimetype, "text/markdown");
+        assert.match(readable?.content ?? "", /useful article/);
+        assert.ok(!(readable?.content ?? "").includes("<html>"), "the projection carries no markup");
+    } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
+});
+});
+
+describe("search-artifact-interruption", () => {
+const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<unknown> => {
+    const row = await db.test_get_packet.get<{ packet: string }>({ id: turnId });
+    return JSON.parse(row?.packet ?? "{}") as unknown;
+};
+
+
+const target: UrlPath = {
+    kind: "url", raw: "workspace:///interrupted.md", scheme: "workspace",
+    username: null, password: null, hostname: null, port: null,
+    pathname: "/interrupted.md", query: null, fragment: null,
+};
+const statement: ResolvedEditStatement = {
+    metadata: null,
+    op: "EDIT", aside: null, target, lineMarker: null,
+    matcher: null, body: "an interrupted derivation must never attach", position: { line: 1, column: 1 },
+};
+
+test("{§derivation-dedup-parallel} an interrupted artifact remains unattached until retry completes", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `interrupt-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+
+        const abort = new AbortController();
+        let failOnce = true;
+        const mimetypes = mimetypesFixture({
+            process: async (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
+                if (failOnce) {
+                    failOnce = false;
+                    abort.abort();
+                    throw new DOMException("interrupted", "AbortError");
+                }
+                return DEFAULT_MIMETYPES.process(...args);
+            },
+        });
+
+        await assert.rejects(
+            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes, signal: abort.signal })),
+            /interrupted/,
+        );
+        const interrupted = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        assert.deepEqual(interrupted, { deep_hash: null, building: 1, complete: 0 }, "no partial artifact becomes visible through the entry");
+
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
+        const recovered = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        assert.ok(recovered?.deep_hash);
+        assert.deepEqual({ building: recovered?.building, complete: recovered?.complete }, { building: 0, complete: 1 }, "retry completes the same artifact and only then attaches it");
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§derivation-dedup-parallel} a failed derivation joins every launched sibling before maintenance settles", async () => {
+    const priorConcurrency = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
+    process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = "2";
+    const db = await openMigrated();
+    const bothStarted = Promise.withResolvers<void>();
+    const releaseSlow = Promise.withResolvers<void>();
+    let started = 0;
+    let releaseIssued = false;
+    try {
+        const workspaceId = await insertWorkspace(db, `joined-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        for (const [pathname, body] of [
+            ["/fails.md", "this derivation fails after its sibling starts"],
+            ["/slow.md", "this derivation completes only after an explicit release"],
+        ] as const) {
+            await new Workspace().edit({
+                ...statement,
+                target: {
+                    ...target,
+                    raw: `workspace://${pathname}`,
+                    pathname,
+                },
+                body,
+            }, makeSchemeCtx({ db, workspaceId, sessionId }));
+        }
+
+        const mimetypes = mimetypesFixture({
+            process: async (...args: Parameters<typeof DEFAULT_MIMETYPES.process>) => {
+                started++;
+                if (started === 2) bothStarted.resolve();
+                await bothStarted.promise;
+                if (String(args[0].content).includes("fails")) throw new Error("fixture projection failed");
+                await releaseSlow.promise;
+                return DEFAULT_MIMETYPES.process(...args);
+            },
+        });
+
+        let state: "pending" | "fulfilled" | "rejected" = "pending";
+        let rejection: unknown;
+        const maintenance = SearchIndex.maintain(makeSchemeCtx({
+            db,
+            workspaceId,
+            sessionId,
+            mimetypes,
+        })).then(
+            () => { state = "fulfilled"; },
+            (cause: unknown) => { state = "rejected"; rejection = cause; },
+        );
+        await bothStarted.promise;
+        try {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            assert.equal(
+                state,
+                "pending",
+                "maintenance retains ownership while any launched derivation remains active",
+            );
+        } finally {
+            releaseIssued = true;
+            releaseSlow.resolve();
+        }
+        await maintenance;
+        assert.match(String(rejection), /fixture projection failed/u);
+
+        assert.deepEqual(
+            await db.test_derivation_state_counts.get({}),
+            { building: 1, complete: 1 },
+            "the failed artifact stays retryable and its sibling is completely persisted before rejection",
+        );
+    } finally {
+        if (!releaseIssued) releaseSlow.resolve();
+        await db.close();
+        if (priorConcurrency === undefined) {
+            delete process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
+        } else {
+            process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = priorConcurrency;
+        }
+    }
+});
+
+test("{§derivation-dedup-parallel} an entry-local derivation failure is terminal, explicit, and does not block readiness", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `failed-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+
+        const inputFailure = Object.assign(new Error("fixture reader rejected malformed input"), {
+            name: "MimetypeInputError",
+            mimetype: "text/markdown",
+        });
+        const mimetypes = mimetypesFixture({
+            process: async () => { throw inputFailure; },
+        });
+
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes }));
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        assert.equal(disposition?.disposition, "failed");
+        assert.equal(disposition?.reason, "fixture reader rejected malformed input");
+        const state = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        assert.ok(state?.deep_hash, "the terminal failure attaches an explicit artifact");
+        assert.deepEqual({ building: state?.building, complete: state?.complete }, { building: 0, complete: 1 });
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§derivation-dedup-parallel} an internal projection defect propagates and leaves the artifact retryable", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `projection-defect-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+
+        const failure = new Error("fixture projection implementation failed");
+        const mimetypes = mimetypesFixture({
+            process: async () => { throw failure; },
+        });
+
+        await assert.rejects(
+            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes })),
+            (error) => error === failure,
+        );
+        const state = await db.test_derivation_interruption_state.get<{
+            deep_hash: string | null;
+            building: number;
+            complete: number;
+        }>({ workspace_id: workspaceId });
+        assert.deepEqual(
+            state,
+            { deep_hash: null, building: 1, complete: 0 },
+            "the internal defect is not reclassified as a terminal bad specimen",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
+// A registry whose only handler crashes on content carrying `poison`; every other member derives.
+const failingMimetypes = (failure: Error, poison: string): Mimetypes => {
+    class FailingHandler extends BaseHandler {
+        override extractRaw(content: string | Uint8Array): [] {
+            if (String(content).includes(poison)) throw failure;
+            return [];
+        }
+    }
+    return new Mimetypes({
+        discovery: {
+            registry: { byExtension: new Map([[".md", "text/markdown"]]), byFilename: new Map() },
+            handlers: new Map([["text/markdown", {
+                mimetype: "text/markdown", glyph: "", packageName: "fixture-derivation",
+                projectionRevision: "1", extensions: [".md"], binary: false, source: "package",
+            }]]),
+            packageAttributions: new Map(), skipped: [],
+        },
+        loader: async () => ({ default: FailingHandler }),
+    });
+};
+
+test("{§derivation-dedup-parallel} {§mimetype-derivation-evidence} a handler's defect on one member is that member's failed row, named by the completing notice", async () => {
+    const db = await openMigrated();
+    const failure = Object.freeze(new ParserCoordinateError("unaddressable native span"));
+    const mimetypes = failingMimetypes(failure, "interrupted");
+    const notices: Notice[] = [];
+    try {
+        const workspaceId = await insertWorkspace(db, `member-failure-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+        await new Workspace().edit({
+            ...statement,
+            target: { ...target, raw: "workspace:///healthy.md", pathname: "/healthy.md" },
+            body: "a sibling the failing handler derives cleanly",
+        }, makeSchemeCtx({ db, workspaceId, sessionId }));
+        const engine = new Engine({
+            db, schemes: new SchemeRegistry(), mimetypes,
+            noticeNotify: (_workspaceId, { notice }) => notices.push(notice),
+        });
+
+        await engine.warmWorkspaceDerivations(workspaceId);
+
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        assert.equal(disposition?.disposition, "failed", "the member's row reads failed");
+        assert.equal(
+            disposition?.reason,
+            'Mimetype derivation failed for "/interrupted.md" ("text/markdown"). ParserCoordinateError: unaddressable native span',
+            "the reason is the handler's invocation context plus the exact original cause",
+        );
+        assert.ok(statement.body !== null, "the fixture owns source content to exclude");
+        assert.equal(disposition?.reason.includes(statement.body), false, "no source content leaks into the reason");
+        const healthy = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/healthy.md" });
+        assert.equal(
+            (await db.test_derivation_disposition.get<{ disposition: string }>({ entry_id: healthy?.id ?? -1 }))?.disposition,
+            "indexed",
+            "the sibling member still attaches its own artifact",
+        );
+        assert.deepEqual(await db.test_derivation_state_counts.get({}), { building: 0, complete: 2 }, "the pass completes every member");
+
+        const terminal = notices.findLast((n) => n.kind === "search_progress");
+        assert.equal(terminal?.phase, "complete", "one member's defect never fails the pass");
+        assert.equal(terminal?.level, "warn", "a completed pass carrying a failed member is a warning, not an error");
+        assert.equal(
+            terminal?.message,
+            'Repository search index is ready; 1 of 2 derivations failed: "/interrupted.md" — Mimetype derivation failed for "/interrupted.md" ("text/markdown"). ParserCoordinateError: unaddressable native span',
+            "the completing notice names the failed member and carries the count",
+        );
+        assert.equal(engine.workspaceDerivationStatus(workspaceId)?.level, "warn", "the queryable terminal state keeps the producer's level");
+
+        // The failed disposition is terminal for this exact content and handler revision: a
+        // repaired handler alone re-derives nothing, exactly like a typed input failure.
+        await engine.warmWorkspaceDerivations(workspaceId);
+        assert.deepEqual(await db.test_derivation_state_counts.get({}), { building: 0, complete: 2 }, "a rerun attaches the same terminal artifacts");
+    } finally { await mimetypes.dispose(); await db.close(); }
+});
+
+test("{§derivation-dedup-parallel} the model's turn proceeds past a member whose handler throws", async () => {
+    const db = await openMigrated();
+    const failure = Object.freeze(new RangeError("function signature mismatch"));
+    const mimetypes = failingMimetypes(failure, "interrupted");
+    try {
+        const workspaceId = await insertWorkspace(db, `member-failure-turn-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "go");
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+        const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes });
+        const provider = new Mock({ contextWindow: 100000, responses: [{
+            assistant: {
+                content: "",
+                ops: [completeStmt("The available project content was inspected.")],
+                reasoning: null,
+            },
+        }] });
+
+        const turn = await engine.runTurn({
+            provider, workspaceId, sessionId, loopId,
+            messages: [{ role: "system", content: "You are an agent." }, { role: "user", content: "go" }],
+        });
+
+        assert.equal(turn.status, 200, "the turn reached the provider and concluded");
+        const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname: "/interrupted.md" });
+        const disposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: entry?.id ?? -1 });
+        assert.equal(disposition?.disposition, "failed");
+        assert.match(disposition?.reason ?? "", /RangeError: function signature mismatch$/u, "the exact cause is the member's reason");
+        assert.match(
+            packetSection(await getPacket(db, turn.turnId), "notices"),
+            /^> Repository search index is ready; 1 of \d+ derivations failed: "\/interrupted\.md" — Mimetype derivation failed for "\/interrupted\.md" \("text\/markdown"\)\. RangeError: function signature mismatch \[search_progress\]$/mu,
+            "the packet's notice names the failed member",
+        );
+    } finally { await mimetypes.dispose(); await db.close(); }
+});
+
+test("{§derivation-dedup-parallel} successful projection degradations surface once per maintenance pass", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `projection-notice-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+        await new Workspace().edit({
+            ...statement,
+            target: {
+                ...target,
+                raw: "workspace:///second.md",
+                pathname: "/second.md",
+            },
+            body: "a second source with the same optional grammar degradation",
+        }, makeSchemeCtx({ db, workspaceId, sessionId }));
+
+        const projectionNotice: Notice = {
+            source: "mimetype:text-markdown",
+            kind: "grammar_degraded",
+            level: "warn",
+            message: "fixture grammar is unavailable",
+            position: null,
+        };
+        const mimetypes = mimetypesFixture({
+            process: async (input: { content: string }) => ({
+                mimetype: "text/markdown",
+                ok: true,
+                totalLines: 1,
+                symbols: [],
+                references: [],
+                content: input.content,
+                notices: [projectionNotice],
+            }),
+        });
+        const notices: Notice[] = [];
+
+        await SearchIndex.maintain(makeSchemeCtx({
+            db,
+            workspaceId,
+            sessionId,
+            mimetypes,
+            pushNotice: (notice) => { notices.push(notice); },
+        }));
+
+        assert.deepEqual(
+            notices.filter(({ kind }) => kind === "grammar_degraded"),
+            [projectionNotice],
+            "identical successful degradation observations are deduplicated per pass",
+        );
+        for (const pathname of ["/interrupted.md", "/second.md"]) {
+            const entry = await db.test_entries_by_pathname.get<{ id: number }>({ pathname });
+            const disposition = await db.test_derivation_disposition.get<{
+                disposition: string;
+                reason: string;
+                deep_hash: string;
+            }>({ entry_id: entry?.id ?? -1 });
+            assert.equal(disposition?.disposition, "indexed");
+            assert.equal(disposition?.reason, null);
+            assert.ok(disposition?.deep_hash);
+        }
+    } finally {
+        await db.close();
+    }
+});
+
+test("{§derivation-dedup-parallel} an index-persistence contract failure propagates and remains retryable instead of becoming a resource failure", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `persistence-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await new Workspace().edit(statement, makeSchemeCtx({ db, workspaceId, sessionId }));
+
+        const mimetypes = mimetypesFixture({
+            process: async (input: { content: string }) => ({
+                content: input.content,
+                symbols: [],
+                references: [{
+                    name: "",
+                    kind: "use",
+                    line: 1,
+                    column: 1,
+                    endLine: 1,
+                    endColumn: 1,
+                }],
+            }),
+        });
+
+        await assert.rejects(
+            SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes })),
+            /length\(name\) > 0/,
+        );
+        const state = await db.test_derivation_interruption_state.get<{ deep_hash: string | null; building: number; complete: number }>({ workspace_id: workspaceId });
+        assert.deepEqual(state, { deep_hash: null, building: 1, complete: 0 },
+            "the address remains unattached and the artifact remains retryable");
+    } finally {
+        await db.close();
+    }
+});
+});
+
+describe("search-index-acquisition", () => {
+// {§derivation-dedup-parallel} — the maintenance pass judges entry channels from stored identity
+// and acquires a body only for a derivation that runs: an unchanged workspace acquires none of its
+// channel bodies, at any producer concurrency.
+
+
+
+
+
+
+const seedHashedEntry = async (db: Db, workspaceId: number, pathname: string, content: string): Promise<number> => {
+    const entry = await db.test_seed_entry_workspace.get<{ id: number }>({
+        workspace_id: workspaceId, scheme: "workspace", authority: "", pathname, default_channel: "body", output: 0,
+    });
+    if (entry === undefined) throw new Error("seedHashedEntry: insert returned no row");
+    await seedStaticChannel(db, entry.id, { name: "body", content, mimetype: "text/markdown" });
+    return entry.id;
+};
+
+for (const concurrency of ["1", "4"]) {
+    test(`{§derivation-dedup-parallel} an unchanged workspace acquires no channel body; a change acquires exactly its own (concurrency ${concurrency})`, async (t) => {
+        const previous = process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
+        process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = concurrency;
+        t.after(() => {
+            if (previous === undefined) delete process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY;
+            else process.env.PLURNK_SERVICE_DERIVE_CONCURRENCY = previous;
+        });
+        const db = await openMigrated();
+        t.after(() => db.close());
+        const workspaceId = await insertWorkspace(db, `acquire-${concurrency}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const bodies = Array.from({ length: 20 }, (_, i) => `# Doc ${i}\n\n${"alpha beta gamma ".repeat(50 + i)}\n`);
+        for (const [i, body] of bodies.entries()) await seedHashedEntry(db, workspaceId, `/doc-${i}.md`, body);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, writer: "_plurnk" });
+
+        const cold = await SearchIndex.maintain(ctx);
+        assert.equal(cold.derived, 20, "every seeded channel derives once");
+        assert.equal(cold.acquiredBytes, bodies.reduce((total, body) => total + body.length, 0), "a cold pass acquires every body exactly once");
+
+        assert.deepEqual(await SearchIndex.maintain(ctx), { derived: 0, acquiredBytes: 0 }, "an unchanged pass decides from stored identity and acquires nothing");
+
+        const extra = `# New\n\n${"omega psi ".repeat(40)}\n`;
+        await seedHashedEntry(db, workspaceId, "/doc-new.md", extra);
+        assert.deepEqual(await SearchIndex.maintain(ctx), { derived: 1, acquiredBytes: extra.length }, "one new entry acquires exactly its own body");
+
+        // A channel without a stored identity is the one body the pass must read to judge it, every pass.
+        const stream = "line one\nline two\n";
+        await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/stream.log", channel: "body", content: stream, mimetype: "text/plain", state: "active" });
+        assert.deepEqual(await SearchIndex.maintain(ctx), { derived: 1, acquiredBytes: stream.length }, "an identity-less channel is read once to judge and once to derive; the same body serves both");
+        assert.deepEqual(await SearchIndex.maintain(ctx), { derived: 0, acquiredBytes: stream.length }, "and read again on the next pass, because nothing stored can judge it");
+    });
+}
+
+test("{§derivation-dedup-parallel} a representation that moves on between judgement and derivation is left for the next pass", async (t) => {
+    const db = await openMigrated();
+    t.after(() => db.close());
+    const workspaceId = await insertWorkspace(db, "acquire-moved-on");
+    const sessionId = await insertSession(db, workspaceId);
+    const entryId = await seedHashedEntry(db, workspaceId, "/moving.md", "# First\n\nfirst body\n");
+    const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes: DEFAULT_MIMETYPES, writer: "_plurnk" });
+    // Replace the body under a new identity after the candidate was judged but before its derivation ran.
+    const body = await db.search_index_entry_body.get<{ content: string }>({ entry_id: entryId, channel: "body", content_hash: "not-the-stored-identity" });
+    assert.equal(body, undefined, "a body is served only under the identity it was judged by");
+    const report = await SearchIndex.maintain(ctx);
+    assert.equal(report.derived, 1);
+    const attached = await db.test_channel_hashes_for_entry.all<{ name: string; deep_hash: string | null }>({ entry_id: entryId });
+    assert.ok(attached.every(({ deep_hash }) => deep_hash !== null), "the derivation attached under the stored identity");
+});
+});
+
+describe("search-maintenance", () => {
+// {§derivation-exhaustive} {§derivation-dedup-parallel}
+
+
+
+
+
+
+
+
+
+
+const url = (pathname: string): UrlPath => ({
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
+    username: null, password: null, hostname: null, port: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
+});
+const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
+    metadata: null,
+    op: "EDIT", aside: null, target, lineMarker: null, body,
+    matcher: null, position: { line: 1, column: 1 },
+});
+test("{§derivation-dedup-parallel} changed resources report one aggregate derivation lifecycle", async () => {
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `progress-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const seed = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        for (const name of ["a.md", "b.md", "c.md"]) await new Workspace().edit(editStmt(url(name), `content for ${name} with words to index`), seed);
+
+        type Tel = { source?: string; kind?: string; message?: string; pathname?: string; completed?: number; total?: number };
+        const events: Tel[] = [];
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes, pushNotice: (e) => events.push(e as Tel) }));
+
+        const progress = events.filter((e) => e.source === "engine:derivation" && e.kind === "search_progress");
+        assert.ok(progress.length > 0, "a 3-entry corpus pass emits a visible lifecycle");
+        assert.ok(progress.every((e) => e.total === 3), "total reflects the corpus size (3 changed entries)");
+        assert.ok(progress.every((e) => e.pathname === undefined && !e.message?.includes(".md")), "client progress is aggregate state, never a pathname ledger");
+        assert.equal(progress.at(-1)?.completed, 3, "the final progress event reports completion");
+
+        // A single changed entry is still real work and therefore has one coherent
+        // lifecycle. Replaceable buffering keeps this from becoming packet history.
+        const events2: Tel[] = [];
+        await new Workspace().edit(editStmt(url("d.md"), "a single new entry changed this turn"), seed);
+        await SearchIndex.maintain(makeSchemeCtx({ db, workspaceId, sessionId, mimetypes, pushNotice: (e) => events2.push(e as Tel) }));
+        assert.deepEqual(
+            events2.filter((e) => e.kind === "search_progress").map((e) => (e as { phase?: string }).phase),
+            ["preparing", "complete"],
+            "a single-entry pass reports one real lifecycle",
+        );
+    } finally { db.close(); }
+});
+
+test("{§derivation-exhaustive} [#91] PLURNK_SERVICE_SEARCH_EXCLUDE applies only to file-scheme entries", async () => {
+    const prev = process.env.PLURNK_SERVICE_SEARCH_EXCLUDE;
+    process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = "*/dist/*";
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `excluded-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        const identical = '{"name":"x","version":"24.18.0","packages":{"":{"deps":{"y":"1.0.0"}}}}';
+        const pathname = "/repo/dist/index.json";
+        await EntryCrud.writeEntry({ authority: "", pathname }, {
+            channels: { body: { content: identical, mimetype: "application/json" } },
+        }, ctx, "file");
+        await EntryCrud.writeEntry({ authority: "", pathname }, {
+            channels: { body: { content: identical, mimetype: "application/json" } },
+        }, ctx, "https");
+        await new Workspace().edit(editStmt(url("notes.md"), "the database connection failed with a timeout"), ctx);
+        await SearchIndex.maintain(ctx);
+        const fileEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "file", pathname });
+        const httpsEntry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "https", pathname });
+        const fts = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query: "version" });
+        assert.equal(fts.filter((row) => row.pathname === pathname).length, 1, "only the HTTPS entry contributes the shared pathname to lexical search");
+        const fileDisposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string }>({ entry_id: fileEntry?.id ?? -1 });
+        const httpsDisposition = await db.test_derivation_disposition.get<{ disposition: string; reason: string | null; deep_hash: string }>({ entry_id: httpsEntry?.id ?? -1 });
+        assert.equal(fileDisposition?.disposition, "excluded");
+        assert.equal(fileDisposition?.reason, "*/dist/*");
+        assert.equal(httpsDisposition?.disposition, "indexed", "identical bytes at a non-file pathname remain searchable");
+        const readable = await EntryCrud.readEntry({ authority: "", pathname }, ctx, "file");
+        assert.equal(readable.entry?.channels.body?.content, identical, "search exclusion does not alter direct readability");
+        // stamped: a second pass derives nothing (no eternal re-attempt of the suppressed entry)
+        assert.equal((await SearchIndex.maintain(ctx)).derived, 0, "a second pass reuses the terminal exclusion and indexed artifacts");
+    } finally {
+        db.close();
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_SEARCH_EXCLUDE; else process.env.PLURNK_SERVICE_SEARCH_EXCLUDE = prev;
+    }
+});
+
+test("{§derivation-dedup-parallel}: the pump admits smallest-first without skipping a large outlier", async () => {
+    // Artifact identities prove scheduling order; every resource must still finish.
+    const mimetypes = new Mimetypes();
+    await mimetypes.ready();
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `sort-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId, mimetypes });
+        const whale = Array.from({ length: 120 }, (_, i) => `whale line ${i}: substantial prose about topic ${i} with enough words to chunk`).join("\n");
+        await new Workspace().edit(editStmt(url("whale.md"), whale), ctx);       // written FIRST, biggest
+        await new Workspace().edit(editStmt(url("minnow-a.md"), "a tiny note about apples"), ctx);
+        await new Workspace().edit(editStmt(url("minnow-b.md"), "a tiny note about lemons"), ctx);
+        await SearchIndex.maintain(ctx);
+        const order = await db.test_artifact_insertion_order.all<{ pathname: string; first_rowid: number }>({});
+        const byPath = new Map(order.map((o) => [o.pathname, o.first_rowid]));
+        const whaleFirst = byPath.get("/whale.md") ?? -1;
+        assert.ok((byPath.get("/minnow-a.md") ?? Infinity) < whaleFirst, "minnow-a scheduled before the whale");
+        assert.ok((byPath.get("/minnow-b.md") ?? Infinity) < whaleFirst, "minnow-b scheduled before the whale");
+    } finally { db.close(); }
+});
 });

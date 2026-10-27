@@ -7,7 +7,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 export default class ExecAbort {
     // The grace a teardown straggler gets before the hard SIGKILL. The executor refuses to bake a
     // number (it'd be a magic literal there) and so does this consumer: the panel owns it. A getter,
-    // not a static field, so a test can set the env at runtime. {§session-lifecycle-total-reap}
+    // not a static field, so a test can set the env at runtime. {§session-causal-admission}
     static get graceMs(): number {
         return Knob.integer("PLURNK_SERVICE_EXEC_KILL_GRACE_MS", 0);
     }

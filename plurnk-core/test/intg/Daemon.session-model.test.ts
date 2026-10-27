@@ -725,7 +725,7 @@ test("{§session-model-selection}: the session's durable model and spawn overrid
 });
 
 for (const selection of ["model", "spawn model", "reasoning", "prompt model", "prompt spawn model"] as const) {
-    test(`{§session-lifecycle-live} {§notifications-session-policy}: queued work blocks ${selection} changes until cancellation; only a change that lands is announced`, async (t) => {
+    test(`{§session-loop-lifecycle} {§notifications-session-policy}: queued work blocks ${selection} changes until cancellation; only a change that lands is announced`, async (t) => {
         const spec = declaredProvider("queued", "queued-model");
         const replacement = declaredProvider("replacement", "replacement-model");
         const mock = new Mock({

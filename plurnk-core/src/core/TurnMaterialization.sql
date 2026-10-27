@@ -1,7 +1,7 @@
 -- TurnMaterialization: the harness rows a turn opens with — stream deltas the session observes.
 
 -- INIT: unobserved_session_completions
--- {§loop-wake-identity}: packet acknowledgement and program settlement share
+-- {§session-wait-timing}: packet acknowledgement and program settlement share
 -- the same durable publication boundary.
 DROP VIEW IF EXISTS unobserved_session_completions;
 CREATE VIEW unobserved_session_completions AS

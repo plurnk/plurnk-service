@@ -324,7 +324,7 @@ export default class TurnMaterialization {
         return { tokens, remaining, facts: { lines: TextCoordinates.logicalLines(content).length, tokens, remaining } };
     }
 
-    // {§env-delta-filesystem-narration} {§membership-emi-divergence-signal}
+    // {§env-delta-filesystem-narration} {§file-snapshot-revision}
     // — record project-file divergence once through the reserved actor.
     async logFsFictions(
         workspaceId: number,
@@ -483,5 +483,5 @@ export default class TurnMaterialization {
 
     // External API to feed a resolution into a pending proposal — the client-interface
     // seam, core-owned disposition, or the timeout watcher.
-    // {§session-lifecycle-total-reap}: release every stopped-world waiter before joining drains.
+    // {§session-causal-admission}: release every stopped-world waiter before joining drains.
 }

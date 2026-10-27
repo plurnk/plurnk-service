@@ -95,7 +95,7 @@ export default class Engine {
     // Boot-discovered runtime executors. Daemon builds + sets via
     // setExecutors at start(); undefined until then (and in bare tests).
     #executors: ExecutorRegistry | undefined;
-    // Per-turn running-session READ obligations. {§join-blocking-collect}
+    // Per-turn running-session READ obligations. {§session-loop-lifecycle}
 
     // The collaborators. Engine constructs them (they share its deps via
     // thunks where the value is late-injected — executors, loop signals)
@@ -253,7 +253,7 @@ export default class Engine {
     readonly #workspaceTurnStarting: WorkspaceTurnStarting | undefined;
     readonly #loopDriver: LoopDriver;
 
-    // The daemon's callbacks arrive flat and travel as one bundle ({§engine-notifications}).
+    // The daemon's callbacks arrive flat and travel as one bundle ({§session-loop-lifecycle}).
     constructor({ db, lifecycle, schemes, mimetypes, withWorkspaceTurn, workspaceTurnStarting, weigh, hostPaths, ...notify }: {
         db: Db;
         lifecycle?: LoopLifecycle;

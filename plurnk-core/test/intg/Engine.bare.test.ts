@@ -558,7 +558,7 @@ test("{§bare-inference} one BARE provider failure is an ordered operation resul
     }
 }));
 
-test("{§provider-recovery}: an isolated call that drops once is re-issued; the receipt is the answer and the dropped call is on the ledger", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
+test("{§engine-rails}: an isolated call that drops once is re-issued; the receipt is the answer and the dropped call is on the ledger", async () => await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({

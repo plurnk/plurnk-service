@@ -651,7 +651,7 @@ test("{§session-scheme}: a completed Session retains its name and scratch ident
     } finally { await db.close(); }
 });
 
-test("{§join-blocking-collect} READ(session://name) collects the exact terminal result — 425 running, 404 absent", async () => {
+test("{§session-loop-lifecycle} READ(session://name) collects the exact terminal result — 425 running, 404 absent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `session-collect-${crypto.randomUUID()}`);
@@ -661,7 +661,7 @@ test("{§join-blocking-collect} READ(session://name) collects the exact terminal
         const missing = await readThroughScheme("session", null, readStmt(sessionPath("ghost")), ctx);
         assert.equal(missing.status, 404, "a name with no session is 404");
 
-        // {§join-blocking-collect}
+        // {§session-loop-lifecycle}
         const session = await insertSession(db, workspaceId, null, "session-db");
         const wLoop = await insertLoop(db, session, 1, "find db");
         const running = await readThroughScheme("session", null, readStmt(sessionPath("session-db")), ctx);
@@ -1045,7 +1045,7 @@ test("{§session-scheme}: session:/// entry operations and FIND require a named 
     } finally { await db.close(); }
 });
 
-test("{§join-blocking-collect} READ of a running child does not override a continuing NOTE", async () => {
+test("{§session-loop-lifecycle} READ of a running child does not override a continuing NOTE", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-collect-${crypto.randomUUID()}`);
@@ -1071,7 +1071,7 @@ test("{§join-blocking-collect} READ of a running child does not override a cont
     } finally { await db.close(); }
 });
 
-test("{§join-blocking-collect} a continuing NOTE without live work continues normally", async () => {
+test("{§session-loop-lifecycle} a continuing NOTE without live work continues normally", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `join-none-${crypto.randomUUID()}`);

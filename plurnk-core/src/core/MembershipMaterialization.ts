@@ -48,7 +48,7 @@ const sourceProjectionFrom = (encoded: string): SourceProjectionMetadata | null 
 };
 
 export default class MembershipMaterialization {
-    // {§file-commit-serialization}, {§membership-change-gated-sync}
+    // {§file-snapshot-revision}, {§file-snapshot-revision}
     static async materializeMember(
         pathname: string,
         root: string,
@@ -128,7 +128,7 @@ export default class MembershipMaterialization {
     }
 
 
-    // {§membership-source-projection}: project the acquired bytes, not a later read of their pathname.
+    // {§derivation-dedup-parallel}: project the acquired bytes, not a later read of their pathname.
     static async #binaryEntry(
         input: ProcessInput,
         mimetype: string,

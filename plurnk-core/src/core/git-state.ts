@@ -58,7 +58,7 @@ export default class GitState {
         } catch {
             return null;  // not a git worktree, or git absent — fail closed, no status
         }
-        // {§membership-git-hermetic} (#568): a supplied repository declaring a `filter.*` program is
+        // {§membership} (#568): a supplied repository declaring a `filter.*` program is
         // never status-refreshed automatically — it could run that program as the daemon. The
         // membership pass that precedes this read announces the refusal once.
         if ((await declaredFilterProgram(repositoryRoot, signal)) !== null) return null;
@@ -79,7 +79,7 @@ export default class GitState {
     static async #markMembers(db: Db, workspaceId: number, snapshot: GitStatusSnapshot): Promise<void> {
         const untracked = snapshot.files.filter((file) => file.status === "??").slice(0, GitState.renderedPaths());
         if (untracked.length === 0) return;
-        // {§membership-glob-in-sql} — one statement marks every rendered path.
+        // {§membership-auto-add} — one statement marks every rendered path.
         // The source and the glob come from one constraint row: both are null, or neither is.
         const marks = await db.crud_untracked_member_marks.all<{ pathname: string; registered: 0 | 1 } & ({ source: null; glob: null } | { source: string; glob: string })>({
             workspace_id: workspaceId,

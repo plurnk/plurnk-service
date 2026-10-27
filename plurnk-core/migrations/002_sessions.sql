@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id              INTEGER NOT NULL PRIMARY KEY,
     version         INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
     workspace_id    INTEGER NOT NULL,
-    -- {§loop-wake-identity}: completion events, not packet/log curation state.
+    -- {§session-wait-timing}: completion events, not packet/log curation state.
     wake_revision   INTEGER NOT NULL DEFAULT 0 CHECK (wake_revision >= 0),
     name            TEXT    NOT NULL CHECK (length(name) > 0),
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- {§session-causal-admission}: cancellation retires unread arrivals without rewriting history.
     cancelled_through_sequence INTEGER NOT NULL DEFAULT 0 CHECK (cancelled_through_sequence >= 0),
     -- The Problem the latest cancellation delivered to this session's live loops; writing it is
-    -- the cancellation ({§session-cancel-trigger}). NULL until the session's scope is first cancelled.
+    -- the cancellation ({§session-causal-admission}). NULL until the session's scope is first cancelled.
     cancellation TEXT CHECK (cancellation IS NULL OR (json_valid(cancellation) AND json_extract(cancellation, '$.status') = 499)),
     -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
     -- Creation captures the workspace high-water; a fork instead copies its

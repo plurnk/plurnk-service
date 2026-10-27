@@ -168,7 +168,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         for (const { controller, detached } of this.#activeAborts.values()) if (detached) controller.abort(ExecAbort.teardownReason());
     }
 
-    // {§session-optimistic-settlement} — wait on exactly the spawns initiated by
+    // {§session-causal-admission} — wait on exactly the spawns initiated by
     // this turn, ending immediately when all settle and never extending the
     // opportunity to streams inherited from an earlier turn.
     async settleTurnSpawns(
@@ -848,7 +848,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         // only KILL, the session's total reap, and daemon shutdown end it.
         if (core.signal !== undefined && attrs.detached !== true) {
             const parent = core.signal;
-            // {§session-lifecycle-exec-epoch-bound}
+            // {§session-causal-admission}
             // The spawn's kill binds to its loop's cancellation epoch (ctx.signal —
             // captured here, stable for the loop). The parent only aborts on FORCEFUL loop
             // teardown — a 202-graceful loop lets its spawns outlive, never firing this — so

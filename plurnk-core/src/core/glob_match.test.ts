@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import globMatch, { deterministic } from "./glob_match.ts";
 
-test("{§membership-glob-in-sql} the deterministic predicate preserves escapes and segment boundaries", () => {
+test("{§membership-auto-add} the deterministic predicate preserves escapes and segment boundaries", () => {
     assert.equal(deterministic, true);
     for (const [pathname, glob, expected] of [
         ["src/a/b.ts", "src/**/*.ts", 1],

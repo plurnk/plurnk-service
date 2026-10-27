@@ -1424,7 +1424,7 @@ test("{§rejected-emission-entry} digest preserves rejected emissions as forensi
     }
 });
 
-test("{§provider-recovery} a provider outage after a rejected emission is absorbed inside the turn and every issued call stays durable", async () => {
+test("{§engine-rails} a provider outage after a rejected emission is absorbed inside the turn and every issued call stays durable", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -1634,7 +1634,7 @@ test("{§provider-guarantees-request-observer} Core rejects a ProviderError whos
     }
 });
 
-test("{§provider-recovery} a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
+test("{§engine-rails} a complete-looking resource-interrupted attempt is persisted, never admitted or replayed, and the call is re-issued", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const content = "\n````SEND\nmust never dispatch\n````";
@@ -1759,7 +1759,7 @@ test("{§provider-recovery} a complete-looking resource-interrupted attempt is p
     }
 });
 
-test("{§turn-exception-outcome} an internal attempt-processing failure is not mislabeled as a provider failure", async () => {
+test("{§turn-record} an internal attempt-processing failure is not mislabeled as a provider failure", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const root = new Error("attempt classification failed");

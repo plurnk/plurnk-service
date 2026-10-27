@@ -7,7 +7,7 @@ import LineAnchors from "../../src/content/line-anchors.ts";
 import { rpcCall, connect, withDaemon, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 
-test("{§turn-ops-selection-snapshot}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async (approvalContext) => {
+test("{§turn-record}: log KILL selects the pre-program snapshot, not rows emitted earlier by its own program", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         { assistant: { content: "````FIND (workspace:///*)````\n````KILL (log:///1/2/*)````\n````NOTE\nContinue after curating the observed pre-program row.\n````", reasoning: null } },

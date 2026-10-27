@@ -414,7 +414,7 @@ test("{§markerless-first-page} File.read: bare nested relative path resolves to
     });
 });
 
-test("{§membership-change-gated-sync} File.read: absolute path OUTSIDE workspace → 404 (never a member)", async () => {
+test("{§file-snapshot-revision} File.read: absolute path OUTSIDE workspace → 404 (never a member)", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
@@ -428,8 +428,8 @@ test("{§membership-change-gated-sync} File.read: absolute path OUTSIDE workspac
     });
 });
 
-// {§membership-change-gated-sync} — rematerialization refreshes both content and extent.
-test("{§membership-change-gated-sync}: a grown file exposes newly valid lines and its current extent", async () => {
+// {§file-snapshot-revision} — rematerialization refreshes both content and extent.
+test("{§file-snapshot-revision}: a grown file exposes newly valid lines and its current extent", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "grow.txt"), "l1\nl2\nl3\n");
         await addMember(ctx, "grow.txt");

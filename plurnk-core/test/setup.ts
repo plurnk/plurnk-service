@@ -40,7 +40,7 @@ const fixture = {
     // Parallel test processes each receive a small parser-concurrency budget.
     PLURNK_SERVICE_DERIVE_CONCURRENCY: "1",
     PLURNK_SERVICE_MAX_TURNS: "50",
-    // {§provider-recovery} — the Mock tier exercises recovery in milliseconds: a persistent
+    // {§engine-rails} — the Mock tier exercises recovery in milliseconds: a persistent
     // provider failure parks a loop after 1.5 s of 20 ms-based backoff instead of fifteen minutes.
     PLURNK_SERVICE_PROVIDER_RECOVERY: "1500",
     PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "20",

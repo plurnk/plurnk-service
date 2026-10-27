@@ -244,7 +244,7 @@ export default class DrainSupervisor {
 
     async inject(args: DrainInjectionArgs): Promise<DrainInjectionResult> {
         const { workspaceId, sessionId, prompt } = args;
-        // {§session-message-admission} — selection, compatibility, admission and the wake check share one lock.
+        // {§session-wait-timing} — selection, compatibility, admission and the wake check share one lock.
         const delivery = await this.#withAdmissionLock(workspaceId, () => this.#withDrainLock(sessionId, async () => {
             if (!this.#acceptingWork) throw new Error("The daemon is not accepting work.");
             if (args.messageAddress !== undefined) {
@@ -433,7 +433,7 @@ export default class DrainSupervisor {
         return { loopsDrained, lastResult };
     }
 
-    // {§session-lifecycle-no-lost-loop} The next queued loop. An empty queue is re-claimed UNDER the per-session
+    // {§session-causal-admission} The next queued loop. An empty queue is re-claimed UNDER the per-session
     // drain lock (R4 / I1), serialized against ensureDrain so a concurrent inject can't start a 2nd drain
     // in the gap; the registry slot is relinquished only if it is empty there too, and a loop that raced in
     // is returned and run — the drain stays registered, so there's no transient delete for ensureDrain to
@@ -484,7 +484,7 @@ export default class DrainSupervisor {
 
     // A parked loop (202) is suspended, not terminated: it stays resumable, with no loop/terminated and no
     // orphan reconcile. A stream conclusion through handleWakeSession re-queues it; the durable wait deadline
-    // also wakes it to inspect ({§session-wait-timing}). {§session-lifecycle-wake-liveness}
+    // also wakes it to inspect ({§session-wait-timing}). {§session-causal-admission}
     async #parkLoop(scope: DrainScope, loopId: number): Promise<void> {
         const { workspaceId, sessionId, systemPrompt } = scope;
         await this.#withDrainLock(sessionId, () => this.#emitLoopStatus(workspaceId, sessionId, loopId, 202));
@@ -499,7 +499,7 @@ export default class DrainSupervisor {
             return this.#wakeLoop(workspaceId, sessionId, loopId);
         });
         if (messageWaiting) return;
-        // {§loop-wake-identity}: events observed by another loop cannot consume this loop's completion
+        // {§session-wait-timing}: events observed by another loop cannot consume this loop's completion
         // wake. Whether or not one wakes it here, the wait now belongs to its completion obligations and
         // inherited observation, not this drain.
         await this.#withDrainLock(sessionId, () => this.#wakeLoop(workspaceId, sessionId, loopId, { eventOnly: true }));
@@ -535,7 +535,7 @@ export default class DrainSupervisor {
 
     // {§methods-loop-cancel} loop.cancel / shutdown aborted the live drain. A cancellation is the loop's
     // TERMINAL state (499), delivered via loop/terminated (runLoop no longer blocks to return it), and the
-    // exact 499 is persisted before it is broadcast ({§session-lifecycle-terminal-result}).
+    // exact 499 is persisted before it is broadcast ({§session-loop-lifecycle}).
     async #settleCancelledDrain(scope: DrainScope, currentLoopId: number | null): Promise<void> {
         const { workspaceId, sessionId, controller, first } = scope;
         const message = ErrorDetail.preview(controller.signal.reason ?? "user_cancelled")
@@ -595,7 +595,7 @@ export default class DrainSupervisor {
         }
     }
 
-    // {§session-lifecycle-terminal-result} A non-abort drain failure becomes an exact durable 500 and terminal
+    // {§session-loop-lifecycle} A non-abort drain failure becomes an exact durable 500 and terminal
     // notification; daemon diagnostics retain the complete caught error.
     async #settleFailedDrain(scope: DrainScope, currentLoopId: number | null, err: unknown): Promise<void> {
         const { workspaceId, sessionId, first } = scope;
@@ -631,7 +631,7 @@ export default class DrainSupervisor {
         }
     }
 
-    // Per-session drain-transition lock (R4 / {§session-lifecycle-single-drain}). ensureDrain's
+    // Per-session drain-transition lock (R4 / {§session-causal-admission}). ensureDrain's
     // start and a drain's teardown relinquish both run under it, serialized, so the two
     // can't interleave and register two drains for one session. The critical section is the
     // registry decision only (never a loop's work) — a sub-ms hop at drain boundaries.
@@ -821,7 +821,7 @@ export default class DrainSupervisor {
         if (recipients.length === 0) return;
         const systemPrompt = await this.#readSystemPrompt(); // {§card-read-per-wake}
         for (const { session_id: sessionId } of recipients) {
-            // {§session-optimistic-settlement}: the sender must finish its own
+            // {§session-causal-admission}: the sender must finish its own
             // program while the recipient coalesces replies and conclusions.
             void this.#trackSettlement(this.settleCompletionWake(workspaceId, sessionId, systemPrompt), "wake-on-reply");
         }
@@ -846,7 +846,7 @@ export default class DrainSupervisor {
             this.#emit(workspaceId, "stream/concluded", { ...conclusion, wakeAction });
             announced();
         };
-        // {§session-lifecycle-no-resurrection}: scope cancellation, not the
+        // {§session-causal-admission}: scope cancellation, not the
         // command's result code, prevents a wake. Cancelling one command still
         // produces an observation owed to its live session.
         const scope = this.#sessionAborts.get(payload.sessionId);
@@ -862,7 +862,7 @@ export default class DrainSupervisor {
         // whether any loop actually resumes.
         const slept = await this.#db.drain_find_slept_loop.get<{ id: number }>({ session_id: payload.sessionId });
         if (slept !== undefined) {
-            // {§session-optimistic-settlement} — publish this conclusion now,
+            // {§session-causal-admission} — publish this conclusion now,
             // then let the session-local gate coalesce only the provider
             // dispatch. Concurrent stream/child callbacks join that one gate.
             const settlement = this.settleCompletionWake(
@@ -945,7 +945,7 @@ export default class DrainSupervisor {
     }
 
     async #wakeLoop(workspaceId: number, sessionId: number, loopId: number, condition: Parameters<LoopLifecycle["wake"]>[1] = {}): Promise<boolean> {
-        // {§session-lifecycle-durable-disposition}: test admission at the mutation,
+        // {§session-causal-admission}: test admission at the mutation,
         // after asynchronous prompt, completion, or deadline selection.
         if (!this.#acceptingWork || this.#sessionAborts.get(sessionId)?.signal.aborted) return false;
         const woke = await this.#lifecycle.wake(loopId, condition);
@@ -1088,7 +1088,7 @@ export default class DrainSupervisor {
         void this.#trackSettlement(this.#notifyParentCompletion(workspaceId, event.sessionId), "wake-on-completion");
     }
 
-    // {§session-lifecycle-child-wake}: completion belongs to a task, not drain teardown.
+    // {§session-causal-admission}: completion belongs to a task, not drain teardown.
     async #notifyParentCompletion(workspaceId: number, sessionId: number): Promise<void> {
         const parent = await this.#db.session_parent_id.get<{ parent_session_id: number | null }>({ session_id: sessionId });
         if (parent?.parent_session_id == null) return;

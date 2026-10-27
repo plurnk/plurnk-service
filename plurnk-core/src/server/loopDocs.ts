@@ -92,7 +92,7 @@ export default class LoopDocs {
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
         });
-        // {§membership-model-universe} entry (3): the standard admits the content; it never overrides
+        // {§membership} entry (3): the standard admits the content; it never overrides
         // `.gitignore` or a `hide` constraint (#400).
         const agentsContent = workspace?.project_root === null || workspace?.project_root === undefined
             || await GitMembership.excludesInstruction(db, workspaceId, "AGENTS.md")
@@ -113,7 +113,7 @@ export default class LoopDocs {
         // each materializes at _plurnk/instructions/<subtree>/AGENTS.md with its
         // path preserved. No foisted READ and no teaching (operator-ruled):
         // the path convention is in the models' prior. This disk read is register
-        // entry (3) of {§membership-model-universe}: the standard admits the
+        // entry (3) of {§membership}: the standard admits the
         // instruction content; the file is a member only when tracked or picked.
         if (workspace?.project_root !== null && workspace?.project_root !== undefined) {
             for (const [relative, content] of await LoopDocs.#nestedInstructions(workspace.project_root)) {

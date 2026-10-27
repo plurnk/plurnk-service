@@ -69,7 +69,7 @@ export interface PlurnkSchemeContext {
     // {§actor-boundary-client-operations} — present on a person's client operation: the session whose log its
     // `log:///` addresses read, or null when the person acts for none.
     readonly client?: { readonly contextSessionId: number | null };
-    // {§file-delete-revision}: a selected file revision survives composed mutations and approval.
+    // {§file-snapshot-revision}: a selected file revision survives composed mutations and approval.
     readonly fileRevision?: string;
     readonly streamEventNotify?: StreamEventNotify;
     readonly wakeSessionNotify?: WakeSessionNotify;

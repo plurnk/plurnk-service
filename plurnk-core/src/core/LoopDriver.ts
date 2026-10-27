@@ -264,7 +264,7 @@ export default class LoopDriver {
                     return await ruleTerminal(turn.capacityFailure, "provider_capacity");
                 }
                 if (turn.providerParked) {
-                    // {§provider-recovery} — the provider stayed unavailable past the recovery budget:
+                    // {§engine-rails} — the provider stayed unavailable past the recovery budget:
                     // the loop parks like a [202] wait, spawns outlive it, and the ordinary wake resumes it.
                     // {§session-ownership} Without an interactive owner, report the provider failure.
                     if (!await SessionOwners.interactive(this.#db, loopId)) {

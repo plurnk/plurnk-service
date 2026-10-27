@@ -112,7 +112,7 @@ test("{§send-premature-terminate} Engine.runTurn: EDIT + SEND turn writes entry
     } finally { await db.close(); }
 });
 
-test("{§turn-ops-admission-path}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
+test("{§turn-record}: initialization and inference preserve turnOps beside ordinary operation outcomes", async () => {
     // The surveys are the initialization program; with the preview off there is none, so this witness turns it on.
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -656,7 +656,7 @@ test("{§operation-results} Engine.runLoop: strike is engine-internal — model 
 // {§engine-rails}: identical-fingerprint turns repeated MIN_CYCLES
 // times trip the detector and strike the turn.
 
-test("{§engine-cycle-evidence} creation differs from repeated period-1 no-op edits", async () => {
+test("{§engine-rails} creation differs from repeated period-1 no-op edits", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Creation returns 201; only the following 304 results repeat.
@@ -699,7 +699,7 @@ test("{§send-premature-terminate} Engine.runLoop: varied per-turn fingerprints 
     } finally { await db.close(); }
 });
 
-test("{§engine-cycle-evidence} period-2 no-op edits cycle after initial creations", async () => {
+test("{§engine-rails} period-2 no-op edits cycle after initial creations", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Two creations precede the six repeated no-op turns; the next

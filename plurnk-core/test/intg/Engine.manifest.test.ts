@@ -259,7 +259,7 @@ test("{§persistent-search-index} a large JSON entry is indexed and cataloged be
     } finally { await db.close(); }
 });
 
-test("{§stream-catalog-lifecycle} catalog distinguishes active, closed, killed, failed, and static entries", async () => {
+test("{§session-loop-lifecycle} catalog distinguishes active, closed, killed, failed, and static entries", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-stream-state-${crypto.randomUUID()}`);

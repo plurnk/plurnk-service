@@ -264,7 +264,7 @@ WHERE e.workspace_id = $workspace_id AND s.scheme = $scheme AND s.closed_at IS N
 
 -- PREP: test_exec_close_status_by_workspace
 -- The close_status the registry recorded for a workspace's most-recently-closed
--- stream of a scheme — proves the registry-routed reap ({§session-lifecycle-total-reap})
+-- stream of a scheme — proves the registry-routed reap ({§session-causal-admission})
 -- closed the subscription at 499, not just that a notification fired.
 SELECT s.close_status FROM subscriptions s
 JOIN entries e ON e.id = s.entry_id
@@ -893,7 +893,7 @@ WHERE m.workspace_id = $workspace_id AND m.source = $source
 ORDER BY c.message_id ASC;
 
 -- EXEC: test_refuse_recovery_turn_settlement
--- {§session-lifecycle-restart-recovery}: fail after the loop transition, inside durable settlement.
+-- {§session-causal-admission}: fail after the loop transition, inside durable settlement.
 CREATE TRIGGER test_refuse_recovery_turn_settlement
 BEFORE UPDATE OF completed_at ON turns
 WHEN NEW.status = 500

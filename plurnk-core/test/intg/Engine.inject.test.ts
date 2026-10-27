@@ -110,7 +110,7 @@ test("{§message-loop-containment} engine.inject: returns null when the addresse
     } finally { await db.close(); }
 });
 
-test("{§loop-addressed-admission}: a queued recipient accepts messages without changing its lifecycle", async () => {
+test("{§session-wait-timing}: a queued recipient accepts messages without changing its lifecycle", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "queued-recipient");
@@ -126,7 +126,7 @@ test("{§loop-addressed-admission}: a queued recipient accepts messages without 
     } finally { await db.close(); }
 });
 
-test("{§loop-addressed-admission}: completion between recipient lookup and insertion admits no message", async (t) => {
+test("{§session-wait-timing}: completion between recipient lookup and insertion admits no message", async (t) => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "injection-completion-race");
