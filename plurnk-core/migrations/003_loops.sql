@@ -1,5 +1,5 @@
 -- MIGRATE: 3 loops
--- Chapter 3 of the schema baseline ({§db-schema-baseline}): Loops, their turns, and the immutable sources a turn was built from.
+-- Chapter 3 of the schema baseline ({§db-migrations}): Loops, their turns, and the immutable sources a turn was built from.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
@@ -95,7 +95,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS loops_session_id_sequence ON loops (session_id
 
 CREATE UNIQUE INDEX IF NOT EXISTS loops_orphan_source_loop_id ON loops (orphan_source_loop_id);
 
--- {§db-fk-indexes} Model-route foreign-key checks stop scanning loops.
+-- {§db-migrations} Model-route foreign-key checks stop scanning loops.
 CREATE INDEX IF NOT EXISTS loops_model_route_id         ON loops (model_route_id)         WHERE model_route_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS loops_spawn_model_route_id   ON loops (spawn_model_route_id)   WHERE spawn_model_route_id IS NOT NULL;
@@ -289,7 +289,7 @@ CREATE TABLE IF NOT EXISTS turn_section_items (
     FOREIGN KEY (turn_id, section) REFERENCES turn_sections(turn_id, position) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
 
--- {§db-fk-indexes}: item collection and the packet_items foreign-key check path.
+-- {§db-migrations}: item collection and the packet_items foreign-key check path.
 CREATE INDEX IF NOT EXISTS turn_section_items_item_hash ON turn_section_items (item_hash);
 
 -- {§packet-items}: the one write of inference evidence — the packet bag, its sections as items,
@@ -360,7 +360,7 @@ CREATE TABLE IF NOT EXISTS turn_sources (
     PRIMARY KEY (turn_id, kind, sequence)
 ) STRICT;
 
--- {§db-fk-indexes} A derivation replacement checks its referrers; the hash is indexed where it is a foreign key.
+-- {§db-migrations} A derivation replacement checks its referrers; the hash is indexed where it is a foreign key.
 CREATE INDEX IF NOT EXISTS turn_sources_deep_hash ON turn_sources (deep_hash) WHERE deep_hash IS NOT NULL;
 
 CREATE TRIGGER IF NOT EXISTS turn_sources_immutable

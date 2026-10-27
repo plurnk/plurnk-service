@@ -10,7 +10,7 @@ export default class ResourceState {
 
         const dups = await db.ws_dup_identities.all<{ workspace_id: number; scheme: string; authority: string; pathname: string; n: number }>({});
         for (const d of dups) {
-            violations.push({ invariant: "{§entry-identity-no-null}", detail: `identity (ws ${d.workspace_id}, ${d.scheme}, ${d.authority}, ${d.pathname}) holds ${d.n} rows` });
+            violations.push({ invariant: "{§db-migrations}", detail: `identity (ws ${d.workspace_id}, ${d.scheme}, ${d.authority}, ${d.pathname}) holds ${d.n} rows` });
         }
 
         const keys = await db.ws_file_keys.all<{ workspace_id: number; pathname: string; project_root: string | null }>({});

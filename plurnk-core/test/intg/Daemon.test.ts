@@ -1641,7 +1641,7 @@ test("{§application-session-observation} the client-interface seam — forkSess
     });
 });
 
-test("{§extension-namespace-arbitration} the module setup seam registers a live tag, dispatchable through the engine", async () => {
+test("{§core-extension-composition} the module setup seam registers a live tag, dispatchable through the engine", async () => {
     // The generic module-load hook builds the RegistryEntry with its own
     // driver and hands it here; the kernel knows nothing about the driver. Tested with a stand-in.
     await withDaemon(null, async (_db, daemon, addr) => {
@@ -1666,7 +1666,7 @@ test("{§extension-namespace-arbitration} the module setup seam registers a live
     });
 });
 
-test("{§live-updates-stream-event-fires-on-chunk} the client-interface seam — a dispatched execution's stdout streams as stream/event on the event source", async () => {
+test("{§stream} the client-interface seam — a dispatched execution's stdout streams as stream/event on the event source", async () => {
     // Client-raised parity check: a seam-dispatched exec must emit incremental stream/event, not just
     // the log/entry + stream/concluded. dispatchClientAction routes through engine.dispatch identically to
     // the WS op.exec path; the stream fires via the engine's global streamEventNotify. Pinned so the

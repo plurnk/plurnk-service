@@ -1,28 +1,62 @@
+import test, { describe, type TestContext } from "node:test";
+import assert from "node:assert/strict";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import type Exec from "../../src/schemes/Exec.ts";
+import FunctionalityManager, { plurnkRuntimeDecl } from "../../src/server/FunctionalityManager.ts";
+import type Functionality from "../../src/server/Functionality.ts";
+import StreamMock from "./_stream-mock.ts";
+import ExecutorRegistry from "../../src/core/ExecutorRegistry.ts";
+import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
+import { OperationFailureError } from "../../src/core/results.ts";
+import { type EditStatement, type ProposalResolution, type FunctionalityListResult, type PlurnkStatement, type ExecStatement } from "@plurnk/plurnk-contracts";
+import { type Db } from "../../src/core/Db.ts";
+import { type SchemeManifest } from "../../src/core/scheme-types.ts";
+import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, rootWorkspace } from "./_db.ts";
+import { parseDsl, fixtureExecutors, makeMockResponse } from "./_mock.ts";
+import { sendStmt, urlPath, localPath } from "./_dsl.ts";
+import { type ProposalApplyRequest } from "@plurnk/plurnk-schemes";
+import { mkdtemp, readFile, rm, mkdir, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { Digest } from "@plurnk/plurnk-digest";
+import { HARNESS_WAIT_MS, waitForDb, withDaemon } from "./_rpc.ts";
+import { Module as McpModule } from "@plurnk/plurnk-mcp";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { awaitExecOutcome, executionAddress } from "./_execs.ts";
+import { MCP_CONTROLS, mcpFixture, stdioEntry } from "./_mcp-config.ts";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
+import { modelOperation, namedModelSession } from "./_sessions.ts";
+
+describe("Engine.proposal-lifecycle", () => {
 // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods}). When a scheme returns
 // status 202, the engine writes a state='proposed' log entry and pauses
 // dispatch until Engine.resolveProposal feeds back a decision. These tests
 // exercise the pause/resume machinery + the log-render visibility filter
 // against a tiny test scheme that always proposes.
 
-import { ownSession, serverProposals, TEST_OWNER } from "./_approval.ts";
-import test from "node:test";
-import assert from "node:assert/strict";
-import { OperationFailureError } from "../../src/core/results.ts";
-import { type EditStatement, type ProposalResolution } from "@plurnk/plurnk-contracts";
-import Engine from "../../src/core/Engine.ts";
-import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
-import type { Db } from "../../src/core/Db.ts";
-import type { SchemeManifest } from "../../src/core/scheme-types.ts";
-import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn } from "./_db.ts";
-import { parseDsl } from "./_mock.ts";
-import { sendStmt, urlPath } from "./_dsl.ts";
-import type { ProposalApplyRequest } from "@plurnk/plurnk-schemes";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Digest } from "@plurnk/plurnk-digest";
-import EvidenceReader from "../../src/evidence/EvidenceReader.ts";
-import { HARNESS_WAIT_MS } from "./_rpc.ts";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Minimal proposing scheme. `edit` returns 202 with attrs the test asserts on.
 class ProposingTest {
@@ -103,7 +137,7 @@ const dispatchAndResolve = async (engine: Engine, ctx: {
     return { status: result.status, logEntryId };
 };
 
-test("{§proposal-decision-evidence}: original approval is durable before a failing effect and cannot be rewritten", async () => {
+test("{§proposal}: original approval is durable before a failing effect and cannot be rewritten", async () => {
     const db = await openMigrated();
     try {
         let logEntryId = 0;
@@ -140,7 +174,7 @@ test("{§proposal-decision-evidence}: original approval is durable before a fail
     } finally { await db.close(); }
 });
 
-test("{§proposal-decision-evidence}: an unrecordable approval cannot execute", async (t) => {
+test("{§proposal}: an unrecordable approval cannot execute", async (t) => {
     const db = await openMigrated();
     try {
         let applications = 0;
@@ -196,7 +230,7 @@ test("{§digest-proposal-decisions}: curation retains original approval in the r
     }
 });
 
-test("{§proposal-decision-evidence}: effect-policy acceptance records runtime authority before applying", async (t) => {
+test("{§proposal}: effect-policy acceptance records runtime authority before applying", async (t) => {
     const prior = process.env.PLURNK_SERVICE_EFFECT_HOST;
     process.env.PLURNK_SERVICE_EFFECT_HOST = "auto";
     t.after(() => {
@@ -282,7 +316,7 @@ test("{§engine-rails} proposal: 202 scheme result pauses; accept resolves to 20
     } finally { await db.close(); }
 });
 
-test("{§proposal-proposed-hidden}: creation and client-visible settlement are distinct proposal events", async () => {
+test("{§proposal}: creation and client-visible settlement are distinct proposal events", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -462,7 +496,7 @@ test("{§engine-rails} proposal: onProposalPending listener fires with the right
     } finally { await db.close(); }
 });
 
-test("{§proposal-202-pauses}: a WAIT over live work parks without a proposal", async () => {
+test("{§proposal}: a WAIT over live work parks without a proposal", async () => {
     const db = await openMigrated();
     try {
         const ctx = await setupEngine(db);
@@ -744,4 +778,569 @@ test("{§engine-rails} the shipped empty default is indefinite — a stopped wor
         const result = await dispatchPromise;
         assert.equal(result.status, 200, "the human's answer, whenever it arrives, is the only resolution");
     } finally { await db.close(); }
+});
+});
+
+describe("mcp-storage-composition", () => {
+// {§mcp-launch-directory}
+
+
+
+
+
+
+
+
+
+
+
+
+
+type Placement = { cwd: string };
+
+// An empty project directory for the workspace, removed with the test.
+const projectDirectory = async (t: TestContext): Promise<string> => {
+    const scratch = await mkdtemp(join(tmpdir(), "plurnk-mcp-placement-"));
+    t.after(() => rm(scratch, { recursive: true, force: true }));
+    const project = join(scratch, "project");
+    await mkdir(project);
+    return project;
+};
+
+test("{§mcp-launch-directory} a stdio tool runs in retained workspace state and writes nothing into the project", { timeout: 30000 }, async (t) => {
+    const project = await projectDirectory(t);
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_WHERE: "1" }) });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
+    try {
+        await daemon.start();
+        const { workspaceId } = await daemon.createWorkspace({ name: "placement", projectRoot: project });
+        const source = PlurnkParser.frame("fixture (where)", "{}");
+        const parsed = PlurnkParser.parseStatements(source, { executors: fixtureExecutors(source) }).items[0];
+        assert.equal(parsed?.kind, "statement");
+        if (parsed?.kind !== "statement") throw new Error("Expected the tool operation");
+        // A person's operation is that person's decision already ({§proposal-disposition}).
+        const [invoked] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
+        assert.equal(invoked.status, 200);
+        const placed = await awaitExecOutcome(db, { workspaceId, scheme: "fixture", channel: "body", timeoutMs: 10000 }) as Placement;
+        const directory = await daemon.workspaceStateDirectory(workspaceId, "@plurnk/plurnk-mcp/fixture");
+        assert.deepEqual(placed, { cwd: await realpath(directory) });
+        assert.equal((await stat(directory)).mode & 0o777, 0o700, "workspace state is private and created before launch");
+        await daemon.invokeModuleAction("workspace.mcp.disable", { alias: "fixture" }, { scope: "workspace", workspaceId });
+        assert.ok((await stat(directory)).isDirectory(), "disabling the connection retains its state directory");
+        assert.deepEqual(await readdir(project), [], "the launch and the tool write nothing into the project");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+
+test("{§mcp-launch-directory} an inaccessible state directory leaves the server unavailable and never falls back to the project", { timeout: 15000 }, async (t) => {
+    const project = await projectDirectory(t);
+    const marker = join(dirname(project), "starts.txt");
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: stdioEntry("echo-server.mjs", { PLURNK_MCP_TEST_START_MARKER: marker }) });
+    await mkdir(hostPaths.stateDir, { recursive: true });
+    await writeFile(join(hostPaths.stateDir, "workspaces"), "occupied");
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null, hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv, ...MCP_CONTROLS } }), "@plurnk/plurnk-mcp");
+    try {
+        await daemon.start();
+        const { workspaceId } = await daemon.createWorkspace({ name: "blocked-mcp-state", projectRoot: project });
+        const invoke = (verb: string, params: Record<string, unknown> = {}) => daemon.invokeModuleAction(`workspace.mcp.${verb}`, params, { scope: "workspace", workspaceId });
+        await assert.rejects(invoke("enable", { alias: "fixture" }), (error: unknown) => {
+            assert.ok(error instanceof Error);
+            assert.equal(error.message, "Configured MCP server 'fixture' is unavailable.");
+            assert.ok(error.cause instanceof Error);
+            assert.equal((error.cause as NodeJS.ErrnoException).code, "ENOTDIR");
+            assert.equal((error.cause as NodeJS.ErrnoException).syscall, "mkdir");
+            return true;
+        });
+        assert.equal((await invoke("list") as FunctionalityListResult).definitions[0]?.state, "unavailable");
+        await assert.rejects(stat(marker), { code: "ENOENT" }, "the subprocess never starts without its state directory");
+        assert.deepEqual(await readdir(project), [], "nothing falls back to the project");
+    } finally {
+        await daemon.stop();
+        await db.close();
+    }
+});
+});
+
+describe("members-auto-add", () => {
+// {§membership-auto-add}: the matrix — READ and FIND, an exact path and a glob, each row of the universe
+// table, with the knob on and off, the model's scope open and closed, and the proposal settled by policy or
+// by a reviewer. A read of content proposes the admission; acceptance admits and reads; rejection admits
+// nothing; a listing admits nothing; nothing unadmitted shows its content; the client's reads never admit.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const execFileP = promisify(execFile);
+
+const parseOne = (input: string): PlurnkStatement => {
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
+    const item = parsed.items.find((x) => x.kind === "statement");
+    if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
+    return item.statement;
+};
+
+// tracked: README.md. Untracked and unignored: loose.md, loose2.md (excluded by definition), docs/guide.md,
+// blob.bin. Ignored: ignored.log. A directory: docs.
+const project = async (): Promise<string> => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-auto-add-"));
+    const git = (args: string[]) => execFileP("git", args, { cwd: root, env: hermeticGitEnv() });
+    await git(["init", "-q"]);
+    await writeFile(join(root, ".gitignore"), "ignored.log\n");
+    await writeFile(join(root, "README.md"), "# tracked\nalpha\n");
+    await git(["add", ".gitignore", "README.md"]);
+    await git(["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "--no-verify", "-m", "chore: seed"]);
+    await writeFile(join(root, "loose.md"), "# loose\nalpha\n");
+    await writeFile(join(root, "loose2.md"), "# loose two\nalpha\n");
+    await writeFile(join(root, "ignored.log"), "alpha secret\n");
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "docs", "guide.md"), "# guide\nbeta\n");
+    await writeFile(join(root, "blob.bin"), Buffer.from([0, 255, 129, 10, 0, 1]));
+    return root;
+};
+
+const memberOf = async (db: Db, workspaceId: number, pathname: string): Promise<boolean> =>
+    (await db.crud_find_workspace_entry.get<{ id: number }>({ workspace_id: workspaceId, scheme: "file", authority: "", pathname })) !== undefined;
+
+type Definition = { alias: string; origin: string; state: string; definition?: { glob: string; provenance?: { kind: string } } };
+
+const harness = async (t: TestContext, env: Record<string, string>) => {
+    serverProposals(t, "accept");
+    const root = await project();
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider: null });
+    const notices: string[] = [];
+    type Proposal = { logEntryId: number; op: string; body?: string };
+    const proposals: Proposal[] = [];
+    const waiting: Array<(proposal: Proposal) => void> = [];
+    daemon.subscribeToEvents((_workspaceId, method, params) => {
+        if (method === "loop/proposal") {
+            const proposal = params as Proposal;
+            const waiter = waiting.shift();
+            if (waiter === undefined) proposals.push(proposal); else waiter(proposal);
+            return;
+        }
+        if (method !== "notice/event") return;
+        const text = JSON.stringify(params);
+        if (text.includes("member_added")) notices.push(text);
+    });
+    // {§proposal} — under review the dispatch pauses on the proposal until a decision arrives.
+    const nextProposal = (): Promise<Proposal> => {
+        const queued = proposals.shift();
+        return queued !== undefined ? Promise.resolve(queued) : new Promise((resolve) => { waiting.push(resolve); });
+    };
+    const workspaceId = await insertWorkspace(db, `auto-add-${crypto.randomUUID()}`);
+    await rootWorkspace(db, workspaceId, root);
+    const sessionId = await insertSession(db, workspaceId, null, "model", "model");
+    const restore = await (async () => {
+        const overrides = {
+            PLURNK_SERVICE_GIT_ALLOWED: "1", PLURNK_SERVICE_GIT_AUTO: "1", PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "namespace",
+            PLURNK_MEMBERS_ENABLED: "1", PLURNK_MEMBERS_no_two: "!loose2.md", PLURNK_MEMBERS_AUTO_ADD: "1", ...env,
+        };
+        const prior = new Map(Object.keys(overrides).map((key) => [key, process.env[key]]));
+        for (const [key, value] of Object.entries(overrides)) process.env[key] = value;
+        return () => { for (const [key, value] of prior) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } };
+    })();
+    await daemon.start();
+    t.after(async () => { await daemon.stop(); await db.close(); restore(); await rm(root, { recursive: true, force: true }); });
+    const model = (program: string) => modelOperation(daemon, db, { workspaceId, sessionId, statement: parseOne(program) });
+    const client = async (program: string) => (await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parseOne(program)] }))[0];
+    const definitions = async (): Promise<Definition[]> =>
+        (await daemon.invokeModuleAction("workspace.members.list", {}, { scope: "workspace", workspaceId }) as { definitions: Definition[] }).definitions;
+    const member = (pathname: string) => memberOf(db, workspaceId, pathname);
+    const paths = (result: { results?: unknown }): string => JSON.stringify(result.results ?? []);
+    const review = async (program: string, decision: "accept" | "reject"): Promise<{ result: unknown; proposal: Proposal }> => {
+        const pending = model(program);
+        const proposal = await nextProposal();
+        await daemon.engine.resolveProposal(proposal.logEntryId, { decision }, TEST_OWNER);
+        return { result: await pending, proposal };
+    };
+    // A person reviews: the session is owned by an interactive client, and the server disposition is review.
+    const attend = async (): Promise<void> => { await ownSession(db, workspaceId, sessionId); serverProposals(t, "review"); };
+    return { db, daemon, workspaceId, sessionId, notices, model, client, definitions, member, paths, review, attend };
+};
+
+test("{§membership-auto-add} READ: an untracked file is admitted as the Session's own definition and read; ignored, excluded, beyond-root and directory targets are not", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, {});
+    const read = await h.model("````READ (loose.md)````") as { status: number; content?: string | null };
+    assert.equal(read.status, 200, JSON.stringify(read));
+    assert.match(String(read.content), /# loose/u, "the admitted file is read in the same operation");
+    assert.equal(await h.member("loose.md"), true);
+    const admitted = (await h.definitions()).find(({ alias }) => alias === "loose.md");
+    assert.equal(admitted?.origin, "workspace");
+    assert.equal(admitted?.definition?.provenance?.kind, "model-proposal", "the admission is the model's own add");
+    assert.equal(admitted?.state, "active");
+    assert.equal(h.notices.length, 1, `one member_added notice: ${JSON.stringify(h.notices)}`);
+    assert.match(h.notices[0], /'loose\.md' is now a member of this workspace\./u);
+    assert.match(h.notices[0], /"level":"warn"/u);
+    assert.doesNotMatch(h.notices[0], /"directive"/u, "the notice carries no directive");
+
+    for (const [program, code, pathname] of [
+        ["````READ (ignored.log)````", "entry-not-member", "ignored.log"],
+        ["````READ (loose2.md)````", "entry-not-member", "loose2.md"],
+        ["````READ (../outside.md)````", "entry-not-found", "../outside.md"],
+        ["````READ (docs)````", "path-is-directory", "docs"],
+    ] as const) {
+        const refused = await h.model(program) as { status: number; problem?: { type?: string } };
+        assert.equal(refused.status, 404, `${program}: ${JSON.stringify(refused)}`);
+        assert.match(refused.problem?.type ?? "", new RegExp(`/${code}$`, "u"), program);
+        assert.equal(await h.member(pathname), false, `${pathname} is never admitted`);
+    }
+    assert.equal(h.notices.length, 1, "the refusals announce nothing");
+});
+
+test("{§membership-auto-add} READ by glob: the universe fans out, and each untracked file read is admitted", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, {});
+    await h.model("````READ (*.md) <1,2>````");
+    assert.equal(await h.member("loose.md"), true, "the untracked file the glob reached was admitted");
+    assert.equal(await h.member("loose2.md"), false, "an excluded file is outside the universe");
+    assert.equal(await h.member("ignored.log"), false);
+    assert.equal(h.notices.length, 1);
+});
+
+test("{§membership-auto-add} FIND: a listing shows the universe without admitting; a text match admits; indexed dialects and binary candidates see members only", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, {});
+    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    assert.equal(listed.status, 200, JSON.stringify(listed));
+    const listing = h.paths(listed);
+    for (const shown of ["README.md", "loose.md", "blob.bin"]) assert.match(listing, new RegExp(`"${shown}"`, "u"), `${shown} is listed`);
+    for (const hidden of ["ignored.log", "loose2.md"]) assert.doesNotMatch(listing, new RegExp(hidden, "u"), `${hidden} is outside the universe`);
+    assert.match(listing, /"aside":"untracked"/u, "a listed candidate is marked untracked");
+    assert.equal(await h.member("loose.md"), false, "listing admits nothing");
+    assert.equal(h.notices.length, 0);
+
+    const exact = await h.model("````FIND (loose.md)````") as { status: number };
+    assert.equal(exact.status, 200, "an exact FIND of a candidate lists it rather than missing");
+    assert.equal(await h.member("loose.md"), false);
+
+    const fulltext = await h.model("````FIND (*) ~alpha````") as { status: number; results?: unknown };
+    assert.equal(fulltext.status, 200, JSON.stringify(fulltext));
+    assert.match(h.paths(fulltext), /README\.md/u);
+    assert.doesNotMatch(h.paths(fulltext), /loose\.md/u, "an indexed dialect sees members only");
+    assert.equal(await h.member("loose.md"), false);
+
+    const matched = await h.model("````FIND (*.md) loose````") as { status: number; results?: unknown };
+    assert.equal(matched.status, 200, JSON.stringify(matched));
+    assert.match(h.paths(matched), /loose\.md/u, "the candidate whose text matched is in the result");
+    assert.doesNotMatch(h.paths(matched), /README\.md|loose2\.md/u);
+    assert.equal(await h.member("loose.md"), true, "a text match admits");
+    assert.equal(await h.member("docs/guide.md"), false, "an unmatched candidate stays out");
+    assert.equal(h.notices.length, 1);
+    assert.match(h.notices[0], /'loose\.md' is now a member/u);
+
+    const nested = await h.model("````FIND (docs/*.md) beta````") as { status: number; results?: unknown };
+    assert.equal(nested.status, 200);
+    assert.equal(await h.member("docs/guide.md"), true, "a scoped glob reaches its directory's candidates");
+    assert.equal(h.notices.length, 2);
+});
+
+test("{§membership-auto-add} scope none: the universe is listed, nothing is admitted, and no unadmitted content shows", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, { PLURNK_SERVICE_MEMBERS_MODEL_SCOPE: "none" });
+    const read = await h.model("````READ (loose.md)````") as { status: number; problem?: { type?: string; recovery?: string } };
+    assert.equal(read.status, 404);
+    assert.match(read.problem?.type ?? "", /entry-not-member$/u);
+    assert.equal(await h.member("loose.md"), false);
+    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    assert.match(h.paths(listed), /loose\.md/u, "occupancy inside the root is not secret");
+    const matched = await h.model("````FIND (*.md) loose````") as { status: number; results?: unknown };
+    assert.equal(matched.status, 204, "the only match was on what the scope refuses to admit, so nothing matched");
+    assert.doesNotMatch(h.paths(matched), /loose\.md/u, "a match on what the scope refuses to admit is not shown");
+    assert.equal(await h.member("loose.md"), false);
+    assert.equal(h.notices.length, 0);
+});
+
+test("{§membership-auto-add} knob off: today's contract holds unchanged", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, { PLURNK_MEMBERS_AUTO_ADD: "0" });
+    const read = await h.model("````READ (loose.md)````") as { status: number; problem?: { type?: string; recovery?: string } };
+    assert.equal(read.status, 404);
+    assert.match(read.problem?.type ?? "", /entry-not-member$/u);
+    assert.equal(read.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body.");
+    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    assert.doesNotMatch(h.paths(listed), /loose\.md/u, "members only");
+    const matched = await h.model("````FIND (*.md) loose````") as { status: number; results?: unknown };
+    assert.doesNotMatch(h.paths(matched), /loose\.md/u);
+    assert.equal(await h.member("loose.md"), false);
+    assert.equal(h.notices.length, 0);
+});
+
+test("{§membership-auto-add} {§proposal} under review, a READ proposes the admission: accepted, it admits and reads; rejected, it admits nothing", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, {});
+    await h.attend();
+    const listed = await h.model("````FIND (*)````") as { status: number; results?: unknown };
+    assert.match(h.paths(listed), /loose\.md/u, "the universe is listed under review; listing proposes nothing");
+    assert.equal(await h.member("loose.md"), false);
+
+    const accepted = await h.review("````READ (loose.md)````", "accept");
+    assert.equal(accepted.proposal.op, "READ");
+    assert.equal(accepted.proposal.body, JSON.stringify({ files: ["loose.md"] }), "the review material is the definition the acceptance admits");
+    const read = accepted.result as { status: number; content?: string | null };
+    assert.equal(read.status, 200, JSON.stringify(read));
+    assert.match(String(read.content), /# loose/u, "the accepted admission reads the file in the same operation");
+    assert.equal(await h.member("loose.md"), true);
+    assert.equal((await h.definitions()).find(({ alias }) => alias === "loose.md")?.definition?.provenance?.kind, "model-proposal");
+    assert.equal(h.notices.length, 1, "one member_added notice");
+
+    const rejected = await h.review("````READ (docs/guide.md)````", "reject");
+    const refused = rejected.result as { status: number; outcome?: string; problem?: { detail?: string } };
+    assert.equal(refused.status, 400, JSON.stringify(refused));
+    assert.equal(refused.outcome, "rejected", "{§proposal}");
+    assert.match(String(refused.problem?.detail), /rejected/u, "{§proposal}: the detail names the outcome");
+    assert.equal(await h.member("docs/guide.md"), false, "a rejected admission admits nothing");
+    assert.equal(h.notices.length, 1, "and announces nothing");
+    const again = await h.review("````READ (docs/guide.md) <1,1>````", "reject");
+    assert.equal(again.proposal.op, "READ", "a rejection does not retire the file from the universe: the next read proposes again");
+    assert.equal((again.result as { status: number }).status, 400);
+});
+
+test("{§membership-auto-add} under review, a text FIND proposes the admission of what it matched; accepted, the selection runs over the members", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, {});
+    await h.attend();
+    const { result, proposal } = await h.review("````FIND (docs/*.md) beta````", "accept");
+    assert.equal(proposal.op, "FIND");
+    assert.equal(proposal.body, JSON.stringify({ files: ["docs/guide.md"] }));
+    const found = result as { status: number; results?: unknown };
+    assert.equal(found.status, 200, JSON.stringify(found));
+    assert.match(h.paths(found), /docs\/guide\.md/u, "the admitted file's match shows its evidence");
+    assert.equal(await h.member("docs/guide.md"), true);
+    assert.equal(h.notices.length, 1);
+});
+
+test("{§membership-auto-add} a client's READ never admits on the Session's behalf", { timeout: 60_000 }, async (t) => {
+    const h = await harness(t, {});
+    const read = await h.client("````READ (loose.md)````") as { status: number };
+    assert.equal(read.status, 404);
+    assert.equal(await h.member("loose.md"), false);
+    assert.equal(h.notices.length, 0);
+});
+});
+
+describe("question-tool", () => {
+// {§question-tool} — the assembled proof: the question executor through the real
+// Exec scheme pauses on the shared client-interaction lifecycle and resumes
+// with the standard ElicitResult in its results channel.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+const execStmt = (body: string): ExecStatement => ({
+    metadata: null,
+    runtime: "plurnk", aside: null, target: localPath("question"), lineMarker: null, body, position: { line: 1, column: 1 },
+});
+
+test("{§question-tool}: dispatched plurnk (question) returns the answer", async () => {
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    const exec = schemes.get("exec") as Exec;
+    const engine = new Engine({ db, schemes });
+    engine.setExecutors(await ExecutorRegistry.build({ cwd: process.cwd() }));
+    engine.registerRuntimes([{
+        tag: "plurnk",
+        entry: {
+            executor: new FunctionalityManager({
+                coordinator: {} as unknown as Functionality,
+                entries: [],
+                includeQuestion: true,
+            }),
+            namespaceOwner: { kind: "module", name: "core" },
+            glyph: plurnkRuntimeDecl.glyph,
+            summary: plurnkRuntimeDecl.summary,
+            invocation: plurnkRuntimeDecl.invocation,
+            details: plurnkRuntimeDecl.details ?? "",
+            ...(plurnkRuntimeDecl.resourcesPath === undefined ? {} : { resourcesPath: plurnkRuntimeDecl.resourcesPath }),
+            ...(plurnkRuntimeDecl.expandTools === undefined ? {} : { expandTools: plurnkRuntimeDecl.expandTools }),
+            available: true,
+            detail: "in-process",
+        },
+    }]);
+    try {
+        const workspaceId = await insertWorkspace(db, `question-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        await ownSession(db, workspaceId, sessionId);
+        const loopId = await insertLoop(db, sessionId, 1, "question");
+        const turnId = await insertTurn(db, loopId, 1, 102);
+
+        let logEntryId = -1;
+        const dispatched = engine.dispatch({
+            statement: execStmt(JSON.stringify({
+                message: "Which branch?",
+                requestedSchema: { type: "object", properties: { branch: { type: "string", enum: ["main", "feat/x"] } }, required: ["branch"] },
+            })),
+            workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model",
+            onDispatch: (id) => { logEntryId = id; },
+        });
+
+        const pending = await (async () => {
+            for (let i = 0; i < 100; i++) {
+                const list = await engine.pendingClientInteractions(workspaceId);
+                if (list.length > 0) return list[0];
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            return undefined;
+        })();
+        assert.ok(pending !== undefined, "the question produced one durable pending interaction");
+        assert.equal(pending.request.toolName, "question");
+        assert.equal(pending.request.message, "Which branch?");
+
+        await engine.resolveClientInteraction(pending.interactionId, {
+            action: "accept",
+            content: { branch: "main" },
+        }, { workspaceId, address: TEST_OWNER });
+        const result = await dispatched;
+        await exec.idle();
+        assert.equal(result.status, 200);
+
+        const log = await db.test_get_log_entry_by_id.get<{ attrs: string }>({ id: logEntryId });
+        const { pathname } = JSON.parse(log?.attrs ?? "{}") as { pathname: string };
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "plurnk", pathname });
+        assert.ok(entry, "the question output entry is addressed under the runtime tag");
+        const results = await db.test_get_channel.get<{ content: string; state: string }>({ entry_id: entry.id, name: "results" });
+        assert.equal(results?.state, "closed");
+        assert.deepEqual(JSON.parse(results?.content ?? "null"), { action: "accept", content: { branch: "main" } });
+    } finally {
+        await exec.idle();
+        await db.close();
+    }
+});
+
+for (const timing of ["before park", "after park"] as const) {
+    for (const action of ["accept", "cancel"] as const) {
+        test(`{§question-tool}: ${action} ${timing} resumes the same waiting loop`, async () => {
+            const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+            process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = timing === "before park" ? "1000" : "0";
+            const body = JSON.stringify({ message: "Which branch?", requestedSchema: {
+                type: "object", properties: { branch: { type: "string" }, notes: { type: "string" } },
+            } });
+            const provider = new StreamMock({ contextWindow: 100_000, responses: [
+                makeMockResponse(`\`\`\`\`plurnk (question)
+${body}
+\`\`\`\`
+\`\`\`\`WAIT
+Waiting for your answer.
+\`\`\`\``),
+                makeMockResponse("````SEND [200]\nThe answer arrived.\n````"),
+            ] });
+            try {
+                await withDaemon(provider, async (db, daemon) => {
+                    const workspace = await daemon.createWorkspace({ name: `question-${timing}-${action}` });
+                    const sessionId = await namedModelSession(daemon, workspace.workspaceId, "main");
+                    await ownSession(db, workspace.workspaceId, sessionId);
+                    const run = await daemon.runLoop({ workspaceId: workspace.workspaceId, sessionId, prompt: "Ask me." });
+                    const pending = await waitForDb(
+                        () => daemon.pendingClientInteractions(workspace.workspaceId),
+                        (rows) => rows.length === 1,
+                    );
+                    if (timing === "after park") await waitForDb(
+                        () => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }),
+                        (row) => row?.status === 202,
+                    );
+                    await daemon.resolveClientInteraction(pending[0].interactionId, action === "accept"
+                        ? { action: "accept", content: { branch: "main" } }
+                        : { action: "cancel" }, { workspaceId: workspace.workspaceId, address: TEST_OWNER });
+                    await waitForDb(
+                        () => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }),
+                        (row) => row?.status === 200,
+                    );
+                    assert.equal(provider.remaining, 0, "exactly one continuation receives the answer");
+                    const turns = await db.test_list_turns_in_loop.all<{ producer: string }>({ loop_id: run.loopId });
+                    assert.equal(turns.filter(({ producer }) => producer === "model").length, 2,
+                        "both model turns belong to the original loop, independently of harness observation turns");
+                    assert.deepEqual(await daemon.pendingClientInteractions(workspace.workspaceId), []);
+                    const rows = await db.test_log_entries_by_loop.all<{ op: string; rx: string }>({ loop_id: run.loopId });
+                    const answer = rows.find((row) => row.op === "READ" && JSON.parse(row.rx).content?.includes(`"${action}"`));
+                    assert.ok(answer, "the answer or cancellation is materialized in the resumed loop");
+                    const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({
+                        scheme: "plurnk", pathname: new URL(await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).pathname,
+                    });
+                    assert.ok(entry);
+                    const channel = await db.test_get_channel.get<{ content: string }>({ entry_id: entry.id, name: "results" });
+                    assert.deepEqual(JSON.parse(channel?.content ?? "null"), action === "accept"
+                        ? { action: "accept", content: { branch: "main" } }
+                        : { action: "cancel" });
+                });
+            } finally {
+                if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+                else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+            }
+        });
+    }
+}
+
+test("{§question-tool}: cancelling the session concludes a pending question as cancellation, not an executor crash", async () => {
+    const provider = new StreamMock({ contextWindow: 100_000, responses: [makeMockResponse(
+        "````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````\n````WAIT\nAwaiting an answer.\n````",
+    )] });
+    await withDaemon(provider, async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "question-user-cancel" });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await ownSession(db, workspaceId, sessionId);
+        const run = await daemon.runLoop({ workspaceId, sessionId, prompt: "Ask me." });
+        await waitForDb(() => daemon.pendingClientInteractions(workspaceId), (rows) => rows.length === 1);
+        await daemon.cancelSession({ workspaceId, sessionId, reason: "user_escape" });
+        const loop = await db.test_get_loop_status.get<{ status: number }>({ id: run.loopId });
+        assert.equal(loop?.status, 499);
+        assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "plurnk", pathname: new URL(await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).pathname });
+        assert.ok(entry);
+        const channel = await waitForDb(
+            () => db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" }),
+            (row) => row?.producer_result != null,
+        );
+        const result = JSON.parse(channel?.producer_result ?? "null");
+        assert.equal(result?.status, 499);
+        assert.equal(result?.problem?.type, "https://problems.plurnk.xyz/scheme/exec/execution-cancelled");
+    });
+});
+
+test("{§proposal-projection}: KILL ends the question's own waiter without cancelling its loop", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const provider = new StreamMock({ contextWindow: 100_000, responses: [
+        makeMockResponse("````plurnk (question)\n{\"message\":\"Which branch?\",\"requestedSchema\":{\"type\":\"object\",\"properties\":{\"branch\":{\"type\":\"string\"}}}}\n````\n````NOTE\nContinue while the question is pending.\n````"),
+        makeMockResponse("````KILL ($STREAM)````\n````NOTE\nCancel the question.\n````"),
+        makeMockResponse("````SEND [200]\nDone.\n````"),
+    ] });
+    await withDaemon(provider, async (db, daemon) => {
+        const { workspaceId } = await daemon.createWorkspace({ name: "question-exec-cancel" });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        await ownSession(db, workspaceId, sessionId);
+        const run = await daemon.runLoop({ workspaceId, sessionId, prompt: "Ask, then cancel the question." });
+        await waitForDb(() => db.test_get_loop_status.get<{ status: number }>({ id: run.loopId }), (row) => row?.status === 200, { timeoutMs: 15_000 });
+        assert.equal(provider.remaining, 0);
+        assert.deepEqual(await daemon.pendingClientInteractions(workspaceId), []);
+        const entry = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "plurnk", pathname: new URL(await executionAddress(db, (await db.test_turn_id_by_seq.get<{ id: number }>({ loop_id: run.loopId, sequence: 2 }))!.id, 2)).pathname });
+        assert.ok(entry);
+        const channel = await db.test_get_channel_terminal.get<{ producer_result: string }>({ entry_id: entry.id, name: "results" });
+        const result = JSON.parse(channel?.producer_result ?? "null");
+        assert.deepEqual(result, { status: 200 }, "{§stream-control}: the question its holder killed concludes as asked");
+    });
+});
 });

@@ -1,5 +1,5 @@
 // Audit the composed dependency tree and route @plurnk/*-rooted chains to
-// their owning packages. {§install-root-advisory-ownership}
+// their owning packages. {§bundled-set}
 
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { execFileSync } from "node:child_process";
@@ -9,7 +9,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run audit:deps [-- --strict]   (from plurnk-core)
-Audits the composed dependency tree and routes each advisory to the @plurnk package that pulls it in ({§install-root-advisory-ownership}).
+Audits the composed dependency tree and routes each advisory to the @plurnk package that pulls it in ({§bundled-set}).
 Reads: npm audit --json over the installed tree.
 Writes: the routed report to stdout; --strict exits 1 on any advisory.
 `);

@@ -4,7 +4,7 @@ import type { ClientEntryChannel } from "./types.generated.ts";
  *  the state of each of its channels. Identity and coordinates are named as `stream/event` names them. */
 export interface ApplicationStream {
     readonly entryId: number;
-    /** The initiating Session ({§subscriptions-causal-resource}). */
+    /** The initiating Session ({§subscriptions}). */
     readonly sessionId: number;
     /** The canonical resource URI ({§execution-output-identity}). */
     readonly target: string;

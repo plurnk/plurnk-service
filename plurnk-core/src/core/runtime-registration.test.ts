@@ -50,7 +50,7 @@ const registration = (tag: string): {
     },
 });
 
-test("{§extension-namespace-arbitration} runtime batches publish neither registry when one scheme claim collides", () => {
+test("{§core-extension-composition} runtime batches publish neither registry when one scheme claim collides", () => {
     const schemes = new SchemeRegistry();
     schemes.register("beta", { manifest: manifest("beta") });
     const executors = new ExecutorRegistry(new Map());
@@ -84,7 +84,7 @@ test("{§executor-policy} module runtimes share package discovery's executor swi
     try {
         for (const sessionId of [undefined, 1]) {
             for (const { env, expected } of cases) {
-                await t.test(`${sessionId === undefined ? "daemon" : "session"}: ${JSON.stringify(env)}`, async () => {
+                await t.test(`{§executor-policy} ${sessionId === undefined ? "daemon" : "session"}: ${JSON.stringify(env)}`, async () => {
                     for (const key of keys) delete process.env[key];
                     Object.assign(process.env, env);
                     const schemes = new SchemeRegistry();

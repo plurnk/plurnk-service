@@ -40,7 +40,7 @@ export const defaultGrammarViolations = (manifest) => [
     ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional !== true).map(({ slug }) =>
         `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
         .filter((name) => !Object.hasOwn(manifest.dependencies ?? {}, name))
-        .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§default-extension-ownership}`),
+        .map((name) => `plurnk-core/package.json: dependencies.${name} is required by {§bundled-set}`),
     ...[...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(({ slug }) =>
         `@plurnk/plurnk-mimetypes-grammar-${slug}`))]
         .filter((name) => Object.hasOwn(manifest.dependencies ?? {}, name))

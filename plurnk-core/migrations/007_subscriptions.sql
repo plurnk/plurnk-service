@@ -1,5 +1,5 @@
 -- MIGRATE: 7 subscriptions
--- Chapter 7 of the schema baseline ({§db-schema-baseline}): held streams, events and their observation cursors.
+-- Chapter 7 of the schema baseline ({§db-migrations}): held streams, events and their observation cursors.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
@@ -60,7 +60,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_active_one_per_entry
     ON subscriptions (entry_id)
     WHERE closed_at IS NULL;
 
--- {§db-fk-indexes} Session and entry deletion, and every by-session stream lookup, otherwise scan all subscriptions,
+-- {§db-migrations} Session and entry deletion, and every by-session stream lookup, otherwise scan all subscriptions,
 -- closed ones included; the active-only partial indexes above do not cover foreign-key checks.
 CREATE INDEX IF NOT EXISTS subscriptions_session_id ON subscriptions (session_id) WHERE session_id IS NOT NULL;
 
@@ -76,7 +76,7 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription must open before it can settle');
 END;
 
--- {§validation-topology}: matches chapter 5's `entry_channel_producer_result_contract` over `NEW.close_result`,
+-- {§db-migrations}: matches chapter 5's `entry_channel_producer_result_contract` over `NEW.close_result`,
 -- with `$.status = NEW.close_status` and NULL meaning not yet settled.
 CREATE TRIGGER IF NOT EXISTS subscriptions_result_contract_update
 BEFORE UPDATE OF closed_at, close_status, close_result, channel_results ON subscriptions

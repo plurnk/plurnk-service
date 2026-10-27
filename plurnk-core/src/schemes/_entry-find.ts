@@ -421,7 +421,7 @@ export default class EntryFind {
         fragment: string | null,
     ): Promise<FindScope | MatchOutcome> {
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
-        // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
+        // name). File persists under the reserved 'file' scheme ({§db-migrations}).
         const scheme = EntryCrud.identityScheme(manifest);
         const projectRoot = scheme === "file" ? await FileAddress.projectRoot(ctx) : null;
         const authoredCoordinate = EntryFind.#scopeCoordinateOf(statement, manifest);

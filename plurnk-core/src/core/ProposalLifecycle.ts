@@ -55,7 +55,7 @@ interface ProposalWaiter {
     disposition: ProposalDisposition | null;
     workspaceId?: number;
     selector?: CapabilitySelector;
-    // {§proposal-timeout-cancels} When the armed timeout cancels it; null while it waits indefinitely.
+    // {§proposal} When the armed timeout cancels it; null while it waits indefinitely.
     readonly expiresAt: string | null;
     resolve: (resolution: AppliedProposalResolution) => void;
     reject: (cause: unknown) => void;
@@ -68,7 +68,7 @@ interface ProposalWaiter {
 const abortOutcome = (reason: unknown): string =>
     typeof reason === "string" && reason.length > 0 ? reason : "loop_cancelled";
 
-// {§proposal-harness-settlement} — the settlements nobody was present to explain; an outcome token
+// {§proposal} — the settlements nobody was present to explain; an outcome token
 // alone ("no_review_channel") names a condition the reader cannot act on.
 const HARNESS_SETTLEMENTS: Readonly<Record<string, { readonly condition: string; readonly recovery: string }>> = {
     no_review_channel: {
@@ -138,7 +138,7 @@ interface ProposalRow {
 }
 
 
-// {§proposal-timeout-cancels} — empty means an indefinite wait; a positive
+// {§proposal} — empty means an indefinite wait; a positive
 // millisecond value opts into a bound. An explicit invalid value is a broken
 // operator contract, never another spelling of the indefinite default.
 const readProposalTimeoutMs = (): number | null => {
@@ -719,7 +719,7 @@ export default class ProposalLifecycle {
         const timeoutMs = readProposalTimeoutMs();
         return new Promise<AppliedProposalResolution>((resolve, reject) => {
             // Synthesize a cancel resolution through the same path as any other decision. State
-            // transitions to cancelled with this outcome. {§proposal-timeout-cancels}
+            // transitions to cancelled with this outcome. {§proposal}
             const cancel = (outcome: string): void => {
                 if (!this.#pending.has(logEntryId)) return;
                 void this.resolve(logEntryId, { decision: "cancel", outcome });
@@ -741,7 +741,7 @@ export default class ProposalLifecycle {
         });
     }
 
-    // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. {§proposal-accept-applies}
+    // On accept, run the scheme's applyResolution — File writes disk, Exec spawns. {§proposal}
     async sessionApply(
         statement: PlurnkStatement,
         originalResult: DispatchResult,
@@ -926,8 +926,8 @@ export default class ProposalLifecycle {
         const { resolution, applied } = settlement;
         // Map decision → terminal state + HTTP-aligned status:
         //   accept  → state='resolved', status=200
-        //   reject  → state='failed',   status=400, outcome='rejected' (default) {§proposal-reject-fails}
-        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default) {§proposal-cancel-aborts}
+        //   reject  → state='failed',   status=400, outcome='rejected' (default) {§proposal}
+        //   cancel  → state='cancelled',status=499, outcome='loop_aborted' (default) {§proposal}
         // resolution.outcome wins over the default when supplied; this is how
         // veto filters (Phase E.2 proposal.accepting) can specify a more
         // precise outcome string like 'policy_veto' or 'timeout'.

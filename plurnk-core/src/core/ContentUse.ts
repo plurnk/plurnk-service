@@ -2,7 +2,7 @@ import type { Db } from "./Db.ts";
 
 type Usage = { readers: number; collection: Promise<void> | null };
 
-// {§derivation-in-flight}, {§native-content-lifetime}: collection cannot remove
+// {§derivation-in-flight}, {§content-store}: collection cannot remove
 // a not-yet-published artifact or its source. This grants no resource ownership.
 // Uses remain parallel; a busy collector skips this pass, and new uses await an active collector.
 export default class ContentUse {

@@ -454,7 +454,7 @@ export default class PacketBuilder {
             packet: string;
         }>({ session_id: sessionId });
         if (latest === undefined) return null;
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: turns.packet is a stored RequestPacket
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: turns.packet is a stored RequestPacket
         const stored = JSON.parse(latest.packet) as RequestPacket;
         const packet = await this.buildRequestPacket({
             initialMessages: [{ role: "system", content: PacketWire.sectionContent(stored, "definition") }],

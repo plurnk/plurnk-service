@@ -27,7 +27,7 @@ export const loopOutcome = async (
     }>({ workspace_id: workspaceId, session_name: session, loop_seq: sequence });
     if (row === undefined) return null;
     const resource = loopAddress(session, sequence);
-    // {§validation-topology}: chapter 3's loops_terminal_result_contract holds the stored result's shape.
+    // {§db-migrations}: chapter 3's loops_terminal_result_contract holds the stored result's shape.
     const terminal = row.terminal_result === null ? null : Results.fromRow(row.terminal_result);
     // A loop that ended badly reports how it ended, even when it answered earlier: the failure is
     // the news. Otherwise its answer is what it said.

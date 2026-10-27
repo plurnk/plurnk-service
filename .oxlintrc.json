@@ -42,7 +42,7 @@
                 "ignoreRestSiblings": true
             }
         ],
-        // {§persistence-via-sqlrite}: internal persistence SQL belongs in package-owned SqlRite statements.
+        // {§db-durability}: internal persistence SQL belongs in package-owned SqlRite statements.
         "eslint/no-restricted-imports": [
             "error",
             {

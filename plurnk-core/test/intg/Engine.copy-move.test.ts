@@ -1980,7 +1980,7 @@ test("{§copy} a scoped COPY receipt reports parser recovery for the complete la
     });
 });
 
-test("{§proposal-reject-fails}: a rejected COPY into a file never touches disk", async () => {
+test("{§proposal}: a rejected COPY into a file never touches disk", async () => {
     await withWorkspace(async (root, ctx) => {
         await seedSession(ctx, "note", "nope\n");
         const result = await proposeAndResolve(ctx, copyStmt(urlPath("workspace", "/note"), localPath("rejected.txt")), "reject");
@@ -2164,7 +2164,7 @@ test("{§copy} a reviewer-rewritten cross-resource MOVE still reports its landed
     });
 });
 
-test("{§proposal-reject-fails}: a rejected MOVE into a file preserves the source", async () => {
+test("{§proposal}: a rejected MOVE into a file preserves the source", async () => {
     await withWorkspace(async (_root, ctx) => {
         await seedSession(ctx, "keepme", "keep\n");
         const result = await proposeAndResolve(ctx, moveStmt(urlPath("workspace", "/keepme"), localPath("rejected-move.txt")), "reject");

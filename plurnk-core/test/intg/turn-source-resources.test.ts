@@ -402,7 +402,7 @@ test("{§env-delta-child-activity}: file deletion, session cancellation and stre
         const stream = await db.test_get_entry_by_pathname_scheme.get<{ id: number }>({ scheme: "sh", pathname });
         assert.ok(stream);
         const subscription = await db.test_get_subscription_by_entry.get<{ close_status: number }>({ session_id: child, entry_id: stream.id });
-        assert.equal(subscription?.close_status, 200, "{§stream-asked-stop}: the stream stopped as its holder asked");
+        assert.equal(subscription?.close_status, 200, "{§stream-control}: the stream stopped as its holder asked");
         await Turn.complete(db, turn.id, 102);
         await engine.runTurn({ workspaceId, sessionId: parent, loopId: parentLoop, messages: [],
             provider: new Mock({ contextWindow: 100_000, responses: [{ assistant: { content: frame("NOTE", "Observe."), reasoning: null } }] }),

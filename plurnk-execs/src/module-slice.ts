@@ -35,7 +35,7 @@ export interface Executor {
     toolRegistry?(workspaceId?: number): RuntimeToolRegistry;
 }
 
-// One runtime a module contributes, published under its namespace owner ({§extension-namespace-arbitration}).
+// One runtime a module contributes, published under its namespace owner ({§core-extension-composition}).
 export interface RuntimeRegistration {
     readonly namespaceOwner: string;
     readonly decl: RuntimeDecl;

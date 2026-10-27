@@ -1,4 +1,4 @@
--- Retention ({§retention-policy}): the operator's policy over what the database keeps, as set
+-- Retention ({§content-store}): the operator's policy over what the database keeps, as set
 -- statements run by Retention on the daemon's cadence and at shutdown. Packet compositions and
 -- payloads expire independently of durable identities, decisions and accounting.
 
@@ -75,7 +75,7 @@ WHERE $collect = 1
   AND NOT EXISTS (SELECT 1 FROM derivations d WHERE d.content_id = contents.id);
 
 -- PREP: retention_collect_native_contents
--- {§native-content-lifetime}: curation flags never determine evidence ownership.
+-- {§content-store}: curation flags never determine evidence ownership.
 DELETE FROM native_contents
 WHERE $collect = 1
   AND hash NOT IN (
@@ -92,7 +92,7 @@ WHERE $collect = 1
       WHERE json_type(a.value, '$.contentHash') = 'text'
   );
 
--- {§db-space-reclamation} The daemon keeps its own file healthy: freed pages go back to the OS.
+-- {§content-store} The daemon keeps its own file healthy: freed pages go back to the OS.
 
 -- PREP: retention_auto_vacuum_mode
 PRAGMA auto_vacuum;
@@ -116,6 +116,6 @@ SELECT (SELECT page_count FROM pragma_page_count()) AS pages,
 PRAGMA incremental_vacuum;
 
 -- PREP: retention_wal_truncate
--- {§db-space-reclamation} Reclaiming pages while the WAL stays at its high-water mark is half the
+-- {§content-store} Reclaiming pages while the WAL stays at its high-water mark is half the
 -- job. With a reader still attached this reports busy and truncates on a later pass, never blocks.
 PRAGMA wal_checkpoint(TRUNCATE);

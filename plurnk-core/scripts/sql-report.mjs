@@ -9,7 +9,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run report:sql -- <database.db> [specimens.json]   (from plurnk-core)
-Workload query report over a consistent snapshot of the named database: plans the registry's statements and reports what the workload exercised ({§db-query-report}). On demand, never a gate.
+Workload query report over a consistent snapshot of the named database: plans the registry's statements and reports what the workload exercised ({§db-durability}). On demand, never a gate.
 Reads: the named database, copied under {§share-snapshot}.
 Writes: the report to stdout.
 `);
@@ -17,7 +17,7 @@ Writes: the report to stdout.
 const sourceDirectory = resolve(import.meta.dirname, "../src");
 const failure = (error) => ({ error: error instanceof Error ? error.message : String(error) });
 
-// {§db-query-report}: these are conservative hints, not a SQL parser or a verdict.
+// {§db-durability}: these are conservative hints, not a SQL parser or a verdict.
 export const scanKind = (detail, schema) => {
     const scan = /^SCAN (\S+)/u.exec(detail);
     if (scan === null) return null;
@@ -43,7 +43,7 @@ const queryPlan = (db, sql, parameters) => {
     return parameters === undefined ? query.all() : query.all(SqlRiteCore.jsonify(parameters));
 };
 
-// {§db-query-report}: no daemon, migrations, INIT blocks, automatic corpus selection, or writes to evidence.
+// {§db-durability}: no daemon, migrations, INIT blocks, automatic corpus selection, or writes to evidence.
 export const inspectSql = async (path, specimens = [], directory = sourceDirectory) => {
     validateSpecimens(specimens);
     const chunks = SqlRiteCore.loadChunks({ dir: directory }).PREP;

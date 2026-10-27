@@ -93,7 +93,7 @@ contracts. Core composes them but does not absorb their domain logic. Shared
 facts have one schema and one specification owner. Frameworks do not depend on
 the extensions of their kind; the service manifest is the sole owner of its
 default extensions, while compatible third-party extensions join them through the
-same installation and discovery path ({§default-extension-ownership}).
+same installation and discovery path ({§bundled-set}).
 
 ### Package principles
 
@@ -340,7 +340,7 @@ parameter default or a settings field, find its knob — or say why it has none.
 **The SQL core owns each invariant.** Contracts (JSON Schema) are enforced at
 the gates: a scheme's result entering core, and the wire leaving to clients.
 Everything between trusts core and the gates and carries no defensive
-re-validation ({§validation-topology}).
+re-validation ({§db-migrations}).
 
 ## Process composition
 
@@ -414,7 +414,7 @@ host effect, because the effect is the rule and the op is not: an outbound
 POST, PUT or DELETE leaves the machine exactly as a subprocess does
 ({§http-outbound-proposes}). An accepted proposal's settlement replaces the
 202 with the applied operation's result, preserving failures
-({§proposal-accept-applies}).
+({§proposal}).
 
 Subsystem management is ordered configuration, not background work. Its commands
 retain those proposal and output paths, but settle before the next operation;
@@ -452,12 +452,12 @@ of the surrounding filesystem or external services.
 | Data | Authority and lifetime |
 | --- | --- |
 | Model working context | Log projections; curation changes visibility, not the recorded event or its source ({§log-history-projection}, {§log-kill-scope}). |
-| Accepted messages, operations, approval decisions and turn sources | Core's durable records; independent of curation, but containing-object deletion can cascade history. The approval is recorded before application and remains distinct from its result ({§message-projection}, {§turn-source-resources}, {§log-history-projection}, {§proposal-decision-evidence}). |
+| Accepted messages, operations, approval decisions and turn sources | Core's durable records; independent of curation, but containing-object deletion can cascade history. The approval is recorded before application and remains distinct from its result ({§message-projection}, {§turn-source-resources}, {§log-history-projection}, {§proposal}). |
 | Database commits | Connection-time WAL synchronization governs crash/power-loss durability, separately from retention and backups ({§db-durability}). |
 | Provider requests and accounting | One record per physical request, including failed requests and unknown usage; forked history does not create new spend ({§tokenomics-provider-usage}). |
-| Packet compositions and call payloads | Retained according to count/age policy. Logical-response and physical-request payloads expire together; request identities and accounting remain, including failures and unknown costs ({§retention-policy}, {§provider-request-evidence}). |
+| Packet compositions and call payloads | Retained according to count/age policy. Logical-response and physical-request payloads expire together; request identities and accounting remain, including failures and unknown costs ({§content-store}, {§provider-request-evidence}). |
 | Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |
-| Native attachment snapshots | READ, message and packet references retain bytes independently of curation or source deletion. Publication protects in-flight captures; only unreferenced snapshots are collected ({§native-content-lifetime}). |
+| Native attachment snapshots | READ, message and packet references retain bytes independently of curation or source deletion. Publication protects in-flight captures; only unreferenced snapshots are collected ({§content-store}). |
 | Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§file-snapshot-revision}, {§file-snapshot-revision}). Internal commit serialization is not a session reservation or exclusion of external writers ({§file-snapshot-revision}, {§file-snapshot-revision}). SQLite commits and backups do not include project files. |
 | Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-state}, {§schedule-residency}, {§schedule-first-arming}, {§oauth-lifetime}). |
 | Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§session-causal-admission}, {§notice-drain-on-read}). |

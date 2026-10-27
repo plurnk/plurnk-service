@@ -25,7 +25,7 @@ const fixture = async (run) => {
     }
 };
 
-test("{§db-query-report} plans mutations but measures only read queries on a consistent private snapshot", async () => {
+test("{§db-durability} plans mutations but measures only read queries on a consistent private snapshot", async () => {
     await fixture(async ({ path, db, folder }) => {
         const source = join(folder, "queries.sql");
         await writeFile(source, `-- PREP: read_fact
@@ -61,7 +61,7 @@ SELECT content_weight(body), glob_match(body, '*'), body REGEXP 'o', uuid() FROM
     });
 });
 
-test("{§db-query-report} missing schema and invalid specimens remain visible failures", async () => {
+test("{§db-durability} missing schema and invalid specimens remain visible failures", async () => {
     await fixture(async ({ path, folder }) => {
         await writeFile(join(folder, "queries.sql"), "-- PREP: absent\nSELECT body FROM missing_table;\n");
         const report = await inspectSql(path, [{ statement: "unknown", parameters: {} }], folder);
@@ -73,7 +73,7 @@ test("{§db-query-report} missing schema and invalid specimens remain visible fa
     });
 });
 
-test("{§db-query-report} scan hints distinguish named base tables from indexed, virtual, and unresolved scans", () => {
+test("{§db-durability} scan hints distinguish named base tables from indexed, virtual, and unresolved scans", () => {
     const schema = new Map([["facts", "table"], ["visible_facts", "view"]]);
     assert.equal(scanKind("SCAN facts", schema), "table");
     assert.equal(scanKind("SCAN facts USING COVERING INDEX by_body", schema), "indexed");
@@ -84,7 +84,7 @@ test("{§db-query-report} scan hints distinguish named base tables from indexed,
     assert.equal(scanKind("SEARCH facts USING INTEGER PRIMARY KEY", schema), null);
 });
 
-test("{§db-query-report} real function definitions are used, not planner stubs", async () => {
+test("{§db-durability} real function definitions are used, not planner stubs", async () => {
     await fixture(async ({ path, folder }) => {
         await writeFile(join(folder, "queries.sql"), `-- PREP: exact_function
 SELECT body FROM facts WHERE sha256(body)=:hash;
@@ -97,7 +97,7 @@ SELECT body FROM facts WHERE sha256(body)=:hash;
     });
 });
 
-test("{§db-query-report} CLI retains failed measurements and exits nonzero instead of reporting success", async () => {
+test("{§db-durability} CLI retains failed measurements and exits nonzero instead of reporting success", async () => {
     await fixture(async ({ path, folder }) => {
         const specimens = join(folder, "specimens.json");
         await writeFile(specimens, JSON.stringify([{ statement: "unknown_query", parameters: {} }]));

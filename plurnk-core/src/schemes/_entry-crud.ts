@@ -38,7 +38,7 @@ export interface DeleteEntryResult extends SchemeResultBase {
 }
 
 export default class EntryCrud {
-    // {§entry-identity-no-null} — the non-null identity scheme persisted by a manifest.
+    // {§db-migrations} — the non-null identity scheme persisted by a manifest.
     static identityScheme(manifest: { name: string; storedScheme?: string }): string {
         return manifest.storedScheme ?? manifest.name;
     }
@@ -89,10 +89,10 @@ export default class EntryCrud {
                 content: row.content,
                 mimetype: row.mimetype,
                 state: row.state,
-                // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
+                // {§db-migrations}: a stored result is chapter 5's; it is parsed, not re-asserted.
                 ...(row.producer_result === null
                     ? {}
-                    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a stored result is parsed, not re-asserted
+                    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a stored result is parsed, not re-asserted
                     : { producerResult: JSON.parse(row.producer_result) as ChannelProducerResult }),
             };
         }

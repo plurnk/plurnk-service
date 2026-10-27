@@ -1,9 +1,9 @@
 -- MIGRATE: 8 interactions
--- Chapter 8 of the schema baseline ({§db-schema-baseline}): Client interactions raised by a turn.
+-- Chapter 8 of the schema baseline ({§db-migrations}): Client interactions raised by a turn.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
--- {§client-interactions}: the durable discoverable half of a client-owned
+-- {§proposal-projection}: the durable discoverable half of a client-owned
 -- interaction. The process-local lifecycle owner holds the awaiting callable;
 -- this row holds only presentation and routing facts. Settlement deletes the
 -- row, so client response payloads and owner-private continuation state are
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS client_interactions (
 CREATE INDEX IF NOT EXISTS client_interactions_session_id_id
     ON client_interactions (session_id, id);
 
--- {§db-fk-indexes} Turn and loop inserts check interactions by their loop and turn.
+-- {§db-migrations} Turn and loop inserts check interactions by their loop and turn.
 CREATE INDEX IF NOT EXISTS client_interactions_loop_id ON client_interactions (loop_id);
 
 CREATE INDEX IF NOT EXISTS client_interactions_turn_id ON client_interactions (turn_id);

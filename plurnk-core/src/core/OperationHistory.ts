@@ -20,7 +20,7 @@ export default class OperationHistory {
         const byTurn = new Map(entries.flatMap((entry) => {
             const program = typeof entry.id === "number" ? byId.get(entry.id) : undefined;
             return program === undefined ? [] : [[OperationHistory.#turn(entry),
-                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a frozen emission's executors are read back as the row stored them
+                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a frozen emission's executors are read back as the row stored them
                 TurnOps.parseInternal(program.content, { executors: JSON.parse(program.executors) as string[] })] as const];
         }));
         const operations = new Map<string, string>();

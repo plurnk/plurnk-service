@@ -2532,7 +2532,7 @@ test("{§exec-lifetime}: KILL cancels queued work without invoking its executor"
         });
         // #757 — a KILL of an ended stream succeeds and reports how it ended.
         assert.equal(terminal.status, 200);
-        assert.equal((terminal as { terminalStatus?: number }).terminalStatus, 200, "{§stream-asked-stop}: queued work its holder killed concludes as asked");
+        assert.equal((terminal as { terminalStatus?: number }).terminalStatus, 200, "{§stream-control}: queued work its holder killed concludes as asked");
     } finally {
         executor.releaseAll();
         await exec.idle();
@@ -4204,7 +4204,7 @@ const readStatement = (pathname: string): ReadStatement => ({
     },
 });
 
-test("{§extension-namespace-arbitration} module runtime registration adds one dispatchable and model-visible tag", async () => {
+test("{§core-extension-composition} module runtime registration adds one dispatchable and model-visible tag", async () => {
     const db = await openMigrated();
     try {
         const { schemes, executors, engine } = wire(db);
@@ -4215,7 +4215,7 @@ test("{§extension-namespace-arbitration} module runtime registration adds one d
     } finally { await db.close(); }
 });
 
-test("{§extension-namespace-arbitration} module runtime registration preserves one-name-one-owner atomicity", async () => {
+test("{§core-extension-composition} module runtime registration preserves one-name-one-owner atomicity", async () => {
     const db = await openMigrated();
     try {
         const { schemes, executors, engine } = wire(db);
@@ -4249,7 +4249,7 @@ test("{§extension-namespace-arbitration} module runtime registration preserves 
     } finally { await db.close(); }
 });
 
-test("{§extension-namespace-arbitration} module runtime registration preflights both registries before mutating either", async () => {
+test("{§core-extension-composition} module runtime registration preflights both registries before mutating either", async () => {
     const db = await openMigrated();
     try {
         const existing = fakeEntry("occupied", "existing module");
@@ -4582,7 +4582,7 @@ test("{§execution-output-identity} workspaces: empty name rejected by CHECK (le
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} workspaces: negative version rejected by CHECK", async () => {
+test("{§db-migrations} workspaces: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(

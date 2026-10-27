@@ -2350,7 +2350,7 @@ test("{§engine-rails} file.edit: an unchanged file is a 304 no-op and never bec
     });
 });
 
-test("{§proposal-outcome-terse-error} file.edit: rejection leaves file untouched; the rx carries a durable Problem Details result", async () => {
+test("{§proposal} file.edit: rejection leaves file untouched; the rx carries a durable Problem Details result", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "untouched.txt";
         // pre-existing file must be a member to be editable (SPEC {§membership} edit gate)

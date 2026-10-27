@@ -221,7 +221,7 @@ describe("default grammar and dependency policy", () => {
         [leaf(entry), "1.0.0"]));
     const optionalLeaves = [...new Set(TREE_SITTER_REGISTRY.filter(({ optional }) => optional === true).map(leaf))];
 
-    it("{§default-extension-ownership} requires every registered non-optional grammar as a service runtime dependency", async () => {
+    it("{§bundled-set} requires every registered non-optional grammar as a service runtime dependency", async () => {
         const manifest = JSON.parse(await readFile(new URL("../plurnk-core/package.json", import.meta.url), "utf8"));
         assert.deepEqual(defaultGrammarViolations(manifest), []);
         assert.deepEqual(defaultGrammarViolations({ dependencies }), []);
@@ -231,7 +231,7 @@ describe("default grammar and dependency policy", () => {
             assert.deepEqual(defaultGrammarViolations({
                 dependencies: rest,
                 [section]: { "@plurnk/plurnk-mimetypes-grammar-cpp": cpp },
-            }), ["plurnk-core/package.json: dependencies.@plurnk/plurnk-mimetypes-grammar-cpp is required by {§default-extension-ownership}"]);
+            }), ["plurnk-core/package.json: dependencies.@plurnk/plurnk-mimetypes-grammar-cpp is required by {§bundled-set}"]);
         }
     });
 

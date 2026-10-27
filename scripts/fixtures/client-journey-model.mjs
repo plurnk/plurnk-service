@@ -157,7 +157,7 @@ export const startClientJourneyModel = async () => {
             }
             if (journey === "recovery" && index === 1) {
                 assert.ok(text.includes("Please keep observing the unresolved stream."), "new input wakes the parked session");
-                // {§subscription-finalization}: the failed close leaves the replayed command's stream open work, its output retained.
+                // {§subscriptions}: the failed close leaves the replayed command's stream open work, its output retained.
                 const command = pairedReceipts(body.messages ?? []).find((row) => row.op === "sh");
                 const work = JSON.parse(/(?:^|\n)## Open Work\n([\s\S]*?)(?=\n\n## |$)/u.exec(text)?.[1] ?? "{}");
                 const stream = work.streams?.find(({ path }) => path === command?.stream);

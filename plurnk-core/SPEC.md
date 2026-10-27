@@ -66,7 +66,7 @@ flowchart LR
 | **model call** | Core/provider | One logical `provider.generate` invocation (`(turn_id, sequence)`); emission attempts and BARE inferences share this owner while retries are physical requests beneath it. |
 | **op / statement / action / dispatch** | Core | An op is one submitted DSL operation ({§turn-record}), parsed into a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
 | **ACP Run / ACP thread** | ACP | A client stream envelope (`runId`) bound to a core loop or management action; within a workspace, `threadId` resolves to one model session. |
-| **entry / channel** | Storage | Canonical state unit `(workspace_id, scheme, authority, pathname)` ({§entry-identity-no-null}) holding named `channels` (`body`, `stdout`, `stderr`, `headers`, `symbols` with `content`, `mimetype`, `weight`, and `state`: `static \| active \| closed \| errored`) plus scheme `attributes`. |
+| **entry / channel** | Storage | Canonical state unit `(workspace_id, scheme, authority, pathname)` ({§db-migrations}) holding named `channels` (`body`, `stdout`, `stderr`, `headers`, `symbols` with `content`, `mimetype`, `weight`, and `state`: `static \| active \| closed \| errored`) plus scheme `attributes`. |
 | **scheme / mimetype / provider** | Extensions | Addressable namespace handler ({§scheme-surface}), content-type structural projector ({§mimetype}), and LLM transport adapter ({§provider-surface}). |
 | **status / proposal state / outcome** | Execution | Operation HTTP status on `log_entries.status_rx` ({§operation-results}); proposal lifecycle `proposed \| resolved \| failed \| cancelled` ({§proposal}); short terminal reason string (`outcome`). |
 | **writer / origin / writable_by** | Authority | Identity authoring a write (`model \| client \| _plurnk`, logged as `log_entries.origin`); engine enforces scheme `manifest.writableBy` with `403` ({§subscriptions}). |
@@ -181,7 +181,7 @@ flowchart TB
 | State | Owner & Fork Behavior |
 |---|---|
 | Project filesystem, membership overlay, `workspace:///`, `sh://`, `http://` | Workspace-owned and shared live; never copied on fork. Workspaces themselves cannot be forked. |
-| Named scratch (`session://<name>/...`) | Workspace-owned under literal namespace `<name>`. When the `sessions` row with `parent_session_id` and `forked_from_turn_id` is inserted, `sessions_fork_copies_history` ({§db-process-triggers}) snapshots quiescent `session://<parent>/...` entries into `session://<child>/...` without rewriting body text. |
+| Named scratch (`session://<name>/...`) | Workspace-owned under literal namespace `<name>`. When the `sessions` row with `parent_session_id` and `forked_from_turn_id` is inserted, `sessions_fork_copies_history` ({§db-migrations}) snapshots quiescent `session://<parent>/...` entries into `session://<child>/...` without rewriting body text. |
 | Log, loops, turns, curation, and accounting | Session-owned. Fork copies the parent's loops, turns, and `log_entries` up to `forked_from_turn_id` as settled terminal history (`100`/`102`/`202` clamped to `200`, open turns to `499`, pending proposals to `cancelled`, stream subscriptions omitted), preserving `weight`, `forget_The_Past`, and observation cursor while copying zero provider cost ({§tokenomics-turn-summary}). |
 | Session identity & origin | Each session carries `origin` (`model` or `_plurnk`; `WORK`/`FORK` create `model` sessions regardless of operation producer, {§actor-boundary-client-operations}) and an immutable unique 128-bit hex `provider_identity` (`sessions.provider_identity`, {§provider-cache-identity}). |
 | Place hiding (`hidden_at`) | Hiding a workspace marks the workspace alone; hiding a session marks it and its subtree (`hidden_by` naming the root of the hide group; `409 live-work` if any covered session holds a live loop, {§session-loop-lifecycle}, open stream, pending proposal, or pending question). Starting a live loop or selecting a workspace by its default folder name ({§execution-output-identity}) shows it; `listWorkspaces`, `listSessions`, and `overview` ({§methods-session-overview}) filter by `hidden_at` and emit `workspace/hidden` / `session/hidden`. |
@@ -232,7 +232,7 @@ flowchart LR
 
 `workspace_constraints` holds projected `members` definitions (`source: "members"` for human definitions, `source: "model"` for model definitions, `source: "create"` for accepted creations) and `!glob` exclusions ({§members-projection}). Only `source: "members"` inclusions override active Git ignore; exclusions mask creation records without deleting their provenance ({§fs-write-surface}).
 
-- **Auto-add (`PLURNK_MEMBERS_AUTO_ADD=1`)**: Model READ and FIND see untracked, non-ignored files under `project_root` minus exclusions. Listing FIND rows mark candidates `untracked` without admitting them; content READ or text-matching FIND proposes a `202` host-effect admission (`{"files": [...]}`) under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§proposal-202-pauses}, {§proposal-accept-applies}, {§proposal-reject-fails}), emitting one `member_added` notice per admitted path ({§notice-directive}) and re-running the operation. Client operations and `PLURNK_MEMBERS_AUTO_ADD=0` read members only.
+- **Auto-add (`PLURNK_MEMBERS_AUTO_ADD=1`)**: Model READ and FIND see untracked, non-ignored files under `project_root` minus exclusions. Listing FIND rows mark candidates `untracked` without admitting them; content READ or text-matching FIND proposes a `202` host-effect admission (`{"files": [...]}`) under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§proposal}, {§proposal}, {§proposal}), emitting one `member_added` notice per admitted path ({§notice-directive}) and re-running the operation. Client operations and `PLURNK_MEMBERS_AUTO_ADD=0` read members only.
 - **Set reconciliation and SQL globs**: Membership reconciles in two SQL set statements (`INSERT … SELECT FROM json_each` and `DELETE … WHERE pathname NOT IN (json_each) RETURNING`), recording EMI divergence only when a removed path also left disk truth. `glob_match(pathname, glob)` (`src/core/glob_match.ts`) evaluates {§find} directly in SQLite queries over `workspace_constraints`.
 
 ### §derivation-dedup-parallel Materialization, source projection, and search derivation
@@ -294,10 +294,10 @@ When a loop parks on live work, `PLURNK_SERVICE_WAIT_SEC` (or `WAIT [seconds]`, 
 
 | Mechanism | Rule |
 | --- | --- |
-| Recursive cancellation and epoch bound | `lifecycle_cancel_sessions` and the `sessions_cancel_live_loops` trigger atomically record `cancelled_through_sequence` and terminalize unresolved loops (`499`, `terminated_by = 'cancel'`) across the session subtree, while process-local teardown invokes every durable open subscription's live cancellation handle (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) and aborts pending proposal waiters (`daemon_stopping`, {§proposal-cancel-aborts}). Streams bind to the cancellation scope captured at spawn; cancelled work never resurrects its scope. |
+| Recursive cancellation and epoch bound | `lifecycle_cancel_sessions` and the `sessions_cancel_live_loops` trigger atomically record `cancelled_through_sequence` and terminalize unresolved loops (`499`, `terminated_by = 'cancel'`) across the session subtree, while process-local teardown invokes every durable open subscription's live cancellation handle (`PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) and aborts pending proposal waiters (`daemon_stopping`, {§proposal}). Streams bind to the cancellation scope captured at spawn; cancelled work never resurrects its scope. |
 | Child wake and optimistic settlement | Every child task completion notifies its direct parent without injecting a prompt. Before model dispatch, `PLURNK_SERVICE_OPTIMISTIC_WAIT_MS` (default 5s; `0` disables) bounds both initiating-turn stream settlement and wake holds that coalesce sibling stream/child arrivals while another obligation remains live. |
 | Durable disposition and idle rule | A loop concludes only under {§loop-completion}; a concluded session retains history and starts a new loop on a later addressed arrival. At turn boundaries, a committed `202` park survives a racing daemon-shutdown abort. |
-| Daemon lock and restart recovery | Before opening transports, the daemon acquires an exclusive database-adjacent lock (`DaemonLock`), replacing dead-PID claims atomically. Boot recovery commits atomically: `100` loops restore drains; `102` loops, pending provider calls, proposed operations (`owner_vanished`, {§proposal-list}), and open subscriptions settle `500`; pending client interactions are removed ({§client-interactions}); and `202` loops requeue if obligations settled or restore guarded wait timers. |
+| Daemon lock and restart recovery | Before opening transports, the daemon acquires an exclusive database-adjacent lock (`DaemonLock`), replacing dead-PID claims atomically. Boot recovery commits atomically: `100` loops restore drains; `102` loops, pending provider calls, proposed operations (`owner_vanished`, {§proposal-list}), and open subscriptions settle `500`; pending client interactions are removed ({§proposal-projection}); and `202` loops requeue if obligations settled or restore guarded wait timers. |
 
 ### §turn-record Producer-neutral turn record
 
@@ -693,486 +693,96 @@ The engine routes unconditionally to `exec`, resolves `runtime` from the workspa
 
 ## §proposal Proposals and client interactions
 
-<!-- map -->
-| Tag | Promise |
+When a side-effecting op returns `202` (e.g., `host` execution {§exec} or member file EDIT {§membership}), the engine writes `log_entries.state = 'proposed'` (withheld from packets and `log/entry` until resolved), registers a waiter keyed by `logEntryId`, and pauses `dispatch` until resolved ({§methods-proposal-resolve}, {§acp-proposal-resolve}, {§proposal-disposition}). {§engine-rails} observes the resolved status, never the provisional `202`.
+
+- **Timeout & loop abort:** Empty `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` waits indefinitely for its reviewer; a positive millisecond value synthesizes `cancel` (`outcome: "timeout"`); any other explicit value fails at the lifecycle owner. Loop abort (timeout, `cancelLoop`, session `KILL`) settles held proposals as `cancel` with the abort reason.
+- **Decision evidence:** Each proposal commits at most one immutable decision record (`accept`/`reject`/`cancel`, resolver identity, timestamp, body override, outcome) before application; a second resolution returns `409 proposal-not-pending`. Restart marks interrupted application uncertain without replaying ({§session-causal-admission}).
+
+| Decision | `state` | `status_rx` | Default `outcome` | Effect |
+| --- | --- | --- | --- | --- |
+| `accept` | `resolved` (or `failed` if apply ≥ 400) | applied status (or `200`) | — (`apply_failed` on unnamed failure) | Runs scheme `applyResolution` (`410 handler-unavailable` if missing). |
+| `reject` | `failed` | `400` | `rejected` | None; Problem carries forensic `outcome` and harness settlement recovery when applicable. |
+| `cancel` | `cancelled` | `499` | `loop_aborted` | None; loop or deadline abandoned the wait. |
+
+### §proposal-projection Proposal projection and client interactions
+
+| Surface | Contract |
 | --- | --- |
-| {§proposal-202-pauses} | A 202 proposal pauses: |
-| {§proposal-timeout-cancels} | Timeout is OPT-IN; an empty deadline WAITS |
-| {§proposal-decision-evidence} | Each proposal has at most one immutable decision record, committed before application. |
-| {§proposal-accept-applies} | accept — `resolved`, or `failed` when application fails |
-| {§proposal-reject-fails} | reject — `failed` |
-| {§proposal-cancel-aborts} | cancel — `cancelled` |
-| {§proposal-outcome-terse-error} | A caller-supplied `outcome` overrides the default. |
-| {§proposal-harness-settlement} | A settlement the harness itself decided names its condition and its recovery. |
-| {§proposal-proposed-hidden} | A proposed row is invisible until it resolves. |
-| {§proposal-projection} | One durable proposal, one client projection |
-| {§client-interactions} | Client-owned interaction lifecycle |
-| {§proposal-ownership-notification} | The notification carries the selected `ProposalDisposition`, not policy inputs. |
-| {§proposal-disposition} | Proposal disposition: settlement authority and precedence |
-| {§runtime-bookkeeping-policy} | Runtime bookkeeping cannot acquire new authority. |
-<!-- /map -->
+| `ProposalProjection` | Derived once from the durable proposed row and loop for both `loop/proposal` and `pendingProposals()` ({§proposal-list}): identity (`id`, `session_id`, `loop_id`, `turn_id`, `op`), `session` ({§session-name}), `coordinate` `L/T/S` ({§methods-log-coordinate}), optional `expiresAt`, `target` (`attrs.proposalTarget` or row target), `body`, `attrs`, `owner` ({§session-ownership}), `disposition`, `selector` ({§capability-policy-matching}), and ACP v2 `subject`. Malformed durable fields terminalize the row `500 policy_failed`. |
+| `ClientInteractionRequest` ({§client-interaction-wire}) | Inserts a pending-only `client_interactions` row paired with a live process-local waiter, published via `loop/interaction` and reconnect discovery. Resolution (`accept` with schema-validated `content`, `decline`, or `cancel`) validates against `requestedSchema` (`400 interaction-response-invalid` keeps the request pending) before deleting the row and releasing the waiter once. Owner/execution abort or restart removes unowned rows without replay. |
 
-§proposal-202-pauses **A 202 proposal pauses:** a side-effecting op does not execute on dispatch — it **proposes**. The scheme returns **202** (an execution on a `host` runtime {§exec}, an EDIT to a member file {§membership}); the engine writes the log row `state='proposed'`, registers a waiter keyed by `logEntryId`, and **pauses `dispatch`** awaiting a resolution. The provider exchange and emitted operation are already durable, while the turn remains open until dispatch settles; {§engine-rails} therefore sees the *resolved* status, never the provisional 202. Acceptance runs the scheme's effect and settles with its result ({§proposal-accept-applies}).
-
-**Resolution arrives through one lifecycle:**
-
-- **Client disposition** ({§methods-proposal-resolve}) — a client interface delivers accept, reject, or cancel; ACP uses standard resume entries ({§acp-proposal-resolve}).
-- **Loop disposition** ({§proposal-disposition}) — core applies the exact automatic accept/reject before observational subscribers run; automatic policy is not an event listener or client fallback.
-- §proposal-timeout-cancels **Timeout is OPT-IN; an empty deadline WAITS** - an empty `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` means a pending proposal - a file edit awaiting review - waits indefinitely for its human: absence is not an answer, so the service does not synthesize a cancellation. A finite positive millisecond value establishes the bound; then elapsing synthesizes `cancel` (outcome `timeout`), server-side, needing no client. Every other explicit value fails at the proposal lifecycle owner and terminalizes an already-written proposal rather than silently choosing an indefinite wait. Indefinite is with respect to the clock alone: the wait ends with its loop. A loop whose signal aborts — its own timeout, `cancelLoop` (`session/cancel`), session `KILL` — settles every proposal it is holding through {§proposal-cancel-aborts}, carrying the abort's reason as the outcome, because a cancelled loop is not a loop awaiting a decision.
-
-§proposal-decision-evidence Each proposal has at most one immutable decision record,
-committed before application. It contains the original accept/reject/cancel,
-resolver identity, decision time, and any submitted body override and outcome.
-Client decisions name the authenticated session owner; automatic policy, timeout,
-abort, and shutdown decisions name `_plurnk`. This records the resolving authority,
-not an assertion that a human reviewed the operation. A failed decision write
-prevents application and surfaces its cause. The applied result is separate:
-acceptance followed by failure remains acceptance. Restart preserves recorded
-decisions, marks interrupted application uncertain, and never replays it
-({§session-causal-admission}). Decision evidence follows its operation's
-history lifetime, survives log curation, and appears in forensic output, not in
-the model packet. Historical rows receive no invented decisions.
-
-**The decision drives a one-way state transition** on `log_entries.state`.
-A second resolution is refused with `409 proposal-not-pending`:
-
-| decision                        | state | `status_rx` | default outcome | effect |
-|---------------------------------|---|---|---|---|
-| §proposal-accept-applies accept | `resolved`, or `failed` when application fails | applied result's status, otherwise 200 | — | runs the scheme's **`applyResolution`** — the real side effect (disk write, exec spawn). An unavailable handler returns `410 handler-unavailable`, never success. A failing apply (≥400) preserves its result and marks the row failed without changing the client's decision; its outcome is retained, or `apply_failed` when it names none. |
-| §proposal-reject-fails reject   | `failed` | 400 | `rejected` | none — the action did not occur. |
-| §proposal-cancel-aborts cancel  | `cancelled` | 499 | `loop_aborted` | none — the loop is abandoning. |
-
-§proposal-outcome-terse-error A caller-supplied `outcome` overrides the default. On an **accept** it rides the result as the forensic `outcome` field; a **non-accept** is a Problem that carries the same `outcome` field (`write_failed` / `rejected` / `timeout` — one word) and names it in its detail, because "the action didn't occur" without the mechanical why leaves the model acting on a phantom success (the fan-out dead-park: an ENOENT apply rendered as a mute 400).
-
-§proposal-harness-settlement **A settlement the harness itself decided names its condition and its recovery.** Nobody attending, no answer before a deadline, a loop or daemon ending while the proposal waited: each states that condition and an exit in its detail and `recovery`, because a reviewer's outcome is a reviewer's word but these have no author present to explain them; the one-word token stays as the forensic `outcome` either way ({§proposal-outcome-terse-error}).
-
-§proposal-proposed-hidden **A proposed row is invisible until it resolves.** A `state='proposed'` / 202 row is withheld from both packet materialization and `log/entry`; it surfaces exactly once after resolution, carrying its terminal status — models and clients see outcomes, never pending proposals.
-
-### §proposal-projection One durable proposal, one client projection
-
-Core derives the contracts-owned `ProposalProjection` from the durable proposed log row and its loop. The live `loop/proposal` event and `pendingProposals()` reconnect discovery call the same projection function; Daemon and interface modules do not rebuild persistence fields. Reconnect discovery admits only rows still paired with this process's resolution waiter ({§proposal-list}); durable review material without its callable lifecycle owner is not a stopped world.
-
-| Projection field      | Durable authority                                                                                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| identity              | proposed log row `id`, `session_id`, `loop_id`, `turn_id`, and validated `op`                                       |
-| `session`              | the session's name ({§session-name})                                                                                 |
-| `coordinate`          | the row's log coordinate `L/T/S` ({§methods-log-coordinate})                                                       |
-| `expiresAt`           | when the operator's decision deadline cancels the proposal ({§proposal-timeout-cancels}); absent for an untimed wait |
-| `target`              | canonical `{ scheme, authority, pathname }` from `attrs.proposalTarget` for staged COPY/MOVE, otherwise the log row target |
-| `body`                | proposed operation result `rx.body`; absent means the empty review body                                            |
-| `attrs`               | proposed log row `attrs` object                                                                                    |
-| `owner`               | the session's durable workspace-scoped approval owner ({§session-ownership}) |
-| `disposition`         | {§proposal-disposition}; the same value drives automatic settlement and client presentation                        |
-| `selector`            | the proposal's `CapabilitySelector` ({§capability-policy-matching}) for standing workspace policy rules            |
-| `subject`             | the structured ACP v2 review subject (`{ type: "command", command, cwd }` or `{ type: "tool_call", kind, title, locations?, diff? }`) |
-
-Workspace scope remains the event envelope / seam argument ({§notifications-envelope-carries-workspaceid}); it is not forged into `ProposalProjection`. Malformed durable JSON, target metadata, result envelopes, owner registration, or final projection fails at core with its cause; after insertion, core terminalizes that row as a 500 `policy_failed` before propagating the internal failure, so no waiter or durable stopped world is orphaned.
-
-### §client-interactions Client-owned interaction lifecycle
-
-A scheme or executor may pause its current operation on one
-`ClientInteractionRequest` ({§client-interaction-wire}). Core first inserts a
-pending-only `client_interactions` row bound to one exact
-workspace/session/loop/turn ownership chain, then publishes the same validated
-`ClientInteractionProjection` through `loop/interaction` and reconnect
-discovery. The projection names its recipient ({§session-ownership}) but
-contains no workspace id or private upstream
-continuation state; those remain respectively in the event envelope and the
-awaiting operation owner.
-
-Only the live process-local waiter can make a durable row resolvable. Interaction
-identities are never reused after settlement or owner loss. Resolution validates
-one `ClientInteractionResolution` (`{ action: "accept", content? } | { action: "decline" } | { action: "cancel" }`)
-and, when `action` is `"accept"`, validates `content` against the pending form
-request's `requestedSchema` (or rejects any `content` on a URL request) before
-deleting the row and releasing the owner exactly once. Invalid content returns
-`400 interaction-response-invalid` with validation issues; the same request remains
-pending and answerable. `"decline"` and `"cancel"` require no content. Owner abort deletes the row and rejects the
-waiter with that owner's cancellation reason. An executor's waiter follows its
-execution signal, including KILL and deadline, not just its enclosing loop.
-Scheme and executor interaction requests may supply a narrower signal; Core
-composes it with the existing owner signal before registering the same waiter.
-Reconnect discovery intersects durable rows with live waiters; restart
-removes ownerless rows without fabricating cancellation, payload, or replay.
-
-### Server disposition and client YOLO
-
-| Mechanism | Authority path |
-| --- | --- |
-| Server disposition | `PLURNK_SERVICE_PROPOSALS` selects review, accept, or reject. Core settles automatic decisions through the normal proposal lifecycle. |
-| Client-side YOLO | The owning client accepts review requests through the same resolution path as human review. It cannot override server rejection or capability admission. |
-
-§proposal-ownership-notification The notification carries the selected
-`ProposalDisposition`, not policy inputs. Clients present only `decision: "review"`
-addressed to their owner identity; they never reconstruct authority from the
-operation, message sender, or attrs.
-
-### §proposal-disposition Proposal disposition: settlement authority and precedence
+### §proposal-disposition Proposal disposition, authority, and precedence
 
 | First applicable condition | Disposition |
 | --- | --- |
-| Runtime bookkeeping | reject, `runtime_bookkeeping` |
-| Server `accept` | accept |
-| Server `reject` | reject, `policy_veto` |
-| Server `review`, a person's client operation ({§connection-lifecycle}) | accept, `client_operation` |
-| Server `review`, pre-approved by capability `allow` ({§capability-policy-cascade}) | accept, `capability_allow` |
-| Server `review`, owner implements `request_approval` | review |
-| Server `review`, owner has no reviewer | reject, `no_review_channel` |
+| Runtime bookkeeping (reference publication, audit narration) | `reject`, `runtime_bookkeeping` (never acquires approval authority) |
+| Server `PLURNK_SERVICE_PROPOSALS=accept` | `accept` |
+| Server `PLURNK_SERVICE_PROPOSALS=reject` | `reject`, `policy_veto` |
+| Server `review`, client operation ({§connection-lifecycle}) | `accept`, `client_operation` |
+| Server `review`, capability `allow` ({§capability-policy-cascade}) | `accept`, `capability_allow` |
+| Server `review`, owner declares `request_approval` | `review` (presented only to matching owner; client YOLO resolves via normal accept) |
+| Server `review`, owner has no reviewer | `reject`, `no_review_channel` |
 
-Core selects the disposition once for the pending gate. Its live event and
-reconnect projection use that same decision. Automatic settlement precedes
-observational notification; an observer failure cannot change authority or orphan
-a waiter. Invalid configuration is diagnosed at the proposal boundary without
-substituting authority ({§configuration-repair-path}). A person's client operation is
-already that person's decision, so review never routes it; the server's `accept` and
-`reject` still apply.
-
-§runtime-bookkeeping-policy Runtime bookkeeping cannot acquire new authority.
-Generated reference publication and audit narration have no reviewer and do not
-depend on interactive defaults. An unexpected bookkeeping proposal rejects through
-the ordinary lifecycle, even if the server would accept other operations.
-
-A park requires a live obligation or an interactive owner. Connection presence
-does not determine capability. Ordinary WAIT on streams or delegated work is
-unchanged; a provider-recovery park whose owner is not interactive concludes on the
-provider failure ({§engine-rails}).
+Automatic settlement precedes observational notification; invalid configuration fails at the proposal boundary ({§configuration-repair-path}).
 
 ---
 
 ## §stream Stream Model
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§stream-no-engine-transaction-abstraction} | Streams are static content from the engine's perspective — content arrives over time, channels grow, mimetype… |
-| {§subscriptions} | Subscriptions |
-| {§subscriptions-subscription-registry-routes-cancellation} | READ on a streaming scheme is a subscription, not a one-shot. |
-| {§subscription-finalization} | Executors and scheme subscriptions share the durable close boundary. |
-| {§subscriptions-causal-resource} | A subscription's causal Session belongs to the entry's workspace. |
-| {§subscriptions-fold-keeps-subscription} | A scoped KILL changes a log row's readable projection ({§log-kill-scope}), never the subscription registry. |
-| {§chunk-accumulation-chunks-accumulate} | Chunks accumulate into named channels. |
-| {§no-chunk-rows} | No per-chunk log rows |
-| {§no-chunk-rows-log-captures-lifecycle-only} | Channels are the source of truth for chunk content. |
-| {§stream-control} | Stream control and writes |
-| {§stream-asked-stop} | A stop that was asked for is no failure. |
-| {§stream-constraints} | Engine constraints |
-| {§stream-constraints-engine-one-cap} | The engine imposes one cap. |
-| {§live-updates} | Live updates for clients (between turns) |
-| {§live-updates-stream-event-fires-on-chunk} | Daemon emits `stream/event` notifications ({§notifications}) when channel content changes; clients use them… |
-<!-- /map -->
+Streams are static content at turn boundaries: chunks accumulate as they arrive into named channels (`content`, `mimetype`, `weight`, `state`, {§channels}) under a **100 MiB char-length cap** (`CHECK (length(content) <= 104857600)` on `contents.content` and `entry_channel_rows.buffer`). The Log records only lifecycle transitions (`102`, `200`, `499`, `5xx`), never per-chunk rows. Channel writes emit `stream/event` notifications ({§notifications}) for client waterfalls.
 
-§stream-no-engine-transaction-abstraction Streams are static content from the engine's perspective — content arrives over time, channels grow, mimetype handlers render whatever's there at turn boundaries. No engine-level transaction abstraction; schemes own connection lifecycle.
+### §subscriptions Subscriptions and finalization
 
-### §subscriptions Subscriptions
-
-§subscriptions-subscription-registry-routes-cancellation READ on a streaming scheme is a subscription, not a one-shot. The scheme establishes its protocol-specific acquisition boundary, returns `102 Processing`, and stays alive through the `StreamSubscription` returned by `subscriptions.open()`. The service commits that initial operation result normally; later chunk and terminal work cannot rewrite it. Durable terminal truth lives on the subscription and its channels. The service records durable subscription identity and metadata in SQLite and retains the callable `SubscriptionHandle` only in its process-local live registry. Session cancellation, turn-scoped reap, and shutdown all route through that one live registry; no handler-specific cancellation callback or database access is part of the extension contract.
-
-The durable row is lifecycle evidence and the lookup key, not a serialized callback. `subscriptions.open()` establishes both halves before yielding a composed `StreamSubscription`: an `AbortSignal` whose fused `notifyChunk` and terminal `close` methods are safe to retain without the operation's general `SchemeCtx`. `close(result, summary?, channelResults?)` validates one universal terminal producer result plus exact named channel overrides. One SQLite transition closes the subscription and installs each channel's terminal `producerResult`; its lifecycle state derives from that result. The transition then wakes the session when appropriate and unregisters the live handle. `close_status` is a constrained relational projection of `close_result.status`, never an independent result, while `channel_results` preserves historical overrides after a later subscription replaces the channel's current evidence. A durable open row without a live handle is an explicit lifecycle failure, never a fabricated cancellation success. Channel state ({§channels}) + log entries ({§no-chunk-rows}) carry lifecycle.
-
-§subscription-finalization Executors and scheme subscriptions share the durable
-close boundary. Concurrent closes join one attempt; a committed close is
-idempotent, including its completion wake.
-
-| Boundary | Ownership and recovery |
-| --- | --- |
-| Persistence fails | Surface the cause, retain the terminal result and callable owner, and emit no completion wake. Another close or cancellation retries settlement, not execution. |
-| Persistence commits | Release ownership before observational delivery. Attempt channel notifications and the completion wake even if another observer throws. |
-| Observer fails after commit | Surface the cause without reverting terminal state, retaining a false live owner, or repeating delivery on another close. |
-
-The owning session's pending stream announcements precede its loop's terminal
-notification ({§notifications-loop-terminated}), even after durable closure has
-released the live handle. This orders notification delivery, not subsequent wake
-execution, and never waits on another session's announcements.
-
-Cancellation remains coalesced while work is live. Failed cancellation or
-failed settlement permits a subsequent cancellation attempt; it never converts
-the producer's already obtained outcome into a fictitious cancellation result.
-
-At process restart every still-open row is necessarily missing its callable owner. Boot
-settles it as interruption (`500`) and errors active channels before evaluating parked
-loops ({§session-causal-admission}); it never reports cancellation (`499`) or
-pretends to reconstruct an opaque extension connection.
-
-§subscriptions-causal-resource A subscription's causal Session belongs to the
-entry's workspace. The active entry has
-one subscription. Its initiating Session remains the polling, cancellation, and
-wake recipient. Removing a Session requires its live work to be settled first;
-closed subscriptions and channel outcomes remain with the resource, with no
-dangling Session reference. Subscription identity and its optional causal log
-`source` are immutable after opening. Stream observations use that recorded
-source and the resource's stored default channel, never URI arithmetic or a
-live executor's current declaration.
-
-§subscriptions-fold-keeps-subscription A scoped KILL changes a log row's readable projection ({§log-kill-scope}), never the subscription registry. Curation of a streaming entry's log body leaves the live stream and its source running; it is not cancellation.
-
-### Chunk accumulation
-
-§chunk-accumulation-chunks-accumulate **Chunks accumulate into named channels.** SSE event types, WS message types, exec stdout/stderr each map to a named channel. Each stored channel carries `content`, `mimetype`, curation `weight`, and lifecycle `state` ({§channels}). The subscription registry owns durable subscription identity and process-local cancellation routing, not a second channel-state representation. Chunks accumulate into the channel as they arrive — not buffered until close.
-
-### §no-chunk-rows No per-chunk log rows
-
-§no-chunk-rows-log-captures-lifecycle-only Channels are the source of truth for chunk content. Log captures lifecycle events only: open (102), graceful close (200), cancel (499), errors (5xx), scheme-significant transitions.
-
-Model sees lifecycle events in the `log` section per turn.
+- **Registration & causal resource:** Streaming `READ` returns `102 Processing` and opens a `StreamSubscription` via `subscriptions.open()`, binding one active subscription per entry in the entry's workspace. SQLite stores durable subscription identity and causal `source`; `LiveSubscriptions` holds the process-local `SubscriptionHandle` for coalesced cancellation, turn-scoped reap, and shutdown. Scoped log curation ({§log-kill-scope}) never cancels a subscription.
+- **Finalization:** `close(result, summary?, channelResults?)` atomically closes the subscription row, installs each channel's terminal `producerResult` and derived state, releases the live handle, emits pending stream announcements before `loop/terminated` ({§notifications-loop-terminated}), and wakes the session. Concurrent closes coalesce; committed closes are idempotent. Process restart settles orphaned open rows as `500` interruption ({§session-causal-admission}).
 
 ### §stream-control Stream control and writes
 
-- **Cancel:** ```` ```KILL (https://feed.example/x) ```` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
-- **Kill:** ```` ```KILL (sh:///ab3d5678) ```` — the model terminates the addressed workspace stream. This is stream control, not a write: the output scheme's `writableBy` never gates it. A stream that already ended, killed or not, answers 200 with its recorded `terminalStatus`: the process is not running, which is what KILL asks for (#757); a stream that never existed answers 404 ({§execution-output-identity}). A queued execution ({§exec-lifetime}) is cancelled the same way and never enters its executor.
-- §stream-asked-stop **A stop that was asked for is no failure.** A stream stopped by a model KILL of either form from the session that holds it concludes 200, with its `exitCode` when its producer reported one: the producer's 499 cancellation is replaced before the subscription settles, so the KILL's 200 receipt is the record and the conclusion row brings nothing into Errors ({§operation-results}). A cancellation its holder did not ask for — a peer's or a client's KILL, loop end, session teardown, daemon stop — keeps its 499, and a lifetime keeps its 504.
-- **WebSocket write:** ```` ```EDIT (wss://feed/x) ```` or ```` ```SEND (wss://feed/x) ```` with a body sends one whole text frame through the active owner. Either write can follow the opening READ in the same turn under {§op-methods-op-dispatch}.
-- **Other stream write:** ```` ```SEND (…) ```` remains scheme-defined, including exec stdin.
-
-### §stream-constraints Engine constraints
-
-ONE engine-level constraint: **100 MiB char-length cap per channel body**. `CHECK (length(content) <= 104857600)` on `contents.content` and on an active stream's `entry_channel_rows.buffer` in `migrations/005_entries.sql` ({§content-store}). Violations → SQLITE_CONSTRAINT; action-entry captures rejection at status 500.
-
-§stream-constraints-engine-one-cap **The engine imposes one cap.** All other limits are extrinsic — providers (request size, model context, fetch timeouts), schemes (per-call validation), mimetypes (render budgets). Engine does not throttle, batch, rate-limit, or cap anything else.
-
-### §live-updates Live updates for clients (between turns)
-
-§live-updates-stream-event-fires-on-chunk Daemon emits `stream/event` notifications ({§notifications}) when channel content changes; clients use them for live waterfalls without polling.
-
-The model is NOT a stream/event consumer — turn-based only; sees whatever's in the channel at the next turn boundary.
+- **Cancel / Kill:** `KILL (<stream-uri>)` aborts the active subscription or queued execution ({§exec-lifetime}). A stream already terminated returns `200` with `terminalStatus`; an unknown address returns `404` ({§execution-output-identity}). When the holding session itself asks to stop the stream via model `KILL`, the subscription settles `200` (preserving any `exitCode`) rather than `499`, adding nothing to Errors ({§operation-results}). External/peer `KILL`, loop/session teardown, and daemon stop keep `499`; lifetime expiry keeps `504`.
+- **Stream writes:** `EDIT` or `SEND` on `wss://` sends a text frame through the active owner; other stream writes (`SEND`, exec stdin) follow the scheme contract ({§op-methods-op-dispatch}).
 
 ---
 
 ## Storage Model
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§persistence-via-sqlrite} | Every daemon read and write of a plurnk database goes through a SqlRite statement owned by the package that… |
-| {§db-durability} | Connection durability |
-| {§db-schema-baseline} | Baseline — Versions 1–8 of `migrations/` are the released baseline, as domain chapters — `001_workspaces`,… |
-| {§db-migrations} | Migrations — A released version is frozen within its support envelope: only its comments may change. |
-| {§validation-topology} | Validation topology: where an invariant is enforced — The SQL core owns each invariant: a chapter's CHECK… |
-| {§db-process-triggers} | Processes beside their owners — A trigger that writes rows — a cascade, a capture, an ambient event, a… |
-| {§db-fk-indexes} | Foreign-key indexes — Every foreign-key column a delete, cascade, or parent replacement can check carries an… |
-| {§db-index-owners} | Every index has an owner — An explicit index earns its place one of three ways: a registry statement's plan… |
-| {§db-maintenance-optimize} | Statistics at shutdown — The daemon's last database step before the caller closes SQLite is `PRAGMA optimize`… |
-| {§db-space-reclamation} | Space reclamation: the daemon keeps its own file healthy — `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or… |
-| {§content-store} | Every body is stored once — `contents` holds each settled body once, addressed by its SHA-256, however many… |
-| {§retention-policy} | Retention separates evidence classes — `Retention` reads the owning `.env.defaults` policy at daemon start… |
-| {§native-content-lifetime} | Native snapshots remain while any retained READ result, message attachment (inbound or outbound), or stored… |
-| {§entry-identity-no-null} | Identity components are never NULL. |
-| {§db-query-report} | Workload query report |
-| {§sql-ts-boundary} | SQL/TS responsibility boundary |
-<!-- /map -->
+### §db-durability Connection durability and SqlRite persistence
 
-SQLite (`node:sqlite`) with WAL mode and STRICT tables. Hand-written DDL; CI-aligned against grammar schemas.
+Every daemon database access goes through package-owned SqlRite statements (`node:sqlite` in WAL mode with `STRICT` tables; direct `node:sqlite` imports are restricted by {§lint-gate} to closed-DB catalog witnesses). `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` (`FULL`, `EXTRA`, `NORMAL`, `OFF`) applies to writer and read pool before migrations or `INIT`; invalid values fail `config check` and database admission. `report:sql <database.db> [specimens.json]` plans `PREP` statements and measures read specimens against a private snapshot ({§share-snapshot}) without migrating or mutating the source DB. SQL owns render queries, path-collision guards, model-call/provider-request lifecycle constraints, 1-based sequence issuance, and entry-vs-log integrity; TypeScript owns status bubbling, tokenization ({§tokenomics}), provider dispatch/accounting, scheme/stream execution, and extension loading ({§extension-discovery}).
 
-§persistence-via-sqlrite Every daemon read and write of a plurnk database goes through a SqlRite
-statement owned by the package that owns the table ({§sql-ts-boundary}). `node:sqlite` is imported
-only by a witness that inspects a database's catalog after the daemon has closed it; the lint gate refuses
-every other import ({§lint-gate}), and each permitted one states its reason at the import.
-
-### §db-durability Connection durability
-
-The service launcher applies `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` through SqlRite's
-connection options before migrations or `INIT` write anything. The same policy
-reaches the writer and read pool on every open, including `migrate` and reopening
-an existing database. Its default lives in `.env.defaults`; an invalid value is
-diagnosed by `config check` and refuses database admission, never silently choosing
-a weaker mode. Configuration inspection and editing remain available.
-
-| Mode | WAL guarantee |
-| --- | --- |
-| `FULL` | Each committed transaction is synchronized to storage, surviving application/OS crashes and power loss when the filesystem and device honor synchronization. |
-| `EXTRA` | Same guarantee as `FULL` in WAL mode. |
-| `NORMAL` | Consistent after a crash, but recent commits may be lost after an OS crash or power loss. |
-| `OFF` | Unsynchronized writes; a crash may corrupt the database. |
-
-These are [SQLite's guarantees](https://www.sqlite.org/pragma.html#pragma_synchronous),
-not filesystem-write atomicity, external-effect rollback, a backup, or protection
-against storage hardware that fails to honor synchronization.
-
-### DDL strategy
-
-No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, explicit `NOT NULL`, indexed query paths, deliberate FK `ON DELETE`/`ON UPDATE`, `WITHOUT ROWID` where access pattern warrants, generated columns, FTS5.
+### §db-migrations Schema baseline, migrations, and validation topology
 
 | Concern | Rule |
-|---|---|
-| §db-schema-baseline Baseline | Versions 1–8 of `migrations/` are the released baseline, as domain chapters — `001_workspaces`, `002_sessions`, `003_loops`, `004_inference`, `005_entries`, `006_log`, `007_subscriptions`, `008_interactions` — each one `MIGRATE` block whose version is the file's numeric prefix. They create the 4.0.0 support-floor shape: tables, indexes, views, the constraint triggers that are a table's invariants (guards that only `RAISE`), and a view's `INSTEAD OF` write path. No migration holds an `INIT` block or a trigger that writes a row. |
-| §db-migrations Migrations | A released version is frozen within its support envelope: only its comments may change. Every shape change is one new file at the next version, applied by sqlrite above the database's `PRAGMA user_version`, ascending, each in its own transaction with its version bump. A fresh database takes the same path as an existing one. Forward migration is supported from the previous major's floor (4.0.0) and within the current major; each major may squash pre-floor steps into the 8 baseline chapters, and opening a pre-floor database refuses naming its intermediate stepping-stone release (`@plurnk/plurnk-service@4.3.3`). Each post-floor migration carries upgrade coverage: `test/intg/machine-process.test.ts` pins the released shapes from the support floor forward and migrates a released database, asserting its rows survive. A process trigger's change needs no migration: its `INIT` block re-declares it on the next open ({§db-process-triggers}). Foreign keys stay enforced. Prefer column changes or guard-trigger replacement; rebuilding a referenced table requires copying its complete referencing subgraph first and replacing children before parents, with retained-row and foreign-key coverage. Dropping a parent alone would cascade away its children. |
-| §validation-topology Validation topology: where an invariant is enforced | The SQL core owns each invariant: a chapter's CHECK constraints and guard triggers are its one statement, and a rule two tables share is the same expression over each column (`entry_channel_producer_result_contract` in `005_entries` and `subscriptions_result_contract_update` in `007_subscriptions` hold the settled-result rule as one text). Contracts (JSON Schema) are enforced at the gates: a scheme's result entering core (`Results` in plurnk-schemes) and the wire leaving to clients (plurnk-acp's `Validator` calls). Everything between trusts core and the gates and carries no defensive re-validation: a result read back from a row is parsed, never re-asserted. Witness: `test/intg/validation-topology.test.ts` applies one corpus of settled results to the gate, to chapter 5 and to chapter 7 and asserts the three agree on every row. |
-| Open failure | A database from before the support floor is refused naming its stepping-stone release. A missing table or column after migration means the file's shape disagrees with its version: a database from a newer release, or one from an unreleased development build. The daemon refuses to open it and names the remedies. |
-| §db-process-triggers Processes beside their owners | A trigger that writes rows — a cascade, a capture, an ambient event, a publication cursor, a landed curation — is a process, not shape. It is declared as an `-- INIT: <trigger name>` block in the `.sql` file beside the statements that fire it (`ambient.sql` for the ambient feed, `LoopLifecycle.sql`, `Turn.sql`, `Engine.sql` for model calls, `_entry-crud.sql`, `Log.sql`, `ChannelWrite.sql`), as `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER`, so the definition is current on every open of a database whose shape is current. `MIGRATE` always precedes `INIT` and `INIT` runs on the writer only, so a process may reference any table regardless of file order and never runs on the read pool. `test/intg/schema-composition.test.ts` fails on a baseline trigger that writes, an `INIT` trigger that only guards, a block not named after its trigger or not dropping first, and a live trigger set that differs from the declared set after a first and a second open. |
-| §db-fk-indexes Foreign-key indexes | Every foreign-key column a delete, cascade, or parent replacement can check carries an index (partial where the column is nullable), and no registry statement's plan scans a growing table: `test/intg/schema-query-plans.test.ts` runs `EXPLAIN QUERY PLAN` over every `-- PREP` statement against the baseline and fails on a `SCAN` of a growing table, except statements that read a whole table by design (digest, startup recovery, whole-workspace listings, scheduled-loop claims). An index claim is a plan, never a grep of index names. |
-| §db-index-owners Every index has an owner | An explicit index earns its place one of three ways: a registry statement's plan uses it, its leading column is a foreign key whose check it serves, or it enforces uniqueness. The same test fails on any other index, naming it: an index nobody reads is a write on every insert. A column no statement reads is not stored. |
-| §db-maintenance-optimize Statistics at shutdown | The daemon's last database step before the caller closes SQLite is `PRAGMA optimize` on the writer (`maintenance_optimize`), so `sqlite_stat1` reflects tables the connection planned against, bounded by SQLite's own analysis limit; a failure there is a reported shutdown error, never silent. Retention runs before it under the operator's policy ({§retention-policy}) and ends with a WAL truncation ({§db-space-reclamation}); no periodic `ANALYZE` runs. |
-| §db-space-reclamation Space reclamation: the daemon keeps its own file healthy | `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or `none`) names the mode the daemon keeps its file in. At start, before any drain, a database in another mode is converted (set the mode, one `VACUUM`, which rewrites the file and needs free disk about its size) and the journal says so with page counts before and after. Under `incremental`, every retention pass ends by stepping `PRAGMA incremental_vacuum` to completion once free pages reach `PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES` (0 = every pass), and reports `reclaimedPages`; below the floor, free pages stay for SQLite to reuse. Under `none` the file never shrinks and freed pages are reused. No operator step is involved beyond the knobs. The WAL stays bounded by SQLite's automatic checkpoint (#764). |
-| §content-store Every body is stored once | `contents` holds each settled body once, addressed by its SHA-256, however many channels, workspaces, forks or derivations carry it; rows are immutable. `entry_channel_rows` points a settled channel at its body and keeps an active stream's body as a private buffer until it settles, when it is interned. Every reader and writer uses the `entry_channels` view, whose `INSTEAD OF` triggers intern bodies, refuse a bound `content_hash` that is not the content's, and write each column group only when it changed, so a search attachment is never a representation write. SQLite counts no changes for a view, so a write that must know whether its channel exists returns the channel's name; an outer join cannot flatten the view, so the two statements that need one read `entry_channel_rows` and `contents` directly. `derivation_fts` is an external-content index over `derivation_texts` (a derivation joined to its body); `derivations.content_id` names the indexed text, and the triggers in `_entry-fts.sql` move the index with it and forget it on delete. A body no channel holds and no derivation indexes is collected by retention under `PLURNK_SERVICE_COLLECT_CONTENTS`. Witnesses: `test/intg/retention.test.ts`, `test/intg/entries.test.ts`, `test/intg/fulltext-index.test.ts`. |
-| §retention-policy Retention separates evidence classes | `Retention` reads the owning `.env.defaults` policy at daemon start and runs on its configured cadence and at shutdown. Packet count/age controls retire completed turns' `turn_sections`. Response controls atomically retire a logical call's normalized response and every physical-request payload, including failed retries; its immutable retirement timestamp remains. Count means the newest payload-bearing logical calls per loop, not individual retries, and retired calls retain their chronological place. Either bound can expire an item; `-1` disables only that bound. Open turns, calls and requests are excluded. Messages, log rows, turn sources, approval decisions, request identities, status, admission, failure, capacity and accounting follow their containing history's lifetime. Collectors remove unreferenced packet items, derivations, text and native contents ({§native-content-lifetime}); derivation deletion removes its search projections. These controls are not a whole-database size bound or content-erasure policy: canonical history can retain text also captured in a retired payload. Invalid policy withholds retention and storage conversion, reports a configuration diagnostic and leaves the repair environment available ({§configuration-repair-path}); storage I/O failures remain failures. Reclamation follows {§db-space-reclamation}. |
+| --- | --- |
+| Baseline & migrations | `migrations/001_workspaces`..`008_interactions` form the 4.0.0 baseline. Released migrations are frozen; shape changes add a new versioned file with upgrade coverage from the support floor. Pre-floor or mismatched databases refuse open with remediation guidance. |
+| Process triggers (`INIT`) | Row-writing triggers live in `-- INIT: <name>` blocks alongside their statements (`DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`), running on the writer after `MIGRATE`. Baseline migrations hold only schema and `RAISE` guard triggers. |
+| Validation topology & identity | SQL CHECK constraints and guard triggers enforce storage invariants once, matching JSON Schema gates at `Results` and `Validator`. Every entry has non-null unique identity `(workspace_id, scheme, authority, pathname)` cascading on workspace delete; namespace schemes use `authority = ""`, file members use `scheme = "file"`. |
+| Indexes | Every FK column checked by delete/cascade/update is indexed, no `PREP` query scans a growing table unless whole-table by design, and every explicit index has a query-plan, FK, or uniqueness owner. |
 
-§native-content-lifetime Native snapshots remain while any retained READ result,
-message attachment (inbound or outbound), or stored packet references their hash.
-Log curation, reply completion, source replacement and source deletion do not
-release those historical references. `COLLECT_CONTENTS` removes only unreferenced
-native bytes, alongside unreferenced text. Resource operations and message
-admission share the in-flight content-use boundary with derivation work
-({§derivation-in-flight}): collection skips a busy boundary, new producers wait
-for an active collection, and success or failure releases the use. Operations
-remain concurrent; this boundary grants neither file ownership nor reservation.
-Interrupted, unpublished snapshots become collectible after restart. Containing
-history deletion releases its references normally.
+### §content-store Content store, retention, and space reclamation
 
-- DDL = storage truth; JSON Schemas = wire truth. They are allowed to differ where ergonomics demand.
-- §entry-identity-no-null **Identity components are never NULL.** `(workspace_id, scheme, authority, pathname)` is a unique key. `workspace_id` references the workspace directly with cascading deletion. Namespace schemes use empty authority; resource schemes retain their canonical authority. File members use nonempty `scheme="file"` and render as bare paths. Registration refuses `storedScheme: null`.
-
-### §db-query-report Workload query report
-
-`report:sql <database.db> [specimens.json]` is an on-demand diagnostic, not a gate.
-It snapshots only the named database under {§share-snapshot}, registers the production
-SQL functions, and plans the source PREPs through SqlRite's own parser. It neither
-migrates nor runs application INIT blocks on that snapshot. Schema mismatch and query
-errors remain report failures, not empty successful results.
-
-| Evidence | Meaning |
-|---|---|
-| `plans` | Unbound `EXPLAIN QUERY PLAN` rows for every effective PREP, including mutations; no mutation is executed. |
-| `scans` | Conservative hints: named table/view, indexed, virtual, or unresolved alias/intermediate. Raw details remain authoritative; a scan is not itself a defect. |
-| `measurements` | Only supplied `{statement, parameters}` specimens execute, with SQLite's query-only guard. Each retains its bound plan, row count, and one elapsed measurement; row bodies are not retained. |
-
-Timings cover SQLite stepping and row conversion in the report process against the
-compacted private snapshot, not daemon IPC, application work, cold-cache latency, or a
-statistical distribution. No implicit workload discovery, synthetic corpus, automatic
-sampling, or performance threshold is applied. The report changes neither source data
-nor the existing query-plan gate.
-
-### §sql-ts-boundary SQL/TS responsibility boundary
-
-**Lives in SQL:**
-
-- Render queries — log assembly + the manifest catalog.
-- Cross-scope path collision (CHECK/trigger → 409).
-- Logical model-call identity plus cardinal physical provider-request lifecycle and immutable settlement constraints.
-- Sequence number issuance (1-based per grammar).
-- Entry-vs-log integrity.
-
-**Lives in TS:**
-
-- Status-bubble rules (`turn.status` → `loop.status` → `session.status` → `workspace.status`). Engine UPDATEs explicitly; CHECK constraints enforce; triggers fight branching state machines.
-- Tokenization (provider-bound; hot-swap re-tokenizes per {§tokenomics}).
-- Provider dispatch, request-accounting validation, and exact-decimal aggregate projection through the shared contracts-owned path.
-- Scheme-handler invocation (connections, subprocesses, fetch).
-- Extension loading ({§extension-discovery}).
-- Stream AbortController lifecycle.
-- CLI + daemon.
-
-When SQL becomes onerous for a specific case, retreat for that case and document why.
+| Mechanism | Rule |
+| --- | --- |
+| Content interning | `contents` stores each settled body once by SHA-256; `entry_channel_rows` buffers active streams until settlement and exposes channels through the `entry_channels` view and its `INSTEAD OF` triggers. `derivation_fts` indexes `derivation_texts` via `_entry-fts.sql`. |
+| Retention policy | `Retention` applies count/age bounds (`PLURNK_SERVICE_RETAIN_PACKET_*`, `_RESPONSE_*`; `-1` disables a bound) to completed turns' `turn_sections` and settled logical calls' response/request payloads while preserving call metadata, accounting, and canonical history. Unreferenced packet items, derivations, text, and native snapshots (held across active operations via {§derivation-in-flight}) are collected per `PLURNK_SERVICE_COLLECT_*`. Invalid policy withholds retention and conversion with a configuration notice ({§configuration-repair-path}). |
+| Space reclamation & shutdown | `PLURNK_SERVICE_AUTO_VACUUM` (`incremental` or `none`) converts mismatched files at startup and steps `PRAGMA incremental_vacuum` after retention when free pages reach `PLURNK_SERVICE_RECLAIM_MIN_FREE_BYTES`. Shutdown runs retention, WAL truncation, and `PRAGMA optimize` on the writer. |
 
 ---
 
 ## §core-extension-composition Extension composition
 
-The metaproject contract owns installed membership, the one-kind manifest
-shape, and the shared pre-import trust boundary ({§extension-discovery}). Each
-framework owns its typed discovery result and trusted loading path.
-Core owns only cross-kind composition, arbitration, and operator presentation
-of skipped-package evidence.
-
-§extension-namespace-arbitration **Every addressable scheme name has one claim.**
-For an installed extension, claim identity is its kind plus its npm
-package name. Core's bundled names are reserved claims. A daemon module's
-runtime registration names its module owner and makes one composite executor
-claim: its ordinary output scheme and optional resource facet do not compete
-with each other. Module runtime registration applies {§executor-policy} before
-claiming either name, for process-wide and workspace-scoped registrations alike.
-
-| Existing claim                 | Incoming claim                                          | Outcome |
-|--------------------------------|---------------------------------------------------------|---------|
-| None                           | Any valid claim                                         | Register it. |
-| Same installed kind/package   | Rescan of the same name                                 | No-op; retain the one registered handler. |
-| Reserved core name             | Any extension, a module included                        | Fail naming the reserved owner and claimant. |
-| Any extension                  | A different owner, including scheme/executor either way | Fail naming both owners. |
-| Module runtime                 | Its optional same-registration scheme facet             | Compose one handler under the runtime's single claim. |
-
-Arbitration precedes host registry mutation. External scheme descriptors are
-arbitrated before core imports their handlers; executor packages have already
-crossed their framework-owned trusted loading path when core arbitrates their
-output faces. A rejected claim leaves both scheme and executor registries
-unchanged, so registration order cannot turn a collision into precedence.
-Installed third-party packages enter through the same scope-agnostic npm
-discovery as `@plurnk/*`; arbitration requires no first-party allowlist or
-registration.
+Discovery and pre-import trust follow {§extension-discovery}. Core arbitrates every addressable scheme and runtime name before mutating host registries: reserved core names reject all extension claims, distinct owners reject collisions in either order, rescanning the same kind/package is a no-op, and a module runtime composes its output scheme and optional resource facet under one claim after applying {§executor-policy}.
 
 ---
 
 ## §bundled-set Bundled Set
 
-Extension discovery ({§extension-discovery}) scans installed scoped and unscoped
-packages carrying the applicable `plurnk.kind` declaration.
-
-§default-extension-ownership `@plurnk/plurnk-service` is the sole manifest owner
-of the default extensions. Frameworks own contracts, discovery, and loading;
-their runtime dependency graphs contain no extension of their kind. A required
-default extension missing from a service install is a broken install. A direct
-framework consumer may intentionally omit extensions and receives that framework's
-documented behavior for an absent extension.
-
-`@plurnk/plurnk-tavily-plugin` is the separately installed, opt-in plugin showcase,
-not a service dependency. Its own tests own installation, native discovery,
-configuration, and HTTP materialization; service installation coverage proves it
-is absent from the default composition.
-
-Packed executor coverage distinguishes installation from enablement: verify
-the package floor, explicit opt-in, and composed allowlist/disable behavior
-through discovery and registration outside the development dependency graph
-({§executor-default-inventory}, {§executor-policy}).
-Every non-optional grammar in the mimetype framework's registry is a required
-service runtime dependency, and an optional one ({§mimetype-optional-grammars})
-must not be. Installation coverage loads each default grammar and verifies
-source definitions, references, structural projections, and teardown outside
-the checkout's development dependency graph, and proves each optional language
-degrades by name when its grammar package is absent.
-
-§install-root-advisory-ownership **The composed service install owns
-third-party advisory detection.** Only that install resolves the default extensions
-and their combined transitive tree. Its audit reports advisories at the
-moderate floor without blocking by default; strict mode makes the same floor a
-gate. A chain rooted through an `@plurnk/*` dependency routes to that package's
-owner, while other direct roots remain service-owned. First-party package-pin
-freshness remains the owning package's concern.
-
-| Kind      | Lean framework                     | Service-owned default packages                                                                                                       |
-|-----------|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
-| Schemes   | `@plurnk/plurnk-schemes`           | `@plurnk/plurnk-schemes-http`                                                                                                    |
-| Mimetypes | `@plurnk/plurnk-mimetypes`         | `application-ipynb`, `application-json`, `application-jsonl`, and `application-xml` format extensions.                            |
-|           |                                    | `text-csv`, `text-diff`, `text-dotenv`, `text-html`, `text-ini`, `text-markdown`, and `text-plain` format extensions.             |
-|           |                                    | The `image` and `application-pdf` (header-only, {§mimetype-pdf-facts}) extensions, and every `grammar-{slug}` grammar package in the framework's tree-sitter registry ({§mimetype-grammar-packages}), all under `@plurnk/plurnk-mimetypes-*`. |
-| Executors | `@plurnk/plurnk-execs`             | `common` extension under the `@plurnk/plurnk-execs-*` prefix.                                                                |
-
-The independently published `tokenizers` artifact is an opt-in package. Installing
-it beside the service admits it through ordinary package resolution without
-changing the service manifest.
-
-**Providers:** `@plurnk/plurnk-providers` resolves the Models.dev catalog,
-operator declarations, local adapters, and finally installed AI SDK provider
-extensions. `Mock` is its integration fixture. Core contains no vendor protocol.
-
-**Core schemes:** `file`, `log`, `prompt`, `skill`, and `session` expose daemon
-state or filesystem orchestration owned by core. `exec` is internal dispatch
-machinery; each installed executor runtime receives its own addressable output
-scheme. External schemes are discovered through
-`@plurnk/plurnk-schemes` and registered through the same manifest-bound
-dispatcher contract.
-
-The executor registry discovers installed runtimes, probes availability, and
-routes ```` ```<runtime> ````; core contributes orchestration and the output-scheme
-adapter, not runtime implementations. Optional and third-party extensions extend
-each kind by installation and discovery; they never require a framework or
-service manifest edit.
+`@plurnk/plurnk-service` is the sole manifest owner of the default extension set (`@plurnk/plurnk-schemes-http`, default `@plurnk/plurnk-mimetypes-*` format/image/pdf handlers and non-optional tree-sitter grammars {§mimetype-pdf-facts}, {§mimetype-grammar-packages}, {§mimetype-optional-grammars}, and `@plurnk/plurnk-execs-common` {§executor-default-inventory}, {§executor-policy}), while frameworks remain extension-free and opt-in packages (`@plurnk/plurnk-tavily-plugin`, `tokenizers`) stay outside the default dependency graph. The composed service install owns third-party advisory audits at the moderate floor.
 
 ---
 
 ## Grammar Dependency
 
-Core consumes the language, schemas, and generated types under
-{§contract-representations}. Provider emissions cross
-{§emission-admission}; admitted programs execute through
-{§turn-record}. Core owns execution and persisted state, not a second
-language definition.
+Core consumes the language, schemas, and generated types under {§contract-representations}, admitting provider emissions via {§emission-admission} and executing programs via {§turn-record}.
 
 ---
 
@@ -1396,7 +1006,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
 | `PLURNK_SERVICE_EXEC_CONCURRENCY` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-lifetime}). |
 | `PLURNK_SERVICE_EXEC_SCRATCH` | Directory a standalone execution source is written to for its run; empty derives `$XDG_RUNTIME_DIR/plurnk`, else the platform temporary directory ({§exec-target-routing}). |
-| `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
+| `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal}). |
 | §operator-config-session-warm `PLURNK_SERVICE_WORKSPACE_WARM_MS` | Milliseconds a lease-free workspace Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-workspace-residency}). |
 | `PLURNK_SERVICE_WORKSPACE_WARM_MAX` | Maximum lease-free workspace Functionality snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-workspace-residency}). |
 
@@ -2228,7 +1838,7 @@ Core's behavior behind them.
 | §methods-loop-run Loops                           | `runLoop({ workspaceId, sessionId, loopId?, prompt, source?, maxTurns?, openPaths?, selector?, childSelector? })` | Validates a model session and persists the request with the effective turn ceiling, then returns an immediate status-100 acknowledgement with `loopId` and `action`. An explicit Loop recipient follows {§session-wait-timing}. A trusted adapter may identify the prompt's causal actor with one canonical `source`; ordinary clients cannot author it through their protocol surface. Messages carry no approval authority. The exact terminal result arrives only through `loop/terminated`; parking and resuming do not replace the loop. |
 | §message-idempotency Message admission           | `messageAdmission({ workspaceId, address, body })` | A client message's address is its idempotency key ({§message-source-scheme}): `new` when nothing is accepted there, `accepted` when the same body is, so a repeat attaches to what the message started instead of admitting it twice; another body under an accepted address is refused, 422 `message-address-reused`, creating nothing. `runLoop` refuses every repeat it is handed: other words 422 `message-address-reused`, the same words 409 `message-already-accepted`, a duplicate racing the original. |
 | §methods-session-inbox Reads                       | `readInbox({ workspaceId, sessionId })` | The accepted messages the session has not yet observed at a turn boundary ({§message-arrival}), in acceptance order, each by its immutable source address (`path`), causal `source`, `body`, `loopId` and the `lifecycle` of that loop ({§loop-lifecycle-vocabulary}); a message leaves it when its arrival row lands, and one whose loop concluded first stays, with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}). |
-| §methods-session-streams Reads | `readStreams({ workspaceId, sessionId })` | The streams the session holds open ({§subscriptions}), in opening order, each its subscription's facts as `stream/event` names them: `entryId`, the initiating `sessionId`, the canonical `target`, `lifetime` (`loop`, `turn` or `detached`, as {§exec-lifetime} names what ends it besides its own exit; a duration is loop-bound and reads `loop`, its deadline unreported), the causal `loop_seq`, `turn_seq` and `sequence` read from the `source` it recorded when it began in a turn ({§subscriptions-causal-resource}), and every channel of its entry, written or not, as `{ channel, state, mimetype }` ({§channels}). Content stays the resource's ({§methods-entry-read}); a closed stream is gone, its conclusion already published ({§notifications-stream-concluded}). The session must belong to the workspace. |
+| §methods-session-streams Reads | `readStreams({ workspaceId, sessionId })` | The streams the session holds open ({§subscriptions}), in opening order, each its subscription's facts as `stream/event` names them: `entryId`, the initiating `sessionId`, the canonical `target`, `lifetime` (`loop`, `turn` or `detached`, as {§exec-lifetime} names what ends it besides its own exit; a duration is loop-bound and reads `loop`, its deadline unreported), the causal `loop_seq`, `turn_seq` and `sequence` read from the `source` it recorded when it began in a turn ({§subscriptions}), and every channel of its entry, written or not, as `{ channel, state, mimetype }` ({§channels}). Content stays the resource's ({§methods-entry-read}); a closed stream is gone, its conclusion already published ({§notifications-stream-concluded}). The session must belong to the workspace. |
 | §methods-loop-cancel Loops                        | `cancelDrain(sessionId, reason?)`; `cancelSession({ workspaceId, sessionId, reason? })`; `cancelLoop({ workspaceId, loopId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelSession` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. `cancelLoop` cancels exactly one client operation ({§connection-lifecycle}): its dispatch while that runs, and every attached execution its rows started that still runs, then reports whether any of it was running; nothing else in the runtime session shares its scope. |
 | §methods-op-mirror Op mirror: client dispatch               | `dispatchClientAction({ workspaceId, actor, contextSessionId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary}), reading `log:///` in `contextSessionId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
 | §methods-log-read Reads                           | `readLog({ workspaceId, sessionId, ...coordinate })` | Ownership-checks the session, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate, newest first. `sinceId` keeps rows after an id and `beforeId` rows before one, so a reader pages back through the whole log one page at a time. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
@@ -2339,7 +1949,7 @@ bound session and returns the complete fresh projection.
 | --- | --- |
 | Body | the MCP2 2026-07-28 form-elicitation shape verbatim, `{ message, requestedSchema }`; target `(question)` selects the tool on `plurnk` |
 | Result | the `results` channel carries the standard `ElicitResult` (`{ action: "accept", content? }`, `{ action: "decline" }`, or `{ action: "cancel" }`): the executor submits the contracts-owned form `ClientInteractionRequest` (`{ toolName: "question", mode: "form", message, requestedSchema }`), the client returns the exact `ClientInteractionResolution`, and the executor writes it verbatim to `results`; answer fields are data, including fields named `action` or `content` |
-| Lifecycle | the executor awaits the shared client-interaction lifecycle — durable pause, reconnect discovery, cancellation and the answer-as-resolution all come from {§client-interactions}; there is no loopback MCP and no proposal masquerade; answer and cancellation resume the same waiting loop whether resolved before or after it parks, and the next packet contains the result without replaying the execution |
+| Lifecycle | the executor awaits the shared client-interaction lifecycle — durable pause, reconnect discovery, cancellation and the answer-as-resolution all come from {§proposal-projection}; there is no loopback MCP and no proposal masquerade; answer and cancellation resume the same waiting loop whether resolved before or after it parks, and the next packet contains the result without replaying the execution |
 | Effect | `read`: the tool observes the human's answer and is never proposal-gated |
 | Admission | the tool declares the `interaction` trait, which the shared resolver projects as access class `interact`, so any capability-policy layer may admit or deny `plurnk (question)` independently of family tools; the ordinary executor policy also applies, `PLURNK_EXECS_PLURNK=0` disabling registration and teaching ({§executor-policy}) |
 
@@ -2471,7 +2081,7 @@ row that discharges one, so a client pairs the answer with its call without matc
 
 | Discharging row | Its invocation |
 |---|---|
-| A stream observation ({§exec-stream}) | The execution, as its subscription recorded it ({§subscriptions-causal-resource}) |
+| A stream observation ({§exec-stream}) | The execution, as its subscription recorded it ({§subscriptions}) |
 | A child's conclusion ({§env-delta-child-termination}) | The operation that sent the first message of the concluded loop |
 | A completion reply delivered to the sender ({§message-reply-delivery}), including {§loop-completion} | The operation that sent the message it completed |
 
@@ -2491,11 +2101,11 @@ answering a message in this session's inbox, omits the field, as does every othe
 | Event                                                        | Payload | When fired |
 |--------------------------------------------------------------|---------|------------|
 | §notifications-operation-event `operation/event` | `ApplicationOperationEvent`: `{ sessionId, loopId, turnId, sequence, origin, projectRoot, statement, phase, result? }` | One admitted dispatch starts before capability/proposal admission and settles after its durable receipt(s). Only the settled phase has `result`, the exact returned operation result. Resource fan-out is one dispatch ({§op-methods-op-dispatch}); BARE starts before prompt preparation and settles after ordered receipt persistence. Automatic stream observations and log writes are not dispatches. An asynchronous executor's successful dispatch does not assert process exit. An internal exception that prevents settlement has no invented result event. |
-| §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A non-proposed `log_entries` row is committed, or a proposed row reaches terminal settlement under {§proposal-proposed-hidden}. Delivery completes before a later event may terminate the owning Loop. |
+| §notifications-log-entry-notify `log/entry`                  | `{ entry: LogEntry }` | A non-proposed `log_entries` row is committed, or a proposed row reaches terminal settlement under {§proposal}. Delivery completes before a later event may terminate the owning Loop. |
 | §notifications-loop-terminated `loop/terminated`             | `{ sessionId, loopId, loopSeq, result, hitMaxTurns, turnIds, usage: { accounting, curationWeight, curationBudget, contextTokens, contextCapacity, meta }, attributions, terminatedAt }` | One loop reaches a terminal state, announced once, after what the loop held has settled however it ended: a gate its running turn holds (a proposal, or an interaction the turn awaits) settles as the turn unwinds, and every stream the loop's end reaps ({§exec-lifetime}), an open interaction among them, concludes, so their `log/entry` and `stream/concluded` arrive first. A cancellation announces each loop it retired once the session's drain has settled and every stream it reaped has concluded. `terminatedAt` is the loop's own stamp in Unix milliseconds, the one a projection reads ({§application-loop-observation}). `result` is the exact universal operation result, including its RFC 9457 Problem Details on failure. `accounting` is the loop's contracts-owned {§provider-accounting}; the two curation facts and two physical-context facts follow {§tokenomics-client-gauge}; `meta` is that turn's opaque provider bag. `attributions` is the sorted union of exact provider-request evidence ({§emission-admission}), separate from accounting. Session and loop are an inseparable owning coordinate; `loopSeq` is the loop's number among its session's loops, the L of its log coordinates ({§methods-log-coordinate}). |
 | §notifications-loop-packet `loop/packet`                     | `{ sessionId, loopId, loopSeq, packetCount, gauge: { curationWeight, curationBudget, contextTokens, contextCapacity } }` | One provider packet becomes durable with its turn's inference. `loopSeq` is the loop's number, as `loop/terminated` carries it. `packetCount` is the exact count of packet-bearing turns in that Loop; packetless producer turns and physical provider retries never contribute. `gauge` is the Loop's client gauge at that moment ({§tokenomics-client-gauge}), so the gauge moves with every model turn. |
 | §notifications-loop-proposal `loop/proposal`                 | contracts-owned `ProposalProjection` | Dispatch pauses on a durable 202 proposal. `disposition` is the sole authority for whether a client presents review UI; live and reconnect share {§proposal-projection}. |
-| §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§client-interactions}; workspace scope remains the event envelope. |
+| §notifications-loop-interaction `loop/interaction`           | contracts-owned `ClientInteractionProjection` | An operation is paused on client input. Live delivery and reconnect discovery share {§proposal-projection}; workspace scope remains the event envelope. |
 | §notifications-workspace-created `workspace/created`         | `{ id, name, projectRoot }` | A workspace is created. This is the only current global event. |
 | §notifications-workspace-renamed `workspace/renamed`         | `{ id, name }` | A workspace's name changes ({§methods-workspace-rename}), delivered in that workspace's scope; the id is unchanged. |
 | §notifications-workspace-hidden `workspace/hidden` | `{ id, hidden_at }`, as `setWorkspaceHidden` returns it | A workspace is hidden or shown ({§methods-workspace-hide}), delivered in that workspace's scope. A call that changes nothing fires nothing. |
@@ -3030,7 +2640,7 @@ leaves the request-only record, while rejected exchanges remain in their
 - A section's content is its items joined by one blank line, so a log row whose rendering did not change between turns hashes to the same item and a turn's durable cost is its new and changed items — the copied prefix of the previous packet is transient data and is never written. A packet transformed by an extension, or any non-log section, is one item.
 - The write is one statement: an INSERT into the `turn_inference_evidence` view, whose INSTEAD OF trigger refuses a turn that is not an open model inference turn and lands the items, the composition, the bag, and the provider metadata together.
 - Readers of a whole packet select from `turn_packets`, which assembles `sections` back into the bag byte for byte (the digest, and every test that inspects a stored packet); statements that need one field read the bag directly with `json_extract`.
-- Items no composition references are transient data: `retention_collect_packet_items` collects them under the retention policy ({§retention-policy}), which is how a deleted session's or workspace's packets release their space while shared items survive. A fork copies the composition and shares the items ({§machine-processes}).
+- Items no composition references are transient data: `retention_collect_packet_items` collects them under the retention policy ({§content-store}), which is how a deleted session's or workspace's packets release their space while shared items survive. A fork copies the composition and shares the items ({§machine-processes}).
 
 | Field                   | Presence                         | Contract                                                                                                                                                                      |
 | ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3553,7 +3163,7 @@ parallel uses remain parallel, a collection pass skips these two collectors
 while a use is active, and a new use waits for an already-running collection.
 Successful, failed, and cancelled uses release in `finally`; no durable pin or
 additional retention setting is introduced. The ordinary later pass or drained
-shutdown collects unattached artifacts under {§retention-policy}.
+shutdown collects unattached artifacts under {§content-store}.
 
 ### Matcher selection and evidence
 

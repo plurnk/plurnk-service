@@ -1,4 +1,4 @@
--- {§validation-topology} witness statements: one settled result applied to chapter 7.
+-- {§db-migrations} witness statements: one settled result applied to chapter 7.
 
 -- PREP: test_topology_settle_subscription
 UPDATE subscriptions

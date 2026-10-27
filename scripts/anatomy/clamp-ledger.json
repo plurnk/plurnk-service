@@ -25438,9 +25438,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §proposal as canonical section heading in §proposal Proposals and client interactions"
         },
         "proposal-202-pauses": {
           "spec": "plurnk-core/SPEC.md",
@@ -25450,9 +25450,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-202-pauses (paragraph) into section heading §proposal"
         },
         "proposal-timeout-cancels": {
           "spec": "plurnk-core/SPEC.md",
@@ -25462,9 +25462,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-timeout-cancels (list) into section heading §proposal"
         },
         "proposal-decision-evidence": {
           "spec": "plurnk-core/SPEC.md",
@@ -25474,9 +25474,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-decision-evidence (paragraph) into section heading §proposal"
         },
         "proposal-accept-applies": {
           "spec": "plurnk-core/SPEC.md",
@@ -25486,9 +25486,9 @@
           "liveShape": "table",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-accept-applies (table) into section heading §proposal"
         },
         "proposal-reject-fails": {
           "spec": "plurnk-core/SPEC.md",
@@ -25498,9 +25498,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-reject-fails (table) into section heading §proposal"
         },
         "proposal-cancel-aborts": {
           "spec": "plurnk-core/SPEC.md",
@@ -25510,9 +25510,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-cancel-aborts (table) into section heading §proposal"
         },
         "proposal-outcome-terse-error": {
           "spec": "plurnk-core/SPEC.md",
@@ -25522,9 +25522,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-outcome-terse-error (paragraph) into section heading §proposal"
         },
         "proposal-harness-settlement": {
           "spec": "plurnk-core/SPEC.md",
@@ -25534,9 +25534,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-harness-settlement (paragraph) into section heading §proposal"
         },
         "proposal-proposed-hidden": {
           "spec": "plurnk-core/SPEC.md",
@@ -25546,9 +25546,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal",
+          "reason": "Folded non-heading tag §proposal-proposed-hidden (paragraph) into section heading §proposal"
         },
         "proposal-projection": {
           "spec": "plurnk-core/SPEC.md",
@@ -25558,9 +25558,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §proposal-projection as canonical section heading in §proposal Proposals and client interactions"
         },
         "client-interactions": {
           "spec": "plurnk-core/SPEC.md",
@@ -25570,9 +25570,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal-projection",
+          "reason": "Folded non-heading tag §client-interactions (heading) into section heading §proposal-projection"
         },
         "proposal-ownership-notification": {
           "spec": "plurnk-core/SPEC.md",
@@ -25582,9 +25582,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal-disposition",
+          "reason": "Folded non-heading tag §proposal-ownership-notification (paragraph) into section heading §proposal-disposition"
         },
         "proposal-disposition": {
           "spec": "plurnk-core/SPEC.md",
@@ -25594,9 +25594,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §proposal-disposition as canonical section heading in §proposal Proposals and client interactions"
         },
         "runtime-bookkeeping-policy": {
           "spec": "plurnk-core/SPEC.md",
@@ -25606,9 +25606,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "proposal-disposition",
+          "reason": "Folded non-heading tag §runtime-bookkeeping-policy (paragraph) into section heading §proposal-disposition"
         },
         "stream": {
           "spec": "plurnk-core/SPEC.md",
@@ -25618,9 +25618,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §stream as canonical section heading in §stream Stream Model"
         },
         "stream-no-engine-transaction-abstraction": {
           "spec": "plurnk-core/SPEC.md",
@@ -25630,9 +25630,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §stream-no-engine-transaction-abstraction (paragraph) into section heading §stream"
         },
         "subscriptions": {
           "spec": "plurnk-core/SPEC.md",
@@ -25642,9 +25642,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §subscriptions as canonical section heading in §stream Stream Model"
         },
         "subscriptions-subscription-registry-routes-cancellation": {
           "spec": "plurnk-core/SPEC.md",
@@ -25654,9 +25654,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "subscriptions",
+          "reason": "Folded non-heading tag §subscriptions-subscription-registry-routes-cancellation (paragraph) into section heading §subscriptions"
         },
         "subscription-finalization": {
           "spec": "plurnk-core/SPEC.md",
@@ -25666,9 +25666,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "subscriptions",
+          "reason": "Folded non-heading tag §subscription-finalization (paragraph) into section heading §subscriptions"
         },
         "subscriptions-causal-resource": {
           "spec": "plurnk-core/SPEC.md",
@@ -25678,9 +25678,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "subscriptions",
+          "reason": "Folded non-heading tag §subscriptions-causal-resource (paragraph) into section heading §subscriptions"
         },
         "subscriptions-fold-keeps-subscription": {
           "spec": "plurnk-core/SPEC.md",
@@ -25690,9 +25690,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "subscriptions",
+          "reason": "Folded non-heading tag §subscriptions-fold-keeps-subscription (paragraph) into section heading §subscriptions"
         },
         "chunk-accumulation-chunks-accumulate": {
           "spec": "plurnk-core/SPEC.md",
@@ -25702,9 +25702,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §chunk-accumulation-chunks-accumulate (paragraph) into section heading §stream"
         },
         "no-chunk-rows": {
           "spec": "plurnk-core/SPEC.md",
@@ -25714,9 +25714,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §no-chunk-rows (heading) into section heading §stream"
         },
         "no-chunk-rows-log-captures-lifecycle-only": {
           "spec": "plurnk-core/SPEC.md",
@@ -25726,9 +25726,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §no-chunk-rows-log-captures-lifecycle-only (paragraph) into section heading §stream"
         },
         "stream-control": {
           "spec": "plurnk-core/SPEC.md",
@@ -25738,9 +25738,9 @@
           "liveShape": "heading",
           "codeCitations": 5,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §stream-control as canonical section heading in §stream Stream Model"
         },
         "stream-asked-stop": {
           "spec": "plurnk-core/SPEC.md",
@@ -25750,9 +25750,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream-control",
+          "reason": "Folded non-heading tag §stream-asked-stop (list) into section heading §stream-control"
         },
         "stream-constraints": {
           "spec": "plurnk-core/SPEC.md",
@@ -25762,9 +25762,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §stream-constraints (heading) into section heading §stream"
         },
         "stream-constraints-engine-one-cap": {
           "spec": "plurnk-core/SPEC.md",
@@ -25774,9 +25774,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §stream-constraints-engine-one-cap (paragraph) into section heading §stream"
         },
         "live-updates": {
           "spec": "plurnk-core/SPEC.md",
@@ -25786,9 +25786,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §live-updates (heading) into section heading §stream"
         },
         "live-updates-stream-event-fires-on-chunk": {
           "spec": "plurnk-core/SPEC.md",
@@ -25798,9 +25798,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "stream",
+          "reason": "Folded non-heading tag §live-updates-stream-event-fires-on-chunk (paragraph) into section heading §stream"
         },
         "persistence-via-sqlrite": {
           "spec": "plurnk-core/SPEC.md",
@@ -25810,9 +25810,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-durability",
+          "reason": "Folded non-heading tag §persistence-via-sqlrite (paragraph) into section heading §db-durability"
         },
         "db-durability": {
           "spec": "plurnk-core/SPEC.md",
@@ -25822,9 +25822,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §db-durability as canonical section heading in Storage Model"
         },
         "db-schema-baseline": {
           "spec": "plurnk-core/SPEC.md",
@@ -25834,9 +25834,9 @@
           "liveShape": "table",
           "codeCitations": 8,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-migrations",
+          "reason": "Folded non-heading tag §db-schema-baseline (table) into section heading §db-migrations"
         },
         "db-migrations": {
           "spec": "plurnk-core/SPEC.md",
@@ -25846,9 +25846,9 @@
           "liveShape": "table",
           "codeCitations": 12,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §db-migrations as canonical section heading in Storage Model"
         },
         "validation-topology": {
           "spec": "plurnk-core/SPEC.md",
@@ -25858,9 +25858,9 @@
           "liveShape": "table",
           "codeCitations": 11,
           "testCitations": 9,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-migrations",
+          "reason": "Folded non-heading tag §validation-topology (table) into section heading §db-migrations"
         },
         "db-process-triggers": {
           "spec": "plurnk-core/SPEC.md",
@@ -25870,9 +25870,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-migrations",
+          "reason": "Folded non-heading tag §db-process-triggers (table) into section heading §db-migrations"
         },
         "db-fk-indexes": {
           "spec": "plurnk-core/SPEC.md",
@@ -25882,9 +25882,9 @@
           "liveShape": "table",
           "codeCitations": 7,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-migrations",
+          "reason": "Folded non-heading tag §db-fk-indexes (table) into section heading §db-migrations"
         },
         "db-index-owners": {
           "spec": "plurnk-core/SPEC.md",
@@ -25894,9 +25894,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-migrations",
+          "reason": "Folded non-heading tag §db-index-owners (table) into section heading §db-migrations"
         },
         "db-maintenance-optimize": {
           "spec": "plurnk-core/SPEC.md",
@@ -25906,9 +25906,9 @@
           "liveShape": "table",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "content-store",
+          "reason": "Folded non-heading tag §db-maintenance-optimize (table) into section heading §content-store"
         },
         "db-space-reclamation": {
           "spec": "plurnk-core/SPEC.md",
@@ -25918,9 +25918,9 @@
           "liveShape": "table",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "content-store",
+          "reason": "Folded non-heading tag §db-space-reclamation (table) into section heading §content-store"
         },
         "content-store": {
           "spec": "plurnk-core/SPEC.md",
@@ -25930,9 +25930,9 @@
           "liveShape": "table",
           "codeCitations": 7,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §content-store as canonical section heading in Storage Model"
         },
         "retention-policy": {
           "spec": "plurnk-core/SPEC.md",
@@ -25942,9 +25942,9 @@
           "liveShape": "table",
           "codeCitations": 6,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "content-store",
+          "reason": "Folded non-heading tag §retention-policy (table) into section heading §content-store"
         },
         "native-content-lifetime": {
           "spec": "plurnk-core/SPEC.md",
@@ -25954,9 +25954,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "content-store",
+          "reason": "Folded non-heading tag §native-content-lifetime (paragraph) into section heading §content-store"
         },
         "entry-identity-no-null": {
           "spec": "plurnk-core/SPEC.md",
@@ -25966,9 +25966,9 @@
           "liveShape": "list",
           "codeCitations": 8,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-migrations",
+          "reason": "Folded non-heading tag §entry-identity-no-null (list) into section heading §db-migrations"
         },
         "db-query-report": {
           "spec": "plurnk-core/SPEC.md",
@@ -25978,9 +25978,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-durability",
+          "reason": "Folded non-heading tag §db-query-report (heading) into section heading §db-durability"
         },
         "sql-ts-boundary": {
           "spec": "plurnk-core/SPEC.md",
@@ -25990,9 +25990,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "db-durability",
+          "reason": "Folded non-heading tag §sql-ts-boundary (heading) into section heading §db-durability"
         },
         "core-extension-composition": {
           "spec": "plurnk-core/SPEC.md",
@@ -26002,9 +26002,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §core-extension-composition as canonical section heading in §core-extension-composition Extension composition"
         },
         "extension-namespace-arbitration": {
           "spec": "plurnk-core/SPEC.md",
@@ -26014,9 +26014,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "core-extension-composition",
+          "reason": "Folded non-heading tag §extension-namespace-arbitration (paragraph) into section heading §core-extension-composition"
         },
         "bundled-set": {
           "spec": "plurnk-core/SPEC.md",
@@ -26026,9 +26026,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §bundled-set as canonical section heading in §bundled-set Bundled Set"
         },
         "default-extension-ownership": {
           "spec": "plurnk-core/SPEC.md",
@@ -26038,9 +26038,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "bundled-set",
+          "reason": "Folded non-heading tag §default-extension-ownership (paragraph) into section heading §bundled-set"
         },
         "install-root-advisory-ownership": {
           "spec": "plurnk-core/SPEC.md",
@@ -26050,9 +26050,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "bundled-set",
+          "reason": "Folded non-heading tag §install-root-advisory-ownership (paragraph) into section heading §bundled-set"
         }
       },
       "tests": {
@@ -26067,9 +26067,9 @@
           "citedTags": [
             "db-query-report"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained sql-report.test.mjs (unit) covering db-query-report"
         },
         "plurnk-core/src/core/LiveSubscriptions.test.ts": {
           "tier": "unit",
@@ -26085,9 +26085,9 @@
             "subscription-finalization",
             "subscriptions-subscription-registry-routes-cancellation"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained LiveSubscriptions.test.ts (unit) covering exec-lifetime, stream-asked-stop, subscription-finalization"
         },
         "plurnk-core/src/core/ProposalLifecycle.test.ts": {
           "tier": "unit",
@@ -26104,9 +26104,9 @@
             "proposal-projection",
             "proposal-timeout-cancels"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained ProposalLifecycle.test.ts (unit) covering methods-proposal-resolve, proposal-accept-applies, proposal-disposition"
         },
         "plurnk-core/src/core/ProposalPolicies.test.ts": {
           "tier": "unit",
@@ -26121,9 +26121,9 @@
             "proposal-disposition",
             "runtime-bookkeeping-policy"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained ProposalPolicies.test.ts (unit) covering configuration-repair-path, proposal-disposition, runtime-bookkeeping-policy"
         },
         "plurnk-core/src/core/runtime-registration.test.ts": {
           "tier": "unit",
@@ -26137,9 +26137,9 @@
             "executor-policy",
             "extension-namespace-arbitration"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained runtime-registration.test.ts (unit) covering executor-policy, extension-namespace-arbitration"
         },
         "plurnk-core/test/intg/ChannelWrite.test.ts": {
           "tier": "intg",
@@ -26161,9 +26161,9 @@
             "tokenomics-weight-stored-at-write",
             "validation-topology"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained ChannelWrite.test.ts (intg) covering channel-state-state-is-metadata, chunk-accumulation-chunks-accumulate, exec-lifetime"
         },
         "plurnk-core/test/intg/Daemon.stream-event.test.ts": {
           "tier": "intg",
@@ -26177,9 +26177,9 @@
             "live-updates",
             "notifications"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/ChannelWrite.test.ts",
+          "reason": "Merged Daemon.stream-event.test.ts (6 tests) into ChannelWrite.test.ts"
         },
         "plurnk-core/test/intg/Digest.edit-census.test.ts": {
           "tier": "intg",
@@ -26193,9 +26193,9 @@
             "digest-edit-census",
             "validation-topology"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged Digest.edit-census.test.ts (2 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/Engine.proposal-lifecycle.test.ts": {
           "tier": "intg",
@@ -26217,9 +26217,9 @@
             "proposal-proposed-hidden",
             "session-owner-resolution"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained Engine.proposal-lifecycle.test.ts (intg) covering digest-proposal-decisions, engine-rails, methods"
         },
         "plurnk-core/test/intg/Exec.kill.test.ts": {
           "tier": "intg",
@@ -26233,9 +26233,9 @@
             "scheme-operation-dispatch",
             "stream-control"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/ChannelWrite.test.ts",
+          "reason": "Merged Exec.kill.test.ts (4 tests) into ChannelWrite.test.ts"
         },
         "plurnk-core/test/intg/Exec.streaming.test.ts": {
           "tier": "intg",
@@ -26250,9 +26250,9 @@
             "exec-target-routing",
             "subscriptions-subscription-registry-routes-cancellation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/ChannelWrite.test.ts",
+          "reason": "Merged Exec.streaming.test.ts (4 tests) into ChannelWrite.test.ts"
         },
         "plurnk-core/test/intg/KILL.stream.test.ts": {
           "tier": "intg",
@@ -26266,9 +26266,9 @@
             "pinned-wording-core",
             "stream-control"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/ChannelWrite.test.ts",
+          "reason": "Merged KILL.stream.test.ts (2 tests) into ChannelWrite.test.ts"
         },
         "plurnk-core/test/intg/SchemeRegistry.test.ts": {
           "tier": "intg",
@@ -26282,9 +26282,9 @@
             "extension-namespace-arbitration",
             "manifest-capability-traits"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged SchemeRegistry.test.ts (3 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/bundled-mimetype-handlers.test.ts": {
           "tier": "intg",
@@ -26299,9 +26299,9 @@
             "mimetype-backend-selection",
             "mimetype-pdf-facts"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged bundled-mimetype-handlers.test.ts (5 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/caps-subscriptions.test.ts": {
           "tier": "intg",
@@ -26317,9 +26317,9 @@
             "subscription-finalization",
             "subscriptions-subscription-registry-routes-cancellation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/ChannelWrite.test.ts",
+          "reason": "Merged caps-subscriptions.test.ts (4 tests) into ChannelWrite.test.ts"
         },
         "plurnk-core/test/intg/contract-streaming.test.ts": {
           "tier": "intg",
@@ -26339,9 +26339,9 @@
             "stream-constraints",
             "subscriptions"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/ChannelWrite.test.ts",
+          "reason": "Merged contract-streaming.test.ts (7 tests) into ChannelWrite.test.ts"
         },
         "plurnk-core/test/intg/db-baseline-hint.test.ts": {
           "tier": "intg",
@@ -26354,9 +26354,9 @@
           "citedTags": [
             "db-migrations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged db-baseline-hint.test.ts (2 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/db-maintenance.test.ts": {
           "tier": "intg",
@@ -26369,9 +26369,9 @@
           "citedTags": [
             "db-maintenance-optimize"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/retention.test.ts",
+          "reason": "Merged db-maintenance.test.ts (1 tests) into retention.test.ts"
         },
         "plurnk-core/test/intg/demo-fixture.test.ts": {
           "tier": "intg",
@@ -26384,9 +26384,9 @@
           "citedTags": [
             "entry-identity-no-null"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged demo-fixture.test.ts (1 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/deps-audit.test.ts": {
           "tier": "intg",
@@ -26399,9 +26399,9 @@
           "citedTags": [
             "install-root-advisory-ownership"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged deps-audit.test.ts (3 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/entries.test.ts": {
           "tier": "intg",
@@ -26421,9 +26421,9 @@
             "tokenomics-weight-stored-at-write",
             "validation-topology"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained entries.test.ts (intg) covering channel-state-state-is-metadata, channels-entry-name-key, entry-identity-no-null"
         },
         "plurnk-core/test/intg/entry-identity.test.ts": {
           "tier": "intg",
@@ -26436,9 +26436,9 @@
           "citedTags": [
             "entry-identity-no-null"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged entry-identity.test.ts (2 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/exec-kill-scope-subscription.test.ts": {
           "tier": "intg",
@@ -26452,9 +26452,9 @@
             "subscriptions",
             "subscriptions-fold-keeps-subscription"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/ChannelWrite.test.ts",
+          "reason": "Merged exec-kill-scope-subscription.test.ts (1 tests) into ChannelWrite.test.ts"
         },
         "plurnk-core/test/intg/manifest-tags.test.ts": {
           "tier": "intg",
@@ -26467,9 +26467,9 @@
           "citedTags": [
             "entry-identity-no-null"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged manifest-tags.test.ts (1 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/mcp-storage-composition.test.ts": {
           "tier": "intg",
@@ -26483,9 +26483,9 @@
             "mcp-launch-directory",
             "proposal-disposition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.proposal-lifecycle.test.ts",
+          "reason": "Merged mcp-storage-composition.test.ts (2 tests) into Engine.proposal-lifecycle.test.ts"
         },
         "plurnk-core/test/intg/members-auto-add.test.ts": {
           "tier": "intg",
@@ -26501,9 +26501,9 @@
             "proposal-outcome-terse-error",
             "proposal-reject-fails"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.proposal-lifecycle.test.ts",
+          "reason": "Merged members-auto-add.test.ts (8 tests) into Engine.proposal-lifecycle.test.ts"
         },
         "plurnk-core/test/intg/native-retention.test.ts": {
           "tier": "intg",
@@ -26516,9 +26516,9 @@
           "citedTags": [
             "native-content-lifetime"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/retention.test.ts",
+          "reason": "Merged native-retention.test.ts (4 tests) into retention.test.ts"
         },
         "plurnk-core/test/intg/question-tool.test.ts": {
           "tier": "intg",
@@ -26533,9 +26533,9 @@
             "question-tool",
             "stream-asked-stop"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.proposal-lifecycle.test.ts",
+          "reason": "Merged question-tool.test.ts (4 tests) into Engine.proposal-lifecycle.test.ts"
         },
         "plurnk-core/test/intg/retention.test.ts": {
           "tier": "intg",
@@ -26552,9 +26552,9 @@
             "derivation-in-flight",
             "retention-policy"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained retention.test.ts (intg) covering configuration-repair-path, content-store, db-space-reclamation"
         },
         "plurnk-core/test/intg/schema-composition.test.ts": {
           "tier": "intg",
@@ -26569,9 +26569,9 @@
             "db-process-triggers",
             "db-schema-baseline"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged schema-composition.test.ts (3 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/schema-query-plans.test.ts": {
           "tier": "intg",
@@ -26588,9 +26588,9 @@
             "db-schema-baseline",
             "retention-policy"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged schema-query-plans.test.ts (2 tests) into entries.test.ts"
         },
         "plurnk-core/test/intg/sqlite-durability.test.ts": {
           "tier": "intg",
@@ -26603,9 +26603,9 @@
           "citedTags": [
             "db-durability"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/retention.test.ts",
+          "reason": "Merged sqlite-durability.test.ts (5 tests) into retention.test.ts"
         },
         "plurnk-core/test/intg/validation-topology.test.ts": {
           "tier": "intg",
@@ -26618,9 +26618,9 @@
           "citedTags": [
             "validation-topology"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/entries.test.ts",
+          "reason": "Merged validation-topology.test.ts (1 tests) into entries.test.ts"
         }
       }
     },

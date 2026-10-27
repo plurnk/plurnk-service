@@ -21,13 +21,13 @@ one packet. No connection or stored statement escapes it. Report failure closes 
 interviews close it before awaiting their provider. Neither migration nor deletion is a read effect.
 
 §digest-proposal-decisions Operation rows retain the original approval decision
-separately from their applied result ({§proposal-decision-evidence}). Markdown
+separately from their applied result ({§proposal}). Markdown
 names its decision, resolver and time, and indicates a body override; JSON retains
 the complete submitted decision. Missing historical decisions remain absent,
 never inferred from success, failure, or current ownership.
 
 Physical-request reports preserve identity and accounting after payload retention
-({§retention-policy}), displaying the logical call's retirement timestamp. Expiry
+({§content-store}), displaying the logical call's retirement timestamp. Expiry
 does not turn a failed or unpriced request into a free or absent request.
 
 ## Artifacts and reports

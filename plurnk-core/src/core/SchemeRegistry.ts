@@ -72,7 +72,7 @@ export default class SchemeRegistry {
     // (exec is taught once); else the catalog + docs bloat by one redundant line/entry per tag.
     #runtimeSchemes = new Set<string>();
     // One ownership ledger for built-ins, installed schemes, runtime output
-    // faces, and programmatic schemes. {§extension-namespace-arbitration}
+    // faces, and programmatic schemes. {§core-extension-composition}
     #claims = new Map<string, NamespaceClaim>();
     #readTeaching: ReadTeaching;
     #referenceDocs: Promise<readonly { name: string; scheme: string | null; content: string }[]> | undefined;
@@ -194,7 +194,7 @@ export default class SchemeRegistry {
 
     // Register one executor tag's scheme face (the boot loop above or daemon-module setup).
     // Cross-family arbitration lives here so boot and module paths share one
-    // namespace. {§extension-namespace-arbitration}
+    // namespace. {§core-extension-composition}
     registerRuntimeScheme(
         tag: string,
         executor: Executor,

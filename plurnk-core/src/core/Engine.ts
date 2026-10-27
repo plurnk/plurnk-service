@@ -380,7 +380,7 @@ export default class Engine {
         }).filter(({ tag }) => RuntimePolicy.isEnabled(tag));
     }
 
-    // {§extension-namespace-arbitration} Both registries prepare before either publishes.
+    // {§core-extension-composition} Both registries prepare before either publishes.
     registerRuntimes(registrations: readonly ModuleRuntimeRegistration[]): void {
         if (this.#executors === undefined) throw new Error("registerRuntimes: executor registry not wired yet");
         const normalized = Engine.#enabledRuntimes(registrations);
@@ -513,7 +513,7 @@ export default class Engine {
             // Request-shaped physical capacity from that same latest emission call.
             contextCapacity: row.context_capacity,
             // Latest turn's opaque provider metadata. {§provider-surface}
-            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: the metadata is read back as the row stored it
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: the metadata is read back as the row stored it
             meta: JSON.parse(row.meta ?? "{}") as Record<string, unknown> };
     }
 

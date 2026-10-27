@@ -14,7 +14,7 @@ INSERT INTO _support_floor_probe (id) VALUES (1);
 DROP TABLE _support_floor_probe;
 
 -- PREP: crud_find_workspace_entry
--- {§entry-identity-no-null} — every identity component is NOT NULL (bare/absolute paths
+-- {§db-migrations} — every identity component is NOT NULL (bare/absolute paths
 -- persist under the reserved 'file' scheme), so plain `=` is the honest comparison.
 SELECT e.id, e.attributes, e.default_channel, e.output
 FROM entries e
@@ -83,7 +83,7 @@ RETURNING id, pathname,
 -- PREP: crud_get_member_sig
 -- SPEC {§file-snapshot-revision} — the member's last-synced disk signature
 -- read before materializing so an unchanged file short-circuits
--- before projection. File members store scheme='file' ({§entry-identity-no-null}).
+-- before projection. File members store scheme='file' ({§db-migrations}).
 SELECT e.id, e.synced_sig, e.membership_origin, e.attributes, c.mimetype
 FROM entries e
 LEFT JOIN entry_channel_rows c ON c.entry_id = e.id AND c.name = 'body'

@@ -389,7 +389,7 @@ export default class ClientReads {
     }
 
     // The operation a stream began at, from the `log:///<loop>/<turn>/<item>/<op>` source its spawn recorded when it
-    // began in a turn ({§subscriptions-causal-resource}); none otherwise.
+    // began in a turn ({§subscriptions}); none otherwise.
     static #openedAt(source: string | null): Pick<ApplicationStream, "loop_seq" | "turn_seq" | "sequence"> {
         const match = source === null ? null : /^log:\/\/\/(\d+)\/(\d+)\/(\d+)\/[^/]+$/u.exec(source);
         if (match === null) return {};

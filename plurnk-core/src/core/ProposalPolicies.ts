@@ -12,7 +12,7 @@ export default class ProposalPolicies {
         tools: readonly string[],
         turn: { readonly maintenance: boolean; readonly clientOperation: boolean; readonly preapproved?: boolean },
     ): ProposalDisposition {
-        // {§runtime-bookkeeping-policy} Unexpected maintenance effects never acquire authority.
+        // {§proposal-disposition} Unexpected maintenance effects never acquire authority.
         if (turn.maintenance) return { decision: "reject", outcome: "runtime_bookkeeping" };
         try {
             const decision = ProposalPolicies.read();

@@ -1,5 +1,5 @@
 -- The ambient activity feed: what a session's siblings and parent observe of it. The process
--- triggers that publish it ({§db-process-triggers}) and the cursor statements TurnMaterialization
+-- triggers that publish it ({§db-migrations}) and the cursor statements TurnMaterialization
 -- pulls it with.
 
 -- INIT: ambient_child_wake_revision

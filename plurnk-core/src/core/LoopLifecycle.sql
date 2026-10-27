@@ -80,7 +80,7 @@ WITH RECURSIVE tree(id, depth) AS (
     JOIN tree ON child.parent_session_id = tree.id
 )
 -- CROSS JOIN fixes the nesting: the walked tree is the outer loop and each session is a
--- primary-key probe, instead of a scan of every session probing the tree ({§db-fk-indexes}).
+-- primary-key probe, instead of a scan of every session probing the tree ({§db-migrations}).
 SELECT tree.id AS session_id, tree.depth, sessions.cancelled_through_sequence
 FROM tree CROSS JOIN sessions ON sessions.id = tree.id
 WHERE $include_root = 1 OR tree.id <> $session_id

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import LiveSubscriptions from "./LiveSubscriptions.ts";
 
-test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscriptions routes one cancellation through the registered handle", async () => {
+test("{§subscriptions} LiveSubscriptions routes one cancellation through the registered handle", async () => {
     const registry = new LiveSubscriptions();
     let calls = 0;
     registry.register(7, { cancel: async () => { calls += 1; } });
@@ -12,7 +12,7 @@ test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscripti
     assert.equal(calls, 1, "repeated cancellation shares the one owned teardown");
 });
 
-test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscriptions distinguishes an absent live handle from successful cancellation", async () => {
+test("{§subscriptions} LiveSubscriptions distinguishes an absent live handle from successful cancellation", async () => {
     const registry = new LiveSubscriptions();
     assert.equal(await registry.cancel(7), false);
 
@@ -21,13 +21,13 @@ test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscripti
     assert.equal(await registry.cancel(7), false);
 });
 
-test("{§subscriptions-subscription-registry-routes-cancellation} LiveSubscriptions rejects duplicate ownership", () => {
+test("{§subscriptions} LiveSubscriptions rejects duplicate ownership", () => {
     const registry = new LiveSubscriptions();
     registry.register(7, { cancel() {} });
     assert.throws(() => registry.register(7, { cancel() {} }), /already registered/);
 });
 
-test("{§subscription-finalization} LiveSubscriptions preserves a synchronous teardown failure as the shared rejection", async () => {
+test("{§subscriptions} LiveSubscriptions preserves a synchronous teardown failure as the shared rejection", async () => {
     const registry = new LiveSubscriptions();
     const failure = new Error("teardown failed");
     registry.register(7, { cancel() { throw failure; } });
@@ -38,7 +38,7 @@ test("{§subscription-finalization} LiveSubscriptions preserves a synchronous te
     await assert.rejects(first, failure);
 });
 
-test("{§subscription-finalization} failed cancellation may be retried without replacing its owner", async () => {
+test("{§subscriptions} failed cancellation may be retried without replacing its owner", async () => {
     const registry = new LiveSubscriptions();
     const failure = new Error("teardown failed");
     let calls = 0;
@@ -49,7 +49,7 @@ test("{§subscription-finalization} failed cancellation may be retried without r
     assert.equal(calls, 2, "successful cancellation is still coalesced");
 });
 
-test("{§stream-asked-stop} only the holding session's KILL marks a stream as asked to stop", () => {
+test("{§stream-control} only the holding session's KILL marks a stream as asked to stop", () => {
     const registry = new LiveSubscriptions();
     registry.register(7, { cancel() {} }, 3);
     registry.asked(7, 4);

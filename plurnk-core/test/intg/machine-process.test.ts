@@ -702,7 +702,7 @@ test("{§loop-terminals} loops: status enum rejects non-enum values (e.g. 201, 3
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} loops: sequence < 1 rejected by CHECK", async () => {
+test("{§db-migrations} loops: sequence < 1 rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await seedSession(db, "ws-loops-seqzero");
@@ -742,7 +742,7 @@ test("{§session-scheme} loops: same sequence number across different sessions i
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} loops: session_id NOT NULL — insert without session_id rejected", async () => {
+test("{§db-migrations} loops: session_id NOT NULL — insert without session_id rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -752,7 +752,7 @@ test("{§validation-topology} loops: session_id NOT NULL — insert without sess
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} loops: empty prompt is allowed", async () => {
+test("{§db-migrations} loops: empty prompt is allowed", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await seedSession(db, "ws-loops-emptyprompt");
@@ -762,7 +762,7 @@ test("{§validation-topology} loops: empty prompt is allowed", async () => {
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} loops: session_id FK — insert against non-existent session rejected", async () => {
+test("{§db-migrations} loops: session_id FK — insert against non-existent session rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -772,7 +772,7 @@ test("{§validation-topology} loops: session_id FK — insert against non-existe
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} loops: ON DELETE CASCADE via session — deleting session removes its loops", async () => {
+test("{§db-migrations} loops: ON DELETE CASCADE via session — deleting session removes its loops", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await seedSession(db, "ws-loops-runcascade");
@@ -784,7 +784,7 @@ test("{§validation-topology} loops: ON DELETE CASCADE via session — deleting 
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} loops: CASCADE chain via workspace→sessions→loops", async () => {
+test("{§db-migrations} loops: CASCADE chain via workspace→sessions→loops", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-loops-workspacecascade");
@@ -796,7 +796,7 @@ test("{§validation-topology} loops: CASCADE chain via workspace→sessions→lo
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} loops: negative version rejected by CHECK", async () => {
+test("{§db-migrations} loops: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await seedSession(db, "ws-loops-negver");
@@ -1120,7 +1120,7 @@ test("{§machine-processes} sessions: fork insert — non-null parent_session_id
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} sessions: workspace_id NOT NULL — insert without workspace_id rejected", async () => {
+test("{§db-migrations} sessions: workspace_id NOT NULL — insert without workspace_id rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -1130,7 +1130,7 @@ test("{§validation-topology} sessions: workspace_id NOT NULL — insert without
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} sessions: workspace_id FK — insert against non-existent workspace rejected", async () => {
+test("{§db-migrations} sessions: workspace_id FK — insert against non-existent workspace rejected", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -1140,7 +1140,7 @@ test("{§validation-topology} sessions: workspace_id FK — insert against non-e
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} sessions: parent_session_id FK — insert against non-existent parent rejected", async () => {
+test("{§db-migrations} sessions: parent_session_id FK — insert against non-existent parent rejected", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-badparent");
@@ -1151,7 +1151,7 @@ test("{§validation-topology} sessions: parent_session_id FK — insert against 
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} sessions: parent_session_id self-reference CHECK — parent != id rejected", async () => {
+test("{§db-migrations} sessions: parent_session_id self-reference CHECK — parent != id rejected", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-self");
@@ -1163,7 +1163,7 @@ test("{§validation-topology} sessions: parent_session_id self-reference CHECK �
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} sessions: ON DELETE CASCADE via workspace — deleting workspace removes all its sessions", async () => {
+test("{§db-migrations} sessions: ON DELETE CASCADE via workspace — deleting workspace removes all its sessions", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-cascade");
@@ -1181,7 +1181,7 @@ test("{§validation-topology} sessions: ON DELETE CASCADE via workspace — dele
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} sessions: ON DELETE CASCADE via parent_session_id — deleting a parent session removes its forks", async () => {
+test("{§db-migrations} sessions: ON DELETE CASCADE via parent_session_id — deleting a parent session removes its forks", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-forkcascade");
@@ -1198,7 +1198,7 @@ test("{§validation-topology} sessions: ON DELETE CASCADE via parent_session_id 
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} sessions: negative version rejected by CHECK", async () => {
+test("{§db-migrations} sessions: negative version rejected by CHECK", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-negversion");

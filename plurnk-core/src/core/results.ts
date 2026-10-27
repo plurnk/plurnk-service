@@ -82,10 +82,10 @@ export default class Results {
         return typeof result.rowsWritten === "number" ? result.rowsWritten : 1;
     }
 
-    // {§validation-topology} — a result read back from a row is parsed, never re-asserted: the
+    // {§db-migrations} — a result read back from a row is parsed, never re-asserted: the
     // row's text is the result the gate admitted when it was written.
     static fromRow(stored: string): SchemeResult {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: a stored result is parsed, not re-asserted
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: a stored result is parsed, not re-asserted
         return JSON.parse(stored) as SchemeResult;
     }
 

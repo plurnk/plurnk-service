@@ -1,12 +1,12 @@
 -- MIGRATE: 5 entries
--- Chapter 5 of the schema baseline ({§db-schema-baseline}): Entries and their channels, derivations and the search artifacts over them, native content.
+-- Chapter 5 of the schema baseline ({§db-migrations}): Entries and their channels, derivations and the search artifacts over them, native content.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
 -- {§content-store} Every settled body is stored once, addressed by its sha256, however many
 -- channels, workspaces, forks or full-text rows carry it. Rows are immutable; retention collects
 -- what nothing references.
--- The ONE engine-imposed constraint (SPEC {§stream-constraints}, {§stream-constraints-engine-one-cap}): 100 MiB char-length cap
+-- The ONE engine-imposed constraint (SPEC {§stream}, {§stream}): 100 MiB char-length cap
 -- per content body. All other limits are extrinsic.
 CREATE TABLE IF NOT EXISTS contents (
     id      INTEGER NOT NULL PRIMARY KEY,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS derivations (
 ) STRICT;
 
 -- entries
--- {§entry-identity-no-null} A resource belongs directly to its workspace.
+-- {§db-migrations} A resource belongs directly to its workspace.
 -- Actor attribution and subscriptions do not participate in its address.
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER NOT NULL PRIMARY KEY,
@@ -135,9 +135,9 @@ CREATE TABLE IF NOT EXISTS entry_channel_rows (
     FOREIGN KEY (deep_hash) REFERENCES derivations(deep_hash)
 ) STRICT, WITHOUT ROWID;
 
--- {§db-fk-indexes} Derivation replacement checks channels by hash; catalog joins drive on it too.
+-- {§db-migrations} Derivation replacement checks channels by hash; catalog joins drive on it too.
 CREATE INDEX IF NOT EXISTS entry_channel_rows_deep_hash ON entry_channel_rows (deep_hash) WHERE deep_hash IS NOT NULL;
--- {§db-fk-indexes} Content collection asks whether any channel still points at a body.
+-- {§db-migrations} Content collection asks whether any channel still points at a body.
 CREATE INDEX IF NOT EXISTS entry_channel_rows_content ON entry_channel_rows (content_id) WHERE content_id IS NOT NULL;
 
 -- {§content-store} The channel as every reader and writer sees it. content_hash is the stored
@@ -293,7 +293,7 @@ CREATE TABLE IF NOT EXISTS symbol_defs (
 
 CREATE INDEX IF NOT EXISTS symbol_defs_name   ON symbol_defs (name);
 
--- {§db-fk-indexes} Reindexing deletes a derivation's definitions by derivation; mirrors symbol_refs_source.
+-- {§db-migrations} Reindexing deletes a derivation's definitions by derivation; mirrors symbol_refs_source.
 CREATE INDEX IF NOT EXISTS symbol_defs_source ON symbol_defs (derivation_id);
 
 -- symbol_refs
@@ -327,7 +327,7 @@ SELECT derivations.id AS id, contents.content AS content
 FROM derivations
 JOIN contents ON contents.id = derivations.content_id;
 CREATE VIRTUAL TABLE IF NOT EXISTS derivation_fts USING fts5(content, content='derivation_texts', content_rowid='id');
--- {§db-fk-indexes} Content collection asks whether any derivation still indexes a body.
+-- {§db-migrations} Content collection asks whether any derivation still indexes a body.
 CREATE INDEX IF NOT EXISTS derivations_content ON derivations (content_id) WHERE content_id IS NOT NULL;
 
 -- {§log-wire-format}: READ snapshots survive source changes and log curation.

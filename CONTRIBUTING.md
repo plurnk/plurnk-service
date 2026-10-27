@@ -140,7 +140,7 @@ remain on-demand diagnostics, not live-run defaults.
 
 For SQL, `npm run -s report:sql -- /path/to/workload.db [specimens.json]` snapshots
 the explicitly selected database and emits JSON plans for the current source PREPs
-({§db-query-report}). It never boots a daemon or upgrades the database. Optional
+({§db-durability}). It never boots a daemon or upgrades the database. Optional
 specimens are an array of `{ "statement": "prep_name", "parameters": { ... } }`:
 choose actual bindings for the workload under investigation. Only those queries are
 timed, under SQLite's query-only guard, without retaining result bodies. A failed

@@ -1,5 +1,5 @@
 -- MIGRATE: 1 workspaces
--- Chapter 1 of the schema baseline ({§db-schema-baseline}): The workspace: identity, module state, membership constraints.
+-- Chapter 1 of the schema baseline ({§db-migrations}): The workspace: identity, module state, membership constraints.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 

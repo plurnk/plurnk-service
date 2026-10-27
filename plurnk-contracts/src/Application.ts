@@ -217,7 +217,7 @@ export type LogEntryWire = {
     status_rx: number;
     weight: number;
     attrs: unknown;
-    // {§proposal-202-pauses} The row's lifecycle: `proposed` while its operation awaits its decision.
+    // {§proposal} The row's lifecycle: `proposed` while its operation awaits its decision.
     state: "proposed" | "resolved" | "failed" | "cancelled";
     reasoning?: string;
     // {§methods-readable-reasoning} The request that streamed `reasoning`; absent for history a FORK inherited.

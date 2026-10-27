@@ -1,5 +1,5 @@
 -- MIGRATE: 4 inference
--- Chapter 4 of the schema baseline ({§db-schema-baseline}): Inference: logical calls, model responses, emission attempts, physical provider requests.
+-- Chapter 4 of the schema baseline ({§db-migrations}): Inference: logical calls, model responses, emission attempts, physical provider requests.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS inference_calls (
     request_model       TEXT    NOT NULL CHECK (length(request_model) >= 1),
     timestamp           TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     completed_at        TEXT,
-    -- {§retention-policy}: one logical call owns retirement of all its captured payloads.
+    -- {§content-store}: one logical call owns retirement of all its captured payloads.
     payloads_retired_at TEXT,
     CHECK (
         (state = 'pending' AND completed_at IS NULL)
@@ -140,7 +140,7 @@ BEGIN
 END;
 
 -- The response body, apart from the call's evidence columns, so the operator's retention
--- ({§retention-policy}) can retire a body while the call's identity, capacity, admission and
+-- ({§content-store}) can retire a body while the call's identity, capacity, admission and
 -- accounting stay. A body is present or retired; it never changes.
 CREATE TABLE IF NOT EXISTS model_call_responses (
     id       INTEGER NOT NULL PRIMARY KEY,

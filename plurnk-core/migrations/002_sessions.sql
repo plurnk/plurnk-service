@@ -1,5 +1,5 @@
 -- MIGRATE: 2 sessions
--- Chapter 2 of the schema baseline ({§db-schema-baseline}): Sessions over a workspace, their owners, external references, model routes, and the ambient event feed their siblings observe.
+-- Chapter 2 of the schema baseline ({§db-migrations}): Sessions over a workspace, their owners, external references, model routes, and the ambient event feed their siblings observe.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
@@ -83,7 +83,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS sessions_provider_identity       ON sessions (
 -- {§session-scheme}: a retained name cannot be rebound to another actor.
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_workspace_name          ON sessions (workspace_id, name);
 
--- {§db-fk-indexes} Foreign-key check paths: without these, updating or replacing a route scans every session.
+-- {§db-migrations} Foreign-key check paths: without these, updating or replacing a route scans every session.
 CREATE INDEX IF NOT EXISTS sessions_model_route_id       ON sessions (model_route_id)       WHERE model_route_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS sessions_spawn_model_route_id ON sessions (spawn_model_route_id) WHERE spawn_model_route_id IS NOT NULL;
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
 CREATE INDEX IF NOT EXISTS ambient_events_workspace_id_id
     ON ambient_events (workspace_id, id);
 
--- {§db-index-owners} Producer deletion's foreign-key check walks its events by producer; no registry statement selects by it.
+-- {§db-migrations} Producer deletion's foreign-key check walks its events by producer; no registry statement selects by it.
 CREATE INDEX IF NOT EXISTS ambient_events_producer_kind_id
     ON ambient_events (producer_session_id, kind, id);
 
@@ -241,7 +241,7 @@ END;
 -- session-scoped one, because an environment is context (how this session works) rather than
 -- capability (what exists in this workspace). A sibling table rather than a nullable column on
 -- workspace_module_state: the foreign key is real, so a session's definitions die with it, and
--- every identity component stays NOT NULL ({§entry-identity-no-null}).
+-- every identity component stays NOT NULL ({§db-migrations}).
 CREATE TABLE IF NOT EXISTS session_module_state (
     session_id      INTEGER NOT NULL,
     namespace_owner TEXT    NOT NULL CHECK (length(namespace_owner) > 0),

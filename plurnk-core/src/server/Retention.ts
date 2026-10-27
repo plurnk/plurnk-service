@@ -1,4 +1,4 @@
-// {§retention-policy} — the operator's retention policy, read once from the environment and run
+// {§content-store} — the operator's retention policy, read once from the environment and run
 // as set statements: on the daemon's cadence while it runs, and as a shutdown step before the
 // planner statistics. Packet/response retention is separate from unreferenced-content collection.
 import type { Db } from "../core/Db.ts";
@@ -48,7 +48,7 @@ export default class Retention {
 
     get policy(): RetentionPolicy { return this.#policy; }
 
-    // {§db-space-reclamation} — once per open: a database whose auto-vacuum mode differs from the
+    // {§content-store} — once per open: a database whose auto-vacuum mode differs from the
     // policy's is converted (a mode change takes effect through one VACUUM). Runs before any drain.
     async prepareStorage(): Promise<{ converted: boolean; pagesBefore: number; pagesAfter: number }> {
         const before = await this.#pages();
@@ -84,7 +84,7 @@ export default class Retention {
         return { retiredPackets: packets.changes, retiredResponses: responses.changes, collectedItems: items.changes, collectedDerivations: collected?.derivations ?? 0, collectedContents: collected?.contents ?? 0, reclaimedPages };
     }
 
-    // {§db-space-reclamation} — free pages go back to the OS once they reach the policy's floor;
+    // {§content-store} — free pages go back to the OS once they reach the policy's floor;
     // below it they stay for SQLite to reuse. Under auto_vacuum=none there is nothing to step.
     async #reclaim(): Promise<number> {
         if (this.#policy.autoVacuum === "none") return 0;

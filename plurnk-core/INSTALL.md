@@ -99,8 +99,8 @@ Do not overwrite a live database or pair a restored file with old sidecars.
 
 Retention controls expire packet compositions and call payloads, including physical-request
 captures. Messages, turn sources, operation receipts, approval decisions and request accounting
-remain with their containing history ({§retention-policy}); referenced attachment bytes remain
-too ({§native-content-lifetime}). This is not content erasure. A share contains only what remains
+remain with their containing history ({§content-store}); referenced attachment bytes remain
+too ({§content-store}). This is not content erasure. A share contains only what remains
 when it is taken.
 
 `PLURNK_SERVICE_SQLITE_SYNCHRONOUS` selects the database's WAL durability before migrations

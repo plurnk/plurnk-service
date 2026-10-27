@@ -32,7 +32,7 @@ LEFT JOIN matches m ON m.key = c.key
 ORDER BY m.rank IS NULL, m.rank, c.key COLLATE BINARY;
 
 -- INIT: derivations_delete_fts
--- {§retention-policy}: the full-text row is the derivation's shadow (rowid = derivation id) and
+-- {§content-store}: the full-text row is the derivation's shadow (rowid = derivation id) and
 -- leaves with it on every delete path, so no collector has to remember it. External content is
 -- forgotten only when handed the exact text it indexed, which the store still holds here.
 DROP TRIGGER IF EXISTS derivations_delete_fts;

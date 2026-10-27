@@ -713,7 +713,7 @@ export default class Dispatcher {
             modelCallId: null,
         });
         onDispatch?.(logEntryId);
-        // {§proposal-202-pauses} A 202 that proposes (a WAIT parks instead — #isProposal) settles in its own step.
+        // {§proposal} A 202 that proposes (a WAIT parks instead — #isProposal) settles in its own step.
         if (Dispatcher.#isProposal(statement, result)) return this.#settleProposedRow(context, schemeCtx, result, logEntryId, autoAccept);
         await this.#notifySettled(context, logEntryId);
         return Dispatcher.#singleExecution(result);
@@ -818,7 +818,7 @@ export default class Dispatcher {
         return { result, resolved, curationPlan };
     }
 
-    // {§configuration-repair-path} {§runtime-bookkeeping-policy} Whether a proposal settles itself under the effect
+    // {§configuration-repair-path} {§proposal-disposition} Whether a proposal settles itself under the effect
     // policy, decided before its row is persisted: an execution or a runtime-scheme SEND must declare its effect, the
     // runtime actor never grants itself authority, and a policy the configuration cannot read is the row's failure.
     #proposalAdmission(statement: PlurnkStatement, result: DispatchResult, workspaceId: number, origin: DispatchContext["origin"]): { autoAccept: boolean; result: DispatchResult } {
@@ -831,7 +831,7 @@ export default class Dispatcher {
                 if (!EffectPolicy.isEffect(effect)) {
                     throw new InvalidOperationResultError("Execution proposal omitted its canonical effect fact.");
                 }
-                // {§runtime-bookkeeping-policy}: the runtime cannot grant itself effect authority.
+                // {§proposal-disposition}: the runtime cannot grant itself effect authority.
                 try { autoAccept = origin !== "_plurnk" && EffectPolicy.decide(effect) === "auto"; }
                 catch (cause) {
                     if (!(cause instanceof ConfigurationError)) throw cause;
@@ -842,7 +842,7 @@ export default class Dispatcher {
         return { autoAccept, result };
     }
 
-    // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal-202-pauses}). A
+    // Proposal lifecycle (SPEC.md {§engine-rails} + {§methods-proposal-resolve}; {§proposal}). A
     // side-effecting op that returned 202 was written state='proposed'; an automatic acceptance applies at once,
     // otherwise dispatch PAUSES on a per-entry waiter until resolution arrives via Engine.resolveProposal (a client
     // resume, core-owned disposition, or timeout). The post-resolution status replaces 202 in the result the caller
@@ -1730,7 +1730,7 @@ export default class Dispatcher {
     }
 
     // {§proposal}/{§send} — native dispositions park; other 202 results propose.
-    // {§proposal-accept-applies} — an accepted proposal runs its scheme's effect; an accepted admission
+    // {§proposal} — an accepted proposal runs its scheme's effect; an accepted admission
     // ({§membership-auto-add}) admits the files the read reached and runs that read or find again, and the
     // operation's own result is what the row records.
     async #applyProposal(
@@ -1759,7 +1759,7 @@ export default class Dispatcher {
     // Normalize a parsed target for log storage. Bare paths and `file:///...`
     // inputs collapse to scheme=null in log target metadata because both render
     // as bare paths. Addressable file entries separately persist under the
-    // reserved `file` identity scheme ({§entry-identity-no-null}).
+    // reserved `file` identity scheme ({§db-migrations}).
     #extractTarget(path: ParsedPath | null, workspaceId: number): {
         scheme: string | null; username: string | null; password: string | null;
         hostname: string | null; port: number | null; pathname: string | null;

@@ -395,7 +395,7 @@ try {
         },
     });
 
-    // {§subscription-finalization}: a real failed SQLite commit, with no production fault-injection seam.
+    // {§subscriptions}: a real failed SQLite commit, with no production fault-injection seam.
     const faultDb = await SqlRite.open({ path: db, dir: join(root, "plurnk-core/test/conformance") });
     try {
         await faultDb.test_fail_stream_close();
@@ -429,7 +429,7 @@ try {
         await faultDb.test_restore_stream_close();
         tui.write("/stop\r");
         await tui.waitFor(/cancelled|final 499/);
-        // {§subscription-finalization} Cancellation retries the failed close; the loop's terminal does not wait for it.
+        // {§subscriptions} Cancellation retries the failed close; the loop's terminal does not wait for it.
         let settled = await faultDb.test_stream_recovery_state.get({});
         for (const deadline = Date.now() + 10_000; settled?.closed_at === null && Date.now() < deadline;) {
             await delay(50);

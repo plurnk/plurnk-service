@@ -21,7 +21,7 @@ export interface RegistryEntry {
     readonly executor: Executor;
     // The claim core arbitrates against the addressable scheme namespace.
     // Installed runtimes retain their npm package; daemon modules retain their
-    // module-local runtime identity. {§extension-namespace-arbitration}
+    // module-local runtime identity. {§core-extension-composition}
     readonly namespaceOwner: RuntimeNamespaceOwner;
     readonly glyph: string;
     readonly summary: RuntimeSummaryDecl;
@@ -75,7 +75,7 @@ export default class ExecutorRegistry {
     // discover -> probe -> build; this is the setup door for a daemon module whose runtime names
     // depend on operator configuration. The caller owns availability; the SchemeRegistry face is registered
     // separately (registerRuntimeScheme), keeping the reserved/cross-family arbitration one-owned there.
-    // Fail hard on a tag already registered: one name, one owner ({§extension-namespace-arbitration}).
+    // Fail hard on a tag already registered: one name, one owner ({§core-extension-composition}).
     register(tag: string, entry: RegistryEntry): void {
         this.prepareRegistrations([{ tag, entry }])();
     }

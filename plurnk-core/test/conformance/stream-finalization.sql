@@ -1,4 +1,4 @@
--- {§subscription-finalization}: fault and assertions for the packed client/service journey.
+-- {§subscriptions}: fault and assertions for the packed client/service journey.
 -- This directory is not loaded by the daemon or shipped in its tarball.
 
 -- EXEC: test_fail_stream_close

@@ -2529,7 +2529,7 @@ test("{§log-history-projection} log_entries: sequence UNIQUE within turn", asyn
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: sequence >= 1 enforced", async () => {
+test("{§db-migrations} log_entries: sequence >= 1 enforced", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-actionneg");
@@ -2540,7 +2540,7 @@ test("{§validation-topology} log_entries: sequence >= 1 enforced", async () => 
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: origin enum", async () => {
+test("{§db-migrations} log_entries: origin enum", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-origin");
@@ -2557,7 +2557,7 @@ test("{§validation-topology} log_entries: origin enum", async () => {
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: session, loop, turn, producer, and model-call ownership are one chain", async () => {
+test("{§db-migrations} log_entries: session, loop, turn, producer, and model-call ownership are one chain", async () => {
     const db = await openMigrated();
     try {
         const first = await seedEnvelope(db, `ws-log-owner-a-${crypto.randomUUID()}`);
@@ -2622,7 +2622,7 @@ test("{§turn-source-resources}: only rejected model attempts use actionless log
 // (No "op enum" test: log_entries.op does not CHECK-enumerate the grammar op set. Op validity lives at the parse
 // (grammar) + type (PlurnkOp) layer; the column stores what the typed engine writes.)
 
-test("{§validation-topology} log_entries: status_rx range 100..599", async () => {
+test("{§db-migrations} log_entries: status_rx range 100..599", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-statusrx");
@@ -2638,7 +2638,7 @@ test("{§validation-topology} log_entries: status_rx range 100..599", async () =
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: mimetype CHECK", async () => {
+test("{§db-migrations} log_entries: mimetype CHECK", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-mimetypes");
@@ -2647,7 +2647,7 @@ test("{§validation-topology} log_entries: mimetype CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: scheme nullable; non-empty CHECK", async () => {
+test("{§db-migrations} log_entries: scheme nullable; non-empty CHECK", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tscheme");
@@ -2659,7 +2659,7 @@ test("{§validation-topology} log_entries: scheme nullable; non-empty CHECK", as
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: port range", async () => {
+test("{§db-migrations} log_entries: port range", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-tport");
@@ -2857,7 +2857,7 @@ test("{§log-history-projection}: curation effects are immutable while their eve
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: session_id NOT NULL", async () => {
+test("{§db-migrations} log_entries: session_id NOT NULL", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-norun");
@@ -2868,7 +2868,7 @@ test("{§validation-topology} log_entries: session_id NOT NULL", async () => {
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: each FK rejection path", async () => {
+test("{§db-migrations} log_entries: each FK rejection path", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-fkpaths");
@@ -3004,7 +3004,7 @@ test("{§log-history-projection}: an individual log event cannot be deleted", as
     } finally { await db.close(); }
 });
 
-test("{§validation-topology} log_entries: weight negative rejected", async () => {
+test("{§db-migrations} log_entries: weight negative rejected", async () => {
     const db = await openMigrated();
     try {
         const ctx = await seedEnvelope(db, "ws-log-toksneg");

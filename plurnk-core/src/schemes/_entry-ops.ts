@@ -428,7 +428,7 @@ export default class EntryOps {
         if (address === null) throw new Error("READ target reached storage without a bound entry principal");
 
         // Scope by the manifest's persisted entries.scheme (storedScheme; absent →
-        // name). File persists under the reserved 'file' scheme ({§entry-identity-no-null}).
+        // name). File persists under the reserved 'file' scheme ({§db-migrations}).
         const scheme = EntryCrud.identityScheme(manifest);
 
         const authoredCoordinate = EntryOps.#coordinateOf(statement, manifest);

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-// {§default-extension-ownership}: resolve only within the clean consumer, never
+// {§bundled-set}: resolve only within the clean consumer, never
 // through the checkout's development dependencies or export conditions.
 export function installedGrammars(cwd) {
     return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "--eval", `

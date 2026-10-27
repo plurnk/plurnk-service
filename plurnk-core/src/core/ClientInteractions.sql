@@ -1,4 +1,4 @@
--- Durable pending client interactions. {§client-interactions}
+-- Durable pending client interactions. {§proposal-projection}
 
 -- PREP: client_interaction_insert
 -- Insert only when all supplied coordinates describe one existing operation.

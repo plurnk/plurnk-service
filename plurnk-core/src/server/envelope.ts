@@ -51,7 +51,7 @@ export interface SessionRow {
 
 export const projectSessionRow = <T extends { loopObservations: string }>(row: T): Omit<T, "loopObservations"> & { lifecycle: SessionLifecycle } => {
     const { loopObservations, ...rest } = row;
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§validation-topology}: the session query's loop observations, as its SQL aggregates them
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§db-migrations}: the session query's loop observations, as its SQL aggregates them
     const loops = JSON.parse(loopObservations) as Array<{ status: number; sequence: number; terminatedAt: string | null }>;
     return { ...rest, lifecycle: lifecycleOfLoopStatus(selectSessionLoop(loops)?.status) };
 };

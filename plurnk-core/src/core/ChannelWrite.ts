@@ -2,7 +2,7 @@
 // {§subscriptions} (subscription registry), {§notifications} (stream/event notification).
 //
 // Schemes import these and call them as their connection lifecycle progresses; the
-// engine has no stream/transaction abstraction ({§stream-no-engine-transaction-abstraction}).
+// engine has no stream/transaction abstraction ({§stream}).
 // Helpers update entry_channels (content / state) and subscriptions, and emit
 // stream/event notifications scoped to the entry's workspace via an optional
 // callback the daemon wires in.
@@ -133,9 +133,9 @@ export default class ChannelWrite {
         return renderAddress({ scheme, authority, pathname });
     }
 
-    // A stream chunk accumulates into the channel's content ({§chunk-accumulation-chunks-accumulate})
-    // and fires a stream/event ({§live-updates-stream-event-fires-on-chunk}); the log carries the
-    // stream's lifecycle, never per-chunk rows ({§no-chunk-rows-log-captures-lifecycle-only}).
+    // A stream chunk accumulates into the channel's content ({§stream})
+    // and fires a stream/event ({§stream}); the log carries the
+    // stream's lifecycle, never per-chunk rows ({§stream}).
     static async appendToChannel(
         db: Db,
         { entryId, producerSessionId, channel, chunk, notify, coordinate, mimetype }: { entryId: number; producerSessionId: number; channel: string; chunk: string; notify?: StreamEventNotify; coordinate?: StreamCoordinate; mimetype?: string },
@@ -168,7 +168,7 @@ export default class ChannelWrite {
     // The durable half of subscription ownership. Its row identifies what is
     // open; the process-local LiveSubscriptions registry owns the exact callable
     // used by task failure and KILL.
-    // {§subscriptions-subscription-registry-routes-cancellation}
+    // {§subscriptions}
     static async openSubscription(
         db: Db,
         { sessionId, entryId, scheme, handle, turnScoped, detached, publishedChannel, source }: {
@@ -184,7 +184,7 @@ export default class ChannelWrite {
         return row.id;
     }
 
-    // {§subscription-finalization} Return committed notifications; observers run only after ownership release.
+    // {§subscriptions} Return committed notifications; observers run only after ownership release.
     static async closeSubscription(
         db: Db,
         { subscriptionId, result, channelResults = {}, coordinate }: {

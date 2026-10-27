@@ -1,5 +1,5 @@
 import StoredPacket from "../core/StoredPacket.ts";
-// The root module exports the sync class, and the generated typings name every statement on it ({§persistence-via-sqlrite}).
+// The root module exports the sync class, and the generated typings name every statement on it ({§db-durability}).
 import { SqlRiteSync } from "@possumtech/sqlrite";
 import type {
     DigestEvidence, EvidenceRows, ErrorEvidence, PacketEvidence, TurnRow,

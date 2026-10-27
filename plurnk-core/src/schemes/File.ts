@@ -81,7 +81,7 @@ const detectFileMimetype = async (canonical: string, ctx: PlurnkSchemeContext): 
 export default class File extends CoreSchemeAdapterBase {
     static manifest: SchemeManifest = {
         name: "file",
-        storedScheme: "file",  // {§entry-identity-no-null} — durable identity, independent of displayed spelling
+        storedScheme: "file",  // {§db-migrations} — durable identity, independent of displayed spelling
         // The body is typed per resource; readable is its derived projection ({§channel-selection}).
         channels: { readable: "text/markdown" },
         defaultChannel: "body",
@@ -422,7 +422,7 @@ export default class File extends CoreSchemeAdapterBase {
         return { ok: true, canonical, rel, fileExists, original, mimetype, baseSig, creationAdmission };
     }
 
-    // {§file-snapshot-revision}, {§proposal-202-pauses}: return status=202
+    // {§file-snapshot-revision}, {§proposal}: return status=202
     // with a udiff body for client review and attrs carrying the full patched
     // content. Engine pauses dispatch and calls applyResolution() after accept.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditResult> {
@@ -717,7 +717,7 @@ export default class File extends CoreSchemeAdapterBase {
             // Register the exact mimetype resolved at proposal time, then complete the
             // membership-owned incorporation transaction. No fallible receipt work follows.
             try {
-                // {§entry-identity-no-null} — file members persist under the reserved
+                // {§db-migrations} — file members persist under the reserved
                 // `file` identity; bare-path rendering is a projection of that row.
                 // {§binary-parity} — a binary member registers with empty text content: its bytes live on
                 // disk and READ serves them through byteSource; the next membership reconcile materializes

@@ -181,7 +181,7 @@ WHERE id = $id;
 INSERT INTO model_calls (id) VALUES ($id);
 
 -- PREP: test_model_call_bodies
--- {§retention-policy} witnesses: which of a loop's settled calls still hold a body.
+-- {§content-store} witnesses: which of a loop's settled calls still hold a body.
 SELECT mc.id, ic.state, r.response IS NOT NULL AS has_body, mc.capacity IS NOT NULL AS has_capacity
 FROM model_calls mc
 JOIN inference_calls ic ON ic.id = mc.id
@@ -808,7 +808,7 @@ VALUES (
 SELECT packet FROM turns WHERE id = $id;
 
 -- PREP: test_set_channel_content
--- {§retention-policy} witnesses: rewrite a channel's body so its derivation is superseded.
+-- {§content-store} witnesses: rewrite a channel's body so its derivation is superseded.
 UPDATE entry_channels SET content = $content WHERE entry_id = $entry_id AND name = 'body';
 
 -- PREP: test_fts_count
@@ -818,7 +818,7 @@ SELECT COUNT(*) AS n FROM derivation_fts;
 SELECT COUNT(*) AS n FROM turn_sections WHERE turn_id = $turn_id;
 
 -- PREP: test_complete_turn_at
--- {§retention-policy} witnesses: backdate a turn's completion.
+-- {§content-store} witnesses: backdate a turn's completion.
 UPDATE turns SET completed_at = $completed_at WHERE id = $id;
 
 -- PREP: test_open_subscription_detached

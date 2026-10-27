@@ -79,7 +79,7 @@ export default class TurnMaterialization {
                 || r.rx === null || r.mimetype_rx === null || r.status_rx === null || r.state === null) continue;
             const termination = r.kind === "loop_termination";
             const terminal = termination
-                // {§validation-topology}: the ambient event's CHECK holds a termination's body as a JSON object with its status.
+                // {§db-migrations}: the ambient event's CHECK holds a termination's body as a JSON object with its status.
                 ? Results.fromRow(r.rx)
                 : null;
             if (terminal !== null && terminal.status !== r.status_rx) {
@@ -226,7 +226,7 @@ export default class TurnMaterialization {
             // initially visible.
             // {§exec-stream} — the terminal result lands in a separate write after
             // the executor closes the channel (#818); `landing` holds only channels that have one.
-            // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
+            // {§db-migrations}: a stored result is chapter 5's; it is parsed, not re-asserted.
             const produced = Results.fromRow(ch.producer_result!);
             const { problem: _problem, ...facts } = produced;
             const terminal: SchemeResult = produced.status < 400 || failureRow.get(ch.subscription_id) === ch.publication_id

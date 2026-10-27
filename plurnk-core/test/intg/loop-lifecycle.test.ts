@@ -1626,7 +1626,7 @@ test("{§session-causal-admission}: cancelled undelivered messages stay cancelle
     }
 });
 
-for (const accepted of [false, true]) test(`{§proposal-decision-evidence}: boot terminalizes interrupted ${accepted ? "accepted" : "undecided"} proposals without replay`, async () => {
+for (const accepted of [false, true]) test(`{§proposal}: boot terminalizes interrupted ${accepted ? "accepted" : "undecided"} proposals without replay`, async () => {
     const db = await openMigrated();
     const first = new Daemon({ db, provider: null });
     const second = new Daemon({ db, provider: null });
@@ -2433,7 +2433,7 @@ const idle = async (schemes: SchemeRegistry): Promise<void> => {
     await (schemes.get("exec") as Exec).idle();
 };
 
-test("{§subscriptions-subscription-registry-routes-cancellation} a failed executor close retains a callable owner for its durable obligation", { timeout: 10000 }, async (t) => {
+test("{§subscriptions} a failed executor close retains a callable owner for its durable obligation", { timeout: 10000 }, async (t) => {
     const completion = Promise.withResolvers<{ status: number }>();
     const fixture = await wire(() => completion.promise);
     const failure = new Error("fixture durable closure failure");

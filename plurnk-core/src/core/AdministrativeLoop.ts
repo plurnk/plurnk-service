@@ -1,6 +1,6 @@
 import type { Db } from "./Db.ts";
 
-// {§runtime-bookkeeping-policy} Turn purpose governs bookkeeping.
+// {§proposal-disposition} Turn purpose governs bookkeeping.
 export default class AdministrativeLoop {
     // `source` is the actor that opened it: a person's address for their client operation
     // ({§actor-boundary-client-operations}), absent for the daemon's own.

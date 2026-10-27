@@ -139,7 +139,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
     readonly #delivery: MessageDelivery;
     #residency: WorkspaceResidency;
     readonly #functionality: Functionality;
-    // {§retention-policy} — the operator's retention, run on a cadence and at shutdown.
+    // {§content-store} — the operator's retention, run on a cadence and at shutdown.
     #retention: Retention | null = null;
     readonly #plugins: WorkspacePlugins;
     readonly #members: MembersFunctionality;
@@ -735,7 +735,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             packetCount: row.packetCount,
             waitUntil: row.waitUntil,
             invocation: row.invocation === null || row.invocationSessionId === null ? null : { sessionId: row.invocationSessionId, address: row.invocation },
-            // {§validation-topology}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
+            // {§db-migrations}: a stored result is chapter 3's (`loops_terminal_result_contract`); it is parsed, not re-asserted.
             terminalResult: row.terminalResult === null ? null : Results.fromRow(row.terminalResult) }));
     }
 
@@ -1148,7 +1148,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#retention = await this.#configuration.capture("retention", () => new Retention(this.#db, retentionPolicy()));
         this.#clientOperations.start();
         this.#started = true;
-        // {§db-space-reclamation} — the file is brought to the policy's auto-vacuum mode before any work.
+        // {§content-store} — the file is brought to the policy's auto-vacuum mode before any work.
         if (this.#retention !== null) {
             const storage = await this.#retention.prepareStorage();
             if (storage.converted) {
@@ -1343,9 +1343,9 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         // after those producers settle, before the caller may close SQLite.
         const wakeResult = await shutdown.settle("drains idle (wake)", () => this.#drains.idle());
         const moduleCloseResult = await shutdown.settle("modules close", () => modulePhases.close());
-        // {§db-maintenance-optimize} — the last database step before the caller closes SQLite:
+        // {§content-store} — the last database step before the caller closes SQLite:
         // planner statistics refreshed on the writer, bounded by SQLite's own analysis limit.
-        // {§retention-policy} — the operator's retention runs once more before the statistics.
+        // {§content-store} — the operator's retention runs once more before the statistics.
         const collectResult = await shutdown.settle("retention", async () => this.#retention?.run());
         const optimizeResult = await shutdown.settle("database optimize", () => this.#db.maintenance_optimize.run({}));
         const closeErrors = [

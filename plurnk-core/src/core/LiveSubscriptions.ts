@@ -26,7 +26,7 @@ export default class LiveSubscriptions {
         this.#asked.delete(subscriptionId);
     }
 
-    // {§stream-asked-stop} — a KILL by the session that holds the stream names it before cancelling
+    // {§stream-control} — a KILL by the session that holds the stream names it before cancelling
     // it, so its conclusion is the stop that session asked for rather than a cancellation failure.
     asked(subscriptionId: number, sessionId: number): void {
         if (this.#holders.get(subscriptionId) === sessionId) this.#asked.add(subscriptionId);
@@ -36,7 +36,7 @@ export default class LiveSubscriptions {
         return this.#asked.has(subscriptionId);
     }
 
-    // {§subscription-finalization} Settles once the subscription's close is committed and delivered; at once for an
+    // {§subscriptions} Settles once the subscription's close is committed and delivered; at once for an
     // id with no live subscription.
     concluded(subscriptionId: number): Promise<void> {
         if (!this.#handles.has(subscriptionId)) return Promise.resolve();
@@ -72,7 +72,7 @@ export default class LiveSubscriptions {
         this.#conclusions.delete(subscriptionId);
     }
 
-    // {§subscription-finalization} A failed durable close retains the owner but permits another attempt.
+    // {§subscriptions} A failed durable close retains the owner but permits another attempt.
     retryable(subscriptionId: number): void {
         this.#cancellations.delete(subscriptionId);
     }

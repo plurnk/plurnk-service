@@ -671,7 +671,7 @@ The consumer:
 class.** A daemon module contributes runtimes as `RuntimeRegistration`s: a namespace owner, the
 runtime declaration ({§executor-runtime-declaration}), the executor, its availability, and an
 optional scheme facet ({§scheme-module-slice}). The host arbitrates the namespace
-({§extension-namespace-arbitration}) and publishes each registration; these types complete the
+({§core-extension-composition}) and publishes each registration; these types complete the
 module contract's slices ({§module-seam-slices}).
 
 ## Forbidden in executor extensions

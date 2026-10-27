@@ -26,7 +26,7 @@ const lifecycleWithDb = (db: Db): ProposalLifecycle => new ProposalLifecycle({
     entryAddresses: new EntryAddressBinding(),
 });
 
-test("{§proposal-timeout-cancels} proposal timeout rejects every explicit non-positive or non-finite value at its owner", (t) => {
+test("{§proposal} proposal timeout rejects every explicit non-positive or non-finite value at its owner", (t) => {
     const prior = process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
     t.after(() => {
         if (prior === undefined) delete process.env.PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS;
@@ -51,7 +51,7 @@ test("{§proposal-timeout-cancels} proposal timeout rejects every explicit non-p
 });
 
 // #769: the wait is deliberately untimed, but a cancelled loop is not a loop awaiting a decision.
-test("{§proposal-timeout-cancels} a proposal wait ends with its loop, carrying the abort's own reason", async () => {
+test("{§proposal} a proposal wait ends with its loop, carrying the abort's own reason", async () => {
     const lifecycle = lifecycleWithDb({} as Db);
 
     for (const [reason, outcome] of [
@@ -68,14 +68,14 @@ test("{§proposal-timeout-cancels} a proposal wait ends with its loop, carrying 
     }
 });
 
-test("{§proposal-timeout-cancels} a proposal wait already outlived by its loop settles rather than parking", async () => {
+test("{§proposal} a proposal wait already outlived by its loop settles rather than parking", async () => {
     const lifecycle = lifecycleWithDb({} as Db);
     const loop = new AbortController();
     loop.abort("loop_timeout");
     assert.deepEqual(await lifecycle.awaitResolution(2, loop.signal), { decision: "cancel", outcome: "loop_timeout" });
 });
 
-test("{§proposal-timeout-cancels} a decided proposal keeps its decision when its loop later ends", async () => {
+test("{§proposal} a decided proposal keeps its decision when its loop later ends", async () => {
     const lifecycle = lifecycleWithDb({} as Db);
     const loop = new AbortController();
     const waiting = lifecycle.awaitResolution(3, loop.signal);
@@ -123,7 +123,7 @@ test("{§proposal-projection} pending projection rejects malformed durable revie
     }
 });
 
-test("{§proposal-accept-applies} sessionApply invokes a discovered scheme through the public proposal context", async () => {
+test("{§proposal} sessionApply invokes a discovered scheme through the public proposal context", async () => {
     const schemes = new SchemeRegistry();
     await schemes.discoverExternal();
     const http = schemes.get("https") as {
@@ -202,7 +202,7 @@ test("{§proposal-accept-applies} sessionApply invokes a discovered scheme throu
     });
 });
 
-test("{§proposal-accept-applies} applyResolution preserves an accepted scheme's failed result and durable occurrence", async () => {
+test("{§proposal} applyResolution preserves an accepted scheme's failed result and durable occurrence", async () => {
     let persisted: {
         id: number;
         state: string;
@@ -257,7 +257,7 @@ test("{§proposal-accept-applies} applyResolution preserves an accepted scheme's
     assert.deepEqual(JSON.parse(persisted.rx), result);
 });
 
-test("{§proposal-accept-applies}: an accepted scheme's successful application status remains authoritative", async () => {
+test("{§proposal}: an accepted scheme's successful application status remains authoritative", async () => {
     let persisted: {
         id: number;
         state: string;

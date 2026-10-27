@@ -31,7 +31,7 @@ test("{§proposal-disposition}: server disposition, the turn's producer and decl
     }
 });
 
-test("{§runtime-bookkeeping-policy}: maintenance cannot acquire approval authority, even with an invalid panel", () => {
+test("{§proposal-disposition}: maintenance cannot acquire approval authority, even with an invalid panel", () => {
     for (const policy of ["review", "accept", "reject", "invalid"]) {
         process.env.PLURNK_SERVICE_PROPOSALS = policy;
         for (const clientOperation of [false, true]) {

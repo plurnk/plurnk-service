@@ -148,7 +148,7 @@ FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one session's log — {§actor-boundary} {§machine-processes}
--- Proposed rows wait for resolution ({§proposal-proposed-hidden}); a log-KILL that worked
+-- Proposed rows wait for resolution ({§proposal}); a log-KILL that worked
 -- stays out of the packet ({§log-history-projection}).
 -- Every failed operation remains visible ({§operation-result-uniform-error-channel}).
 WHERE le.session_id = $session_id

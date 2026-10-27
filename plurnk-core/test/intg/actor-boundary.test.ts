@@ -935,7 +935,7 @@ function panel(t: TestContext, values: Record<string, string>): void {
     });
 }
 
-test("{§runtime-bookkeeping-policy}: reference publication is independent of invalid interactive policy", async (t) => {
+test("{§proposal-disposition}: reference publication is independent of invalid interactive policy", async (t) => {
     panel(t, {
         PLURNK_SERVICE_PROPOSALS: "invalid",
     });
@@ -966,7 +966,7 @@ test("{§session-ownership}: administrative loop creation does not read proposal
     });
 });
 
-test("{§runtime-bookkeeping-policy}: an unexpected proposal is refused even when ordinary effect policy auto-accepts", async (t) => {
+test("{§proposal-disposition}: an unexpected proposal is refused even when ordinary effect policy auto-accepts", async (t) => {
     panel(t, {
         PLURNK_SERVICE_EFFECT_HOST: "auto",
         PLURNK_SERVICE_PROPOSALS: "accept",
@@ -1997,7 +1997,7 @@ test("{§session-ownership} server acceptance resolves through Core without a cl
     });
 });
 
-test("{§proposal-ownership-notification} server rejection settles the same admitted proposal without becoming a capability denial", async (t) => {
+test("{§proposal-disposition} server rejection settles the same admitted proposal without becoming a capability denial", async (t) => {
     serverProposals(t, "reject");
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````EDIT (proposing-test://x)\ny\n````\n\n````SEND\ndone\n````", 50),

@@ -1,5 +1,5 @@
 -- MIGRATE: 6 log
--- Chapter 6 of the schema baseline ({§db-schema-baseline}): The log: rows, their projections, curation effects, proposal decisions, and the views the packet reads.
+-- Chapter 6 of the schema baseline ({§db-migrations}): The log: rows, their projections, curation effects, proposal decisions, and the views the packet reads.
 -- Released and frozen ({§db-migrations}): a shape change is the next MIGRATE version, never
 -- an edit here.
 
@@ -112,7 +112,7 @@ CREATE        INDEX IF NOT EXISTS log_entries_session_id       ON log_entries (s
 
 CREATE        INDEX IF NOT EXISTS log_entries_loop_id          ON log_entries (loop_id);
 
--- {§db-fk-indexes} Derivation replacement checks the rows that cite the hash.
+-- {§db-migrations} Derivation replacement checks the rows that cite the hash.
 CREATE        INDEX IF NOT EXISTS log_entries_deep_hash        ON log_entries (deep_hash) WHERE deep_hash IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_model_call_id
@@ -589,7 +589,7 @@ BEGIN
     SELECT RAISE(ABORT, 'log_entries ambient event identity may only be assigned once');
 END;
 
--- {§proposal-decision-evidence}: authority precedes effects; results cannot replace decisions.
+-- {§proposal}: authority precedes effects; results cannot replace decisions.
 CREATE TABLE IF NOT EXISTS proposal_decisions (
     log_entry_id INTEGER PRIMARY KEY REFERENCES log_entries(id) ON DELETE CASCADE,
     decision     TEXT NOT NULL CHECK (decision IN ('accept', 'reject', 'cancel')),

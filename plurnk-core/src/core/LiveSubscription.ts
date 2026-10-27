@@ -21,7 +21,7 @@ interface Terminal {
     readonly channelResults?: Readonly<Record<string, ChannelProducerResult>>;
 }
 
-// {§subscription-finalization} Persistence decides closure; observers cannot undo it.
+// {§subscriptions} Persistence decides closure; observers cannot undo it.
 export default class LiveSubscription {
     readonly #options: Options;
     #terminal: Terminal | null = null;
@@ -40,7 +40,7 @@ export default class LiveSubscription {
     close(result: ChannelProducerResult, summary = "", channelResults?: Readonly<Record<string, ChannelProducerResult>>): Promise<void> {
         if (this.#closed) return Promise.resolve();
         if (this.#closing !== null) return this.#closing;
-        // {§stream-asked-stop} — a stream its session's KILL stopped concludes as asked, never as a cancellation.
+        // {§stream-control} — a stream its session's KILL stopped concludes as asked, never as a cancellation.
         const asked = this.#options.registry.wasAsked(this.#options.identity.subscriptionId);
         const concluded = (produced: ChannelProducerResult): ChannelProducerResult => {
             if (!asked || produced.status !== 499) return produced;
