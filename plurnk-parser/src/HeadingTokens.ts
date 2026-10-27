@@ -7,7 +7,7 @@ import { plurnkParser } from "./generated/plurnkParser.ts";
 // (`READ (a.md) <!-- why --> <1,-1>`) is moved after them, where the grammar reads it. An aside
 // followed by a target, or by an option block that is not JSON objects, keeps its place.
 export default class HeadingTokens {
-    static readonly #OPENERS: ReadonlySet<number> = new Set([
+    static readonly OPENERS: ReadonlySet<number> = new Set([
         plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT, plurnkParser.OPEN_COPY,
         plurnkParser.OPEN_MOVE, plurnkParser.OPEN_SEND, plurnkParser.OPEN_NOTE, plurnkParser.OPEN_WAIT,
         plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK, plurnkParser.OPEN_FORK,
@@ -21,7 +21,7 @@ export default class HeadingTokens {
     static normalize(tokens: readonly Token[]): Token[] {
         const out: Token[] = [];
         for (let i = 0; i < tokens.length; i++) {
-            if (!HeadingTokens.#OPENERS.has(tokens[i].type)) { out.push(tokens[i]); continue; }
+            if (!HeadingTokens.OPENERS.has(tokens[i].type)) { out.push(tokens[i]); continue; }
             let end = i + 1;
             while (end < tokens.length && (HeadingTokens.#SLOTS.has(tokens[end].type) || tokens[end].type === plurnkParser.ASIDE)) end++;
             out.push(tokens[i], ...HeadingTokens.#heading(tokens.slice(i + 1, end)));

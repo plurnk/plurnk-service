@@ -2,9 +2,11 @@ import { CharStream, CommonTokenStream, ListTokenSource, ParserRuleContext, Term
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import AstBuilder from "./AstBuilder.ts";
+import HeadingReader from "./HeadingReader.ts";
 import HeadingTokens from "./HeadingTokens.ts";
 // The contexts AstBuilder builds statements from: the statement rules the walk recognizes by rule index.
 type BuildContext = Parameters<typeof AstBuilder.build>[0];
+import { formatHeadingNotation } from "./MatcherSyntax.ts";
 import NativeToolCalls from "./NativeToolCalls.ts";
 import PlurnkErrorStrategy from "./PlurnkErrorStrategy.ts";
 import RecordingListener from "./RecordingListener.ts";
@@ -159,10 +161,10 @@ export default class PlurnkParser {
     // {§op-shapes} — only closed top-level operations cross this boundary.
     static parseReasoningOperations(input: string, onAdvisory?: (advisory: PlurnkParseError) => void): ReasoningOperation[] {
         const warnings = new Map<PlurnkStatement, PlurnkParseError[]>();
-        const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), (ctx) => {
-            const { value, advisories } = AstBuilder.collectAdvisories(() => AstBuilder.build(ctx));
-            if (value[0] !== undefined) warnings.set(value[0], advisories);
-            return value;
+        const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), (ctx, spellings) => {
+            const built = AstBuilder.build(ctx, spellings);
+            if (built.statements[0] !== undefined) warnings.set(built.statements[0], built.advisories);
+            return built;
         }, {}, "reasoning");
         const reasoning = (statement: PlurnkStatement): statement is ReasoningOperation => isReasoningOperation(statement.op);
         const operations = result.items.flatMap((item) => item.kind === "statement"
@@ -232,26 +234,14 @@ export default class PlurnkParser {
     static #run(
         input: string,
         parseFn: (parser: plurnkParser) => ParserRuleContext,
-        buildFn: (ctx: BuildContext) => PlurnkStatement[] = (ctx) => AstBuilder.build(ctx),
+        buildFn: (ctx: BuildContext, spellings: ReadonlyMap<string, string>) => { statements: PlurnkStatement[]; advisories: PlurnkParseError[] } = (ctx, spellings) => AstBuilder.build(ctx, spellings),
         options: ParseOptions = {},
         tier: "statements" | "model" | "reasoning" = "statements",
     ): { result: ParseResult; lexer: plurnkLexer } {
         const lexer = new plurnkLexer(CharStream.fromString(input));
         lexer.reasoning = tier === "reasoning";
-        for (const name of options.executors ?? []) lexer.knownExecutors.add(name);
         lexer.wellFormed = options.wellFormed;
-        const spellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
-        const js = spellings.get("js");
-        if (js !== undefined) {
-            // {§fence-pairing}: canonicalize before runtime admission, without another registration.
-            for (const alias of ["ts", "javascript", "typescript", "node"]) {
-                if (!spellings.has(alias)) {
-                    lexer.knownExecutors.add(alias);
-                    spellings.set(alias, js);
-                }
-            }
-        }
-        AstBuilder.executorSpellings = spellings;
+        const spellings = HeadingReader.executorSpellings(lexer.knownExecutors, options.executors);
         const errors: PlurnkParseError[] = [];
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));
@@ -270,7 +260,7 @@ export default class PlurnkParser {
 
         const items: ParseItem[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
-        PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn, unparsedTail?.from);
+        PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn, spellings, unparsedTail?.from);
         // {§parse-recovery} — the log's heading notation was read as the slot it stands for; each reading is
         // named once, right after its statement, with the form to write. A statement that was not built draws none.
         const named = new Set<string>();
@@ -280,13 +270,7 @@ export default class PlurnkParser {
             const found = items[at];
             if (found.kind !== "statement") continue;
             const { statement } = found;
-            const message = note.kind === "arrow"
-                ? `\`${note.text}\` is how the log shows an address; it was read as the target. Write the target in parentheses: \`${PlurnkParser.heading(statement)}\`.`
-                : note.kind === "charge" ? AstBuilder.chargeAdvisory(note.text)
-                    : note.kind === "aside" ? AstBuilder.dotAsideAdvisory(note.text.replace(/^\u00B7[ \t]*/u, "").trim())
-                    : note.kind === "stray" ? AstBuilder.strayDotAdvisory(note.text.trim(), statement.aside)
-                    : note.kind === "scope" ? PlurnkParser.#scopelessAdvisory(statement, note.text)
-                        : `\`${note.text}\` was read as the scope \`<${note.text}>\`; a scope is written in angle brackets.`;
+            const message = formatHeadingNotation(note, statement, PlurnkParser.heading);
             // COPY and MOVE show both operands in one corrected line: say it once.
             const key = `${note.line}|${note.kind === "arrow" ? note.kind : message}`;
             if (named.has(key)) continue;
@@ -328,15 +312,6 @@ export default class PlurnkParser {
             items.sort((a, b) => position(a).line - position(b).line || position(a).column - position(b).column);
         }
         return { result: { items, unparsedTail }, lexer };
-    }
-
-    // {§slot-order} — the operation ran without the scope it cannot take; say which slots it has.
-    static #scopelessAdvisory(statement: PlurnkStatement, scope: string): string {
-        const op = writtenOp(statement);
-        const slots = op === "NOTE" ? "`NOTE` takes no target or scope"
-            : op === "SEND" ? "`SEND` without a recipient takes no scope"
-                : `\`${op}\` takes a target only`;
-        return `${slots}; the scope \`${scope}\` was ignored.`;
     }
 
     // {§whitespace-contract}: only the lexer's outside-text channel is recoverable; a malformed
@@ -428,7 +403,8 @@ export default class PlurnkParser {
         errors: PlurnkParseError[],
         consumedErrors: Set<PlurnkParseError>,
         items: ParseItem[],
-        buildFn: (ctx: BuildContext) => PlurnkStatement[],
+        buildFn: (ctx: BuildContext, spellings: ReadonlyMap<string, string>) => { statements: PlurnkStatement[]; advisories: PlurnkParseError[] },
+        spellings: ReadonlyMap<string, string>,
         boundary?: Position,
     ): void {
         for (const child of ctx.children ?? []) {
@@ -462,7 +438,7 @@ export default class PlurnkParser {
                 } else {
                     try {
                         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a context whose rule is a statement rule is one of the build contexts
-                        const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(rule as BuildContext));
+                        const { statements, advisories } = buildFn(rule as BuildContext, spellings);
                         for (const statement of statements) items.push({ kind: "statement", statement });
                         // {§parse-recovery} — the builder's advisories follow their statement.
                         for (const advisory of advisories) items.push({ kind: "error", error: advisory });
@@ -476,7 +452,7 @@ export default class PlurnkParser {
                     }
                 }
             } else if (rule !== undefined && CONTAINER_RULES.has(rule.ruleIndex)) {
-                PlurnkParser.#collect(rule, errors, consumedErrors, items, buildFn, boundary);
+                PlurnkParser.#collect(rule, errors, consumedErrors, items, buildFn, spellings, boundary);
             }
         }
     }

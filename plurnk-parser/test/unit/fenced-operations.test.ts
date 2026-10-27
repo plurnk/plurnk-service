@@ -318,3 +318,56 @@ test("{§op-shapes} {§log-kill-scope} a bodyless KILL's advisory names only tha
     }
 });
 });
+
+describe("statement-schema-roundtrip", () => {
+const validateRoundTrip = (input: string) => {
+    const result = PlurnkParser.parseStatements(input);
+    const item = result.items[0];
+    assert.equal(item.kind, "statement", `parser did not return a statement for: ${input}`);
+    if (item.kind !== "statement") return null;
+    const json = JSON.parse(JSON.stringify(item.statement));
+    return Validator.validatePlurnkStatement(json);
+};
+
+test("{§op-shapes} {§matcher-prefix-claims} {§slot-order} PlurnkStatement: parsed statements across all operations and slot permutations satisfy the wire schema", () => {
+    for (const input of [
+        "````FIND (workspace:///docs) <1-20> @*.xml````",
+        "````READ (config/foo.json)````",
+        "````KILL (workspace:///**) /error|fail/i````",
+        "````KILL (log://**) $.status````",
+        "````KILL (log://**) <17,-1>````",
+        "````KILL (sh:///3/1/2)````",
+        "````KILL (sh:///3/1/2) <!-- runaway; no output for 4 turns -->````",
+        "````EDIT (workspace:///meaning)\nThe meaning of life is 42\n````",
+        "````EDIT (workspace:///meaning) <@aZ09b>\nThe meaning of life is 42\n````",
+        "````EDIT (workspace:///checklist.md) <2.5>\n- [ ] new step\n````",
+        "````COPY (workspace:///draft) (workspace:///archive/draft)````",
+        "````MOVE (workspace:///draft) (workspace:///final)````",
+        "````SEND\n{\"answer\":\"Paris\"}\n````\n````WAIT\n````",
+        "````NOTE\nstill working\n````",
+        "````sh (node/./)\nconsole.log(1)\n````",
+        "````BARE\nWhat is the capital of Germany?\n````",
+        "````BARE (session://alice/prompt.md)````",
+        "````WAIT\nDecompose the prompt; discover, record, deliver.\n````",
+        "````FIND (workspace:///docs) <1> @*.xml````",
+        "````FIND <1-5> (workspace:///docs) @*.xml````",
+    ]) {
+        const r = validateRoundTrip(input);
+        assert.equal(r!.valid, true, `${input}: ${JSON.stringify(r!.errors)}`);
+    }
+});
+
+test("{§op-shapes}: a completion reply preserves its literal answer and optional aside", () => {
+    for (const body of [null, "The answer is **42**.", "SEND (session://alice)\n```sh\necho 42\n```", "{\"answer\":42}"]) {
+        const source = PlurnkParser.frame("SEND [200] <!-- final answer -->", body);
+        const result = PlurnkParser.parse(source);
+        assert.equal(result.items.length, 1, "a final body is not a matcher or parser advisory");
+        const item = result.items[0];
+        assert.equal(item.kind, "statement");
+        if (item.kind !== "statement" || item.statement.op !== "SEND") assert.fail("expected SEND");
+        assert.equal(item.statement.body?.raw ?? null, body);
+        assert.equal(item.statement.aside, "final answer");
+        assert.equal(validateRoundTrip(source)?.valid, true);
+    }
+});
+});

@@ -799,6 +799,178 @@ test("{§text-region} assertPlurnkStatement returns the statement its schema acc
     assert.throws(() => Validator.assertPlurnkStatement({ op: "NOTE" }), TypeError);
 });
 
+test("{§matcher-prefix-claims} Validator: TextLineMarker accepts a five-character Base62 anchor that ordinary LineMarker rejects", () => {
+    const lineMarkerSchema = { $ref: "https://schemas.plurnk.xyz/v0/LineMarker.json" };
+    const textLineMarkerSchema = { $ref: "https://schemas.plurnk.xyz/v0/TextLineMarker.json" };
+    const { valid, errors } = Validator.validateJsonSchemaInstance(textLineMarkerSchema, { marks: ["@aZ09b"] });
+    assert.equal(valid, true, JSON.stringify(errors));
+    assert.equal(Validator.validateJsonSchemaInstance(lineMarkerSchema, { marks: ["@aZ09b"] }).valid, false);
+});
+
+test("{§path-syntax} Validator: ParsedPath accepts local and url decompositions and rejects malformed shapes", () => {
+    assert.equal(Validator.validateParsedPath({ kind: "local", raw: "config/foo.xml" }).valid, true);
+    assert.equal(Validator.validateParsedPath({
+        kind: "url",
+        raw: "https://example.com:8080/path?q=1#frag",
+        scheme: "https",
+        username: null,
+        password: null,
+        hostname: "example.com",
+        port: 8080,
+        pathname: "/path",
+        query: "q=1",
+        fragment: "frag",
+    }).valid, true);
+    assert.equal(Validator.validateParsedPath({
+        kind: "url",
+        raw: "session://philosophy",
+        scheme: "session",
+        username: null,
+        password: null,
+        hostname: "philosophy",
+        port: null,
+        pathname: "",
+        query: null,
+        fragment: null,
+    }).valid, true);
+    assert.equal(Validator.validateParsedPath({ kind: "remote", raw: "foo" }).valid, false);
+    assert.equal(Validator.validateParsedPath({
+        kind: "url",
+        raw: "https://example.com/",
+        scheme: "https",
+    }).valid, false);
+});
+
+test("{§matcher-prefix-claims} Validator: MatcherBody accepts only canonical single-line graph forms and rejects multiline raw input", () => {
+    const matcherBodySchema = { $ref: "https://schemas.plurnk.xyz/v0/MatcherBody.json" };
+    for (const raw of ["&symbol", "&<symbol", "&>symbol"]) {
+        assert.equal(Validator.validateJsonSchemaInstance(matcherBodySchema, { dialect: "graph", raw }).valid, true, raw);
+    }
+    for (const raw of ["@symbol", "&", "&two symbols", "&symbol\n&other"]) {
+        assert.equal(Validator.validateJsonSchemaInstance(matcherBodySchema, { dialect: "graph", raw }).valid, false, raw);
+    }
+    for (const matcher of [
+        { dialect: "xpath", raw: "//one\n//two" },
+        { dialect: "regex", raw: "/one/\n/two/", pattern: "one", flags: "" },
+        { dialect: "jsonpath", raw: "$.one\n$.two" },
+        { dialect: "fts", raw: "~one\ntwo" },
+        { dialect: "glob", raw: "one\ntwo" },
+    ]) {
+        assert.equal(Validator.validateJsonSchemaInstance(matcherBodySchema, matcher).valid, false, matcher.dialect);
+    }
+});
+
+test("{§op-shapes} {§matcher-prefix-claims} {§parse-recovery} {§whitespace-contract} {§contract-representations} PlurnkStatement schema validates operation shapes, scopes, and required fields", () => {
+    const matcherOps = new Set(["FIND", "READ", "EDIT", "KILL"]);
+    const baseFields = (op: string) => ({
+        op,
+        aside: null,
+        target: null,
+        metadata: null,
+        lineMarker: null,
+        ...(matcherOps.has(op) ? { matcher: null } : {}),
+        ...(op === "WAIT" ? { seconds: null } : {}),
+        body: null,
+        position: { line: 1, column: 0 },
+    });
+    const execFields = () => ({
+        runtime: "sh",
+        aside: null,
+        target: null,
+        metadata: null,
+        lineMarker: null,
+        body: null,
+        position: { line: 1, column: 0 },
+    });
+    const urlTarget = (raw: string, scheme: string, hostname: string, pathname: string) => ({
+        kind: "url" as const,
+        raw,
+        scheme,
+        username: null,
+        password: null,
+        hostname,
+        port: null,
+        pathname,
+        query: null,
+        fragment: null,
+    });
+    const transferFields = (op: "COPY" | "MOVE") => ({
+        op,
+        aside: null,
+        source: { target: { kind: "local" as const, raw: "source" }, metadata: null, lineMarker: null, matcher: null },
+        destination: { target: { kind: "local" as const, raw: "destination" }, metadata: null, lineMarker: null, matcher: null },
+        position: { line: 1, column: 0 },
+    });
+
+    const missingBare = baseFields("BARE");
+    assert.equal(Validator.validatePlurnkStatement(missingBare).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...missingBare, body: "prompt" }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...missingBare, body: "prompt", target: { kind: "local", raw: "prompt.md" } }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...missingBare, body: "prompt", lineMarker: { marks: [1] } }).valid, false);
+
+    for (const op of ["WORK", "FORK"]) {
+        const missing = baseFields(op);
+        assert.equal(Validator.validatePlurnkStatement(missing).valid, false);
+        assert.equal(Validator.validatePlurnkStatement({ ...missing, body: "Do the assigned work" }).valid, true);
+    }
+
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("WAIT"), body: null, seconds: 30 }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...execFields(), runtime: "js", target: { kind: "local", raw: "tool.py" }, lineMarker: { marks: [60, 5] } }).valid, true);
+
+    const task = { ...baseFields("WAIT"), body: null };
+    assert.equal(Validator.validatePlurnkStatement(task).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...task, seconds: 0 }).valid, true);
+    for (const target of [
+        { kind: "local" as const, raw: "notes.md" },
+        urlTarget("session://child", "session", "child", ""),
+        urlTarget("schedule:///rules/reminder", "schedule", "", "/rules/reminder"),
+    ]) {
+        assert.equal(Validator.validatePlurnkStatement({ ...task, target }).valid, true);
+    }
+    for (const patch of [
+        { target: "schedule:///rules/reminder" },
+        { metadata: ["x: y"] },
+        { status: 200 },
+        { lineMarker: { marks: [1] } },
+        { seconds: -1 },
+    ]) {
+        assert.equal(Validator.validatePlurnkStatement({ ...task, ...patch }).valid, false, JSON.stringify(patch));
+    }
+
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("FIND"), lineMarker: { marks: [1, 10] } }).valid, true);
+
+    const copy = transferFields("COPY");
+    assert.equal(Validator.validatePlurnkStatement(copy).valid, true);
+    const { destination: _destination, ...missingDestination } = copy;
+    assert.equal(Validator.validatePlurnkStatement(missingDestination).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...copy, body: "destination" }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({
+        ...copy,
+        source: {
+            target: urlTarget("session://draft/source", "session", "draft", "/source"),
+            metadata: ["source metadata"],
+            lineMarker: { marks: [1, 4] },
+            matcher: { dialect: "glob", raw: "needle" },
+        },
+        destination: {
+            target: urlTarget("session://archive/draft", "session", "archive", "/draft"),
+            metadata: ["destination metadata"],
+            lineMarker: { marks: [12, 5, 12, 5] },
+            matcher: null,
+        },
+    }).valid, true);
+
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("SEND"), body: "just a string" }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), body: "some markdown content" }).valid, true);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), body: { dialect: "glob", raw: "*.xml" } }).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("DROP") }).valid, false);
+
+    const missingPos: Record<string, unknown> = baseFields("EDIT");
+    delete missingPos.position;
+    assert.equal(Validator.validatePlurnkStatement(missingPos).valid, false);
+    assert.equal(Validator.validatePlurnkStatement({ ...baseFields("EDIT"), surprise: "field" }).valid, false);
+});
+
 test("{§contract-representations}: dynamic schemas resolve contracts-owned references", () => {
     assert.doesNotThrow(() => Validator.assertJsonSchemaInstance(
         "MCP extension input",

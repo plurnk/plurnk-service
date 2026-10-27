@@ -6,11 +6,11 @@
 // executor and every parameter is one of plurnk's slots; then the block is rewritten to canonical
 // fences and never taught. Any call this cannot map exactly leaves the whole input as it was.
 
-import { PLURNK_OPS, isRecord } from "@plurnk/plurnk-contracts";
+import { isRecord } from "@plurnk/plurnk-contracts";
 import { plurnkLexer } from "./generated/plurnkLexer.ts";
+import HeadingReader from "./HeadingReader.ts";
 import StatementShape from "./StatementShape.ts";
 
-const OPERATIONS: ReadonlySet<string> = new Set(PLURNK_OPS);
 const SLOT_OF: Readonly<Record<string, "path" | "scope" | "pattern" | "aside" | "body" | "start" | "end" | "limit">> = Object.freeze({
     path: "path", target: "path", file_path: "path", filepath: "path", file: "path", filename: "path", resource: "path", uri: "path", url: "path",
     scope: "scope", range: "scope", lines: "scope",
@@ -538,13 +538,7 @@ export default class NativeToolCalls {
 
     // A plurnk operation name, case-insensitively, or a known executor by its own spelling.
     static #operation(raw: string, known: ReadonlySet<string>): string | null {
-        const name = raw.trim();
-        const lower = name.toLowerCase();
-        if (OPERATIONS.has(name.toUpperCase())) return name.toUpperCase();
-        // A shell by another model's name: `bash` is `sh` when `sh` is the registered shell.
-        if (lower === "bash" && !known.has("bash") && known.has("sh")) return "sh";
-        if ((lower === "ts" || lower === "javascript" || lower === "typescript" || lower === "node") && !known.has(lower) && known.has("js")) return "js";
-        return known.has(lower) ? name : null;
+        return HeadingReader.resolveOperationOrExecutor(raw, known);
     }
 
     // An executor's unknown parameter is one of its options, written as the option block its owner reads.

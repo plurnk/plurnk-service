@@ -130,8 +130,8 @@ export default class FencePairing {
     }
 
     static #line(text: string, options: PairingOptions): Line {
-        const naked = options.reasoning ? null : /^([A-Z]+)(?:[ \t]*(<!--(?:(?!-->)[^\r\n])*-->))?[ \t]*$/u.exec(text);
-        if (naked !== null && options.operations.has(naked[1])) return { kind: "name", name: naked[1], alone: naked[2] === undefined };
+        const naked = HeadingReader.nakedHeading(text, options.reasoning);
+        if (naked !== null && options.operations.has(naked.name)) return { kind: "name", name: naked.name, alone: naked.alone };
         const match = /^( {0,3})(`{3,}|~{3,})(.*)$/u.exec(text);
         if (match === null) return { kind: "text" };
         const character: FenceCharacter = match[2].startsWith("`") ? "`" : "~";

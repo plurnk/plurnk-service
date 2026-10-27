@@ -9,6 +9,7 @@ import {
 } from "antlr4ng";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 import type { plurnkLexer } from "./generated/plurnkLexer.ts";
+import HeadingTokens from "./HeadingTokens.ts";
 import StatementShape from "./StatementShape.ts";
 
 export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
@@ -57,7 +58,7 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
             if (start === null || start.type === Token.EOF) continue;
             const text = start.text ?? "";
             if (!/^`{3,}[A-Za-z0-9_.+-]+$/u.test(text) && !/^[A-Z]+$/u.test(text)) continue;
-            if (!PlurnkErrorStrategy.#HEADING_BOUNDARY.has(start.type)) continue;
+            if (!HeadingTokens.OPENERS.has(start.type)) continue;
             return { op: text.replace(/^`+/u, ""), exec: start.type === plurnkParser.OPEN_EXEC };
         }
         return null;
@@ -170,16 +171,6 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         return `${names.slice(0, -1).join(", ")}, or ${names[names.length - 1]}`;
     }
 
-    // {§matcher-prefix-claims} Recovery resumes at the next top-level operation fence;
-    // later statements, including the disposition, are judged independently.
-    static #HEADING_BOUNDARY: ReadonlySet<number> = new Set([
-        plurnkParser.OPEN_FIND, plurnkParser.OPEN_READ, plurnkParser.OPEN_EDIT,
-        plurnkParser.OPEN_COPY, plurnkParser.OPEN_MOVE,
-        plurnkParser.OPEN_SEND, plurnkParser.OPEN_NOTE, plurnkParser.OPEN_WAIT,
-        plurnkParser.OPEN_EXEC, plurnkParser.OPEN_BARE, plurnkParser.OPEN_WORK,
-        plurnkParser.OPEN_FORK, plurnkParser.OPEN_KILL,
-    ]);
-
     // The entry rules end with EOF; an error raised there means the document expected its end.
     static #ENTRY_RULES: ReadonlySet<string> = new Set(["document", "log", "statementSeq"]);
 
@@ -199,7 +190,9 @@ export default class PlurnkErrorStrategy extends DefaultErrorStrategy {
         // No progress since the last resync at this position: force one token so the parser
         // cannot loop on a heading it refuses to match.
         if (this.#lastResyncIndex === stream.index && current.type !== Token.EOF) { recognizer.consume(); current = recognizer.getCurrentToken(); }
-        while (current.type !== Token.EOF && !PlurnkErrorStrategy.#HEADING_BOUNDARY.has(current.type)) {
+        // {§matcher-prefix-claims} Recovery resumes at the next top-level operation fence;
+        // later statements, including the disposition, are judged independently.
+        while (current.type !== Token.EOF && !HeadingTokens.OPENERS.has(current.type)) {
             recognizer.consume();
             current = recognizer.getCurrentToken();
         }
