@@ -209,7 +209,7 @@ const request = {
     },
 } as const;
 
-test("{§op-methods-op-dispatch} {§problems-client}: competing interaction answers admit exactly one envelope before wake", async (t) => {
+test("{§op-methods-op-dispatch} {§operation-results}: competing interaction answers admit exactly one envelope before wake", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const ids = await seedEnvelope(db, "interaction-message-race");
@@ -464,7 +464,7 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
         }
         const rows = await daemon.readLog({ workspaceId, sessionId });
         const note = rows.find(({ op }) => op === "NOTE");
-        // {§message-short-identity} The arrival's receipt names the message by its short address.
+        // {§message-arrival} The arrival's receipt names the message by its short address.
         const short = rows.flatMap(({ origin, rx }) => origin === "_plurnk" && typeof (rx as { resource?: unknown } | null)?.resource === "string"
             ? [(rx as { resource: string }).resource] : []).find((resource) => resource.startsWith("message://"));
         assert.ok(note !== undefined && short !== undefined, "the turn noted, and its arrival names its message");

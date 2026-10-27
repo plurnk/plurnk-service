@@ -1,8 +1,10 @@
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import BudgetReadout from "./BudgetReadout.ts";
+import TokenCalibration from "./TokenCalibration.ts";
 import { contentWeight } from "./content-weight.ts";
 
+describe("BudgetReadout", () => {
 interface Gauge { tokens: number; budget?: number; percent?: number; largest?: Array<{ path: string; tokens: number }> }
 
 const resolve = (
@@ -18,14 +20,14 @@ const resolve = (
 
 const share = (gauge: Gauge): number => Math.floor(gauge.tokens * 100 / gauge.budget!);
 
-test("{§context-gauge} below pressure the gauge names its exact render-weight, its budget and its share", () => {
+test("{§tokenomics} below pressure the gauge names its exact render-weight, its budget and its share", () => {
     const { content, usage, gauge } = resolve(100_000, 100);
     assert.equal(content.split("\n").length, 1, "one JSON line and nothing beneath it");
     assert.deepEqual(gauge, { tokens: usage, budget: 100_000, percent: share(gauge) });
     assert.deepEqual(Object.keys(gauge), ["tokens", "budget", "percent"], "the share sits after the totals");
 });
 
-test("{§context-gauge} the percent is the gauge's own final tokens over its budget, on every packet with a budget", () => {
+test("{§tokenomics} the percent is the gauge's own final tokens over its budget, on every packet with a budget", () => {
     const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
     for (const base of [0, 700, 801, 950, 1_100]) {
         const { usage, gauge } = resolve(1_000, base, items);
@@ -37,7 +39,7 @@ test("{§context-gauge} the percent is the gauge's own final tokens over its bud
     assert.ok(over.gauge.percent! > 100, "over budget the share says so, and nothing else does");
 });
 
-test("{§context-gauge} inventory appears strictly above pressure, after the share, never with a warning or mandate", () => {
+test("{§tokenomics} inventory appears strictly above pressure, after the share, never with a warning or mandate", () => {
     const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
     for (const base of [0, 700, 950]) {
         const { content, usage, gauge } = resolve(1_000, base, items);
@@ -51,7 +53,7 @@ test("{§context-gauge} inventory appears strictly above pressure, after the sha
     assert.doesNotMatch(over.content, /WARNING|MUST/u);
 });
 
-test("{§context-gauge} the share converges when its own width moves the packet across a digit boundary", () => {
+test("{§tokenomics} the share converges when its own width moves the packet across a digit boundary", () => {
     // A base that lands the gauge within a token of 10% of its budget: the share's own digit count
     // (one or two) is part of the weight it describes, and the final figures agree with each other.
     for (const [budget, base] of [[1_000, 50], [1_000, 48], [100, 40], [250, 110]] as const) {
@@ -61,7 +63,7 @@ test("{§context-gauge} the share converges when its own width moves the packet 
     }
 });
 
-test("{§context-gauge} threshold eligibility excludes the inventory's own weight", () => {
+test("{§tokenomics} threshold eligibility excludes the inventory's own weight", () => {
     const items = [{ path: `log:///${"1".repeat(400)}/READ`, tokens: 110 }];
     for (const [weight, expected] of [[799, undefined], [800, undefined], [801, items]] as const) {
         const measure = (content: string): number => weight + (content.includes('"largest"') ? 250 : 0);
@@ -73,7 +75,7 @@ test("{§context-gauge} threshold eligibility excludes the inventory's own weigh
     }
 });
 
-test("{§context-gauge} the configured pressure threshold controls inventory eligibility", () => {
+test("{§tokenomics} the configured pressure threshold controls inventory eligibility", () => {
     const items = [{ path: "log:///1/1/1/READ", tokens: 110 }];
     const prior = process.env.PLURNK_SERVICE_BUDGET_PRESSURE;
     try {
@@ -85,7 +87,7 @@ test("{§context-gauge} the configured pressure threshold controls inventory eli
     }
 });
 
-test("{§context-gauge} BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
+test("{§tokenomics} BudgetReadout: decimal-width boundaries converge without off-by-one substitution", async (t) => {
     const cases = [
         { name: "two-digit total", budget: 100, baseWeight: 62 },
         { name: "total expands from two digits to three", budget: 200, baseWeight: 77 },
@@ -103,7 +105,7 @@ test("{§context-gauge} BudgetReadout: decimal-width boundaries converge without
     }
 });
 
-test("{§context-gauge} largest: ranked by tokens then path and bounded by PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", () => {
+test("{§tokenomics} largest: ranked by tokens then path and bounded by PLURNK_SERVICE_BUDGET_LARGEST_ITEMS", () => {
     const items = [
         { path: "log:///1/1/6/READ", tokens: 70 },
         { path: "log:///1/1/2/READ", tokens: 110 },
@@ -133,19 +135,19 @@ test("{§context-gauge} largest: ranked by tokens then path and bounded by PLURN
     }
 });
 
-test("{§context-gauge} the complete configured inventory remains visible over budget", () => {
+test("{§tokenomics} the complete configured inventory remains visible over budget", () => {
     const wide = { path: `log:///${"1".repeat(200)}/READ`, tokens: 110 };
     const narrow = { path: "log:///1/1/2/READ", tokens: 90 };
     const { usage, gauge } = resolve(1_000, 900, [narrow, wide]);
     assert.deepEqual(gauge.largest, [wide, narrow], "every ranked row is named, whatever it costs the gauge");
-    assert.ok(usage > 1_000, "an over-budget packet reports its tokens honestly ({§context-over-budget-row})");
+    assert.ok(usage > 1_000, "an over-budget packet reports its tokens honestly ({§tokenomics})");
     const zero = resolve(0, 0, [narrow]);
     assert.ok(zero.usage > 0, "the packet exceeds a known zero budget");
     assert.deepEqual(zero.gauge.largest, [narrow], "zero capacity is pressure, not an unknown budget");
     assert.equal(zero.gauge.percent, undefined, "a zero room has no share to state");
 });
 
-test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge carries tokens alone", () => {
+test("{§tokenomics} without a budget the gauge carries tokens alone", () => {
     const items = [{ path: "log:///1/1/1/READ", tokens: 110 }, { path: "log:///1/1/2/READ", tokens: 100 }];
     const { usage, gauge } = resolve(null, 100, items);
     assert.deepEqual(Object.keys(gauge), ["tokens"]);
@@ -154,7 +156,7 @@ test("{§tokenomics-window-unpollable-deliberate} without a budget the gauge car
     assert.equal(gauge.percent, undefined, "no room, no share");
 });
 
-test("{§output-allowance-notice} (#826) the readout carries curation state alone", () => {
+test("{§operation-results} (#826) the readout carries curation state alone", () => {
     const drafted = BudgetReadout.draft(1000);
     assert.match(drafted, /"budget":1000,"percent":\{\{percent\}\}\}$/);
     assert.deepEqual(Object.keys(JSON.parse(BudgetReadout.resolve(drafted, (candidate) => candidate.length).gauge)), ["tokens", "budget", "percent"],
@@ -163,7 +165,7 @@ test("{§output-allowance-notice} (#826) the readout carries curation state alon
     assert.equal(BudgetReadout.draft(0), '{"tokens":{{tokens}},"budget":0}');
 });
 
-test("{§tokenomics-calibrated-readout} a converted budget changes the room without changing cost units", () => {
+test("{§tokenomics} a converted budget changes the room without changing cost units", () => {
     const prefix = "x".repeat(85 * 2);
     const measure = (content: string): number => contentWeight(prefix + content);
     const items = [{ path: "log:///1/2/3/READ", tokens: 44 }];
@@ -173,4 +175,49 @@ test("{§tokenomics-calibrated-readout} a converted budget changes the room with
         assert.match(rendered, new RegExp(`"tokens":\\s*${usage},"budget":${budget},"percent":\\s*${Math.floor(usage * 100 / budget)}`, "u"), `the displayed figures retain the measured curation units; got: ${rendered}`);
         assert.doesNotMatch(rendered, /MUST/u);
     }
+});
+});
+
+describe("TokenCalibration", () => {
+test("{§tokenomics} without a sample the offset is 0", () => {
+    assert.equal(TokenCalibration.offset(undefined), 0);
+});
+
+test("{§tokenomics} one sample fixes the additive offset: measured weight minus reported tokens", () => {
+    assert.equal(TokenCalibration.offset({ weight: 400, reported: 260 }), 140, "saved tokens on the measured packet credit the allowance");
+    assert.equal(TokenCalibration.offset({ weight: 100, reported: 300 }), -200, "a denser tokenization deducts the observed overhead");
+});
+
+test("{§tokenomics} a sample that is not a positive integer is refused", () => {
+    assert.throws(() => TokenCalibration.offset({ weight: 100, reported: 0 }), /calibration sample reported must be a positive safe integer/u);
+    assert.throws(() => TokenCalibration.offset({ weight: 1.5, reported: 1 }), /calibration sample weight must be a positive safe integer/u);
+});
+
+test("{§tokenomics} capacity and estimatedTokens translate by the additive offset without extrapolating unmeasured content", () => {
+    assert.equal(TokenCalibration.capacity(100_000), 100_000, "cold-start conversion is 1:1");
+    assert.equal(TokenCalibration.capacity(100_000, 3_600), 103_600, "credits only the saved tokens actually observed");
+    assert.equal(TokenCalibration.capacity(100_000, -5_000), 95_000, "deducts observed tokenization overhead");
+    assert.equal(TokenCalibration.capacity(100, -250), 0, "no room fits; never fabricate negative capacity");
+    assert.equal(TokenCalibration.capacity(null, 3_600), null, "unknown physical capacity stays unknown");
+
+    assert.equal(TokenCalibration.estimatedTokens(9_000), 9_000);
+    assert.equal(TokenCalibration.estimatedTokens(9_000, 3_600), 5_400, "at the measured weight, estimated tokens equal reported tokens");
+    assert.equal(TokenCalibration.estimatedTokens(19_000, 3_600), 15_400, "unmeasured growth is budgeted 1:1");
+    assert.equal(TokenCalibration.estimatedTokens(1_000, 3_600), 0, "clamps at zero when curated below the prior offset");
+});
+
+test("{§tokenomics} invalid conversion inputs fail at the unit boundary", () => {
+    for (const capacity of [-1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+        assert.throws(() => TokenCalibration.capacity(capacity), /input capacity must be a positive safe integer/u);
+    }
+    for (const offset of [1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+        assert.throws(() => TokenCalibration.capacity(100, offset), /calibration offset must be a safe integer/u);
+        assert.throws(() => TokenCalibration.estimatedTokens(100, offset), /calibration offset must be a safe integer/u);
+    }
+    for (const weight of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1]) {
+        assert.throws(() => TokenCalibration.estimatedTokens(weight), /packet weight must be a non-negative safe integer/u);
+    }
+    assert.throws(() => TokenCalibration.capacity(Number.MAX_SAFE_INTEGER, 1), /curation capacity must be a non-negative safe integer/u);
+    assert.throws(() => TokenCalibration.estimatedTokens(Number.MAX_SAFE_INTEGER, -1), /estimated tokens must be a non-negative safe integer/u);
+});
 });

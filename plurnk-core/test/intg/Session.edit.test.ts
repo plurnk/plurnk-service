@@ -93,7 +93,7 @@ test("{§execution-output-identity} Session.edit: new entry — inserts entries 
     } finally { await db.close(); }
 });
 
-test("{§ext-mimetype-extension-mimetype}: EDIT preserves an existing channel's explicitly declared type", async () => {
+test("{§zero-width-column-one-insert}: EDIT preserves an existing channel's explicitly declared type", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const entryId = await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.txt", content: "before", mimetype: "text/plain" });
@@ -108,7 +108,7 @@ test("{§ext-mimetype-extension-mimetype}: EDIT preserves an existing channel's 
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Session.edit: a concurrent creator wins cleanly and the losing EDIT reports a collision", async () => {
+test("{§operation-results} Session.edit: a concurrent creator wins cleanly and the losing EDIT reports a collision", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const claim = new Proxy(db.ops_insert_workspace_entry_if_absent, {
@@ -137,7 +137,7 @@ test("{§problems-dispatch} Session.edit: a concurrent creator wins cleanly and 
         );
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(result.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
+        assert.equal(result.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
         assert.equal(result.problem?.target, "workspace:///create-race.md");
         const channel = await db.test_get_channel_by_pathname_scheme.get<{ content: string }>({
             pathname: "/create-race.md",
@@ -162,7 +162,7 @@ test("{§edit} Session.edit: second EDIT against same path — same entry id, bo
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Session.edit: a representation change at atomic landing returns edit-collision without clobbering it", async () => {
+test("{§operation-results} Session.edit: a representation change at atomic landing returns edit-collision without clobbering it", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const session = new Workspace();
@@ -200,7 +200,7 @@ test("{§problems-dispatch} Session.edit: a representation change at atomic land
         );
         assert.equal(result.status, 409);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(result.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
+        assert.equal(result.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
         assert.equal(result.problem?.target, "workspace:///cas.md");
         const channel = await db.test_get_channel.get<{ content: string }>({
             entry_id: created.entryId,
@@ -242,7 +242,7 @@ test("{§edit} Session.edit: empty body clears the channel content (does not del
     } finally { await db.close(); }
 });
 
-test("{§text-scope-runtime} Session.edit: lineMarker on non-existent entry — body becomes content", async () => {
+test("{§zero-width-column-one-insert} Session.edit: lineMarker on non-existent entry — body becomes content", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const stmt = editStatement({ target: urlPath("workspace", "/new"), body: "first line\nsecond line", lineMarker: { marks: [0] } });
@@ -253,7 +253,7 @@ test("{§text-scope-runtime} Session.edit: lineMarker on non-existent entry — 
     } finally { await db.close(); }
 });
 
-test("{§text-scope-runtime} Session.edit: lineMarker <N> on existing entry replaces line N", async () => {
+test("{§zero-width-column-one-insert} Session.edit: lineMarker <N> on existing entry replaces line N", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const k = new Workspace();
@@ -265,7 +265,7 @@ test("{§text-scope-runtime} Session.edit: lineMarker <N> on existing entry repl
     } finally { await db.close(); }
 });
 
-test("{§text-scope-runtime} Session.edit: lineMarker <0> on existing entry prepends", async () => {
+test("{§zero-width-column-one-insert} Session.edit: lineMarker <0> on existing entry prepends", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const k = new Workspace();
@@ -276,7 +276,7 @@ test("{§text-scope-runtime} Session.edit: lineMarker <0> on existing entry prep
     } finally { await db.close(); }
 });
 
-test("{§text-scope-runtime} Session.edit: lineMarker <-1> on existing entry appends", async () => {
+test("{§zero-width-column-one-insert} Session.edit: lineMarker <-1> on existing entry appends", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const k = new Workspace();
@@ -287,7 +287,7 @@ test("{§text-scope-runtime} Session.edit: lineMarker <-1> on existing entry app
     } finally { await db.close(); }
 });
 
-test("{§text-scope-runtime} Session.edit: lineMarker <1,-1> empty body clears", async () => {
+test("{§zero-width-column-one-insert} Session.edit: lineMarker <1,-1> empty body clears", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const k = new Workspace();
@@ -298,7 +298,7 @@ test("{§text-scope-runtime} Session.edit: lineMarker <1,-1> empty body clears",
     } finally { await db.close(); }
 });
 
-test("{§text-scope-runtime} Session.edit: lineMarker out of range returns 416", async () => {
+test("{§zero-width-column-one-insert} Session.edit: lineMarker out of range returns 416", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const k = new Workspace();
@@ -308,7 +308,7 @@ test("{§text-scope-runtime} Session.edit: lineMarker out of range returns 416",
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Session.edit: null path returns 400", async () => {
+test("{§operation-results} Session.edit: null path returns 400", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const stmt = editStatement({ target: null, body: "x" });
@@ -320,7 +320,7 @@ test("{§problems-dispatch} Session.edit: null path returns 400", async () => {
 
 
 
-test("{§text-scope-runtime} Session.edit: exact coordinates edit minified JSON as text", async () => {
+test("{§zero-width-column-one-insert} Session.edit: exact coordinates edit minified JSON as text", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -354,7 +354,7 @@ test("{§text-scope-runtime} Session.edit: exact coordinates edit minified JSON 
     } finally { await db.close(); }
 });
 
-test("{§ext-mimetype-extension-mimetype} Session.edit: line shorthand edits JSON physical lines and can replace the whole resource", async () => {
+test("{§zero-width-column-one-insert} Session.edit: line shorthand edits JSON physical lines and can replace the whole resource", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -391,7 +391,7 @@ test("{§ext-mimetype-extension-mimetype} Session.edit: line shorthand edits JSO
     } finally { await db.close(); }
 });
 
-test("{§ext-mimetype-extension-mimetype} Session.edit: line shorthand has the same meaning without a path suffix", async () => {
+test("{§zero-width-column-one-insert} Session.edit: line shorthand has the same meaning without a path suffix", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -405,7 +405,7 @@ test("{§ext-mimetype-extension-mimetype} Session.edit: line shorthand has the s
     } finally { await db.close(); }
 });
 
-test("{§ext-mimetype-extension-mimetype} Session.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
+test("{§zero-width-column-one-insert} Session.edit: textual JSON edits do not introduce a hidden parse gate", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -792,7 +792,7 @@ test("{§loop-completion}: retiring a failed receipt does not make it observed",
     } finally { await db.close(); }
 });
 
-test("{§body-projection} a KILL line scope trims a NOTE like any other log body", async () => {
+test("{§packet} a KILL line scope trims a NOTE like any other log body", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -826,7 +826,7 @@ test("{§edit} Engine.dispatch: EDIT against workspace:/// routes to Session.edi
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Engine.dispatch: a current READ line anchor lowers to a numeric EDIT precondition", async () => {
+test("{§operation-results} Engine.dispatch: a current READ line anchor lowers to a numeric EDIT precondition", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("workspace", "/anchored.md");
     const identity = "workspace:///anchored.md";
@@ -858,7 +858,7 @@ test("{§problems-dispatch} Engine.dispatch: a current READ line anchor lowers t
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
+        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
         assert.equal(stale.problem?.target, identity);
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -1046,7 +1046,7 @@ test("{§log-kill-scope} Engine.dispatch: scoped KILL accepts body and log ancho
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Engine.dispatch: a scoped READ anchor includes nearby lines outside the returned slice", async () => {
+test("{§operation-results} Engine.dispatch: a scoped READ anchor includes nearby lines outside the returned slice", async () => {
     const { db, engine, env } = await setup();
     const target = urlPath("workspace", "/contextual-anchor.md");
     const content = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`).join("\n");
@@ -1076,7 +1076,7 @@ test("{§problems-dispatch} Engine.dispatch: a scoped READ anchor includes nearb
         });
         assert.equal(stale.status, 409);
         assert.equal(stale.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
+        assert.equal(stale.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
         assert.equal(stale.problem?.target, "workspace:///contextual-anchor.md");
         assert.equal(stale.problem?.anchor, undefined);
     } finally { await db.close(); }
@@ -1136,7 +1136,7 @@ test("{§resolved-edit-statement} Engine.dispatch: a mutation between anchor res
         });
         assert.equal(collided.status, 409);
         assert.equal(collided.problem?.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-        assert.equal(collided.problem?.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
+        assert.equal(collided.problem?.detail, "EDIT collided with the current resource state."); // {§operation-results}
         assert.equal(collided.problem?.target, identity);
         assert.equal(collided.problem?.anchor, undefined);
 
@@ -1289,7 +1289,7 @@ test("{§scheme-surface} Engine.dispatch: READ against workspace:/// routes to S
     } finally { await db.close(); }
 });
 
-test("{§unregistered-scheme-recovery} Engine.dispatch: unknown scheme returns 501 and still writes log row", async () => {
+test("{§operation-results} Engine.dispatch: unknown scheme returns 501 and still writes log row", async () => {
     const { db, engine, env } = await setup();
     try {
         const result = await engine.dispatch({
@@ -1304,7 +1304,7 @@ test("{§unregistered-scheme-recovery} Engine.dispatch: unknown scheme returns 5
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Engine.dispatch: null path on path-required op returns 400 and logs", async () => {
+test("{§operation-results} Engine.dispatch: null path on path-required op returns 400 and logs", async () => {
     const { db, engine, env } = await setup();
     try {
         const stmt: EditStatement = {
@@ -1404,7 +1404,7 @@ test("{§turn-source-resources}: log EDIT has no mutation surface; reasoning use
         });
         assert.equal(result.status, 501);
         assert.match(result.problem!.type, /operation-not-implemented$/);
-        assert.equal(result.problem!.detail, "Scheme 'log' does not implement EDIT."); // {§problems-dispatch}
+        assert.equal(result.problem!.detail, "Scheme 'log' does not implement EDIT."); // {§operation-results}
     } finally { await db.close(); }
 });
 
@@ -1511,7 +1511,7 @@ test("{§scheme-surface} Engine.dispatch: a model reply needs no external capabi
 // {§scheme-surface} Scheme-handler
 // exceptions finalize the action-entry at 500, not bubble up.
 
-test("{§problems-dispatch} Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
+test("{§operation-results} Engine.dispatch: scheme handler that throws → action-entry at status 500 (action-entry-as-outcome)", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
@@ -1532,7 +1532,7 @@ test("{§problems-dispatch} Engine.dispatch: scheme handler that throws → acti
             sequence: 1, origin: "model",
         });
         assert.equal(result.status, 500);
-        assert.equal(result.problem?.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§problems-dispatch}
+        assert.equal(result.problem?.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§operation-results}
         assert.equal(result.problem?.stage, "scheme-dispatch");
         assert.equal(result.problem?.scheme, "boom");
         assert.equal(result.problem?.operation, "EDIT");
@@ -1543,12 +1543,12 @@ test("{§problems-dispatch} Engine.dispatch: scheme handler that throws → acti
         assert.equal(log?.scheme, "boom");
         const rx = JSON.parse(log?.rx ?? "{}");
         assert.equal(rx.status, 500);
-        assert.equal(rx.problem.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§problems-dispatch}
+        assert.equal(rx.problem.detail, "The 'boom' scheme did not produce a result for EDIT."); // {§operation-results}
         assert.doesNotMatch(log?.rx ?? "", /scheme handler deliberately threw/);
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Engine.dispatch: non-Error throw becomes the same generic contract Problem", async () => {
+test("{§operation-results} Engine.dispatch: non-Error throw becomes the same generic contract Problem", async () => {
     const db = await openMigrated();
     const env = await seedEnvelope(db, `ws-${crypto.randomUUID()}`);
     const schemes = new SchemeRegistry();
@@ -1570,12 +1570,12 @@ test("{§problems-dispatch} Engine.dispatch: non-Error throw becomes the same ge
         });
         assert.equal(result.status, 500);
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/scheme-handler-threw");
-        assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce a result for EDIT."); // {§problems-dispatch}
+        assert.equal(result.problem?.detail, "The 'boomstr' scheme did not produce a result for EDIT."); // {§operation-results}
         assert.doesNotMatch(JSON.stringify(result), /raw string thrown/);
     } finally { await db.close(); }
 });
 
-test("{§problems-dispatch} Engine.dispatch: COPY rejects a non-entry destination at resource resolution", async () => {
+test("{§operation-results} Engine.dispatch: COPY rejects a non-entry destination at resource resolution", async () => {
     const { db, engine, env } = await setup();
     try {
         // Source first: model creates an entry in workspace:///.
@@ -1749,11 +1749,11 @@ replacement
                     const problem = JSON.parse(row.rx).problem;
                     assert.equal(row.status_rx, 409);
                     assert.equal(problem.type, "https://problems.plurnk.xyz/engine/edit/edit-collision");
-                    assert.equal(problem.detail, "EDIT collided with the current resource state."); // {§problems-dispatch}
+                    assert.equal(problem.detail, "EDIT collided with the current resource state."); // {§operation-results}
                     assert.deepEqual(problem.unresolvedAnchors, ownUnresolved, "each row diagnoses all of its own unresolved anchors");
                     assert.equal(problem.editCount, 1);
                     assert.equal(problem.applied, 0);
-                    assert.equal(problem.recovery, "0 of 1 edits applied. READ the target for current coordinates."); // {§problems-dispatch}
+                    assert.equal(problem.recovery, "0 of 1 edits applied. READ the target for current coordinates."); // {§operation-results}
                     assert.equal(problem.retryable, false);
                 }
                 const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnIds!.at(-1)! }))!.packet);
@@ -2055,7 +2055,7 @@ test("{§configuration-repair-path}: invalid file creation policy refuses the ED
     });
 });
 
-for (const decision of ["accept", "reject", "drift"] as const) test(`{§slice-semantics-compose-pattern}: exact attribute EDIT through a ${decision} file proposal`, async () => {
+for (const decision of ["accept", "reject", "drift"] as const) test(`{§zero-width-column-one-insert}: exact attribute EDIT through a ${decision} file proposal`, async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const original = '<root><item id = "old" class="kept"/></root>';
         const seed = deferred<number>();
@@ -3209,7 +3209,7 @@ const cases = [
     { name: "zero-width regex", extension: "txt", pattern: "/^/", content: 'first\nsecond', lines: [1, 2], edited: 'replacementfirst\nreplacementsecond', copied: '', removed: 'first\nsecond' },
 ] as const;
 
-// {§read} {§edit-pattern} {§kill-pattern} {§copy}
+// {§read} {§edit-pattern} {§op-invariants} {§copy}
 for (const specimen of cases) {
     for (const operation of ["FIND", "READ", "EDIT", "KILL", "COPY", "MOVE"] as const) {
         test(`{§mimetype-content-query} pattern composition: ${specimen.name} ${operation} selects the advertised content`, async () => {
@@ -3274,7 +3274,7 @@ for (const specimen of [
     { path: "source.md", content: "# Heading\n\nbody **strong** end", pattern: "//heading | //strong" },
     { path: "source.xml", content: "<root><item>value</item></root>", pattern: "$.type" },
 ]) for (const operation of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
-    test(`{§slice-semantics-compose-pattern} ${operation} refuses ${specimen.pattern} without partial writes`, async () => {
+    test(`{§zero-width-column-one-insert} ${operation} refuses ${specimen.pattern} without partial writes`, async () => {
         const db = await openMigrated();
         try {
             const env = await seedEnvelope(db, `precision-${crypto.randomUUID()}`, { producer: "client" });

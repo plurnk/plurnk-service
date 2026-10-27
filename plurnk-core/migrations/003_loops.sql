@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS loops (
     sequence INTEGER NOT NULL             CHECK (sequence >= 1),
     status   INTEGER NOT NULL DEFAULT 102 CHECK (status IN (100, 102, 200, 202, 413, 429, 499, 500, 504, 508)),
     prompt   TEXT    NOT NULL,
-    -- {§message-causal-source}: canonical actor address for the initial message;
+    -- {§message-arrival}: canonical actor address for the initial message;
     -- NULL means the owning session itself. Denormalized headline of the loop's
     -- first message ({§message-arrival}); the inbox row below is the one published.
     prompt_source TEXT CHECK (prompt_source IS NULL OR length(prompt_source) > 0),
@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS loops (
     cycle_wait_revision INTEGER NOT NULL DEFAULT 0 CHECK (cycle_wait_revision >= 0 AND cycle_wait_revision <= wait_revision),
     observed_wake_revision INTEGER NOT NULL DEFAULT 0 CHECK (observed_wake_revision >= 0),
     wait_poll_at INTEGER,
-    -- {§message-loop-containment}: one queued recovery loop may carry the
+    -- {§message-arrival}: one queued recovery loop may carry the
     -- complete unpublished message set of one concluded source loop.
     orphan_source_loop_id INTEGER,
     -- {§session-wait-timing}: the first time the loop was claimed to run (status 102), stamped by
@@ -104,14 +104,14 @@ CREATE INDEX IF NOT EXISTS loops_spawn_model_route_id   ON loops (spawn_model_ro
 -- the turn boundary that publishes it as an inbound SEND row in the loop's log; the initial
 -- message is ordinal 1 and doubles as the loop's `prompt` headline. `log_entry_id` is NULL until
 -- publication; a concluded loop's unpublished rows move to its recovery loop
--- ({§message-loop-containment}).
+-- ({§message-arrival}).
 CREATE TABLE IF NOT EXISTS loop_messages (
     id              INTEGER NOT NULL PRIMARY KEY,
     loop_id         INTEGER NOT NULL REFERENCES loops(id) ON DELETE CASCADE,
     ordinal         INTEGER NOT NULL CHECK (ordinal >= 1),
     message_key     TEXT NOT NULL DEFAULT (lower(hex(randomblob(4)))),
     address         TEXT CHECK (address IS NULL OR length(address) > 0),
-    -- {§message-causal-source}: NULL means the owning session itself.
+    -- {§message-arrival}: NULL means the owning session itself.
     source          TEXT CHECK (source IS NULL OR length(source) > 0),
     body            TEXT NOT NULL CHECK (length(body) > 0),
     evidence        TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(evidence) AND json_type(evidence) = 'object'),
@@ -158,7 +158,7 @@ BEGIN
     SELECT RAISE(ABORT, 'accepted messages can only be removed with their containing history');
 END;
 
--- {§message-short-identity}: `key_path` is the model's address for a message — always short, always
+-- {§message-arrival}: `key_path` is the model's address for a message — always short, always
 -- `message://<session>/<key>`, exactly as the session docs teach. `path` stays the durable identity a
 -- client minted (an ACP message UUID, say), which correlation and delivery keep using.
 CREATE VIEW IF NOT EXISTS message_sources AS
@@ -189,12 +189,12 @@ CREATE TABLE IF NOT EXISTS turns (
     -- completed_at distinguishes those states without inventing another status.
     completed_at     TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     -- Provider-derived curation calibration for this turn; NULL when input
-    -- capacity is unknown. {§tokenomics-client-gauge}
+    -- capacity is unknown. {§tokenomics}
     usage_curation_budget INTEGER                CHECK (usage_curation_budget IS NULL OR usage_curation_budget >= 1),
-    -- {§packet-stored-shape}: NULL means no model request was assembled. A
+    -- {§packet}: NULL means no model request was assembled. A
     -- present packet is either the measured request or that request extended
     -- by the paired admitted-response fields. Its sections are rows
-    -- ({§packet-items}), never in this bag: the bag holds weight, attributions,
+    -- ({§packet}), never in this bag: the bag holds weight, attributions,
     -- attachments, and the admitted response.
     packet           TEXT                       CHECK (
         CASE
@@ -259,7 +259,7 @@ SELECT l.* FROM loops l
 WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind = 'maintenance')
    OR EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind <> 'maintenance');
 
--- {§packet-items}: a packet's sections are rows over content-addressed items. Every rendered
+-- {§packet}: a packet's sections are rows over content-addressed items. Every rendered
 -- block — one log row's record, one non-log section's content — is stored once by its hash;
 -- a turn stores the ordered composition. A row whose rendering did not change between turns
 -- hashes to the same item, so a turn's durable cost is its new and changed items.
@@ -268,7 +268,7 @@ CREATE TABLE IF NOT EXISTS packet_items (
     text TEXT NOT NULL
 ) STRICT, WITHOUT ROWID;
 
--- {§packet-wire-envelope}: section slots include system, user, and assistant.
+-- {§packet-assembly}: section slots include system, user, and assistant.
 CREATE TABLE IF NOT EXISTS turn_sections (
     turn_id  INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
     position INTEGER NOT NULL CHECK (position >= 0),
@@ -292,7 +292,7 @@ CREATE TABLE IF NOT EXISTS turn_section_items (
 -- {§db-migrations}: item collection and the packet_items foreign-key check path.
 CREATE INDEX IF NOT EXISTS turn_section_items_item_hash ON turn_section_items (item_hash);
 
--- {§packet-items}: the one write of inference evidence — the packet bag, its sections as items,
+-- {§packet}: the one write of inference evidence — the packet bag, its sections as items,
 -- and the provider metadata land in one statement through this view.
 CREATE VIEW IF NOT EXISTS turn_inference_evidence AS
 SELECT NULL AS turn_id, NULL AS packet, NULL AS sections,
@@ -330,7 +330,7 @@ BEGIN
     WHERE id = NEW.turn_id;
 END;
 
--- {§packet-items}: a turn as its readers know it — the packet bag with its sections assembled
+-- {§packet}: a turn as its readers know it — the packet bag with its sections assembled
 -- back into it, byte for byte: a section's content is its items joined by one blank line.
 CREATE VIEW IF NOT EXISTS turn_packets AS
 SELECT t.id, t.loop_id, t.sequence, t.timestamp, t.producer, t.kind, t.status, t.completed_at,

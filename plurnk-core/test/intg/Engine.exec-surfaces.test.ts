@@ -140,7 +140,7 @@ test("{§exec-stream} a model's execution result surfaces visibly in the next tu
     });
 });
 
-// {§exec-stream} {§context-fit} — a 30-line structured result closes as a markerless READ: whole,
+// {§exec-stream} {§tokenomics} — a 30-line structured result closes as a markerless READ: whole,
 // because it fits, with the extent; the channel itself stays complete and typed.
 test("{§exec-stream} a generated JSON result publishes whole with the extent through the next-turn packet", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
@@ -338,7 +338,7 @@ test("{§exec-stream} a command that prints nothing on any channel lands exactly
 });
 
 describe("Engine.structured-stream", () => {
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 class StructuredFixture {
     static manifest = {
@@ -459,7 +459,7 @@ test("{§exec-stream} an atomic application/json channel remains hidden until it
         const terminal = await fixture.runTurn();
         const row = await structuredRow(fixture, terminal.turnId);
         const result = JSON.parse(row.rx) as { content: string; mimetype: string; startLine?: number };
-        // {§exec-stream} {§markerless-first-page} — the conclusion is a markerless READ: its first page, with its extent.
+        // {§exec-stream} {§packet} — the conclusion is a markerless READ: its first page, with its extent.
         assert.deepEqual(result, {
             status: 200,
             terminal: true,
@@ -474,7 +474,7 @@ test("{§exec-stream} an atomic application/json channel remains hidden until it
     }
 });
 
-test("{§markerless-first-page} application/jsonl publishes nothing while active; its records arrive once, at close", async () => {
+test("{§packet} application/jsonl publishes nothing while active; its records arrive once, at close", async () => {
     const fixture = await setup("application/jsonl", '{"n":1}\n{"n":');
     try {
         const active = await fixture.runTurn();
@@ -498,7 +498,7 @@ test("{§markerless-first-page} application/jsonl publishes nothing while active
     }
 });
 
-test("{§markerless-first-page} an active text channel publishes nothing; its content arrives once, at close", async () => {
+test("{§packet} an active text channel publishes nothing; its content arrives once, at close", async () => {
     const fixture = await setup("text/plain; charset=utf-8", "event one\n");
     try {
         const active = await fixture.runTurn();
@@ -522,7 +522,7 @@ test("{§markerless-first-page} an active text channel publishes nothing; its co
     }
 });
 
-test("{§markerless-first-page} a stream that closes with no new content still emits exactly one conclusion", async () => {
+test("{§packet} a stream that closes with no new content still emits exactly one conclusion", async () => {
     const fixture = await setup("application/jsonl", '{"n":1}\n');
     try {
         const active = await fixture.runTurn();
@@ -546,7 +546,7 @@ test("{§markerless-first-page} a stream that closes with no new content still e
     }
 });
 
-test("{§markerless-first-page} a published channel materializes its exact terminal result override", async () => {
+test("{§packet} a published channel materializes its exact terminal result override", async () => {
     const fixture = await setup("application/json", '{"ok":false}');
     const channelFailure = Results.failure(
         "scheme:structured-fixture",
@@ -604,7 +604,7 @@ test("{§exec-stream}: invalid result liveness cannot advance publication or lea
     }
 });
 
-test("{§markerless-first-page} KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
+test("{§packet} KILLing a terminal observation cannot erase its subscription delivery transition", async () => {
     const kill: KillStatement = {
         metadata: null,
         op: "KILL",
@@ -800,7 +800,7 @@ for (const reported of [{ status: 500, exitCode: 1 }, { status: 102 }, { status:
     });
 }
 
-test("{§notice-level} an executor notice with explicit severity crosses the extension boundary unchanged", async () => {
+test("{§operation-results} an executor notice with explicit severity crosses the extension boundary unchanged", async () => {
     const notice = {
         source: "exec:honesty",
         kind: "progress",
@@ -831,7 +831,7 @@ test("{§notice-level} an executor notice with explicit severity crosses the ext
     } finally { await db.close(); }
 });
 
-test("{§notice-level} a runtime-JavaScript notice without severity fails at the extension boundary with its cause", async (t) => {
+test("{§operation-results} a runtime-JavaScript notice without severity fails at the extension boundary with its cause", async (t) => {
     const diagnostics: unknown[][] = [];
     t.mock.method(console, "error", (...args: unknown[]) => { diagnostics.push(args); });
     const { db, engine, workspaceId, sessionId, loopId, turnId, tag, wakes, notices } = await wire(async ({ emit }) => {
@@ -993,7 +993,7 @@ test("{§loop-completion}: an earlier turn's completed stream is identified with
 describe("exec-stream-page", () => {
 // {§exec-stream} {§exec-stream} — an active stream reaches the model only as an Open Work stream
 // pointer with its size and growth; at close, ONE foisted READ that is exactly a markerless READ: the
-// first page of the output ({§markerless-first-page}), the extent, the terminal status. The channel
+// first page of the output ({§packet}), the extent, the terminal status. The channel
 // keeps every line for a scoped READ.
 
 
@@ -1003,7 +1003,7 @@ describe("exec-stream-page", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 const PAGE_CHARS = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
 
 const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void> => {
@@ -1136,7 +1136,7 @@ for (const specimen of [
         range: { unit: "line", total: 1, requested: [1, PAGE], returned: [1, 1] },
         packetRange: "1 line",
     },
-]) test(`{§exec-stream} {§markerless-first-page}: automatic ${specimen.name} arrives as its first page; explicit READ <1,-1> retains the full stream`, async (approvalContext) => {
+]) test(`{§exec-stream} {§packet}: automatic ${specimen.name} arrives as its first page; explicit READ <1,-1> retains the full stream`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const { content } = specimen;
     const provider = new StreamMock({ contextWindow: 100_000, responses: [
@@ -1264,7 +1264,7 @@ for (const body of [null, '{"query":"fixture"}']) {
         assert.ok(automatic);
         assert.equal(automatic.source, undefined);
         assert.equal(automatic.stream, undefined);
-        assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§context-fit})");
+        assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§tokenomics})");
         const failed = (await packet(3)).find((row) => /^log:\/\/\/1\/3\/\d+\/READ$/u.test(row.logPath) && row.status === 416);
         assert.ok(failed);
         assert.ok(provider.received[2].some((message) => message.role === "assistant" && chatMessageText(message) === frame(`READ (${invocation.logPath}) <17,40>`, null)));

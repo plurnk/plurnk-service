@@ -56,7 +56,7 @@ test("{§stream} appendToChannel: appends chunk to existing channel content", as
     } finally { await db.close(); }
 });
 
-test("{§tokenomics-weight-stored-at-write} appendToChannel: every append stores the ruler weight of the complete channel", async () => {
+test("{§tokenomics} appendToChannel: every append stores the ruler weight of the complete channel", async () => {
     const { db, entryId, sessionId } = await seedChannel("body", "text/plain", "A😀");
     try {
         await ChannelWrite.appendToChannel(db, { entryId, producerSessionId: sessionId, channel: "body", chunk: "é" });
@@ -932,7 +932,7 @@ test("{§stream-control} KILL on nonexistent entry returns 404", async () => {
         assert.equal(r.status, 404);
     } finally { await db.close(); }
 });
-test("{§pinned-wording-core} End-to-end: synthetic streaming scheme — KILL tears down subscription, transitions state, closes record", async () => {
+test("{§operation-results} End-to-end: synthetic streaming scheme — KILL tears down subscription, transitions state, closes record", async () => {
     const { db, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         const teardownCalls: string[] = [];
@@ -1018,7 +1018,7 @@ test("{§pinned-wording-core} End-to-end: synthetic streaming scheme — KILL te
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/teststream/cancelled");
-        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL."); // {§pinned-wording-core}
+        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL."); // {§operation-results}
 
         const channelState = (await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" }))?.state;
         assert.equal(channelState, "errored", "cancelled content remains readable but is not marked complete");
@@ -1288,7 +1288,7 @@ const deferred = <T>(): { promise: Promise<T>; resolve: (v: T) => void } => {
 // subscription; dispatching KILL through the Engine must reach that
 // scheme's send(), resolve the registry to the stored handle, fire teardown
 // with that exact handle, and close the registry row at 499.
-test("{§pinned-wording-core} KILL resolves the registry to the owning scheme + stored handle and tears down", async () => {
+test("{§operation-results} KILL resolves the registry to the owning scheme + stored handle and tears down", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, sessionId, loopId, turnId } = await seedEnvelope(
@@ -1380,7 +1380,7 @@ test("{§pinned-wording-core} KILL resolves the registry to the owning scheme + 
         assert.equal(terminal.status, 499);
         assert.equal(terminal.problem?.status, 499);
         assert.equal(terminal.problem?.type, "https://problems.plurnk.xyz/scheme/fakestream/cancelled");
-        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL."); // {§pinned-wording-core}
+        assert.equal(terminal.problem?.detail, "The stream was cancelled by KILL."); // {§operation-results}
         assert.equal(await ChannelWrite.findActiveSubscription(db, { entryId }), null, "no active subscription remains");
 
         const channel = await db.test_get_channel.get<{ state: string }>({ entry_id: entryId, name: "data" });

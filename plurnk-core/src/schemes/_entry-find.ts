@@ -200,8 +200,8 @@ export const projectFindResult = (
         completeItems = resourceItems;
     }
 
-    // {§markerless-first-page} — without a scope, every result; whether they fit is decided where the row lands.
-    // {§markerless-first-page} — without a scope, the first page of results.
+    // {§packet} — without a scope, every result; whether they fit is decided where the row lands.
+    // {§packet} — without a scope, the first page of results.
     const marker = statement.lineMarker ?? BodyPreview.firstPage();
     const unit = locationMode ? "matchLocation" : "resource";
     const page = LineMarkerOps.page(completeItems, marker, { unit });
@@ -267,7 +267,7 @@ type FindScope = {
 // {§find-result-projection} A candidate row retains the selected workspace and literal authority.
 type Candidate = { entry_id: number; authority: string; pathname: string; channel: string; deep_hash: string | null; content?: string; mimetype?: string };
 
-// {§relation-indexed-dialects} An indexed dialect over candidates the index does not yet cover.
+// {§matcher-dispatch} An indexed dialect over candidates the index does not yet cover.
 const incompleteIndex = (
     search: Extract<SearchCandidateSet, { state: "incomplete" }>,
     what: string,
@@ -605,7 +605,7 @@ export default class EntryFind {
         } else if (statement.matcher === null) {
             matches = [...candidates.map((c) => ({ pathname: c.pathname, matches: [] })), ...ambientKeys.map((pathname) => ({ pathname, matches: [] }))];
         } else if (statement.matcher.dialect === "graph") {
-            // {§relation-indexed-dialects} Parser admission owns graph syntax;
+            // {§matcher-dispatch} Parser admission owns graph syntax;
             // this remains a defensive boundary for typed/programmatic callers.
             if (!/^&[<>]?[^\s<>]\S*$/.test(statement.matcher.raw)) return {
                 status: 400,
@@ -617,7 +617,7 @@ export default class EntryFind {
                     retryable: false,
                 },
             };
-            // {§relation-indexed-dialects} Body is `&<sym` / `&>sym` / `&sym`. EntryGraph resolves
+            // {§matcher-dispatch} Body is `&<sym` / `&>sym` / `&sym`. EntryGraph resolves
             // the relation across (workspace, scheme), each as a (file, span); intersect with the
             // in-scope candidates from the target glob for the final set.
             const scopedCandidates = resolveSearchCandidates(
@@ -786,7 +786,7 @@ export default class EntryFind {
         address: FindAddress,
     ): Promise<FindResult> {
         let match = await EntryFind.#matchPathnames(statement, ctx, manifest, address);
-        // {§relation-indexed-dialects} — a still-deriving index is settled once and the
+        // {§matcher-dispatch} — a still-deriving index is settled once and the
         // selection re-run, so the model gets an answer, not a wait.
         if (match.status === 503 && match.extensions?.stage === "search-index" && ctx.settleDerivations !== undefined) {
             await ctx.settleDerivations();

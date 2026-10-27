@@ -215,7 +215,7 @@ Per-channel producer status belongs durably on that channel as
 selection, or channel outcomes. Neither preparation nor producer results supply
 the READ's `terminal` flag: core derives it from channel state under
 {§exec-stream}. After `200`, core alone selects the authored
-channel, applies tag/binary/text rules (including {§markerless-first-page}), and
+channel, applies tag/binary/text rules (including {§packet}), and
 composes that channel's producer evidence. Cold and warm reads therefore have
 identical semantics.
 
@@ -391,7 +391,7 @@ does not reverse a landed mutation.
 
 - Manifest: `SchemeManifest`, `SchemeAuthority`, `EntryCoordinate`, and `WriterTier`.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, `EditReceiptUnit`, and `ParseIssueTransition`.
-- §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"|"assistant"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet. Slots are message roles; their order determines the envelope ({§packet-wire-envelope}).
+- §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"|"assistant"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet. Slots are message roles; their order determines the envelope ({§packet-assembly}).
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `ContinuationStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement` under {§resolved-edit-statement}.
 - Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).

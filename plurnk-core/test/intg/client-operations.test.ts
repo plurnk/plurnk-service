@@ -1200,7 +1200,7 @@ for (const [label, owner] of [
     }
 });
 
-test("{§pinned-wording-core}: the owner ring's refusal says why the tool is gone and what to do instead", () => {
+test("{§operation-results}: the owner ring's refusal says why the tool is gone and what to do instead", () => {
     assert.equal(CapabilityResolver.UNATTENDED_RECOVERY,
         "Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.");
 });

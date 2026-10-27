@@ -116,7 +116,7 @@ export default class StrikeRail {
         return state;
     }
 
-    // {§rail-accounting-private}: the rail's own counter, never model-facing and never sent.
+    // {§operation-results}: the rail's own counter, never model-facing and never sent.
     async streak(loopId: number): Promise<number> {
         return (await this.#state(loopId)).strike_streak;
     }
@@ -130,7 +130,7 @@ export default class StrikeRail {
         // {§engine-rails} — at least one operation acted on the task and succeeded.
         progressed: boolean;
         emptyTurn?: boolean;
-        // {§output-allowance-notice} — the output allowance ended the turn's final emission.
+        // {§operation-results} — the output allowance ended the turn's final emission.
         cut: boolean;
         minCycles: number;
         maxCyclePeriod: number;
@@ -163,7 +163,7 @@ export default class StrikeRail {
         // {§engine-rails} — which source struck this turn, so a crossing terminal can say what
         // actually happened instead of calling an unfenced reply a failed operation. A turn may
         // match more than one; the most specific wins. A cut outranks every diagnosis of the
-        // model's output ({§output-allowance-notice}), and a cut turn is never a repetition.
+        // model's output ({§operation-results}), and a cut turn is never a repetition.
         const crossedBy: StrikeSource | null = !struck ? null
             : turn.cut ? "output_allowance"
             : cycle.detected ? "repetition"

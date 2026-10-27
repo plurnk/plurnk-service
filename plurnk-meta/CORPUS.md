@@ -23,7 +23,7 @@ one.
 
 Plurnk's own reference is catalogued at `skill://plurnk/SKILL.md` alongside
 installed skills. Chapters and the complete generated defaults catalog are
-ordinary pull resources, not additional startup packet sections ({§plurnk-skill}).
+ordinary pull resources, not additional startup packet sections ({§tools-resource-materialization}).
 
 ## The teaching split
 
@@ -56,5 +56,5 @@ monorepo forge.
   policy can tune different workloads without broadening the default teaching.
 
 Probe history and unresolved experiments belong in forge issues, not current
-doctrine. {§teaching-corpus} owns source membership; {§recap} owns the optional
+doctrine. {§teaching-corpus} owns source membership; {§packet-inject} owns the optional
 footer. Neither creates a second admission rule or release gate.

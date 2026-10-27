@@ -605,7 +605,7 @@ const terminalResult = (status: number, sequence: number): string | null => {
     });
 };
 
-test("{§loop-terminals} loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", async () => {
+test("{§tokenomics} loops: status enum — 102, 200, 413, 429, 499, 500, 508 all accepted", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await seedSession(db, "ws-loops-enum");
@@ -627,7 +627,7 @@ test("{§loop-terminals} loops: status enum — 102, 200, 413, 429, 499, 500, 50
     } finally { await db.close(); }
 });
 
-test("{§loop-terminals} loops: status enum accepts 100 (queued) — drain prerequisite", async () => {
+test("{§tokenomics} loops: status enum accepts 100 (queued) — drain prerequisite", async () => {
     // 100 = "enqueued, awaiting drain claim." Drain flips 100 → 102 atomically
     // when it picks a loop up. Pre-drain enqueueing relies on this state being
     // legal in the CHECK constraint.
@@ -681,7 +681,7 @@ test("{§session-loop-lifecycle} loops: one terminal-result constraint rejects i
     } finally { await db.close(); }
 });
 
-test("{§loop-terminals} loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async () => {
+test("{§tokenomics} loops: status enum rejects non-enum values (e.g. 201, 300, 0, -1)", async () => {
     const db = await openMigrated();
     try {
         const sessionId = await seedSession(db, "ws-loops-badenum");

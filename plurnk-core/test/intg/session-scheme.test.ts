@@ -64,7 +64,7 @@ describe("session-scheme", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 // {§session-scheme} — the authority is a literal Session name.
 // Control operations carry no entry path; storage operations do.
@@ -544,7 +544,7 @@ test("{§session-scheme}: WORK naming a PARKED sister delivers its body to her a
     } finally { await db.close(); }
 });
 
-test("{§pinned-wording-core} WORK and FORK reject non-mintable session authorities before creating or starting a child", async () => {
+test("{§operation-results} WORK and FORK reject non-mintable session authorities before creating or starting a child", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -570,8 +570,8 @@ test("{§pinned-wording-core} WORK and FORK reject non-mintable session authorit
             assert.equal(result.status, 400);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/session-name-invalid");
             assert.equal(result.problem?.session, "_invalid");
-            assert.equal(result.problem?.detail, "Session name '_invalid' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}."); // {§pinned-wording-core}
-            assert.equal(result.problem?.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit."); // {§pinned-wording-core}
+            assert.equal(result.problem?.detail, "Session name '_invalid' must match [A-Za-z0-9][A-Za-z0-9_-]{0,62}."); // {§operation-results}
+            assert.equal(result.problem?.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit."); // {§operation-results}
             assert.equal(result.problem?.retryable, false);
         }
 
@@ -667,7 +667,7 @@ test("{§session-loop-lifecycle} READ(session://name) collects the exact termina
         const running = await readThroughScheme("session", null, readStmt(sessionPath("session-db")), ctx);
         assert.equal(running.status, 425, "a still-running session hasn't delivered — 425, not its result");
         assert.equal(running.problem?.type, "https://problems.plurnk.xyz/scheme/ops/loop-running");
-        assert.equal(running.problem?.detail, "The execution at ops://session-db/1 has not concluded."); // {§pinned-wording-core}
+        assert.equal(running.problem?.detail, "The execution at ops://session-db/1 has not concluded."); // {§operation-results}
         assert.equal(running.resource, "ops://session-db/1", "the selected execution has an exact identity");
         assert.equal("awaitSession" in running, false, "a READ result does not carry hidden scheduling intent");
 
@@ -681,7 +681,7 @@ test("{§session-loop-lifecycle} READ(session://name) collects the exact termina
         );
         const done = await readThroughScheme("session", null, readStmt(sessionPath("session-db")), ctx);
         assert.equal(done.status, 200, "a concluded session's READ succeeds");
-        assert.equal(done.content, lines.join("\n"), "a markerless READ is the first page of the deliverable; 20 lines fit it ({§markerless-first-page})");
+        assert.equal(done.content, lines.join("\n"), "a markerless READ is the first page of the deliverable; 20 lines fit it ({§packet})");
         assert.equal(Object.hasOwn(done, "lineAnchors"), false, "an actor's deliverable is not an editable entry");
         assert.deepEqual(done.range, {
             unit: "line",
@@ -719,12 +719,12 @@ test("{§session-loop-lifecycle} READ(session://name) collects the exact termina
         await new LoopLifecycle(db).finish(failedLoop, failure);
         const failed = await readThroughScheme("session", null, readStmt(sessionPath("session-failed")), ctx);
         assert.equal(failed.status, 502, "READ preserves the child's exact failure status");
-        assert.equal(failed.problem?.detail, "The child provider failed.", "READ preserves the child's exact Problem"); // {§pinned-wording-core}
-        assert.equal(failed.content, "The child provider failed.", "READ derives a readable body from the exact Problem"); // {§pinned-wording-core}
+        assert.equal(failed.problem?.detail, "The child provider failed.", "READ preserves the child's exact Problem"); // {§operation-results}
+        assert.equal(failed.content, "The child provider failed.", "READ derives a readable body from the exact Problem"); // {§operation-results}
     } finally { await db.close(); }
 });
 
-test("{§problems-entries} EDIT on the bare session entity is rejected — WORK spawns, not EDIT (400, no inject)", async () => {
+test("{§operation-results} EDIT on the bare session entity is rejected — WORK spawns, not EDIT (400, no inject)", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -743,8 +743,8 @@ test("{§problems-entries} EDIT on the bare session entity is rejected — WORK 
         });
         assert.equal(result.status, 400, "EDIT on the session entity is rejected");
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/session/session-entity-not-editable");
-        assert.equal(result.problem?.detail, "A session entity is not an editable entry."); // {§problems-entries}
-        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as workspace:///example.md."); // {§problems-entries}
+        assert.equal(result.problem?.detail, "A session entity is not an editable entry."); // {§operation-results}
+        assert.equal(result.problem?.recovery, "EDIT requires an entry path, such as workspace:///example.md."); // {§operation-results}
         assert.equal(result.problem?.retryable, false);
         assert.equal(calls.length, 0, "no inject on a rejected EDIT");
         const session = await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "session" });
@@ -798,7 +798,7 @@ test("{§session-scheme}: empty and whitespace-only messages never reach session
             });
             assert.equal(result.status, 422);
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/session/message-empty");
-            assert.equal(result.problem?.detail, "SEND has no message text or attachments."); // {§problems-entries}
+            assert.equal(result.problem?.detail, "SEND has no message text or attachments."); // {§operation-results}
         }
         assert.equal(calls.length, 0);
         const literal = " \tMessage with significant whitespace.\n ";
@@ -1139,7 +1139,7 @@ test("{§loop-completion} WAIT: a live obligation parks; an empty join continues
         const eng2 = new Engine({ db, schemes: new SchemeRegistry() });
         const satisfied = await eng2.dispatch({ statement: dispositionStmt("WAIT", "standing by"), workspaceId: s2, sessionId: session, loopId: loop, turnId: turn, sequence: 1, origin: "model" });
         assert.equal(satisfied.status, 102);
-        assert.equal(satisfied.detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
+        assert.equal(satisfied.detail, "Nothing is in flight. Continuing."); // {§operation-results}
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "the empty join is not terminal");
 
         // {§send-wait-scope} — a duration never invents live work.
@@ -1152,7 +1152,7 @@ test("{§loop-completion} WAIT: a live obligation parks; an empty join continues
         const continued = await eng3.dispatch({ statement: scoped, workspaceId: s3, sessionId: run3, loopId: loop3, turnId: turn3, sequence: 1, origin: "model" });
         assert.equal(continued.status, 102);
         assert.equal(continued.problem, undefined);
-        assert.equal(continued.detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
+        assert.equal(continued.detail, "Nothing is in flight. Continuing."); // {§operation-results}
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop3 }))?.status, 102, "no held-open 202");
     } finally { await db.close(); }
 });
@@ -1302,7 +1302,7 @@ reading
                     const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null; signal: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
                     const edit = all.find((r) => r.op === "EDIT");
                     assert.ok(edit && edit.status_rx < 300, `the child's write was admitted, got ${edit?.status_rx}: ${edit?.rx.slice(0, 200)}`);
-                    // {§env-delta-child-activity} — the child's model activity crossed, its
+                    // {§env-delta} — the child's model activity crossed, its
                     // runtime-private initialization never did.
                     const crossed = all.filter((r) => r.source === "session://counter");
                     assert.ok(crossed.some((r) => r.op === "EDIT"), "the child's EDIT crossed to the parent");
@@ -1312,7 +1312,7 @@ reading
                     assert.equal(read.status_rx, 200, `the parent reads the child's file by bare path, got ${read.status_rx}: ${read.rx.slice(0, 220)}`);
                     assert.match(read.rx, /"content":"3"/, "the parent sees the child's content");
                     assert.equal(finalStatus, 200);
-                    // {§message-reply-delivery} {§env-delta-child-termination}
+                    // {§message-arrival} {§env-delta}
                     const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
                     const observations = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
                         .filter((entry) => entry.source === "session://counter" && entry.origin === "_plurnk"));

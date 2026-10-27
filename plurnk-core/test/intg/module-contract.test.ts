@@ -632,7 +632,7 @@ test("{§entry-read-result}: entry.read channel+offset returns a suffix and full
             const problem = rpcProblem(bad);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
             assert.equal(problem.offset, 3);
-            assert.equal(problem.recovery, "Select the channel to read from the offset."); // {§problems-functionality}
+            assert.equal(problem.recovery, "Select the channel to read from the offset."); // {§operation-results}
         } finally { ws.close(); }
     });
 });
@@ -650,7 +650,7 @@ test("{§rpc} entry.read returns 404 for missing entry", async () => {
     });
 });
 
-test("{§problems-functionality} entry.read requires URL-shaped path", async () => {
+test("{§operation-results} entry.read requires URL-shaped path", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {
@@ -659,7 +659,7 @@ test("{§problems-functionality} entry.read requires URL-shaped path", async () 
             const problem = rpcProblem(r);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/entry/target-invalid");
             assert.equal(problem.target, "not-a-url");
-            assert.equal(problem.recovery, "Use a scheme://path target."); // {§problems-functionality}
+            assert.equal(problem.recovery, "Use a scheme://path target."); // {§operation-results}
         } finally { ws.close(); }
     });
 });

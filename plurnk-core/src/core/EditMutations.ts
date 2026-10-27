@@ -60,7 +60,7 @@ export default class EditMutations {
         this.#resolveDataEntryAddress = resolveDataEntryAddress;
     }
 
-    // {§slice-semantics-compose-pattern}: mutation coordinates belong to the source,
+    // {§zero-width-column-one-insert}: mutation coordinates belong to the source,
     // never to the line-normalized or previewed public READ projection.
     async #current(statement: EditStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         if (statement.target === null) throw new InvalidOperationResultError("An admitted resource edit has no target.");
@@ -377,7 +377,7 @@ export default class EditMutations {
         return this.withMergeFacts(statement, MutationEffects.projectEdit(result));
     }
 
-    // {§edit-pattern} {§kill-pattern} — read the resource once, match, and expand into a batch of
+    // {§edit-pattern} {§op-invariants} — read the resource once, match, and expand into a batch of
     // coordinate edits. Every touched line's anchor guards the batch, so a same-turn change to
     // one of them collides exactly as an anchored EDIT would.
     async expandPattern(

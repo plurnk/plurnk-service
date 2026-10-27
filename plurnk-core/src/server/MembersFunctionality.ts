@@ -1,9 +1,9 @@
-// {§members-functionality} — file membership as one workspace Functionality family. The model, the
+// {§tools-resource-materialization} — file membership as one workspace Functionality family. The model, the
 // client, and the operator learn one surface ({§functionality-coordinator})
 // for what the model may see, exactly as they do for skills and MCP servers. A definition is one
 // shell-path glob, `!glob` excludes, and the glob is the definition's identity
 // ({§functionality-replacement}): `add` names globs; enable, disable and remove name one. Definitions
-// are workspace desired state and the membership overlay is their projection ({§members-projection})
+// are workspace desired state and the membership overlay is their projection ({§tools-resource-materialization})
 // — the one truth every session sees ({§membership}). A model's `add` is admitted against
 // the service ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (none < root < namespace) narrowed by the
 // workspace.
@@ -27,7 +27,7 @@ const MEMBERS_FAMILY = "members";
 const MEMBERS_OWNER = "@plurnk/plurnk-core/members";
 const PREFIX = "PLURNK_MEMBERS_";
 const SCOPE_KEY = "PLURNK_SERVICE_MEMBERS_MODEL_SCOPE";
-// The operator's environment alias ({§members-configuration}); a definition's own name is its glob.
+// The operator's environment alias ({§tools-resource-materialization}); a definition's own name is its glob.
 const ALIAS = /^[a-z][a-z0-9-]*$/u;
 // {§functionality-replacement} — the glob is the alias: one line, no surrounding whitespace.
 const GLOB = /^\S(?:[^\n]*\S)?$/u;
@@ -115,7 +115,7 @@ const refuse = (
 const isExclusion = (glob: string): boolean => glob.startsWith("!");
 const patternOf = (glob: string): string => (isExclusion(glob) ? glob.slice(1) : glob);
 
-// {§members-configuration} — each `PLURNK_MEMBERS_<alias>=<glob>` is one service definition named by
+// {§tools-resource-materialization} — each `PLURNK_MEMBERS_<alias>=<glob>` is one service definition named by
 // its glob; the environment key is its provenance. Two keys naming one glob fail by name.
 export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): FunctionalityServiceDefinition<MembersDefinition>[] => {
     // {§membership-auto-add} — the family's own control is validated with its definitions, so `config
@@ -139,7 +139,7 @@ export const serviceMembers = (environ: NodeJS.ProcessEnv = process.env): Functi
     });
 };
 
-// {§members-model-scope} — the ceiling a model's `add` is admitted against. The panel states it;
+// {§tools-resource-materialization} — the ceiling a model's `add` is admitted against. The panel states it;
 // an unset or empty key is a broken deployment and fails by name, never a quiet `none`.
 export const modelScope = (environ: NodeJS.ProcessEnv = process.env): FileCreateScope =>
     FileCreationPolicy.parse(environ[SCOPE_KEY], SCOPE_KEY);
@@ -147,7 +147,7 @@ export const modelScope = (environ: NodeJS.ProcessEnv = process.env): FileCreate
 const outsideRoot = (pattern: string): boolean =>
     pattern.startsWith("/") || pattern === ".." || pattern.startsWith("../") || pattern.includes("/../") || pattern.endsWith("/..");
 
-// {§members-functionality} A glob is matched against member keys, so its spelling is canonicalized as a path's is
+// {§tools-resource-materialization} A glob is matched against member keys, so its spelling is canonicalized as a path's is
 // ({§fs-namespace}): an absolute spelling and its root-relative one name the same files. Headless, it stays as written.
 const keyPattern = (pattern: string, root: string | null): string => (root === null ? null : Namespace.canonicalize(pattern, root)) ?? pattern;
 
@@ -176,12 +176,12 @@ const resolutionOf = (definition: MembersDefinition, overlay: OverlayResolution 
     return { effect, pattern, matched: files.length, files: files.slice(0, sampleSize()), ignored };
 };
 
-// {§members-projection} — a definition's document is named by its glob, percent-encoded as one path
+// {§tools-resource-materialization} — a definition's document is named by its glob, percent-encoded as one path
 // segment: RFC 3986 unreserved characters and parentheses stay literal, everything else is `%XX`.
 export const documentName = (glob: string): string =>
     encodeURIComponent(glob).replace(/[!'*]/gu, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 
-// {§members-projection} — each enabled definition is one generated document under
+// {§tools-resource-materialization} — each enabled definition is one generated document under
 // `workspace:///_plurnk/members/`, surveyed at turn 0 like every family's enabled definitions:
 // what the glob is, whose it is, and what it resolved to.
 const membersDocument = (definition: MembersDefinition, resolution: MembersResolution): { pathname: string; content: string } => {
@@ -356,7 +356,7 @@ export default class MembersFunctionality implements FunctionalityAdapter<never,
         return [...admitted.values()];
     }
 
-    // {§members-projection} — project this workspace's enabled definitions:
+    // {§tools-resource-materialization} — project this workspace's enabled definitions:
     // inclusions union, an exclusion wins in resolution, and a
     // human-authored row outranks a model-proposed row for the same pattern. Each definition's
     // outcome carries what it resolved to, so the model sees what its glob did.

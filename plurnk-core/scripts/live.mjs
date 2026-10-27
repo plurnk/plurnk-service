@@ -8,7 +8,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run test:live [-- --specimen "<exact specimen name>"]   (from plurnk-core)
-Drives the live smoke under plurnk-core/test/live through a real model, or one specimen by its exact name ({§tier-census}). The full live and demo specimen corpus lives in plurnk-bench/tiers/.
+Drives the live smoke under plurnk-core/test/live through a real model, or one specimen by its exact name ({§test-artifact-retention}). The full live and demo specimen corpus lives in plurnk-bench/tiers/.
 Reads: PLURNK_MODEL and the operator environment: the login shell (credentials), .env.test, $XDG_CONFIG_HOME/plurnk/.env, .env.defaults, test/floor.ts.
 Writes: <benchmark home>/tier-live-<stamp>/ with census.md and each session's evidence.
 `);

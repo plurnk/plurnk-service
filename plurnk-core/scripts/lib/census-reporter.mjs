@@ -1,4 +1,4 @@
-// {§tier-census} — the node:test reporter of the live and demo tiers. Every specimen's verdict, skip
+// {§test-artifact-retention} — the node:test reporter of the live and demo tiers. Every specimen's verdict, skip
 // reason or failure is joined with the session directories its run claimed and written as census.json
 // and census.md in the tier's run directory; the markdown is also what this reporter yields.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";

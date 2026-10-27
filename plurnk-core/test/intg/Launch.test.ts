@@ -426,7 +426,7 @@ test("{§observability-boundary} specimen schedules deliver and shut down withou
 });
 
 describe("loop-resources", () => {
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 test("{§session-scheme}: exact outcomes compose with READ, FIND, COPY and immutable source boundaries", async (t) => {
     const db = await openMigrated();
@@ -450,7 +450,7 @@ test("{§session-scheme}: exact outcomes compose with READ, FIND, COPY and immut
     await lifecycle.finish(first, { status: 200, content: body, mimetype: "text/plain" });
     const whole = await dispatch(readStmt(source));
     assert.equal(whole.status, 200);
-    assert.equal(whole.content, body, "a markerless READ of a result is its first page; 30 lines fit it ({§markerless-first-page})");
+    assert.equal(whole.content, body, "a markerless READ of a result is its first page; 30 lines fit it ({§packet})");
     assert.equal(whole.lineAnchors, undefined);
     assert.deepEqual(whole.range, { unit: "line", total: 30, requested: [1, PAGE], returned: [1, 30] });
     assert.equal((await dispatch(readStmt(source, { marks: [17, -1] }))).content, body.split("\n").slice(16).join("\n"));

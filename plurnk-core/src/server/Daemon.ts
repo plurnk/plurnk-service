@@ -228,7 +228,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             retainWorkspace: (workspaceId) => this.#residency.retain(workspaceId),
             preparationChanged: (workspaceId, preparation) => this.#broadcast({ workspaceId }, "workspace/preparation", { workspaceId, preparation }) });
         this.#plugins = new WorkspacePlugins({ db, hostPaths, nodeModules: this.#nodeModulesPath });
-        // {§members-functionality} — Core's own family: file membership on the same surface.
+        // {§tools-resource-materialization} — Core's own family: file membership on the same surface.
         this.#members = new MembersFunctionality({ db, engine: () => this.#engine });
         this.#functionality.register(this.#members);
         // {§env-functionality} — Core's own family: the environment a Session's commands run in.
@@ -248,7 +248,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         this.#engine = new Engine({
             db, lifecycle: this.#lifecycle, schemes: this.#schemes, mimetypes: this.#mimetypes,
             hostPaths: this.#hostPaths,
-            // {§tokenomics-agnostic-ruler} — stored and catalog curation weights
+            // {§tokenomics} — stored and catalog curation weights
             // are workspace-wide across concurrent models, so they remain
             // model-independent. Request-shaped token facts stay provider-owned.
             weigh: contentWeight,
@@ -301,7 +301,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             subscriptionConcluded: (subscriptionId) => this.#engine.subscriptionConcluded(subscriptionId),
             reapLoopStreams: (loopId) => this.#engine.reapLoopStreams(loopId),
             hasActiveStreams: (sessionId) => this.#sessionHasActiveStreams(sessionId),
-            readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"), // {§card-read-per-wake}
+            readSystemPrompt: () => readFile(Paths.instructionsSystem, "utf8"), // {§packet-inject}
             emitLogEntry: async (workspaceId, logEntryId) => {
                 const entry = await LogEntry.fetchLogEntry(this.#db, logEntryId);
                 this.#broadcast({ workspaceId }, "log/entry", { entry });
@@ -1242,7 +1242,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             await this.#drains.reconcileOrphanedMessages(source.session_id, source.loop_id);
         }
 
-        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§packet-inject}
         const queued = await this.#db.recovery_queued_sessions.all<{
             session_id: number;
             workspace_id: number;

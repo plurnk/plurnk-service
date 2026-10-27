@@ -47,7 +47,7 @@ Real-model runs (`test:live`, `tier:live`, `tier:demo`, provider probes, `candid
 | Package defaults | `plurnk-*/.env.defaults` | Every shipped knob and its default |
 | Floor | `plurnk-core/test/floor.ts` | Installed package defaults, set-if-unset |
 
-`scripts/candidate.mjs` boots a source-built daemon from a pinned runtime copy and an explicit `PLURNK_CLIENT_CHECKOUT`, parses `PLURNK_CANDIDATE_CLIENT_ENV` without allowing daemon-routing overrides, reaps the daemon on client signal termination, and snapshots the project root at the grade deadline ({§candidate-pinned-runtime}). `scripts/orientation.mjs` (`scripts/lib/orientation-verdict.mjs`) accepts an orientation run only when it is terminal, inspected repository files via model `READ` operations rather than archived issue URLs, published workspace documentation cleanly, and covered the platform topology and current forge state.
+`scripts/candidate.mjs` boots a source-built daemon from a pinned runtime copy and an explicit `PLURNK_CLIENT_CHECKOUT`, parses `PLURNK_CANDIDATE_CLIENT_ENV` without allowing daemon-routing overrides, reaps the daemon on client signal termination, and snapshots the project root at the grade deadline ({§share}). `scripts/orientation.mjs` (`scripts/lib/orientation-verdict.mjs`) accepts an orientation run only when it is terminal, inspected repository files via model `READ` operations rather than archived issue URLs, published workspace documentation cleanly, and covered the platform topology and current forge state.
 
 ## §package-release-contract Independent package versions
 

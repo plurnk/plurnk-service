@@ -448,7 +448,7 @@ The exported `ProcessResult` type owns the executable field shape.
 
 `totalLines` is the editor-convention line count of the source content. Conventions:
 
-- §logical-line-count **One owner.** A text's logical line count is `TextCoordinates.lineCount(content)`, the length of `TextCoordinates.logicalLines`; every consumer that needs the number calls it rather than counting, and the persisted `entry_channels.lines` column is its mirror ({§tokenomics-weight-stored-at-write} in the core specification), held equal by a witness.
+- §logical-line-count **One owner.** A text's logical line count is `TextCoordinates.lineCount(content)`, the length of `TextCoordinates.logicalLines`; every consumer that needs the number calls it rather than counting, and the persisted `entry_channels.lines` column is its mirror ({§tokenomics} in the core specification), held equal by a witness.
 - Logical editor lines: `abc\ndef` → `2`, `abc\ndef\n` → `2` (the trailing newline terminates rather than adds a line), `"\n"` → `1`, and `""` → `0`.
 - **Binary content** (mimetypes flagged `binary: true` in their `plurnk` block - PDF, future images/archives): `totalLines: 0`. Lines are not a meaningful unit for the source bytes. A handler's readable `content` projection is independently line-addressable; `totalLines` does not describe that derived text.
 - `0` on every returned error result (detection null or content unreadable). A propagated exception returns no `ProcessResult`.
@@ -650,7 +650,7 @@ For the rare format where neither tree-sitter nor grammars-v4 has coverage and t
 
 ## 10. Tokenization — a consumer concern
 
-Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics-agnostic-ruler}); a provider's counter is confined to its physical packet-admission check. A consumer that needs model-vocabulary counting brings its own counter.
+Token counting is wholly a consumer concern. Plurnk-service uses one stable model-independent ruler for stored, catalog, and model-facing packet weights ({§tokenomics}); a provider's counter is confined to its physical packet-admission check. A consumer that needs model-vocabulary counting brings its own counter.
 
 ## §mimetype-query 11. Body-matcher query
 

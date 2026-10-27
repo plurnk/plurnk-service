@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import LineMarkerOps from "./line-marker.ts";
 
-test("{§text-scope-runtime} LineMarkerOps exposes universal line and exact text selection", () => {
+test("{§zero-width-column-one-insert} LineMarkerOps exposes universal line and exact text selection", () => {
     assert.deepEqual(
         LineMarkerOps.sliceLines("alpha\nbeta\n", { marks: [2] }),
         {
@@ -39,7 +39,7 @@ test("{§text-scope-runtime} LineMarkerOps exposes universal line and exact text
     );
 });
 
-test("{§text-scope-runtime} LineMarkerOps applies exact text edits without structural JSON dispatch", () => {
+test("{§zero-width-column-one-insert} LineMarkerOps applies exact text edits without structural JSON dispatch", () => {
     assert.deepEqual(
         LineMarkerOps.applyLineMarkerEdit("a😀b", { marks: [1, 2, 1, 3] }, "X"),
         { status: 200, result: "aXb" },

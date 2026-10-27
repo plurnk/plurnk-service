@@ -399,7 +399,7 @@ test("{§methods-workspace-create}: a parked-loop prompt carries its paths into 
     });
 });
 
-test("{§message-loop-containment}: an injection crossing the park transition is not stranded", async (t) => {
+test("{§message-arrival}: an injection crossing the park transition is not stranded", async (t) => {
     serverProposals(t, "accept");
     const previousSettlement = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
@@ -467,7 +467,7 @@ test("{§message-loop-containment}: an injection crossing the park transition is
     });
 });
 
-test("{§message-loop-containment}: every orphaned message is recovered in order", async () => {
+test("{§message-arrival}: every orphaned message is recovered in order", async () => {
     // Edge: next-turn prompts injected into a loop that then terminates before
     // reaching that turn would be silently lost. Forced deterministically: hold
     // loop 1 at a proposal (status=102, turn 1), inject two turn-2 frames, then
@@ -481,7 +481,7 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
         contextWindow: 16384,
         responses: [
             // The frames arrive during turn 1, so a model terminal over them defers
-            // ({§completion-defers-to-messages}); loop 1 ends turn 1 at its turn ceiling instead
+            // ({§message-arrival}); loop 1 ends turn 1 at its turn ceiling instead
             // (maxTurns 1 → 429), which no barrier gates: the orphan premise holds.
             sendOnly("````sh\ntrue\n````\n\n````SEND\nloop 1 reaches its turn ceiling\n````"),
             sendOnly("````SEND [200]\nFirst recovered request done.\n````\n\n````SEND [200]\nSecond recovered request done.\n````"),
@@ -617,7 +617,7 @@ test("{§actor-boundary} loop.cancel reaps the session's open streams by the sub
     });
 });
 
-test("{§completion-defers-to-messages} a cancelled session is not revived by its straggler stream's conclusion", async (approvalContext) => {
+test("{§message-arrival} a cancelled session is not revived by its straggler stream's conclusion", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // After loop.cancel, the backgrounded exec's conclusion must NOT open a fresh loop
     // in the session — the cancel was deliberate. Proven by the session's loop count staying at
@@ -670,7 +670,7 @@ test("{§completion-defers-to-messages} a cancelled session is not revived by it
     });
 });
 
-// {§completion-defers-to-messages} — a Mock whose first response waits on a gate, so the test
+// {§message-arrival} — a Mock whose first response waits on a gate, so the test
 // can inject prompts while turn 1 is genuinely in flight and then let the model complete over them.
 class GatedMock extends Mock {
     #gate: Promise<void>;
@@ -689,7 +689,7 @@ class GatedMock extends Mock {
 }
 
 for (const silent of [false, true]) {
-    test(`{§completion-defers-to-messages}: prompts arriving during ${silent ? "empty-body" : "answered"} completion defer it without a strike or a second loop`, async () => {
+    test(`{§message-arrival}: prompts arriving during ${silent ? "empty-body" : "answered"} completion defer it without a strike or a second loop`, async () => {
         let release!: () => void;
         const gate = new Promise<void>((resolve) => { release = resolve; });
         const mock = new GatedMock(gate, {
@@ -744,7 +744,7 @@ describe("KILL.receipt", () => {
 const source = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`).join("\n");
 
 for (const scheme of ["file", "session"]) for (const anchored of [false, true]) {
-    test(`{§kill-scope-entry}: ${scheme} ${anchored ? "anchored" : "numeric"} deletion exposes its existing receipt through packet and log READ`, async (approvalContext) => {
+    test(`{§op-invariants}: ${scheme} ${anchored ? "anchored" : "numeric"} deletion exposes its existing receipt through packet and log READ`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const root = await mkdtemp(join(tmpdir(), "plurnk-kill-receipt-"));
         const target = scheme === "file" ? "notes.md" : "workspace:///notes.md";
@@ -818,7 +818,7 @@ Continue the task.
     });
 }
 
-test("{§kill-scope-entry} whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
+test("{§op-invariants} whole-entry KILL has a bodyless result, not an invented text mutation receipt", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         makeMockResponse("````EDIT (workspace:///doomed)\ncontent\n````\n````NOTE\nContinue the task.\n````", 10),
@@ -979,7 +979,7 @@ test("{§methods-invocation} a peer's progress and its completion each name the 
 });
 
 describe("live-harness-cancellation", () => {
-test("{§live-harness-deadline}: an expired specimen finishes cleanup before the next specimen", async () => {
+test("{§test-artifact-retention}: an expired specimen finishes cleanup before the next specimen", async () => {
     const env = { ...process.env };
     delete env.NODE_TEST_CONTEXT;
     for (const fail of ["0", "1"]) {
@@ -998,7 +998,7 @@ test("{§live-harness-deadline}: an expired specimen finishes cleanup before the
     }
 });
 
-test("{§live-harness-deadline}: failed workspace startup still stops, closes and digests its resources", async (t) => {
+test("{§test-artifact-retention}: failed workspace startup still stops, closes and digests its resources", async (t) => {
     const provider = new Mock({ contextWindow: 100_000, responses: [] });
     t.mock.method(ProviderInstantiate, "loadActiveProvider", async () => provider);
     const stopped = t.mock.method(Daemon.prototype, "stop");

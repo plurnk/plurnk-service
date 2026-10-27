@@ -1,7 +1,7 @@
 // Shared exact-target READ projection for entry-bearing schemes, File, and Log.
 // Matchers supply visible source lines; this layer applies the READ scope. Without one the
-// selection is the first page ({§markerless-first-page}); whether it fits is decided where the
-// row lands ({§context-fit}).
+// selection is the first page ({§packet}); whether it fits is decided where the
+// row lands ({§tokenomics}).
 
 import type { LineMarker, RangeExtent, TextRegion } from "@plurnk/plurnk-contracts";
 import type { SchemeResultBase, ScopeNormalization } from "@plurnk/plurnk-schemes";
@@ -23,7 +23,7 @@ export interface ReadSliceResult extends SchemeResultBase {
 }
 
 export default class ReadResolve {
-    // {§markerless-first-page} — the marker of an unmarked read: the first page's marks, mapped back
+    // {§packet} — the marker of an unmarked read: the first page's marks, mapped back
     // onto the visible source lines when the read is a visible-line selection.
     static #previewMarker(content: string, visibleLines: readonly number[] | undefined): LineMarker {
         const preview = BodyPreview.select(visibleLines === undefined ? content : LineSelection.retain(content, visibleLines).content).marker;
@@ -43,7 +43,7 @@ export default class ReadResolve {
         visibleLines?: readonly number[];
     }): Promise<ReadSliceResult> {
         const { content, mimetype, lineMarker, visibleLines } = opts;
-        // {§markerless-first-page} — without a scope, the first page of the text, or of the visible selection.
+        // {§packet} — without a scope, the first page of the text, or of the visible selection.
         const marker: LineMarker = lineMarker ?? ReadResolve.#previewMarker(content, visibleLines);
         const sliced = LineMarkerOps.sliceLines(content, marker);
         if (sliced.status === 416) {

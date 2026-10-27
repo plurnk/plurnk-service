@@ -140,7 +140,7 @@ export default class ApplicationJson extends BaseHandler {
     }
 }
 
-// {§slice-semantics-compose-pattern} — both projections retain value coordinates,
+// {§zero-width-column-one-insert} — both projections retain value coordinates,
 // including lexical quotes and escapes, without widening to the containing property.
 function spanFor(tree: Node, content: string): (pointer: string) => { line: number; endLine: number; column?: number; endColumn?: number } | undefined {
     const resolve = regionFor(tree, content);

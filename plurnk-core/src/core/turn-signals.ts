@@ -14,7 +14,7 @@ export const ENGINE_PROBLEMS = Object.freeze({
     },
 } as const);
 
-// {§output-allowance-notice} — the engine's own allowance ended an emission. The grant is the
+// {§operation-results} — the engine's own allowance ended an emission. The grant is the
 // response's own per-call capacity record, null when it recorded none.
 export type OutputCut = { readonly grant: number | null };
 

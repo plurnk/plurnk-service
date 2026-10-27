@@ -52,7 +52,7 @@ WHERE id IN (
 AND NOT EXISTS (SELECT 1 FROM provider_requests pr WHERE pr.inference_call_id = inference_calls.id AND pr.state = 'pending');
 
 -- PREP: retention_collect_packet_items
--- {§packet-items}: an item no turn's composition references is transient data.
+-- {§packet}: an item no turn's composition references is transient data.
 DELETE FROM packet_items
 WHERE $collect = 1
   AND NOT EXISTS (SELECT 1 FROM turn_section_items tsi WHERE tsi.item_hash = packet_items.hash);

@@ -2,7 +2,7 @@
 
 // Recovery tool for benchmark processes interrupted before harness cleanup.
 // Normal live/demo cleanup always writes a digest; this finds any benchmark session, directly under
-// the home or inside a tier run ({§tier-census}), that has a database but no digest and completes
+// the home or inside a tier run ({§test-artifact-retention}), that has a database but no digest and completes
 // that step.
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +13,7 @@ import { usage } from "../../scripts/lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run digest:missing   (from plurnk-core)
-Completes the digest for any benchmark session, directly under the home or inside a tier run, that has a database but no digest ({§tier-census}).
+Completes the digest for any benchmark session, directly under the home or inside a tier run, that has a database but no digest ({§test-artifact-retention}).
 Reads: the benchmark home.
 Writes: digest/ beside each such database.
 `);

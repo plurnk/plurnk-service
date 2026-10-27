@@ -72,7 +72,7 @@ interface MembershipResolution {
     removed: FsDivergence[];
 }
 
-// One overlay row ({§members-projection}): members / model — a projected definition (human-authored
+// One overlay row ({§tools-resource-materialization}): members / model — a projected definition (human-authored
 // / model-proposed, the latter never admitted past the repository's ignore rules); create — the
 // exact record of a file Plurnk wrote ({§fs-write-surface}).
 export type OverlayRow = {
@@ -81,7 +81,7 @@ export type OverlayRow = {
     source: "create" | "members" | "model";
 };
 
-// What an overlay resolves to on disk — a read for the members family ({§members-projection}).
+// What an overlay resolves to on disk — a read for the members family ({§tools-resource-materialization}).
 export type OverlayResolution = {
     root: string;
     tracked: ReadonlySet<string>;
@@ -352,7 +352,7 @@ export default class GitMembership {
 
     // Single-sources the (git ∪ include) derivation and the exclusion globs for
     // #reconcileGitMembership (compose + reconcile) and resolveOverlay (a read for the members
-    // family, {§members-projection}). Headless → null.
+    // family, {§tools-resource-materialization}). Headless → null.
     static async #resolveOverlayInputs(
         db: Db,
         workspaceId: number,
@@ -401,7 +401,7 @@ export default class GitMembership {
             if ((await ignoredBy(pathname)) === true) masked.push(pathname);
             else admitted.push(pathname);
         }
-        // {§members-projection}: a model definition is a pattern scan like a human one, but it never
+        // {§tools-resource-materialization}: a model definition is a pattern scan like a human one, but it never
         // outranks the repository's ignore rules ({§membership}).
         for (const pattern of modelGlobs) {
             const scan = await GitMembership.#scanIncluded(root, [pattern], signal);
@@ -548,7 +548,7 @@ export default class GitMembership {
         return (await GitMembership.#reconcileGitMembership(db, workspaceId, signal)).members;
     }
 
-    // {§members-projection} — what an overlay resolves to, without mutating: the committed rows
+    // {§tools-resource-materialization} — what an overlay resolves to, without mutating: the committed rows
     // when `rows` is undefined, else the engine's creation records plus the given family rows (a
     // family preparing its projection). Headless → null.
     static async resolveOverlay(

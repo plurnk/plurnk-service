@@ -4,7 +4,7 @@
 // digest tool imports it to write byte-identical <stem>.{system,user}.md
 // files. No second implementation, no drift.
 //
-// Format and omission rules are owned by {§packet-markdown}. Section producers
+// Format and omission rules are owned by {§packet}. Section producers
 // supply names and typed content; this projection preserves their ordered evidence.
 
 import type { PacketAttachment, RequestPacket } from "./StoredPacket.ts";
@@ -28,7 +28,7 @@ import {
     type EditReceipt,
 } from "../content/index.ts";
 
-// {§packet-stored-shape} — sections arrive from both the in-memory request and
+// {§packet} — sections arrive from both the in-memory request and
 // the durable packet re-parsed by the digest. The latter uses the loose view
 // below and is narrowed at the rendering boundary.
 interface ActionTarget {
@@ -84,7 +84,7 @@ export interface LogEntryView {
 export interface FailurePointer { readonly status: number; readonly coordinate: string }
 // One thing the session holds open ({§child-orientation}): its status, the path the model acts on, and a detail.
 export interface OpenWorkPointer { readonly status: number | string; readonly path: string; readonly detail?: string }
-// {§packet-git-status} The working tree as the packet renders it: the counts, and the paths a snapshot carries with
+// {§packet-inject} The working tree as the packet renders it: the counts, and the paths a snapshot carries with
 // their XY status and, for an untracked path, its membership truth.
 export type GitStatusView = GitStatus & {
     readonly files?: readonly { readonly path: string; readonly status: string; readonly member?: string | null }[];
@@ -101,7 +101,7 @@ interface RenderLogOptions {
     readonly acceptedAttachmentKinds?: ReadonlySet<PacketAttachment["kind"]>;
     // {§fs-namespace} Base for project-relative receipt addresses; null is headless.
     readonly projectRoot?: string | null;
-    // {§paired-receipt}: operation weight on its first receipt, zero on subsequent fan-out receipts.
+    // {§emission-history}: operation weight on its first receipt, zero on subsequent fan-out receipts.
     readonly paired?: ReadonlyMap<string, ReplayedOperation>;
 }
 
@@ -112,7 +112,7 @@ interface ReclaimableLogItem {
 
 export interface RenderedLog {
     readonly content: string;
-    // {§packet-items} — the records `content` joins with one blank line, in order.
+    // {§packet} — the records `content` joins with one blank line, in order.
     readonly records: readonly string[];
     readonly curationTargets: readonly ReclaimableLogItem[];
     // {§log-wire-format} — native deliveries selected for this request, in row order.
@@ -162,7 +162,7 @@ interface RowBody {
 }
 
 export default class PacketWire {
-    // {§packet-markdown} Render the sections in `slot` to one ChatMessage.content
+    // {§packet} Render the sections in `slot` to one ChatMessage.content
     // string. Sections render in list order; empties are omitted (no empty headers on the wire);
     // JSON follows its H2 directly; other content has one blank line (null header is bare),
     // trailing newlines stripped, joined with a blank line.
@@ -192,7 +192,7 @@ export default class PacketWire {
         return pointers.length === 0 ? "" : `[${pointers.join(",\n")}]`;
     }
 
-    // {§notice-callout} — non-terminal observations, deliberately separate from operation failures, in the
+    // {§operation-results} — non-terminal observations, deliberately separate from operation failures, in the
     // card's own callout form: the level picks the callout, the directive leads, the fact follows, the kind closes.
     static renderNotices(notices: readonly Notice[]): string {
         return notices.map((notice) => {
@@ -230,7 +230,7 @@ export default class PacketWire {
         return pointers.length === 0 ? "[]" : `[${pointers.join(",\n")}]`;
     }
 
-    // {§recap-lines} — each operator line is one callout, typed by its directive, ahead of the recap source.
+    // {§packet-inject} — each operator line is one callout, typed by its directive, ahead of the recap source.
     static renderRecap(lines: readonly string[], source: string): string {
         const callouts = lines.map((line) => `> [!${line.startsWith("YOU MUST") ? "IMPORTANT" : "TIP"}]\n> ${line}`);
         return [...callouts, ...(source.trim().length > 0 ? [source] : [])].join("\n\n");
@@ -249,7 +249,7 @@ export default class PacketWire {
         return PacketWire.renderLogWithAccounting(entries, weighContent, options).content;
     }
 
-    // {§context-gauge} — the wire row and its reclaimable-body accounting come from one render
+    // {§tokenomics} — the wire row and its reclaimable-body accounting come from one render
     // pass; packet assembly never re-parses its text.
     static renderLogWithAccounting(entries: readonly LogEntryView[], weighContent: WeighContent, options: RenderLogOptions = {}): RenderedLog {
         if (entries.length === 0) return { content: "", records: [], curationTargets: [], attachments: [] };
@@ -277,7 +277,7 @@ export default class PacketWire {
         return section.name === name || typeof section.name === "string" && section.name.startsWith(`${name}/`);
     }
 
-    // {§packet-wire-envelope}: retained roles and order, not today's section names, define a
+    // {§packet-assembly}: retained roles and order, not today's section names, define a
     // historical request. An absent previous program leaves adjacent user sections together.
     static #messageSections(packet: Packet): MessageSections[] {
         const sections = packet.sections ?? [];
@@ -300,7 +300,7 @@ export default class PacketWire {
     }
 
     // Number a non-READ body line as `<N>:<line>` — `N:` followed by NO separator whitespace
-    // ({§render-rule-line-navigable-prefix}): the leading digit prevents column-zero fence collisions and gives
+    // ({§zero-width-column-one-insert}): the leading digit prevents column-zero fence collisions and gives
     // the model line refs for free (`READ (...) <42-46>`), while the absence of any separator means a
     // reproduced line has nothing between `N:` and the content to copy. The content's OWN leading whitespace is
     // content, preserved verbatim. `N` is left-padded to the body's line-range width so every body
@@ -485,16 +485,16 @@ export default class PacketWire {
     }
 
     // {§message-arrival} — an inbound SEND row: harness-published, the sender's statement as its
-    // sent side. {§message-causal-source}: a `source` names the actor; absence is the owner.
+    // sent side. {§message-arrival}: a `source` names the actor; absence is the owner.
     static isArrival(e: { readonly op?: unknown; readonly origin?: unknown; readonly attrs?: unknown }): boolean {
         if (e.op !== "SEND" || e.origin !== "_plurnk") return false;
         const attrs: unknown = typeof e.attrs === "string" ? JSON.parse(e.attrs) : e.attrs;
         return isRecord(attrs) && attrs.kind === "message";
     }
 
-    // {§markerless-first-page} — a body the model did not author or ask for exactly takes its first page in
+    // {§packet} — a body the model did not author or ask for exactly takes its first page in
     // the packet: not the model's own row, not a retrieval (paged at its source), not an emission row,
-    // and not the operator's message, which keeps its own rule ({§message-projection}).
+    // and not the operator's message, which keeps its own rule ({§message-arrival}).
     static #receivedBody(e: LogEntryView, op: string | null): boolean {
         if (e.origin === "model" || op === "READ" || op === "FIND" || LogEntryProjection.isEmission(e)) return false;
         if (PacketWire.isArrival(e)) {
@@ -609,7 +609,7 @@ export default class PacketWire {
         const parsedTx: unknown = r.mimetype_tx === "application/json" ? JSON.parse(r.tx) : r.tx;
         const tx = isRecord(parsedTx) ? parsedTx : typeof parsedTx === "string" ? parsedTx : null;
         const rx: unknown = r.mimetype_rx === "application/json" ? JSON.parse(r.rx) : r.rx;
-        // {§context-fit} — a READ row's anchors ride with its lines whatever its status: a receipt that
+        // {§tokenomics} — a READ row's anchors ride with its lines whatever its status: a receipt that
         // carries a prefix carries the prefix's anchors.
         const readResult = LogEntryProjection.op(r) === "READ" && isRecord(rx) && typeof rx.content === "string" ? rx : null;
         const rawLineAnchors = readResult !== null && Object.hasOwn(readResult, "lineAnchors") ? readResult.lineAnchors : undefined;
@@ -653,7 +653,7 @@ export default class PacketWire {
         };
     }
 
-    // {§context-fit} — the tokens one row would charge the packet, rendered exactly as the log
+    // {§tokenomics} — the tokens one row would charge the packet, rendered exactly as the log
     // would render it, so the fit test and the gauge agree.
     static rowTokens(view: LogEntryView, weighContent: WeighContent, options: RenderLogOptions = {}): number {
         const [row] = PacketWire.#renderLogEntries([view], weighContent, options);
@@ -672,19 +672,19 @@ export default class PacketWire {
         const renderedLeaf = LogEntryProjection.leaf(e);
         const path = PacketWire.#entryPath(coordinate, renderedLeaf);
         // Absence = "model" — the session's own authorship is the default (#338). An arrival is an
-        // inbound SEND row the harness published ({§message-causal-source}): its stored origin says
+        // inbound SEND row the harness published ({§message-arrival}): its stored origin says
         // nothing, so the row names its sender instead (#706).
         // {§turn-source-resources}: an emission row is stored as the harness's, but names its author.
         const author = LogEntryProjection.isEmission(e) ? e.producer : e.origin;
         if (typeof author === "string" && author !== "model" && !PacketWire.isArrival(e)) meta.origin = author;
-        // {§env-delta-attribution}: render the causal session address or
+        // {§env-delta}: render the causal session address or
         // subsystem token when present; absence means the owning session.
-        // {§message-short-identity} an arrival whose source is the transport's own name for it adds
+        // {§message-arrival} an arrival whose source is the transport's own name for it adds
         // nothing to its address; a peer's or an agent's source still shows.
         const attrs = PacketWire.#attrsOf(e);
         const selfAddressed = attrs.selfAddressed === true;
         if (typeof e.source === "string" && e.source.length > 0 && !selfAddressed) meta.source = e.source;
-        // {§message-causal-source}: every other sender has an address; the operator's message is named
+        // {§message-arrival}: every other sender has an address; the operator's message is named
         // for the model, or it reads as the model's own SEND.
         if (PacketWire.isArrival(e) && meta.source === undefined) meta.origin = "user";
         if (e.source === "file" && Object.hasOwn(attrs, "git")) {
@@ -731,7 +731,7 @@ export default class PacketWire {
                     : [/[\r\n]/u.test(pattern) ? JSON.stringify(pattern) : pattern]),
             ];
         });
-        // {§paired-receipt}: every receipt names its operand; a paired one leaves its pattern to the replayed operation.
+        // {§emission-history}: every receipt names its operand; a paired one leaves its pattern to the replayed operation.
         const operands = paths.filter((candidate) => candidate !== null).map((candidate) => `(${candidate})`).join(" ");
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
             : !paired ? parts.join(" ") : operands.length > 0 ? operands : null;
@@ -934,7 +934,7 @@ export default class PacketWire {
     }
 
     // The body the row shows: the canonical full body, shared with log READ, log FIND and search
-    // derivation, whole. Whether a result fit was decided where it landed ({§context-fit}).
+    // derivation, whole. Whether a result fit was decided where it landed ({§tokenomics}).
     static #rowBody(
         identity: RowIdentity,
         e: LogEntryView,
@@ -963,7 +963,7 @@ export default class PacketWire {
         const sourceOrdinals = bodyVisibility.fullyFolded
             ? bodyVisibility.readableOrdinals
             : bodyVisibility.ordinals;
-        // {§markerless-first-page} — what came back unasked in size is its first page here too; what the
+        // {§packet} — what came back unasked in size is its first page here too; what the
         // model authored or asked for exactly, and a retrieval's own page, render whole.
         const projection = PacketWire.#receivedBody(e, op)
             ? PacketWire.#preview(projectedBody.content)
@@ -1043,7 +1043,7 @@ export default class PacketWire {
             ? PacketWire.#attachmentOf(e.rx, e.target, coordinate, target) : null;
         const native = nativeCandidate !== null && (options.acceptedAttachmentKinds?.has(nativeCandidate.kind) ?? true)
             ? nativeCandidate : null;
-        // {§context-fit} — an arrival that did not fit landed folded with its size beside it: the lines
+        // {§tokenomics} — an arrival that did not fit landed folded with its size beside it: the lines
         // and tokens of the body the model can READ at this row's address.
         const unfit = PacketWire.#attrsOf(e).unfit;
         if (unfit !== null && typeof unfit === "object") meta.size = unfit;
@@ -1210,7 +1210,7 @@ export default class PacketWire {
         return ScopeFormat.marker({ marks: [first, ...rest] });
     }
 
-    // {§packet-stored-shape} A stored operand target: the address columns as nullable strings, the port a number, the
+    // {§packet} A stored operand target: the address columns as nullable strings, the port a number, the
     // authored `kind` and `raw` read where used. A field of another type is a malformed row.
     static #actionTarget(value: unknown): ActionTarget | null {
         if (value === null || value === undefined) return null;
@@ -1245,7 +1245,7 @@ export default class PacketWire {
         return Array.isArray(value) && value.length > 0 && value.every((item): item is string => typeof item === "string") ? value : null;
     }
 
-    // {§packet-git-status}: the count line, then one bounded line per non-empty class. Untracked paths are
+    // {§packet-inject}: the count line, then one bounded line per non-empty class. Untracked paths are
     // named because they are NOT members ({§membership}) — the user admits them.
     static #renderGitState(git: GitStatusView): string {
         const sync = git.ahead > 0 || git.behind > 0 ? ` (↑${git.ahead} ↓${git.behind})` : "";

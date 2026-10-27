@@ -40,7 +40,7 @@ describe("Session.find", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const url = (pathname: string): UrlPath => ({
     kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
@@ -336,7 +336,7 @@ test("{§find} Session.find with <L> paginates results", async () => {
     } finally { db.close(); }
 });
 
-test("{§markerless-first-page} Session.find without a scope returns its first page of resources, every resource when they fit; an explicit <1,-1> is the whole", async () => {
+test("{§packet} Session.find without a scope returns its first page of resources, every resource when they fit; an explicit <1,-1> is the whole", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
         const entries = Array.from({ length: 20 }, (_, index): [string, string] => [
@@ -805,7 +805,7 @@ describe("find-read-uniform", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const parseOp = <T extends PlurnkStatement>(dsl: string, op: T["op"]): T => {
     const found = PlurnkParser.parse(dsl, { executors: fixtureExecutors(dsl) }).items.find((i) => i.kind === "statement" && i.statement.op === op);
@@ -1068,7 +1068,7 @@ test("{§find-result-unit} a glob remains resource mode when it resolves to one 
     } finally { await db.close(); }
 });
 
-test("{§markerless-first-page} a markerless exact matcher FIND returns its first page of locations, every location when they fit; <1,-1> is the whole", async () => {
+test("{§packet} a markerless exact matcher FIND returns its first page of locations, every location when they fit; <1,-1> is the whole", async () => {
     const { db, workspaceId, sessionId, ctx } = await setup();
     try {
         await seedRaw(ctx, "many.md", Array.from({ length: 20 }, (_, i) => `target ${i + 1}`).join("\n"));
@@ -1240,7 +1240,7 @@ describe("find-result-projection", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const findAll = (marks: [number, ...number[]] | null = null): FindStatement => ({
     metadata: null,
@@ -1270,7 +1270,7 @@ test("{§question-tool} shallow FIND folder summaries include only admitted cand
     } finally { await db.close(); }
 });
 
-test("{§find-result-projection} {§markerless-first-page}: a markerless FIND returns its first page of resources with complete counts", async () => {
+test("{§find-result-projection} {§packet}: a markerless FIND returns its first page of resources with complete counts", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-page-${crypto.randomUUID()}`);

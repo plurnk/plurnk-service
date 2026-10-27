@@ -11,7 +11,7 @@ import { tierRunPath } from "../../../scripts/lib/test-artifacts.ts";
 const workspace = resolve(import.meta.dirname, "../..");
 const reporter = resolve(import.meta.dirname, "census-reporter.mjs");
 
-// {§tier-census} — a run is stamped once by the driver: `<kind>-<UTC stamp>` names the directory every
+// {§test-artifact-retention} — a run is stamped once by the driver: `<kind>-<UTC stamp>` names the directory every
 // session lands in and the census the reporter writes there.
 export const stampTierRun = (kind, now = new Date()) =>
     `${kind}-${now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}`;

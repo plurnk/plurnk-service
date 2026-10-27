@@ -10,7 +10,7 @@ export interface ShareOptions {
     readonly openEvidence: OpenEvidence;
     readonly dbPath: string;
     readonly folder: string;
-    // {§share-scope}: absent shares the whole database.
+    // {§share}: absent shares the whole database.
     readonly workspaceId?: number;
     // {§digest-requiem}: also run the out-of-band forensic interview over the shared record.
     readonly requiem?: Provider;

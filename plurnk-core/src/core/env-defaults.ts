@@ -50,7 +50,7 @@ export default class EnvDefaults {
 
     // The installed ecosystem members, name-sorted: trusted packages in the `@plurnk/*` scope or
     // declaring `plurnk` in package.json. The defaults floor and the plurnk skill's contracts
-    // index share this one membership ({§plurnk-skill}).
+    // index share this one membership ({§tools-resource-materialization}).
     static async members(dirs: readonly PackageCandidate[]): Promise<PackageCandidate[]> {
         const members: PackageCandidate[] = [];
         for (const candidate of dirs.toSorted((a, b) => a.name.localeCompare(b.name))) {

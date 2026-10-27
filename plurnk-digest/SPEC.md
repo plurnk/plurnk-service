@@ -80,7 +80,7 @@ consumer reconstructs a name. A name that cannot be a file name, or two turns sh
 | `<stem>.assistant.md` | The turn has an `ops` source | This turn's output: exact `turn_sources.content`, independent of log rows; not assistant history in the request |
 | `<stem>.reasoning.md` | The turn has a `reasoning` source | Exact `turn_sources.content`, without relabeling it as content |
 | `<stem>.system.md`, `<stem>.user.md` | The request's message sections are retained | Role-filtered text projections for extraction; not the complete request or its message boundaries. Native parts are not Markdown. |
-| `<stem>.wire.json` | The request's message sections are retained | The same ordered text-message envelope as `.request.md` ({§packet-wire-envelope}), in JSON; not dispatched HTTP bytes. Both exclude native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected. |
+| `<stem>.wire.json` | The request's message sections are retained | The same ordered text-message envelope as `.request.md` ({§packet-assembly}), in JSON; not dispatched HTTP bytes. Both exclude native payloads, provider controls, and SDK/transport transformations; `<stem>.wire.invalid.json` names a stored log that cannot be projected. |
 | `digest.json` turn `attachments` | Every turn | Stored native attachment descriptors; `[]` means a request without attachments, `null` means no valid stored request. Selection is not proof of provider acceptance. |
 | `<stem>.assistantRaw.json` | The request has an admitted provider response | Stored opaque provider response |
 | `<stem>.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
@@ -131,7 +131,7 @@ accepted response, an empty response, or free inference.
 
 §digest-wire-line **Wire health aggregated.** Each session summary renders a `Wire:` line — total physical provider requests, error-outcome count, and the error percentage when nonzero. Provider-level failures are absorbed by retries below the packet stream, so without this aggregate a rate-limit storm is invisible in every summary while the model's experience stays clean.
 
-§digest-room-line **The room in provider tokens.** Each session summary renders a `Room:` line over its packet-bearing inference requests that record a known input capacity and wall and a provider count: the exact preflight measurement, else the reported input. It names the largest budget the model was shown, converted at that request's own ratio (`count ÷ weight`), as a share of the capacity; the range of the wall's estimate as the packet's conversion reconstructs it (`weight × capacity ÷ budget`) against the count; and, marked ⚠, the requests the estimate put under the wall while the count was over it ({§context-wall-measure}). A session without such requests reads `(no measured requests)`. Every run checks the ruler, pass or fail.
+§digest-room-line **The room in provider tokens.** Each session summary renders a `Room:` line over its packet-bearing inference requests that record a known input capacity and wall and a provider count: the exact preflight measurement, else the reported input. It names the largest budget the model was shown, converted at that request's own ratio (`count ÷ weight`), as a share of the capacity; the range of the wall's estimate as the packet's conversion reconstructs it (`weight × capacity ÷ budget`) against the count; and, marked ⚠, the requests the estimate put under the wall while the count was over it ({§tokenomics}). A session without such requests reads `(no measured requests)`. Every run checks the ruler, pass or fail.
 
 §digest-cache-ledger **Measured cache reuse and estimated prompt overlap are separate.**
 
@@ -140,7 +140,7 @@ accepted response, an empty response, or free inference.
 | `digest.json` provider-request `cachedTokens`, `inputTokens` | Exact provider-reported cache reads and input tokens; absent quantities remain `null`, reported zero remains zero. Every physical request counts, including retries and first requests of new loops. Stored packet availability is irrelevant to these counters. |
 | Turn `cache=<cached>/<input>` | Sum each measured quantity over that turn's requests. If any request omits a quantity, that sum is `?`. |
 | Workspace `Cache: <cached> of <input> reported input tokens read from cache (<pct>%) over <n> requests` | Sum only requests reporting both counters. Percentage is cache reads / input, rounded to one decimal; zero input is `n/a`. Requests missing either counter are counted separately as `missing input or cache usage (excluded)`. |
-| `digest.json` provider-request `adjacentPrefixTokensEstimate` | Optional loop-local diagnostic: the longest common character prefix with the preceding request, weighted under {§tokenomics-agnostic-ruler} as a share of the current stored prompt, multiplied by reported input tokens. First request: `0`; missing current/preceding packet or current input: `null`. Empty prompts have zero overlap. |
+| `digest.json` provider-request `adjacentPrefixTokensEstimate` | Optional loop-local diagnostic: the longest common character prefix with the preceding request, weighted under {§tokenomics} as a share of the current stored prompt, multiplied by reported input tokens. First request: `0`; missing current/preceding packet or current input: `null`. Empty prompts have zero overlap. |
 
 The prefix estimate uses the stored emission packet's wire message order, roles
 and content. A BARE request's input is not that packet; its prefix estimate and
@@ -201,8 +201,8 @@ strike rail's exemption ({§engine-rails}, #425 F1): structural violations count
 executor evidence never does.
 
 §digest-capacity-evidence **A 413 is the contract working, not a defect.** The
-capacity contract's rows, a result that did not fit ({§context-fit}), the
-over-budget mandate ({§context-over-budget-row}) and any other 413, render like
+capacity contract's rows, a result that did not fit ({§tokenomics}), the
+over-budget mandate ({§tokenomics}) and any other 413, render like
 any row but never count toward a loop's error total, its error-item count, its
 health verdict, or the per-turn `errs=` badge: a loop that concluded green under
 a binding budget is CLEAN. Refusals of the model's own statements still count.

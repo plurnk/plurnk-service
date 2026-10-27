@@ -176,7 +176,7 @@ content
     }
 });
 
-test("{§schemes-directory} scheme references follow supported capabilities, not illustrative operations", () => {
+test("{§tools-resource-materialization} scheme references follow supported capabilities, not illustrative operations", () => {
     const registry = new SchemeRegistry();
     const scoped = new CapabilityResolver({} as Db, registry, () => undefined);
     for (const operation of ["READ", "FIND", "EDIT", "COPY", "MOVE", "SEND", "KILL", "WORK", "FORK"] as const) {

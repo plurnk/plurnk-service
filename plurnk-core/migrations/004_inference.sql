@@ -4,7 +4,7 @@
 -- an edit here.
 
 -- One logical model call owns its lifecycle and physical-request ledger.
--- Response and admission evidence specialize this identity. {§tokenomics-provider-usage}
+-- Response and admission evidence specialize this identity. {§tokenomics}
 CREATE TABLE IF NOT EXISTS inference_calls (
     id                  INTEGER NOT NULL PRIMARY KEY,
     workspace_id        INTEGER NOT NULL,

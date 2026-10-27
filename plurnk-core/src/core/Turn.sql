@@ -16,7 +16,7 @@ RETURNING id, sequence;
 -- PREP: turn_record_inference
 -- Preserve the exact admitted/request-only packet and provider metadata while
 -- the operation sequence is still executing. Completion remains a separate
--- lifecycle transition after every admitted OP has settled. {§packet-items}: the
+-- lifecycle transition after every admitted OP has settled. {§packet}: the
 -- view's trigger stores the sections as content-addressed items and refuses a turn
 -- that is not an open model inference turn.
 INSERT INTO turn_inference_evidence (turn_id, packet, sections, usage_curation_budget, finish_reason, model, meta)

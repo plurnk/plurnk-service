@@ -72,7 +72,7 @@ The module holds one armed occurrence per enabled (workspace, alias). At the occ
 
 | Fact | Rule |
 | --- | --- |
-| The message | joins the session's live loop, waking it if parked, or starts a new loop ({§message-arrival}, {§message-causal-source}) |
+| The message | joins the session's live loop, waking it if parked, or starts a new loop ({§message-arrival}, {§message-arrival}) |
 | A future occurrence | not live work for WAIT ({§loop-completion}); it neither holds a loop open nor concludes it |
 | The next occurrence | arms from the present: a late fire delivers once and skips what it missed, never a backlog |
 | A missing session or a refused delivery | disarms the rule and lists it `unavailable` with the Problem; `enable` retries; a failure belongs to the complete definition, including its target and prompt, not just the recurrence, and retry or replacement clears it only on successful publication |

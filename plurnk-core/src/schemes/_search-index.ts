@@ -498,7 +498,7 @@ export default class SearchIndex {
 }
 
 // {§derivation-dedup-parallel} — the identity is a hash over the representation's own SHA-256
-// ({§tokenomics-content-hash-identity}), never over its body, so a stored channel identity
+// ({§tokenomics}), never over its body, so a stored channel identity
 // decides dirtiness without the body crossing into the process.
 function derivationHash(input: {
     contentHash: string;

@@ -47,7 +47,7 @@ hide genuine uses from static analysis, and similar adapters need not share poli
 
 The deterministic gate requires Node/npm, Git, POSIX `sh`, and `pgrep`/`pkill`.
 Every other surface is a live specimen that declares what it
-requires and skips by name ({§tier-census}): the third-party MCP composition (`npx`, the npm
+requires and skips by name ({§test-artifact-retention}): the third-party MCP composition (`npx`, the npm
 registry, the remote server), the llama-server rails (`PLURNK_LLAMA_URL`, `127.0.0.1:11435` unless
 set, with `PLURNK_LLAMA_RAIL_PROFILE` naming the template, `qwen` or `gemma`) and the
 terminal client's real-model TUI tier (`PLURNK_CLIENT_CHECKOUT`).
@@ -81,7 +81,7 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 |---|---|
 | Configuration/startup | `npm run config:defaults`, then [`plurnk-core/INSTALL.md`](./plurnk-core/INSTALL.md); startup failure is authoritative for route-dependent credentials. |
 | Deterministic test failure | The reported `~/benchmarks/intg-<lane>-<run>/` directory (`PLURNK_BENCHMARKS` overrides the root). Successful suites remove their own artifacts; failed suites retain them. |
-| Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement ({§tier-census}). |
+| Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement ({§test-artifact-retention}). |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy ([`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) {§share}). |
 | Published type resolution | `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds; also runs beside publint in `release:gate` ({§packed-projection}). |
@@ -159,7 +159,7 @@ isolated database, and reports their provenance. It preserves a digest under
 `../benchmarks` unless `PLURNK_BENCHMARKS` selects another path.
 For repeated experiments, build both checkouts once and set
 `PLURNK_CANDIDATE_SKIP_BUILD=1`. Each run pins its own copy of that build for
-execution and digest export ({§candidate-pinned-runtime}).
+execution and digest export ({§share}).
 
 ## Metaproject readiness
 

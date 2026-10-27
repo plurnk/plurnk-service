@@ -128,7 +128,7 @@ test("{§connection-lifecycle} origin is attribution (provenance), never read to
 // the stream-status door — a slept (202) loop's stream concluding RESUMES it in place,
 // an active loop folds the conclusion into its next turn — is locked in
 // Daemon.exec-wake.test.ts. Together they discharge {§actor-boundary}'s two-trigger contract.
-test("{§env-delta-passive} an idle session wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async (approvalContext) => {
+test("{§env-delta} an idle session wakes on an inject (voice), never on a delta (a sibling's shared-entry edit)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 8192, responses: [
         makeMockResponse("````SEND [200]\nfirst done\n````", 10),
@@ -549,7 +549,7 @@ test("{§actor-boundary} direct-child activity reaches its parent without leakin
     }
 });
 
-test("{§env-delta-child-activity} received messages remain local observations, not child-authored activity", async () => {
+test("{§env-delta} received messages remain local observations, not child-authored activity", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `lineage-prompt-${crypto.randomUUID()}`);
@@ -695,7 +695,7 @@ test("{§actor-boundary} a fork inherits parent activity pending at its snapshot
     }
 });
 
-test("{§env-delta-no-coalescing} {§env-delta-commons-mutation} commons mutations broadcast one occurrence identity and deduplicate the direct parent audience", async () => {
+test("{§env-delta} {§env-delta} commons mutations broadcast one occurrence identity and deduplicate the direct parent audience", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `commons-audience-${crypto.randomUUID()}`);
@@ -1590,7 +1590,7 @@ for (const standing of ["absent", "ignored", "untracked", "tracked", "excluded"]
             process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
             process.env.PLURNK_SERVICE_GIT_AUTO = "1";
             process.env.PLURNK_MEMBERS_ENABLED = "1";
-            // An operator exclusion ({§members-configuration}).
+            // An operator exclusion ({§tools-resource-materialization}).
             if (standing === "excluded") process.env.PLURNK_MEMBERS_no_local = "!AGENTS.local.md";
             const dir = await mkdtemp(join(tmpdir(), "plurnk-local-instructions-"));
             try {

@@ -5,7 +5,7 @@ export interface CalibrationSample {
     readonly reported: number;
 }
 
-// {§tokenomics-calibrated-readout} — provider capacity crosses into the stable
+// {§tokenomics} — provider capacity crosses into the stable
 // curation ruler here by the additive offset observed on the latest settled emission.
 // Content costs never cross in the opposite direction.
 export default class TokenCalibration {

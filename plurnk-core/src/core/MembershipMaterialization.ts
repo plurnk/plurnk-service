@@ -192,7 +192,7 @@ export default class MembershipMaterialization {
     }
 
 
-    // {§env-delta-filesystem-narration}: only settled source changes produce divergence evidence.
+    // {§env-delta}: only settled source changes produce divergence evidence.
     static async #publish(
         pathname: string,
         path: string,

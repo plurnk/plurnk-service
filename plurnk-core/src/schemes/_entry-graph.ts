@@ -1,4 +1,4 @@
-// {§graph-relations}: one-hop name matching over immutable readable derivations.
+// {§matcher-dispatch}: one-hop name matching over immutable readable derivations.
 
 import type { Db } from "../core/Db.ts";
 import { TextCoordinates, type MimeSymbol, type MimeRef } from "@plurnk/plurnk-mimetypes";

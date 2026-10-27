@@ -1159,7 +1159,7 @@ test("{§operator-config-workspace-settings}: BARE calls spend the loop's budget
 
             }, { timeoutMs: 20_000 });
             assert.equal(result.hitMaxTurns, true);
-            assert.equal(result.finalStatus, 429, "the tree's ceiling ends the loop at 429 {§loop-terminals}");
+            assert.equal(result.finalStatus, 429, "the tree's ceiling ends the loop at 429 {§tokenomics}");
             const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: result.loopId });
             const bares = rows.filter((row) => row.op === "BARE" && row.origin === "model");
             assert.deepEqual(bares.map((row) => row.status_rx), [200, 200, 429],
@@ -1486,7 +1486,7 @@ test("{§functionality-inspection} {§functionality-inspection} changed baseline
 });
 
 describe("members-functionality", () => {
-// {§members-functionality} {§functionality-replacement} {§members-model-scope} {§members-projection}
+// {§tools-resource-materialization} {§functionality-replacement} {§tools-resource-materialization} {§tools-resource-materialization}
 
 
 
@@ -1705,7 +1705,7 @@ for (const boundary of ["startup", "workspace inspection"] as const) {
     });
 }
 
-test("{§members-functionality} {§functionality-replacement} client and model share one surface named by globs; the ceiling, the union, exclusion, ignore, list, and discover hold", async () => {
+test("{§tools-resource-materialization} {§functionality-replacement} client and model share one surface named by globs; the ceiling, the union, exclusion, ignore, list, and discover hold", async () => {
     const root = await gitProject();
     await withEnv({
         PLURNK_SERVICE_GIT_ALLOWED: "1",
@@ -1783,7 +1783,7 @@ test("{§members-functionality} {§functionality-replacement} client and model s
             assert.equal(await memberOf(db, workspaceId, "docs/guide.md"), true, "an enabled service definition projects onto the overlay");
             assert.ok((await rows(db, workspaceId)).includes("include docs/** members"), "a human-authored definition projects with source members");
             assert.deepEqual((await definitions())[0]?.detail, { effect: "include", pattern: "docs/**", matched: 1, files: ["docs/guide.md"], ignored: 0 });
-            // {§members-projection} — the document is named by the glob, percent-encoded as one segment.
+            // {§tools-resource-materialization} — the document is named by the glob, percent-encoded as one segment.
             await operate("````READ (workspace:///_plurnk/members/docs%2F%2A%2A.md) <1,-1>````");
             const doc = (await db.engine_list_workspace_entries.all<{ scheme: string; pathname: string; channel: string; content: string }>({ workspace_id: workspaceId }))
                 .find((row) => row.scheme === "workspace" && row.pathname === "/_plurnk/members/docs%2F%2A%2A.md" && row.channel === "body");
@@ -1915,7 +1915,7 @@ test("{§members-functionality} {§functionality-replacement} client and model s
     });
 });
 
-test("{§members-model-scope} the ceiling: none refuses every model definition, root admits inside it, the workspace narrows the service", async () => {
+test("{§tools-resource-materialization} the ceiling: none refuses every model definition, root admits inside it, the workspace narrows the service", async () => {
     const root = await gitProject();
     const db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `members-scope-${crypto.randomUUID()}`);
@@ -1943,7 +1943,7 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
         assert.deepEqual(await rooted.admit({ files: ["notes.md", "!drafts/**"] }, who, "operation"), [admission("notes.md", "model-proposal"), admission("!drafts/**", "model-proposal")]);
         await refusedAs(() => rooted.admit({ files: ["../secrets/*.pem"] }, who, "operation"), "model-scope", 403);
         await refusedAs(() => rooted.admit({ files: ["notes.md", "../secrets/*.pem"] }, who, "operation"), "model-scope", 403);
-        // {§members-functionality} The scope judges the glob in key space, whatever its spelling.
+        // {§tools-resource-materialization} The scope judges the glob in key space, whatever its spelling.
         assert.deepEqual(await rooted.admit({ files: [join(root, "notes.md")] }, who, "operation"), [admission(join(root, "notes.md"), "model-proposal")],
             "an absolute glob inside the root is a root pattern");
         await refusedAs(() => rooted.admit({ files: [join(dirname(root), "secrets", "*.pem")] }, who, "operation"), "model-scope", 403);
@@ -1963,10 +1963,10 @@ test("{§members-model-scope} the ceiling: none refuses every model definition, 
     }
 });
 
-// {§members-functionality} {§fs-namespace} A definition's glob is matched against member keys: written absolute or from
+// {§tools-resource-materialization} {§fs-namespace} A definition's glob is matched against member keys: written absolute or from
 // the root, beside it or farther out, it admits the same members, which READ reaches by either spelling; an exclusion
 // spelled absolute removes what it names, and no member is stored under an absolute key.
-test("{§members-functionality} {§fs-namespace} a glob spelled absolute or from the root admits the same members beyond the root, near or far, and READ reaches them", { timeout: 60_000 }, async (t) => {
+test("{§tools-resource-materialization} {§fs-namespace} a glob spelled absolute or from the root admits the same members beyond the root, near or far, and READ reaches them", { timeout: 60_000 }, async (t) => {
     serverProposals(t, "accept");
     const base = await mkdtemp(join(tmpdir(), "plurnk-members-beyond-"));
     t.after(() => rm(base, { recursive: true, force: true }));

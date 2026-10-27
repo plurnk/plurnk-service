@@ -84,7 +84,7 @@ export type DispatchContext = {
     fanout?: { readonly target: string; readonly matched: number; readonly index: number; readonly count: number };
     remainingCommands?: number;
     failOnOperationError?: boolean;
-    // {§context-fit} — the turn's measure of the budget left for one more result; absent, a result lands whole.
+    // {§tokenomics} — the turn's measure of the budget left for one more result; absent, a result lands whole.
     fit?: ContextFit;
 };
 
@@ -174,7 +174,7 @@ export default class Dispatcher {
     #executors: () => ExecutorRegistry | undefined;
     // Per-loop abort signal, owned by Engine.runLoop — thunked.
     #loopSignal: (loopId: number) => AbortSignal | undefined;
-    // {§relation-indexed-dialects} — the engine's derivation pump, awaited by a scheme whose
+    // {§matcher-dispatch} — the engine's derivation pump, awaited by a scheme whose
     // indexed dialect met a still-deriving index.
     #settleDerivations: (context: PlurnkSchemeContext) => Promise<void>;
     readonly #notify: EngineNotifications;
@@ -435,7 +435,7 @@ export default class Dispatcher {
         return renderTarget(target, await this.#workspaceRoot(workspaceId));
     }
 
-    // {§kill-scope-entry} — a scoped KILL on an entry-bearing scheme is one EDIT with an empty
+    // {§op-invariants} — a scoped KILL on an entry-bearing scheme is one EDIT with an empty
     // body over the same marker: prepared, gated, and merged as an EDIT while its log row
     // records the model's KILL. Schemes that implement kill() (streams) take the scope themselves;
     // the log's scoped KILL is curation.
@@ -445,7 +445,7 @@ export default class Dispatcher {
 
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
         if (statement.op === "EDIT") return statement;
-        // {§kill-scope-entry} a scoped KILL of an entry empties the span; {§kill-pattern} a KILL with
+        // {§op-invariants} a scoped KILL of an entry empties the span; {§op-invariants} a KILL with
         // a matcher removes each selected span, inside its scope when one is given.
         // Both are emptying EDITs; the log and every scheme with its own kill() keep their own path.
         if (statement.op !== "KILL" || (statement.lineMarker === null && statement.matcher === null)) return null;
@@ -903,7 +903,7 @@ export default class Dispatcher {
         return Dispatcher.#singleExecution(post);
     }
 
-    // {§context-fit} — a result the model asked for arrives whole when it fits the remaining budget;
+    // {§tokenomics} — a result the model asked for arrives whole when it fits the remaining budget;
     // otherwise the row is its size and address — a READ of lines above the longest prefix of them that
     // fits — and the result stays where it was read from.
     async #fitResult(context: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<DispatchResult> {
@@ -938,7 +938,7 @@ export default class Dispatcher {
         return fits === 0 ? receipt(0) : withPrefix(fits);
     }
 
-    // The tokens the row would charge the packet, rendered as the log renders it ({§context-fit}).
+    // The tokens the row would charge the packet, rendered as the log renders it ({§tokenomics}).
     async #rowTokens({ workspaceId, sessionId, loopId, turnId, sequence, origin }: DispatchContext, statement: PlurnkStatement, result: DispatchResult): Promise<number> {
         const record = await this.#logWriter.record({ statement, result, workspaceId, sessionId, loopId, turnId, sequence, origin, curationPlan: null, modelCallId: null });
         const seqs = await this.#db.engine_loop_turn_seqs.get<{ loop_seq: number; turn_seq: number }>({ loop_id: loopId, turn_id: turnId });

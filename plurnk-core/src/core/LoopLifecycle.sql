@@ -51,7 +51,7 @@ RETURNING terminal_result;
 SELECT status, terminal_result, terminated_by FROM loops WHERE id = $loop_id;
 
 -- PREP: lifecycle_loop_observation
--- {§loop-status-notice} {§notifications}: the loop's number, its own stamps and packet count,
+-- {§operation-results} {§notifications}: the loop's number, its own stamps and packet count,
 -- the facts a lifecycle beat or a terminal carries, read where a snapshot reads them.
 SELECT sequence AS loopSeq, claimed_at AS claimedAt, terminated_at AS terminatedAt,
        (SELECT COUNT(*) FROM turns WHERE turns.loop_id = loops.id AND turns.packet IS NOT NULL) AS packetCount

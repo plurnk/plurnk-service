@@ -18,7 +18,7 @@ WHERE w.workspace_id = $workspace_id AND w.id = $session_id
        OR json_array_length(e.rx, '$.attachments') > 0)
 ORDER BY loop_id, id;
 -- PREP: message_source_resources
--- A message keeps the address its minter gave it (`acp://…`), and {§message-short-identity}
+-- A message keeps the address its minter gave it (`acp://…`), and {§message-arrival}
 -- adds the short `message://<session>/<key>` alias the session docs teach.
 SELECT path, body FROM message_sources
 WHERE workspace_id = $workspace_id AND path LIKE $scheme || '://%'
@@ -36,7 +36,7 @@ SELECT * FROM message_sources WHERE workspace_id = $workspace_id AND address = $
 
 -- PREP: message_inbox
 -- {§methods}: accepted and not yet published ({§message-arrival}), in acceptance order, with the status of
--- the loop holding each ({§message-loop-containment}: one that concluded first will never publish it).
+-- the loop holding each ({§message-arrival}: one that concluded first will never publish it).
 SELECT s.path, s.source, s.body, s.loop_id, l.status AS loop_status FROM message_sources s
 JOIN loops l ON l.id = s.loop_id
 WHERE s.workspace_id = $workspace_id AND s.session_id = $session_id AND s.log_entry_id IS NULL

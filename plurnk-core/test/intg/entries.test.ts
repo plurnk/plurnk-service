@@ -358,7 +358,7 @@ test("{§logical-line-count} entry resources have no tag relation", async () => 
 
 // {§logical-line-count} — `entry_channels.lines` is the persisted mirror of the one line count: the
 // trigger expression and `TextCoordinates.lineCount` agree on every shape, at insert and at
-// update ({§tokenomics-weight-stored-at-write}).
+// update ({§tokenomics}).
 const LINE_CORPUS: ReadonlyArray<readonly [label: string, content: string]> = [
     ["empty", ""],
     ["no trailing newline", "a\nb"],

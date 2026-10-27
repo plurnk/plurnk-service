@@ -53,7 +53,7 @@ const tableCells = (line: string): string[] | null => {
 const isTableDivider = (cells: readonly string[]): boolean =>
     cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/u.test(trimHorizontal(cell)));
 
-// {§definition-table-projection} — plurnk.md remains spacious for human editing;
+// {§packet} — plurnk.md remains spacious for human editing;
 // only its well-formed Markdown tables lose authoring alignment on the packet wire.
 const compactDefinitionTables = (markdown: string): string => {
     const lines = markdown.split("\n");
@@ -104,8 +104,8 @@ const compactDefinitionTables = (markdown: string): string => {
 
 export type { ChatMessage } from "@plurnk/plurnk-providers";
 
-// {§context-wall} — the packet's tokens against the provider's input wall, in provider tokens, by either
-// measure ({§context-wall-measure}).
+// {§tokenomics} — the packet's tokens against the provider's input wall, in provider tokens, by either
+// measure ({§tokenomics}).
 export interface WindowOverflow {
     readonly tokens: number;
     readonly budget: number | null;
@@ -119,11 +119,11 @@ export interface CurationOverflow {
     readonly excess: number;
 }
 
-// Packet assembly ({§packet-assembly}) and the budget and wall measures ({§context-over-budget-row}, {§context-wall}). Deliberate
-// curation stays in scoped KILL; what fits was decided where each row landed ({§context-fit}).
+// Packet assembly ({§packet-assembly}) and the budget and wall measures ({§tokenomics}, {§tokenomics}). Deliberate
+// curation stays in scoped KILL; what fits was decided where each row landed ({§tokenomics}).
 export default class PacketBuilder {
     #db: Db;
-    // {§tokenomics-calibrated-readout} — admission and client gauges consume the allowance and the offset
+    // {§tokenomics} — admission and client gauges consume the allowance and the offset
     // captured before this request can change model evidence.
     readonly #allowances = new WeakMap<readonly StoredPacketSection[], { readonly budget: number | null; readonly offset: number }>();
     readonly #streamObservations = new WeakMap<readonly StoredPacketSection[], readonly { publication_id: number; bytes: number }[]>();
@@ -164,7 +164,7 @@ export default class PacketBuilder {
         return allowance;
     }
 
-    // {§packet-stored-shape} — assemble the system/user request before the
+    // {§packet} — assemble the system/user request before the
     // provider call; complete the same record with the provider response.
     async buildRequestPacket({
         initialMessages, recap = "", workspaceId, sessionId, loopId, currentTurnSeq, provider, gitStatus, notices = [],
@@ -191,7 +191,7 @@ export default class PacketBuilder {
         await CapabilityPolicies.layers(this.#db, workspaceId);
         const byRole = (role: ChatMessage["role"]): string =>
             initialMessages.filter((m) => m.role === role).map((m) => chatMessageText(m)).join("\n\n");
-        // Resource references are discovered through Turn0, not injected. {§schemes-directory}
+        // Resource references are discovered through Turn0, not injected. {§tools-resource-materialization}
         const system_definition = compactDefinitionTables(byRole("system"));
         const loopSeqRow = await this.#db.engine_loop_sequence.get<{ sequence: number }>({ loop_id: loopId });
         const sessionName = await SessionName.forId(this.#db, sessionId);
@@ -199,17 +199,17 @@ export default class PacketBuilder {
         const openMessages = await this.#db.engine_open_messages.all<{
             id: number; path: string; key_path: string; source: string | null;
         }>({ loop_id: loopId });
-        // {§message-short-identity}: the model is shown the short address, never a client's own
+        // {§message-arrival}: the model is shown the short address, never a client's own
         // transport identity; answering either reaches the same message. The operator's message has
-        // no other sender to show, so it is named ({§message-causal-source}).
+        // no other sender to show, so it is named ({§message-arrival}).
         const prompt = openMessages.length > 0
             ? `[${openMessages.map((m) => JSON.stringify({
                 path: m.key_path,
                 ...(m.source === null ? { origin: "user" } : { source: m.source }),
             })).join(",\n")}]`
             : "[]";
-        // {§recap}: a non-empty override wins; otherwise read the meta-owned source per packet. The operator's
-        // recap lines lead it ({§recap-lines}).
+        // {§packet-inject}: a non-empty override wins; otherwise read the meta-owned source per packet. The operator's
+        // recap lines lead it ({§packet-inject}).
         const recapSource = recap.length > 0
             ? recap
             : Paths.defaultRecapTeachingSource === null
@@ -220,14 +220,14 @@ export default class PacketBuilder {
         const log = await this.#buildLog(sessionId, transientOpenLogEntryId, turnId);
         const failures = await this.buildFailurePointers(loopId, currentTurnSeq);
         const weighContent = contentWeight;
-        // {§context-budget} — one room: the provider's input capacity in curation weight, bounding the
+        // {§tokenomics} — one room: the provider's input capacity in curation weight, bounding the
         // whole packet. Nothing here sizes a part of it.
         const inputCapacity = provider.inputCapacity;
         const offset = inputCapacity === null ? 0 : await TokenCalibration.forLoop(this.#db, provider.model, loopId);
         const curationBudget = TokenCalibration.capacity(inputCapacity, offset);
         const budgetReadout = BudgetReadout.draft(curationBudget);
         // The canonical default order, trust boundary, and cache-locality bias are
-        // specified at {§packet-cache-monotone}. Budget placeholders resolve only
+        // specified at {§packet-assembly}. Budget placeholders resolve only
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(this.#hostPaths); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(this.#hostPaths); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
@@ -320,13 +320,13 @@ export default class PacketBuilder {
 
             ...(inject !== null ? [{ name: "inject", slot: "system" as const, header: "Operator Notes", content: inject }] : []),
             // The append-mostly log leads the user slot; nothing volatile precedes it
-            // ({§packet-cache-monotone}).
+            // ({§packet-assembly}).
             ...logSections,
-            // The per-turn status clump follows the log ({§packet-cache-monotone}) and runs from ambient
+            // The per-turn status clump follows the log ({§packet-assembly}) and runs from ambient
             // state to what this turn owes to feedback on the last one, then the Recap: the nearer the end,
             // the more a section asks of this turn.
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
-            // {§context-gauge} — the model's word for curation weight is tokens; this is never provider admission.
+            // {§tokenomics} — the model's word for curation weight is tokens; this is never provider admission.
             { name: "budget", slot: "user", header: "Context", content: budgetReadout },
             // {§child-orientation} — the Session block names who the actor is, whose child it is, and the
             // coordinate this packet's response becomes — the one fact the sources cannot state about
@@ -359,7 +359,7 @@ export default class PacketBuilder {
         const budgetSection = drafts.find((section) => section.name === "budget");
         if (budgetSection !== undefined) {
             const curationTargets = unchangedLog ? renderedLog.curationTargets : [];
-            // {§context-gauge} — the gauge is measured with the whole packet it sits in.
+            // {§tokenomics} — the gauge is measured with the whole packet it sits in.
             const withReadout = (gauge: string): typeof drafts => drafts.map((section) =>
                 section === budgetSection ? { ...section, content: gauge } : section);
             const readout = BudgetReadout.resolve(budgetSection.content, (gauge) =>
@@ -367,7 +367,7 @@ export default class PacketBuilder {
                     .reduce((sum, { content }) => sum + weighContent(content), attachmentsWeight), curationTargets);
             drafts = withReadout(readout.gauge);
         }
-        // {§packet-items}: unchanged log segments retain their content-addressed records.
+        // {§packet}: unchanged log segments retain their content-addressed records.
         const sections = drafts.map((section): StoredPacketSection => ({
             ...section,
             weight: weighContent(PacketWire.renderSection(section)),
@@ -391,7 +391,7 @@ export default class PacketBuilder {
         });
     }
 
-    // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
+    // {§tools-resource-materialization} {§tools-resource-materialization} —
     // one reserved reference set, materialized by LoopDocs.
     async referenceEntries(workspaceId: number): Promise<Array<{ pathname: string; content: string }>> {
         const layers = await CapabilityPolicies.layers(this.#db, workspaceId);
@@ -425,7 +425,7 @@ export default class PacketBuilder {
                 }));
             }
         }
-        // {§schemes-directory} — a family's generated documents follow its tool's admission:
+        // {§tools-resource-materialization} — a family's generated documents follow its tool's admission:
         // a denied family is a door the model is never shown.
         out.push(...this.#functionalityDocuments(workspaceId)
             .filter(({ family }) => this.#capabilities.allowsRuntimeAcross("plurnk", family, workspaceId, policies))
@@ -433,7 +433,7 @@ export default class PacketBuilder {
         return out.toSorted((left, right) => left.pathname.localeCompare(right.pathname));
     }
 
-    // {§context-over-budget-row} — measurement never mutates visibility; an over-budget packet is a row
+    // {§tokenomics} — measurement never mutates visibility; an over-budget packet is a row
     // and a request, never a silent cut.
     curationOverflow(packet: RequestPacket): CurationOverflow | null {
         const budget = this.curationBudgetFor(packet);
@@ -468,7 +468,7 @@ export default class PacketBuilder {
         return this.curationOverflow(packet);
     }
 
-    // {§context-wall-measure} — the estimate: the packet's weight through its own calibration offset against
+    // {§tokenomics} — the estimate: the packet's weight through its own calibration offset against
     // the provider's input wall; null without a wall or a budget: an unknown window has no wall.
     windowOverflow(packet: RequestPacket, provider: { readonly inputWall: number | null }): WindowOverflow | null {
         const { budget, offset } = this.#allowanceOf(packet);
@@ -478,7 +478,7 @@ export default class PacketBuilder {
         return { tokens, budget, wall: provider.inputWall, excess: tokens - provider.inputWall };
     }
 
-    // {§context-wall-measure} — the provider's exact refusal of the wire request. Null unless the provider refused.
+    // {§tokenomics} — the provider's exact refusal of the wire request. Null unless the provider refused.
     exactOverflow(packet: RequestPacket, capacity: ProviderRequestCapacity): WindowOverflow | null {
         if (capacity.decision !== "reject") return null;
         const { prompt, inputWall } = capacity;

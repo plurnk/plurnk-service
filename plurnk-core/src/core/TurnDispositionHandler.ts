@@ -70,7 +70,7 @@ export default class TurnDispositionHandler {
         const outcome = await this.#db.message_completion_outcome.get<{ status: 200 | 499 }>({ loop_id: ctx.loopId });
         const result = outcome!.status === 200 ? TerminalResult.success(null)
             : Results.failure("engine:messages", "cancelled", 499, "All messages were cancelled.", {}, { retryable: false });
-        // {§completion-defers-to-messages}: recheck arrivals atomically with conclusion.
+        // {§message-arrival}: recheck arrivals atomically with conclusion.
         const finished = await this.#lifecycle.finish(ctx.loopId, result, { requireObserved: true });
         return { status: finished === null ? await this.#lifecycle.status(ctx.loopId) : result.status };
     }

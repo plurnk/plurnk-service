@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- The Problem the latest cancellation delivered to this session's live loops; writing it is
     -- the cancellation ({§session-causal-admission}). NULL until the session's scope is first cancelled.
     cancellation TEXT CHECK (cancellation IS NULL OR (json_valid(cancellation) AND json_extract(cancellation, '$.status') = 499)),
-    -- {§env-delta-log-pull}: monotonic observation progress, not a private world snapshot.
+    -- {§env-delta}: monotonic observation progress, not a private world snapshot.
     -- Creation captures the workspace high-water; a fork instead copies its
     -- parent's cursor and records the closed event boundary of its snapshot.
     ambient_event_cursor INTEGER      CHECK (ambient_event_cursor IS NULL OR ambient_event_cursor >= 0),
@@ -141,7 +141,7 @@ BEGIN
     SELECT RAISE(ABORT, 'session owner is still referenced');
 END;
 
--- {§env-delta-log-pull}: one append-only occurrence journal gives every
+-- {§env-delta}: one append-only occurrence journal gives every
 -- producer a shared monotonic order. Audience is structural: direct parent,
 -- addressed reply, explicit workspace broadcast, or their union. The event snapshots exactly
 -- what an observer row needs because source-log curation cannot erase history.
@@ -183,7 +183,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
         OR
         (kind = 'loop_termination'
             AND op = 'READ'
-            -- {§env-delta-child-termination}: the exact concluded loop is a resource, not a message;
+            -- {§env-delta}: the exact concluded loop is a resource, not a message;
             -- {§message-completion} names it at the child's own loop address.
             AND scheme = 'ops'
             AND hostname IS NOT NULL

@@ -28,7 +28,7 @@ export default class Paths {
     static configuration = resolve(Paths.#PACKAGE_ROOT, "INSTALL.md");
     // The first-run policy seed and built-in/conditional pull-doc sources.
     static policy = Paths.teachingSource(TEACHING_CORPUS.policy);
-    // {§recap} — meta-owned default Recap and its operator override.
+    // {§packet-inject} — meta-owned default Recap and its operator override.
     static #SHIPPED_RECAP = Paths.#resolveDefaultRecap();
     static defaultRecap = Paths.#SHIPPED_RECAP.path;
     static defaultRecapTeachingSource = Paths.#SHIPPED_RECAP.source;

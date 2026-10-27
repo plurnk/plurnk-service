@@ -71,7 +71,7 @@ WHERE subscription_publications.id = json_extract(observation.value, '$.publicat
 -- preceding completed model turn: prior-model-turn for action failures the
 -- model just caused, current-turn so a pre-generate engine error surfaces THIS turn
 -- rather than a turn late. Packetless chronology never hides a model failure.
--- {§operation-result-uniform-error-channel}
+-- {§operation-results}
 WITH previous_model_turn AS (
     SELECT id
     FROM turns
@@ -92,7 +92,7 @@ JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 WHERE le.loop_id = $loop_id
   AND le.status_rx >= 400
-  -- {§log-row-self-explains}: every >=400 row points at ITSELF — the op row carries its failure
+  -- {§operation-results}: every >=400 row points at ITSELF — the op row carries its failure
   -- message on its meta line (packet-wire), so the pointer leads to a record that states its why.
   AND (
       t.sequence = $current_turn_seq
@@ -120,7 +120,7 @@ WHERE ($latest_only = 0 OR p.recency = 1)
 ORDER BY p.sequence;
 
 -- PREP: engine_render_log
--- Render-time log-section assembly ({§body-projection}).
+-- Render-time log-section assembly ({§packet}).
 -- Yields log_entries for the whole session — the session's working
 -- memory carries across loops, not just the
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
@@ -150,7 +150,7 @@ JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one session's log — {§actor-boundary} {§machine-processes}
 -- Proposed rows wait for resolution ({§proposal}); a log-KILL that worked
 -- stays out of the packet ({§log-history-projection}).
--- Every failed operation remains visible ({§operation-result-uniform-error-channel}).
+-- Every failed operation remains visible ({§operation-results}).
 WHERE le.session_id = $session_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
@@ -169,7 +169,7 @@ WHERE le.session_id = $session_id
           )
       )
   )
-  -- {§context-over-budget-row} — the mandate is a fact about one packet: shown in the packet it
+  -- {§tokenomics} — the mandate is a fact about one packet: shown in the packet it
   -- describes, then retired from the projection like a no-match receipt, durable and readable at
   -- its coordinate; a later packet that is over mints its own (#1097).
   AND NOT (
@@ -179,7 +179,7 @@ WHERE le.session_id = $session_id
   )
   -- Successful maintenance-turn rows (doc reconciliation) never render: a
   -- receipt answers an asker and these turns have none. Rows stay durable and
-  -- READ-able; failures remain visible ({§operation-result-uniform-error-channel}).
+  -- READ-able; failures remain visible ({§operation-results}).
   AND NOT (
       t.producer = '_plurnk'
       AND t.kind = 'maintenance'
@@ -190,7 +190,7 @@ ORDER BY l.sequence, t.sequence, le.sequence;
 
 -- PREP: engine_open_messages
 -- {§message-completion}: packet order and targetless SEND share the published unresolved queue.
--- {§message-short-identity}: the model sees the short address, and a sender only when it is
+-- {§message-arrival}: the model sees the short address, and a sender only when it is
 -- another actor rather than the transport that minted this very message.
 SELECT m.id, m.path, m.key_path, CASE WHEN m.source = m.path THEN NULL ELSE m.source END AS source
 FROM unanswered_messages m

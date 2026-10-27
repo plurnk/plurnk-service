@@ -142,7 +142,7 @@ contract is the one package that depends on it directly. There is no manifest ve
 | --- | --- |
 | The alias grammar | the coordinator enforces whichever grammar the family declares, at admission, in the service projection, and on persisted state, so an environment variable's name is an alias exactly as a skill name is |
 | Addressing ({§functionality-replacement}) | a family whose definitions are named by their own content declares the inputs of `add` and of the select verbs, and how a select input names its alias; its `admit` then returns one admission per definition an `add` names |
-| Admission | distinguishes explicit client actions from model operations where the family contract requires it ({§members-model-scope}) |
+| Admission | distinguishes explicit client actions from model operations where the family contract requires it ({§tools-resource-materialization}) |
 | Preparation | receives each complete definition with optional adapter-owned interpretation context, and returns runtimes, documents, per-alias outcomes, and a snapshot with `publish`/`commit`/`abort`; successful publication publishes, then commits; failure aborts; cooling tears down; protocol continuations remain ordinary module actions |
 | Context | source semantics, not policy or provenance; it participates in runtime identity and hot-load comparisons, is never projected as configuration or persisted into a workspace override, and cannot survive replacement by a local definition; removing that override restores the current inherited definition and context together; descriptive provenance alone does not change runtime identity |
 | `forget` (optional) | releases an installed or provisioned definition before removal; failure rejects removal |

@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS workspace_module_state (
 CREATE TABLE IF NOT EXISTS workspace_constraints (
     workspace_id INTEGER NOT NULL,
     -- include admits files git misses; exclude removes members — the members family's lexicon
-    -- ({§members-projection}). An inclusion is a pattern scan; a creation record is one exact path.
+    -- ({§tools-resource-materialization}). An inclusion is a pattern scan; a creation record is one exact path.
     effect     TEXT    NOT NULL CHECK (effect IN ('include', 'exclude')),
     glob       TEXT    NOT NULL,
     -- create: the exact record of a file Plurnk wrote ({§fs-write-surface}); members: a

@@ -413,7 +413,7 @@ export default class DrainSupervisor {
                 }
                 // A message this loop ended before publishing (a wake conclusion or a
                 // runLoop-while-active arrival) is promoted to a fresh queued loop so it's
-                // never silently dropped ({§message-loop-containment}).
+                // never silently dropped ({§message-arrival}).
                 await this.reconcileOrphanedMessages(sessionId, loopRow.id);
                 if (announced) await this.#abandonUnanswered(workspaceId, sessionId, loopRow.id, result.result.status);
                 currentLoopId = null;
@@ -819,7 +819,7 @@ export default class DrainSupervisor {
     async operationSettled(workspaceId: number, logEntryId: number): Promise<void> {
         const recipients = await this.#db.message_reply_recipients.all<{ session_id: number }>({ log_entry_id: logEntryId });
         if (recipients.length === 0) return;
-        const systemPrompt = await this.#readSystemPrompt(); // {§card-read-per-wake}
+        const systemPrompt = await this.#readSystemPrompt(); // {§packet-inject}
         for (const { session_id: sessionId } of recipients) {
             // {§session-causal-admission}: the sender must finish its own
             // program while the recipient coalesces replies and conclusions.
@@ -855,7 +855,7 @@ export default class DrainSupervisor {
             return;
         }
 
-        const systemPrompt = await this.#readSystemPrompt(); // {§card-read-per-wake}
+        const systemPrompt = await this.#readSystemPrompt(); // {§packet-inject}
 
         // {§notifications}: publish the terminal stream fact
         // before settlement. Rechecked wait identities, not this event, decide
@@ -933,7 +933,7 @@ export default class DrainSupervisor {
         }
     }
 
-    // {§loop-status-notice} — the clock belongs to the durable park, not the client receipt.
+    // {§operation-results} — the clock belongs to the durable park, not the client receipt.
     async #emitLoopStatus(workspaceId: number, sessionId: number, loopId: number, status: 100 | 102 | 202): Promise<void> {
         const wait = status === 202 ? (await this.#lifecycle.parked(sessionId)).find(({ id }) => id === loopId) : null;
         if (wait === undefined) return;

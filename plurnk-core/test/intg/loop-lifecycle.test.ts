@@ -76,7 +76,7 @@ test("{§session-loop-lifecycle} loop transitions are guarded and terminal state
     }
 });
 
-test("{§problems-functionality} structured cancellation atomically claims the unresolved descendant tree", async () => {
+test("{§operation-results} structured cancellation atomically claims the unresolved descendant tree", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `cancel-tree-${crypto.randomUUID()}`);
@@ -103,7 +103,7 @@ test("{§problems-functionality} structured cancellation atomically claims the u
             assert.equal(loop.result.status, 499);
             assert.equal(loop.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
             assert.equal(loop.result.problem?.instance, `ops://${loop.sessionId === child ? "child" : "grandchild"}/1`);
-            assert.equal(loop.result.problem?.detail, "The session scope was cancelled: scope abandoned."); // {§problems-functionality}
+            assert.equal(loop.result.problem?.detail, "The session scope was cancelled: scope abandoned."); // {§operation-results}
             assert.equal(loop.result.problem?.reason, "scope abandoned");
             assert.equal(loop.result.problem?.stage, "loop");
             assert.equal(loop.result.problem?.retryable, false);
@@ -1491,7 +1491,7 @@ for (const pending of [false, true]) {
     });
 }
 
-test("{§message-loop-containment} boot closes an open operation turn even when its loop already parked", async () => {
+test("{§message-arrival} boot closes an open operation turn even when its loop already parked", async () => {
     const db = await openMigrated();
     const mock = new Mock({ contextWindow: 16384, responses: [] });
     ProviderInstantiate.registerInstance(mock, providerSpec);
@@ -1516,7 +1516,7 @@ test("{§message-loop-containment} boot closes an open operation turn even when 
 });
 
 for (const staged of ["loop", "messages"] as const) {
-    test(`{§message-loop-containment}: boot completes recovery with ${staged} staged without replay`, async () => {
+    test(`{§message-arrival}: boot completes recovery with ${staged} staged without replay`, async () => {
         const db = await openMigrated();
         const firstProvider = new Mock({
             contextWindow: 16384,
@@ -2054,7 +2054,7 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
     const release = Promise.withResolvers<void>();
     const build = PacketBuilder.prototype.buildRequestPacket;
     t.mock.method(PacketBuilder.prototype, "buildRequestPacket", async function (this: PacketBuilder, ...args: Parameters<typeof build>) {
-        // The initialization turn builds packets too ({§context-fit}); the witness holds the inference turn's.
+        // The initialization turn builds packets too ({§tokenomics}); the witness holds the inference turn's.
         if (args[0].currentTurnSeq > 1) {
             preparing.resolve();
             await release.promise;
@@ -2127,7 +2127,7 @@ test("{§loop-completion}: cancelling a live loop records who and why", async (a
             );
             const cancelled = notes.find((n) => n.result.status === 499);
             assert.equal(cancelled?.result.problem?.type, "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled");
-            assert.equal(cancelled?.result.problem?.detail, "The session scope was cancelled: operator redirected the task."); // {§problems-functionality}
+            assert.equal(cancelled?.result.problem?.detail, "The session scope was cancelled: operator redirected the task."); // {§operation-results}
             assert.equal(cancelled?.result.problem?.reason, "operator redirected the task");
             assert.equal(cancelled?.result.problem?.stage, "loop");
             assert.equal(cancelled?.result.problem?.retryable, false);
@@ -3995,7 +3995,7 @@ for (const mode of ["cancel", "cancel-wrapped", "cancel-context", "deadline", "d
             const cancelled = deadline || mode.startsWith("cancel");
             const reason = deadline ? LOOP_TIMEOUT_REASON : new Error("owner cancelled preparation");
             let thrown: unknown;
-            // {§context-fit} — initialization measures its own rows through the same builder; the failure under
+            // {§tokenomics} — initialization measures its own rows through the same builder; the failure under
             // test belongs to the inference turn's preparation, after initialization completed.
             const build = PacketBuilder.prototype.buildRequestPacket;
             t.mock.method(PacketBuilder.prototype, "buildRequestPacket", async function (this: PacketBuilder, args: Parameters<PacketBuilder["buildRequestPacket"]>[0]) {
@@ -4038,7 +4038,7 @@ for (const mode of ["cancel", "cancel-wrapped", "cancel-context", "deadline", "d
 });
 
 describe("turns", () => {
-// {§packet-items} — the stored bag carries no sections; they are rows.
+// {§packet} — the stored bag carries no sections; they are rows.
 const MIN_PACKET = JSON.stringify({
     weight: 0,
     attributions: [],
@@ -4058,7 +4058,7 @@ const setup = async () => {
     return { db, loopId };
 };
 
-test("{§packet-items} turns: table is STRICT", async () => {
+test("{§packet} turns: table is STRICT", async () => {
     const { db } = await setup();
     try {
         const row = await db.test_turns_table_sql.get<{ sql: string }>();
@@ -4066,7 +4066,7 @@ test("{§packet-items} turns: table is STRICT", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: insert with required fields — defaults populate", async () => {
+test("{§packet} turns: insert with required fields — defaults populate", async () => {
     const { db, loopId } = await setup();
     try {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
@@ -4084,12 +4084,12 @@ test("{§packet-items} turns: insert with required fields — defaults populate"
         assert.match(row?.completed_at ?? "", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
         assert.equal(row?.status, 200);
         assert.equal(row?.usage_curation_budget, null);
-        // {§packet-items} — read back through turn_packets, the bag carries its (empty) sections.
+        // {§packet} — read back through turn_packets, the bag carries its (empty) sections.
         assert.deepEqual(JSON.parse(row?.packet ?? "null"), { ...JSON.parse(MIN_PACKET), sections: [] });
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: status range CHECK", async () => {
+test("{§packet} turns: status range CHECK", async () => {
     const { db, loopId } = await setup();
     try {
         for (const [seq, status] of [[1, 100], [2, 200], [3, 499], [4, 599]] as const) {
@@ -4104,7 +4104,7 @@ test("{§packet-items} turns: status range CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: sequence < 1 rejected by CHECK", async () => {
+test("{§packet} turns: sequence < 1 rejected by CHECK", async () => {
     const { db, loopId } = await setup();
     try {
         for (const bad of [0, -1]) {
@@ -4116,7 +4116,7 @@ test("{§packet-items} turns: sequence < 1 rejected by CHECK", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: (loop_id, sequence) UNIQUE", async () => {
+test("{§packet} turns: (loop_id, sequence) UNIQUE", async () => {
     const { db, loopId } = await setup();
     try {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
@@ -4127,7 +4127,7 @@ test("{§packet-items} turns: (loop_id, sequence) UNIQUE", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: sequence resets per loop", async () => {
+test("{§packet} turns: sequence resets per loop", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-turns-crossloop");
@@ -4141,7 +4141,7 @@ test("{§packet-items} turns: sequence resets per loop", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: loop_id NOT NULL", async () => {
+test("{§packet} turns: loop_id NOT NULL", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -4151,7 +4151,7 @@ test("{§packet-items} turns: loop_id NOT NULL", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: status NOT NULL", async () => {
+test("{§packet} turns: status NOT NULL", async () => {
     const { db, loopId } = await setup();
     try {
         await assert.rejects(
@@ -4161,7 +4161,7 @@ test("{§packet-items} turns: status NOT NULL", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: NULL packet means no model request was assembled", async () => {
+test("{§packet} turns: NULL packet means no model request was assembled", async () => {
     const { db, loopId } = await setup();
     try {
         await db.test_turns_insert_missing_packet.run({ loop_id: loopId, sequence: 1, status: 200 });
@@ -4170,7 +4170,7 @@ test("{§packet-items} turns: NULL packet means no model request was assembled",
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: packet CHECK enforces the request/admitted-response root algebra", async () => {
+test("{§packet} turns: packet CHECK enforces the request/admitted-response root algebra", async () => {
     const { db, loopId } = await setup();
     try {
         const invalid = [
@@ -4180,7 +4180,7 @@ test("{§packet-items} turns: packet CHECK enforces the request/admitted-respons
             JSON.stringify({ tokens: 0 }),
             JSON.stringify({ tokens: 0, sections: [], assistant: { content: "", ops: [], reasoning: null } }),
             JSON.stringify({ tokens: 0, sections: [], assistantRaw: null }),
-            // {§packet-items} — sections never ride in the bag
+            // {§packet} — sections never ride in the bag
             JSON.stringify({ weight: 0, sections: [], attributions: [] }),
         ];
         for (const [index, packet] of invalid.entries()) {
@@ -4193,7 +4193,7 @@ test("{§packet-items} turns: packet CHECK enforces the request/admitted-respons
     } finally { await db.close(); }
 });
 
-test("{§packet-items} Turn: every non-model producer uses the same operation-turn lifecycle", async () => {
+test("{§packet} Turn: every non-model producer uses the same operation-turn lifecycle", async () => {
     const { db, loopId } = await setup();
     try {
         for (const [index, producer] of (["client", "_plurnk"] as const).entries()) {
@@ -4221,7 +4221,7 @@ test("{§packet-items} Turn: every non-model producer uses the same operation-tu
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: producer and kind are required and reject incoherent identities", async () => {
+test("{§packet} turns: producer and kind are required and reject incoherent identities", async () => {
     const { db, loopId } = await setup();
     try {
         await assert.rejects(
@@ -4250,7 +4250,7 @@ test("{§packet-items} turns: producer and kind are required and reject incohere
     } finally { await db.close(); }
 });
 
-test("{§packet-items} Turn: producer is immutable and model calls require inference", async () => {
+test("{§packet} Turn: producer is immutable and model calls require inference", async () => {
     const { db, loopId } = await setup();
     try {
         const operation = await Turn.open(db, { loopId, producer: "client", kind: "operation" });
@@ -4300,7 +4300,7 @@ test("{§turn-record} inference history prevents changing the turn producer", as
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: malformed JSON in packet rejected", async () => {
+test("{§packet} turns: malformed JSON in packet rejected", async () => {
     const { db, loopId } = await setup();
     try {
         await assert.rejects(
@@ -4310,7 +4310,7 @@ test("{§packet-items} turns: malformed JSON in packet rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: loop_id FK", async () => {
+test("{§packet} turns: loop_id FK", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -4320,7 +4320,7 @@ test("{§packet-items} turns: loop_id FK", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: ON DELETE CASCADE via loop", async () => {
+test("{§packet} turns: ON DELETE CASCADE via loop", async () => {
     const { db, loopId } = await setup();
     try {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
@@ -4331,7 +4331,7 @@ test("{§packet-items} turns: ON DELETE CASCADE via loop", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: CASCADE chain workspace→sessions→loops→turns", async () => {
+test("{§packet} turns: CASCADE chain workspace→sessions→loops→turns", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-turns-fullchain");
@@ -4344,7 +4344,7 @@ test("{§packet-items} turns: CASCADE chain workspace→sessions→loops→turns
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: curation budget is a positive optional gauge denominator", async () => {
+test("{§packet} turns: curation budget is a positive optional gauge denominator", async () => {
     const { db, loopId } = await setup();
     try {
         for (const curationBudget of [0, -1]) {
@@ -4373,7 +4373,7 @@ test("{§packet-items} turns: curation budget is a positive optional gauge denom
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: negative version rejected", async () => {
+test("{§packet} turns: negative version rejected", async () => {
     const { db, loopId } = await setup();
     try {
         await assert.rejects(
@@ -4383,7 +4383,7 @@ test("{§packet-items} turns: negative version rejected", async () => {
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: unique index turns_loop_id_sequence exists", async () => {
+test("{§packet} turns: unique index turns_loop_id_sequence exists", async () => {
     const { db } = await setup();
     try {
         const row = await db.test_turns_index_meta.get<{ name: string; sql: string }>({ name: "turns_loop_id_sequence" });
@@ -4392,7 +4392,7 @@ test("{§packet-items} turns: unique index turns_loop_id_sequence exists", async
     } finally { await db.close(); }
 });
 
-test("{§packet-items} turns: id auto-assigns on insert", async () => {
+test("{§packet} turns: id auto-assigns on insert", async () => {
     const { db, loopId } = await setup();
     try {
         await db.test_turns_insert.run({ loop_id: loopId, sequence: 1, status: 200, packet: MIN_PACKET });
@@ -4514,7 +4514,7 @@ const disableOptimisticWait = (t: test.TestContext) => {
     });
 };
 
-test("{§notice-drain-on-read} cancelling a parked loop releases its undelivered feedback", async (t) => {
+test("{§operation-results} cancelling a parked loop releases its undelivered feedback", async (t) => {
     disableOptimisticWait(t);
     serverProposals(t, "accept");
     const pushed = t.mock.method(NoticeChannel.prototype, "push");

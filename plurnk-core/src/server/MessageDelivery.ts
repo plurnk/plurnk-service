@@ -71,7 +71,7 @@ export default class MessageDelivery {
         const { providerSpec: selection, effort } = generationPolicy;
         // {§session-model-selection} — the session's persistent spawn override.
         const childSelection = await this.#sessionModels.resolveSessionSpawnModel(sessionId, childSelector);
-        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§packet-inject}
         // {§operator-config-workspace-settings} — the operator ceiling clamps a per-call maxTurns; a
         // seam caller must not bypass operator policy (inject only DEFAULTS from env, never clamps).
         const ceiling = Knob.integer("PLURNK_SERVICE_MAX_TURNS", -1);
@@ -112,7 +112,7 @@ export default class MessageDelivery {
             throw new Error(`injectSession: source loop ${sourceLoopId} does not belong to workspace ${workspaceId}`);
         }
         const source = await this.#messageSource(workspaceId, sourceLoopId, sender.session_id, sessionId);
-        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§card-read-per-wake}
+        const systemPrompt = await readFile(Paths.instructionsSystem, "utf8"); // {§packet-inject}
         let providerSpec: ProviderSpec;
         let childProviderSpec: ProviderSpec | null;
         let effort: Effort;

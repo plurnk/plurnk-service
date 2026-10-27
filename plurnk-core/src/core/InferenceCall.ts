@@ -23,7 +23,7 @@ export class ProviderAccountingIntegrityError extends Error {
 
 // One concurrency-safe logical inference ledger. Provider adapters may open
 // several ordered physical requests beneath it; each occurrence becomes
-// durable before I/O and settles exactly once. {§tokenomics-provider-usage}
+// durable before I/O and settles exactly once. {§tokenomics}
 export default class InferenceCall {
     readonly id: number;
     readonly sequence: number;

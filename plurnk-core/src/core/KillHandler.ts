@@ -76,7 +76,7 @@ export default class KillHandler {
         }
         const binding = await ResourceBindings.resolve(path, ctx);
         const manifest = binding?.manifest;
-        // {§kill-pattern} — a pattern selects log rows or an entry's lines; both leave before this
+        // {§op-invariants} — a pattern selects log rows or an entry's lines; both leave before this
         // point. A KILL that still carries one addresses a session, a stream, or a scheme with no
         // lines, and is refused rather than silently widened to its whole target.
         if (statement.matcher !== null) {

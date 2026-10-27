@@ -1,4 +1,4 @@
-// {§edit-pattern} {§kill-pattern} {§copy} — pure expansion of matcher evidence into edits.
+// {§edit-pattern} {§op-invariants} {§copy} — pure expansion of matcher evidence into edits.
 import test from "node:test";
 import assert from "node:assert/strict";
 import PatternEdits from "./pattern-edits.ts";

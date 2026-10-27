@@ -13,13 +13,13 @@ sources into a consuming package would create a second teaching owner.
 
 | Source                          | Membership | Meta-owned content                                 | Core read boundary                                      |
 | ------------------------------- | ---------- | -------------------------------------------------- | ------------------------------------------------------- |
-| `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§policy-sections}                     |
-| `recap.md`                       | Required   | Optional default operational Recap                 | Per-packet user-slot footer {§recap}                    |
-| `docs/session.md`                | Required   | Deep reference prose for the reserved session scheme | Pull-doc materialization {§schemes-directory}           |
+| `POLICY.md`                     | Required   | First-run default operating policy                 | Policy bootstrap {§packet-inject}                     |
+| `recap.md`                       | Required   | Optional default operational Recap                 | Per-packet user-slot footer {§packet-inject}                    |
+| `docs/session.md`                | Required   | Deep reference prose for the reserved session scheme | Pull-doc materialization {§tools-resource-materialization}           |
 | `docs/delegation.md`            | Required   | Session delegation, lifecycle, and messaging | Pull-doc materialization with the session scheme |
 | `docs/pattern.md`               | Required   | Operation-neutral pattern selection and literal source editing | Pull-doc materialization independent of schemes |
-| `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§plurnk-skill} |
-| `skills/plurnk/references/extensibility.md` | Required | How integrations and extensions reach the model, and each kind's contract | Skill chapter {§plurnk-skill} |
+| `skills/plurnk/SKILL.md`         | Required   | Standard Plurnk skill entry and chapter directory | Service-provided skill {§tools-resource-materialization} |
+| `skills/plurnk/references/extensibility.md` | Required | How integrations and extensions reach the model, and each kind's contract | Skill chapter {§tools-resource-materialization} |
 
 Every teaching source, and every package's `docs/*.md`, is written to
 `TEACHING.md`, the style rule for model-facing prose: mechanism over advice,
@@ -46,7 +46,7 @@ scheme, when present.
 ## §skills-installation-boundary Skill composition and installation
 
 Meta authors the standard Plurnk `SKILL.md`; Core composes its resource tree
-from package-owned references and generated resources ({§plurnk-skill}). Skill
+from package-owned references and generated resources ({§tools-resource-materialization}). Skill
 discovery and enablement use the same `skills` Functionality family as installed
 skills ({§skills-functionality}). Neither package copies skills into universal roots
 or invokes an installer merely to expose the service's own reference material.

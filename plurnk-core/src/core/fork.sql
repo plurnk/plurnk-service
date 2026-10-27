@@ -47,7 +47,7 @@ BEGIN
     WHERE ol.session_id = NEW.parent_session_id
     ORDER BY t.id;
 
-    -- {§packet-items}: a turn's composition is copied; the items are shared by hash.
+    -- {§packet}: a turn's composition is copied; the items are shared by hash.
     INSERT INTO turn_sections (turn_id, position, name, slot, header, weight)
     SELECT nt.id, ts.position, ts.name, ts.slot, ts.header, ts.weight
     FROM turn_sections ts

@@ -509,7 +509,7 @@ test("{§operator-config-workspace-settings} PLURNK_SERVICE_GIT_ALLOWED=0 denies
     });
 });
 
-test("{§membership-binary-sniff}: NUL-headed content is binary regardless of the extension label", async () => {
+test("{§tokenomics}: NUL-headed content is binary regardless of the extension label", async () => {
     // Byte evidence overrides the label before materialization and derivation.
     await withGitWorkspace(async (root, ctx, db) => {
         const evil = "blob.md"; // the most trusted-looking extension
@@ -1414,7 +1414,7 @@ test("{§membership} {§executor-spawn-account}: the daemon trusts the repositor
 });
 
 describe("git-state", () => {
-// SPEC {§packet-git-status} — one Git snapshot supplies the compact packet
+// SPEC {§packet-inject} — one Git snapshot supplies the compact packet
 // summary and exact per-path state for causal filesystem observations. GitState shells
 // `git status` (service-side, the same surface membership uses), gated by
 // PLURNK_SERVICE_GIT_ALLOWED (the hard service ceiling) + a git worktree.
@@ -1433,7 +1433,7 @@ describe("git-state", () => {
 
 const execFileP = promisify(execFile);
 
-test("{§packet-git-status}: unborn and detached heads are not invented branch names", async () => {
+test("{§packet-inject}: unborn and detached heads are not invented branch names", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-head-"));
     const db = await openMigrated();
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;
@@ -1540,7 +1540,7 @@ test("{§operator-config-workspace-settings} GitState.status reads the working t
     }
 });
 
-test("{§packet-git-status}: tracking, renames, conflicts, and NUL-safe paths survive porcelain v2", async () => {
+test("{§packet-inject}: tracking, renames, conflicts, and NUL-safe paths survive porcelain v2", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-git-paths-"));
     const db = await openMigrated();
     const orig = process.env.PLURNK_SERVICE_GIT_ALLOWED;
@@ -1614,14 +1614,14 @@ describe("instructions-exclusions", () => {
 
 const execFileP = promisify(execFile);
 
-test("{§members-configuration} an ignored or excluded AGENTS.md is never projected; the standard does not outrank .gitignore or an exclusion", async () => {
+test("{§tools-resource-materialization} an ignored or excluded AGENTS.md is never projected; the standard does not outrank .gitignore or an exclusion", async () => {
     const priorAllowed = process.env.PLURNK_SERVICE_GIT_ALLOWED;
     const priorAuto = process.env.PLURNK_SERVICE_GIT_AUTO;
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";
     process.env.PLURNK_SERVICE_GIT_AUTO = "1";
     const priorMembers = process.env.PLURNK_MEMBERS_no_hidden;
     const priorEnabled = process.env.PLURNK_MEMBERS_ENABLED;
-    process.env.PLURNK_MEMBERS_no_hidden = "!packages/hidden/**";   // an operator exclusion ({§members-configuration})
+    process.env.PLURNK_MEMBERS_no_hidden = "!packages/hidden/**";   // an operator exclusion ({§tools-resource-materialization})
     process.env.PLURNK_MEMBERS_ENABLED = "1";
     const dir = await mkdtemp(join(tmpdir(), "plurnk-instructions-"));
     try {

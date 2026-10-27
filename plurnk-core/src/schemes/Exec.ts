@@ -329,7 +329,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-lifetime}
     }
 
-    // {§problems-exec} A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
+    // {§operation-results} A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
     static #refuse(
         runtime: string,
         code: string,

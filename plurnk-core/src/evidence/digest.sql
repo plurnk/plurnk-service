@@ -25,7 +25,7 @@ FROM turns t ORDER BY t.loop_id, t.sequence;
 SELECT content FROM turn_sources WHERE turn_id = $turn_id AND kind = 'reasoning';
 
 -- PREP: digest_turn_packet
--- {§packet-items}: only the requested packet is assembled; retain its exact bag on validation failure.
+-- {§packet}: only the requested packet is assembled; retain its exact bag on validation failure.
 SELECT tp.packet, t.packet AS packet_bag
 FROM turn_packets tp JOIN turns t ON t.id = tp.id WHERE tp.id = $turn_id;
 
@@ -130,7 +130,7 @@ ORDER BY session_id, n DESC, op;
 
 -- PREP: digest_emissions
 -- {§turn-source-resources}: every emission a session's rows announced, retired ones included: a stored request
--- places exactly the emission rows its own log section carried ({§packet-wire-envelope}).
+-- places exactly the emission rows its own log section carried ({§packet-assembly}).
 SELECT le.session_id,
        l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
        json_extract(le.rx, '$.content') AS content,

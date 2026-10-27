@@ -14,5 +14,5 @@ export default class MimetypeBinary {
         return (await mimetypes.classify(mimetype)).binary;
     }
     static isJsonMimetype(mimetype: string): boolean { return MimetypeClassifier.isJson(mimetype); }
-    static normalizeAutoTextMimetype(mimetype: string | null | undefined): string { return MimetypeClassifier.normalizeAutoText(mimetype); } // auto-text → the text/markdown primitive — {§markdown-primitive-text-markdown-normalize}
+    static normalizeAutoTextMimetype(mimetype: string | null | undefined): string { return MimetypeClassifier.normalizeAutoText(mimetype); } // auto-text → the text/markdown primitive — {§zero-width-column-one-insert}
 }

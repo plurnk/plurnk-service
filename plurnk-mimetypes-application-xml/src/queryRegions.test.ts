@@ -48,7 +48,7 @@ describe("{§xml-lexical-spans} structural match regions", () => {
     });
 });
 
-// {§slice-semantics-compose-pattern} — serialized values are not source spans.
+// {§zero-width-column-one-insert} — serialized values are not source spans.
 for (const { source, pattern, selected } of [
     { source: '<root><item>A</item><other>B</other></root>', pattern: '//item', selected: ['<item>A</item>'] },
     { source: '<root><item>A<b>B</b>C</item></root>', pattern: '//item/text()', selected: ['A', 'C'] },

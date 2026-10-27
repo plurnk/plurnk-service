@@ -14,14 +14,14 @@ export interface Readout {
     readonly gauge: string;
 }
 
-// {§context-gauge} — one measured JSON object: the packet's weight, the room, and the share of the room
+// {§tokenomics} — one measured JSON object: the packet's weight, the room, and the share of the room
 // that weight is, on every packet with a budget; the curation inventory joins only above the threshold.
-// Never a response allowance ({§output-allowance-notice}) and never a mandate.
+// Never a response allowance ({§operation-results}) and never a mandate.
 export default class BudgetReadout {
     static draft(budget: number | null): string {
         if (budget === null) return `{"tokens":${TOKENS_PLACEHOLDER}}`;
         BudgetReadout.#assertBudget(budget);
-        // A zero room has no share to state: every weight exceeds it ({§context-over-budget-row}).
+        // A zero room has no share to state: every weight exceeds it ({§tokenomics}).
         if (budget === 0) return `{"tokens":${TOKENS_PLACEHOLDER},"budget":0}`;
         return `{"tokens":${TOKENS_PLACEHOLDER},"budget":${budget},"percent":${PERCENT_PLACEHOLDER}}`;
     }
@@ -38,7 +38,7 @@ export default class BudgetReadout {
         return typeof budget === "number" ? budget : null;
     }
 
-    // {§tokenomics-render-weight-budget} — the widths only expand, so the final numeric substitutions
+    // {§tokenomics} — the widths only expand, so the final numeric substitutions
     // cannot change the measured packet length or oscillate.
     static resolve(
         template: string,
@@ -72,7 +72,7 @@ export default class BudgetReadout {
             const probe = BudgetReadout.#render(template, "0".repeat(tokensWidth), "0".repeat(percentWidth));
             const usage = BudgetReadout.#assertWeight(measurePacket(probe));
             const tokens = String(usage);
-            // {§context-gauge} — the share is the gauge's own final tokens over its budget, so it never
+            // {§tokenomics} — the share is the gauge's own final tokens over its budget, so it never
             // disagrees with the figures beside it.
             const percent = budget === null ? "" : String(Math.floor(usage * 100 / budget));
             const expandedTokens = Math.max(tokensWidth, tokens.length);

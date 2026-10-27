@@ -1,4 +1,4 @@
-// {§methods-workspace-create} {§context-fit}: client attachments are ordinary markerless READs
+// {§methods-workspace-create} {§tokenomics}: client attachments are ordinary markerless READs
 // dispatched before inference. Each lands whole when it fits the remaining budget, or as a 413
 // with the prefix that fits. Source content remains readable; no recovery turn is manufactured.
 import assert from "node:assert/strict";
@@ -67,7 +67,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     assert.ok(turns.every(({ kind }) => kind !== "overflow"), "no recovery turn is manufactured");
     for (const { packet } of turns) {
         if (packet === null) continue;
-        assert.doesNotMatch(packetSection(JSON.parse(packet), "budget"), /WARNING|MUST/u, "the gauge carries no mandate ({§context-gauge})");
+        assert.doesNotMatch(packetSection(JSON.parse(packet), "budget"), /WARNING|MUST/u, "the gauge carries no mandate ({§tokenomics})");
     }
     const firstModel = turns.find(({ producer, kind, packet }) => producer === "model" && kind === "inference" && packet !== null);
     assert.ok(firstModel?.packet, "the model received a request");
@@ -99,7 +99,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
         else assert.ok((rx.problem.delivered ?? 0) > 0 && expected.startsWith(rx.content), `${row.pathname}: a receipt's body is the prefix of lines that fit`);
         assert.equal(rx.problem.type, RESULT_EXCEEDS_BUDGET);
         assert.ok(rx.problem.lines > 0 && rx.problem.tokens > rx.problem.remaining, "the receipt names the size and what remained");
-        assert.match(rx.problem.detail, /READ a range, or KILL first\.$/u, "the receipt names the verbs ({§context-verbs})");
+        assert.match(rx.problem.detail, /READ a range, or KILL first\.$/u, "the receipt names the verbs ({§tokenomics})");
         const coordinate: string = `log:///${loop.sequence}/${firstModel.sequence}/${row.sequence}/READ`;
         const visible: Record<string, unknown> | undefined = projected.find((entry) => entry.logPath === coordinate);
         if (visible !== undefined && rx.content === null) assert.equal("body" in visible, false, "the body it could not hold is absent from the request");
@@ -112,7 +112,7 @@ export const assertContextFitEvidence = async ({ db, daemon, workspaceId, sessio
     const [recovered] = await daemon.dispatchClientAction({
         workspaceId, actor: TEST_OWNER, contextSessionId: sessionId, statements: [readStmt(localPath("incident.txt"), { marks: [2] })],
     });
-    assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§context-verbs})");
+    assert.equal(recovered.status, 200, "the source stays readable by range whatever its row's fate ({§tokenomics})");
     assert.match(String(recovered.content), new RegExp(fixture.answer, "u"));
     if (incident.active === 0) {
         const effects = await db.test_log_curation_effects_by_session.all<{

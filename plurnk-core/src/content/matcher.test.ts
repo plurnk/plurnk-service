@@ -1,19 +1,12 @@
-// Unit tests for matcher.ts. Dialect dispatch, projection, AND source-line
-// provenance all live in @plurnk/plurnk-mimetypes, reached through the single
-// high-level Mimetypes.query(input, ParsedBodyMatcher) ({§mimetype-query}). What
-// plurnk-service owns the orchestration around that call: building the parsed
-// matcher, preserving source/readable coordinates, and mapping statuses.
-
-import test from "node:test";
-import { strict as assert } from "node:assert";
-import type { MatcherBody } from "@plurnk/plurnk-contracts";
-import type { Mimetypes, QueryMatch, ParsedBodyMatcher } from "@plurnk/plurnk-mimetypes";
-import { InvalidExpressionError, QueryParseFailureError } from "@plurnk/plurnk-mimetypes";
+import test, { describe } from "node:test";
 import Matcher from "./matcher.ts";
 import MimetypeBinary from "./mimetype-binary.ts";
+import PathMimetype from "./path-mimetype.ts";
+import { strict as assert } from "node:assert";
+import { type MatcherBody } from "@plurnk/plurnk-contracts";
+import { Mimetypes, type QueryMatch, type ParsedBodyMatcher, InvalidExpressionError, QueryParseFailureError } from "@plurnk/plurnk-mimetypes";
 
-// Stub the one mimetypes method matcher.ts invokes. The impl receives
-// (input, matcher) and returns (or throws) what the mimetypes framework would.
+describe("matcher", () => {
 const stubQuery = (impl: (input: { content: string; hint: string }, matcher: ParsedBodyMatcher) => Promise<QueryMatch[]>): Mimetypes =>
     ({ query: impl } as unknown as Mimetypes);
 
@@ -50,7 +43,7 @@ test("{§mimetype-query} regex hits select the resource and retain readable-text
     assert.equal(r.body, undefined);
 });
 
-test("{§matcher-result-resource-selection} matcher applied with zero hits → 204, no body", async () => {
+test("{§matcher-dispatch} matcher applied with zero hits → 204, no body", async () => {
     const r = await Matcher.matchAgainstContent(regexBody("zzz"), "alpha\nbeta", "text/markdown",
         stubQuery(async () => []));
     assert.equal(r.status, 204);
@@ -58,7 +51,7 @@ test("{§matcher-result-resource-selection} matcher applied with zero hits → 2
     assert.equal(r.body, undefined);
 });
 
-test("{§matcher-result-resource-selection} structural hits expose coordinates rather than extracted values", async () => {
+test("{§matcher-dispatch} structural hits expose coordinates rather than extracted values", async () => {
     // jsonpath $.users[*] over multi-line JSON: each object resolves to the line it sits on.
     const content = '{\n  "users": [\n    { "name": "Alice", "role": "admin" },\n    { "name": "Bob" }\n  ]\n}';
     const r = await Matcher.matchAgainstContent(
@@ -132,7 +125,7 @@ test("{§mimetype-query} a scalar retains its locator without fabricated coordin
     assert.deepEqual(r.matches, [{ locator: "count(//user)" }]);
 });
 
-test("{§matcher-dispatch-203-soft-fallback} source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {
+test("{§matcher-dispatch} source unparseable for its mimetype → 203 soft fallback with raw content + reason", async () => {
     const r = await Matcher.matchAgainstContent(
         { dialect: "jsonpath", raw: "$.field" }, "{broken json", "application/json",
         stubQuery(async () => { throw new QueryParseFailureError({ mimetype: "application/json", cause: new Error("unexpected token } in JSON") }); }));
@@ -184,4 +177,27 @@ test("{§find} #449: one crashing candidate drops out; the operation and its sib
     assert.equal(allCrash.status, 415);
     assert.equal(allCrash.problem?.title, "Content handler crashed");
     assert.match(allCrash.problem?.detail, /text\/html content handler failed on one\.html/);
+});
+});
+
+describe("path-mimetype", async () => {
+const mimetypes = new Mimetypes();
+await mimetypes.ready();
+
+test("{§zero-width-column-one-insert} PathMimetype.resolveEntryMimetype: no extension → scheme default", async () => {
+    assert.equal(await PathMimetype.resolveEntryMimetype("users", "text/markdown", mimetypes), "text/markdown");
+    assert.equal(await PathMimetype.resolveEntryMimetype("notes", "text/plain", mimetypes), "text/plain");
+});
+
+test("{§zero-width-column-one-insert} PathMimetype.resolveEntryMimetype: leading-dot file is not an extension", async () => {
+    // `.env` is a filename, not an extension; falls back to scheme default.
+    assert.equal(await PathMimetype.resolveEntryMimetype(".env", "text/markdown", mimetypes), "text/markdown");
+});
+
+test("{§zero-width-column-one-insert} PathMimetype.resolveEntryMimetype: unknown extension → scheme default", async () => {
+    // .xyz isn't a registered mimetype handler; detect returns null;
+    // resolver falls back to scheme default.
+    const result = await PathMimetype.resolveEntryMimetype("data.xyz", "text/markdown", mimetypes);
+    assert.equal(result, "text/markdown");
+});
 });

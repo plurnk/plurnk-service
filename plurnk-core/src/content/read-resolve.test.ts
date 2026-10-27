@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import ReadResolve from "./read-resolve.ts";
 
-test("{§log-kill-scope} {§markerless-first-page}: a markerless READ of a visible-line selection returns every retained line", async () => {
+test("{§log-kill-scope} {§packet}: a markerless READ of a visible-line selection returns every retained line", async () => {
     const lines = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`);
     const visibleLines = Array.from({ length: 24 }, (_, i) => i + 17);
     const result = await ReadResolve.resolve({ content: lines.join("\n"), mimetype: "text/plain", visibleLines, lineMarker: null });
@@ -34,7 +34,7 @@ test("{§log-kill-scope}: sparse character scopes retain honest boundaries and s
     assert.equal((await ReadResolve.resolve({ content, mimetype: "text/plain", visibleLines: [], lineMarker: null })).status, 204);
 });
 
-test("{§markerless-first-page}: a markerless READ is the first page, bounded by lines and characters at a line boundary; explicit scopes stay exact", async () => {
+test("{§packet}: a markerless READ is the first page, bounded by lines and characters at a line boundary; explicit scopes stay exact", async () => {
     const lines = Array.from({ length: 10 }, (_, index) => JSON.stringify({ index, text: "x".repeat(1900) }));
     const content = lines.join("\n");
     const chars = Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS);
@@ -51,7 +51,7 @@ test("{§markerless-first-page}: a markerless READ is the first page, bounded by
     assert.equal(selected.content, lines.slice(1, 4).join("\n"), "explicit lines are exactly what was asked");
 });
 
-test("{§markerless-first-page}: a single long line under the character bound and CRLF text return whole, separators and all", async () => {
+test("{§packet}: a single long line under the character bound and CRLF text return whole, separators and all", async () => {
     const emoji = await ReadResolve.resolve({ content: "😀".repeat(3000), mimetype: "text/plain", lineMarker: null });
     assert.equal(emoji.status, 200);
     assert.equal(emoji.content, "😀".repeat(3000), "the bound counts code points, and three thousand fit");

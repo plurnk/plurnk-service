@@ -197,7 +197,7 @@ Vocabulary follows the standard of its audience.
 | `packet` | The assembled address space, a kernel concept rather than merely a provider request. |
 | `costUsd` | No standard cost field exists; the explicit currency avoids implied units, and the value remains an exact decimal string. |
 | `curationWeight` / `curationBudget` | Explicitly distinguish Core's model-independent context-shaping facts from physical provider tokens. |
-| the `chars/2` curation ruler | Model-agnostic by design ({§tokenomics-agnostic-ruler}); it is never presented as a tokenizer. |
+| the `chars/2` curation ruler | Model-agnostic by design ({§tokenomics}); it is never presented as a tokenizer. |
 
 ## Extension vocabulary
 
@@ -452,16 +452,16 @@ of the surrounding filesystem or external services.
 | Data | Authority and lifetime |
 | --- | --- |
 | Model working context | Log projections; curation changes visibility, not the recorded event or its source ({§log-history-projection}, {§log-kill-scope}). |
-| Accepted messages, operations, approval decisions and turn sources | Core's durable records; independent of curation, but containing-object deletion can cascade history. The approval is recorded before application and remains distinct from its result ({§message-projection}, {§turn-source-resources}, {§log-history-projection}, {§proposal}). |
+| Accepted messages, operations, approval decisions and turn sources | Core's durable records; independent of curation, but containing-object deletion can cascade history. The approval is recorded before application and remains distinct from its result ({§message-arrival}, {§turn-source-resources}, {§log-history-projection}, {§proposal}). |
 | Database commits | Connection-time WAL synchronization governs crash/power-loss durability, separately from retention and backups ({§db-durability}). |
-| Provider requests and accounting | One record per physical request, including failed requests and unknown usage; forked history does not create new spend ({§tokenomics-provider-usage}). |
+| Provider requests and accounting | One record per physical request, including failed requests and unknown usage; forked history does not create new spend ({§tokenomics}). |
 | Packet compositions and call payloads | Retained according to count/age policy. Logical-response and physical-request payloads expire together; request identities and accounting remain, including failures and unknown costs ({§content-store}, {§provider-request-evidence}). |
 | Stored resource bodies and derived indexes | Current channels and their references retain content; unreferenced bodies and indexes may be collected. Deduplication supplies identity, not a promise of past versions ({§content-store}). |
 | Native attachment snapshots | READ, message and packet references retain bytes independently of curation or source deletion. Publication protects in-flight captures; only unreferenced snapshots are collected ({§content-store}). |
 | Project files | The filesystem is authoritative; captured revisions guard native mutations and complete-file publication avoids truncation ({§file-snapshot-revision}, {§file-snapshot-revision}). Internal commit serialization is not a session reservation or exclusion of external writers ({§file-snapshot-revision}, {§file-snapshot-revision}). SQLite commits and backups do not include project files. |
 | Configuration and credentials | Workspace/session overrides live in SQLite; service configuration and extension-owned files require separate backup. Schedules rearm from the present; interactive OAuth state is process-local and requires reauthorization ({§functionality-coordinator}, {§schedule-residency}, {§schedule-first-arming}, {§oauth-lifetime}). |
-| Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§session-causal-admission}, {§notice-drain-on-read}). |
-| Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share-scope}, {§share-snapshot}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |
+| Drains, live producers and notices | Process-local owners disappear on restart; recovery settles interrupted work without claiming its unobserved outcome ({§session-causal-admission}, {§operation-results}). |
+| Diagnostic shares and backups | A share exports retained evidence; a SQLite snapshot preserves database state. Neither restores external effects ({§share}, {§share-snapshot}; [backup procedure](./plurnk-core/INSTALL.md#backup-and-restore)). |
 
 Audit claims name the evidence retained and its limits. Logical immutability through Plurnk's APIs
 and database guards is not tamper evidence against a host administrator. Session and owner addresses

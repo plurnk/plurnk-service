@@ -1,6 +1,6 @@
 // {§schedule-delivery} — the module inside a real daemon: a session adds a rule through the family
 // action, the occurrence fires, and the target session's log carries the message as an arrival row
-// from `schedule://<alias>` ({§message-causal-source}); the family's list names the next occurrence.
+// from `schedule://<alias>` ({§message-arrival}); the family's list names the next occurrence.
 import assert from "node:assert/strict";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import { mkdtemp, rm } from "node:fs/promises";

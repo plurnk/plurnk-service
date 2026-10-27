@@ -7,7 +7,7 @@
 SELECT COUNT(*) AS n FROM loops WHERE session_id = $session_id AND status = 102;
 
 -- PREP: engine_loop_usage
--- Latest packet-bearing model-turn gauge ({§tokenomics-client-gauge}), surfaced beside the derived
+-- Latest packet-bearing model-turn gauge ({§tokenomics}), surfaced beside the derived
 -- accounting projection on {§notifications}. Physical usage
 -- and capacity bind to the same latest completed emission call. A preflight
 -- rejection has capacity evidence but no physical input usage; neither fact

@@ -446,7 +446,7 @@ contract violation rather than silently ignored teaching.
 §executor-blank-invocation **A blank invocation is answered with its working form.** A refusal
 of an absent required body or target, or of an invocation that supplies neither, carries in
 `recovery` the invocation's copyable fence: its header and input preview, as the runtime document
-shows them ({§tools-resource-discovery}). A registry runtime named without a target answers with
+shows them ({§tools-resource-materialization}). A registry runtime named without a target answers with
 every enabled target's fence. Nothing runs.
 
 §executor-tool-registry A runtime representing a finite set of exact tools

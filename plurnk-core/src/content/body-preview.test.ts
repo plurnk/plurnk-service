@@ -12,7 +12,7 @@ for (const [name, text, maxLines, maxChars, expected] of [
     ["CRLF counts once", "before\r\n01234🙂7890\r\n", 10, 6, "🙂7890\r\n"],
     ["a separator at the bound", "oversized\r\n", 10, 1, "\r\n"],
 ] as const) {
-    test(`{§turn-source-resources} {§body-projection}: tail preview respects ${name} with a readable source scope`, async () => {
+    test(`{§turn-source-resources} {§packet}: tail preview respects ${name} with a readable source scope`, async () => {
         const original = process.env.PLURNK_SERVICE_PREVIEW_CHARS;
         process.env.PLURNK_SERVICE_PREVIEW_CHARS = String(maxChars);
         try {

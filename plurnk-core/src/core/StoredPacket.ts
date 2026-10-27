@@ -4,7 +4,7 @@ import { ATTACHMENT_KINDS, type AttachmentKind } from "./attachments.ts";
 
 export interface StoredPacketSection extends PacketSectionDraft {
     readonly weight: number;
-    // {§packet-items} — the blocks `content` is joined from (one blank line between them); present
+    // {§packet} — the blocks `content` is joined from (one blank line between them); present
     // on a packet assembled for storage, absent on one read back through turn_packets.
     readonly items?: readonly string[];
 }
@@ -47,7 +47,7 @@ export type DurablePacket = RequestPacket | AdmittedPacket;
 
 const own = (value: object, key: string): boolean => Object.hasOwn(value, key);
 
-// {§packet-stored-shape} — the one type and validation boundary for the
+// {§packet} — the one type and validation boundary for the
 // optional model-exchange record stored on a Turn.
 export default class StoredPacket {
     static admit(request: RequestPacket, assistant: PacketAssistant, assistantRaw: unknown): AdmittedPacket {
@@ -60,7 +60,7 @@ export default class StoredPacket {
         return packet;
     }
 
-    // {§packet-items} — the bag turns.packet stores: everything but the sections.
+    // {§packet} — the bag turns.packet stores: everything but the sections.
     static stringify(packet: DurablePacket): string {
         const { sections: _sections, ...record } = StoredPacket.assert(packet, "packet write");
         const encoded = JSON.stringify(record);
@@ -69,7 +69,7 @@ export default class StoredPacket {
         return encoded;
     }
 
-    // {§packet-items} — the sections as the write view takes them: `[{name, slot, header, weight,
+    // {§packet} — the sections as the write view takes them: `[{name, slot, header, weight,
     // items}]`, each section's items joining back to its exact content.
     static sections(packet: DurablePacket): string {
         const sections = StoredPacket.assert(packet, "packet write").sections.map((section) => {
@@ -127,7 +127,7 @@ export default class StoredPacket {
         return own(packet, "assistant");
     }
 
-    // `sections: "absent"` validates the stored bag ({§packet-items}); the default is a complete
+    // `sections: "absent"` validates the stored bag ({§packet}); the default is a complete
     // packet, in memory or assembled back through turn_packets.
     static assert(value: unknown, subject = "packet", options: { readonly sections?: "present" | "absent" } = {}): DurablePacket {
         const packet = StoredPacket.#record(value, subject);

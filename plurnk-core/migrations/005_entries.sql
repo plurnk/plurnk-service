@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS entry_channel_rows (
     weight   INTEGER NOT NULL DEFAULT 0   CHECK (weight >= 0),
     -- Line count of the body, kept at every write so a catalog lists extent without reading
     -- bodies: a trailing newline terminates the last line; empty content has none
-    -- ({§tokenomics-weight-stored-at-write}, {§logical-line-count}).
+    -- ({§tokenomics}, {§logical-line-count}).
     lines    INTEGER NOT NULL             CHECK (lines >= 0),
     -- Search derivation for this exact addressable channel representation.
     -- Content or mimetype changes invalidate it at the owning channel row.
@@ -271,7 +271,7 @@ BEGIN
 END;
 
 -- symbol_defs
--- &graph NODES ({§relation-indexed-dialects}, {§graph-relations}). Code symbol definitions, populated
+-- &graph NODES ({§matcher-dispatch}, {§matcher-dispatch}). Code symbol definitions, populated
 -- once per content-addressed derivation from mimetypes'
 -- `symbols` channel. Qualified path = container ? container || '.' || name : name.
 CREATE TABLE IF NOT EXISTS symbol_defs (
@@ -297,7 +297,7 @@ CREATE INDEX IF NOT EXISTS symbol_defs_name   ON symbol_defs (name);
 CREATE INDEX IF NOT EXISTS symbol_defs_source ON symbol_defs (derivation_id);
 
 -- symbol_refs
--- &graph EDGES ({§relation-indexed-dialects}, {§graph-relations}), from mimetypes' `references` channel.
+-- &graph EDGES ({§matcher-dispatch}, {§matcher-dispatch}), from mimetypes' `references` channel.
 -- name = edge TARGET; container = the SOURCE def's full qualified path (the
 -- &> join key; module-level → NULL); kind ∈ import|call|instantiate|inherit|
 -- type|use (frozen, edge metadata only — traversal is kind-agnostic).

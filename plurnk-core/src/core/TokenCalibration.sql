@@ -1,7 +1,7 @@
 -- TokenCalibration: measured weight against reported tokens, per model.
 
 -- PREP: engine_calibration_loop_sample
--- {§tokenomics-calibrated-readout} — the loop's latest settled emission response from the model,
+-- {§tokenomics} — the loop's latest settled emission response from the model,
 -- pairing the request's measured packet weight with the provider's reported prompt count. Only rows
 -- where both figures are positive.
 SELECT json_extract(t.packet, '$.weight') AS weight, pr.usage_input AS reported
@@ -15,7 +15,7 @@ ORDER BY pr.id DESC
 LIMIT 1;
 
 -- PREP: engine_calibration_model_sample
--- {§tokenomics-calibrated-readout} — the model's latest settled emission response across any loop
+-- {§tokenomics} — the model's latest settled emission response across any loop
 -- or session, for a loop that has not settled one of its own.
 SELECT json_extract(t.packet, '$.weight') AS weight, pr.usage_input AS reported
 FROM provider_requests pr

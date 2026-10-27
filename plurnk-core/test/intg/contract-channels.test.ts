@@ -208,7 +208,7 @@ test("{§channel-selection}: FIND reports an undeclared channel with the declare
         assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(result.problem?.requestedChannel, "results");
         assert.deepEqual(result.problem?.availableChannels, ["stdout", "stderr"]);
-        assert.equal(result.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§problems-content}
+        assert.equal(result.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§operation-results}
     } finally { await db.close(); }
 });
 
@@ -258,7 +258,7 @@ test("{§find-result-projection}: full-text FIND ranks the addressed channel's d
     } finally { await db.close(); }
 });
 
-test("{§relation-indexed-dialects}: graph FIND resolves evidence in the addressed channel", async () => {
+test("{§matcher-dispatch}: graph FIND resolves evidence in the addressed channel", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
         const manifest = schemeManifest(
@@ -497,7 +497,7 @@ test("{§channel-selection} READ and EDIT retain topology facts on channel misse
         assert.equal(read.problem?.type, "https://problems.plurnk.xyz/scheme/exec/channel-not-found");
         assert.equal(read.problem?.requestedChannel, "results");
         assert.deepEqual(read.problem?.availableChannels, ["stdout", "stderr"]);
-        assert.equal(read.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§problems-content}
+        assert.equal(read.problem?.recovery, "Use one of the available channels: #stdout, #stderr."); // {§operation-results}
         // EDIT side via Session (exec streams are not model-editable): same fact shape.
         const k = new Workspace();
         await k.edit(editStmt(urlPath("workspace", "/note"), "seeded"), makeSchemeCtx({ db, workspaceId, sessionId }));
@@ -506,7 +506,7 @@ test("{§channel-selection} READ and EDIT retain topology facts on channel misse
         assert.equal(edit.problem?.type, "https://problems.plurnk.xyz/scheme/workspace/channel-not-found");
         assert.equal(edit.problem?.requestedChannel, "nope");
         assert.deepEqual(edit.problem?.availableChannels, ["body", "readable"]);
-        assert.equal(edit.problem?.recovery, "Use one of the available channels: #body, #readable."); // {§problems-content}
+        assert.equal(edit.problem?.recovery, "Use one of the available channels: #body, #readable."); // {§operation-results}
     } finally { await db.close(); }
 });
 

@@ -11,7 +11,7 @@ VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet, $version);
 
 -- PREP: test_turns_insert_with_curation_budget
 -- The turn retains only the latest-packet gauge denominator; provider usage is
--- normalized under provider_requests. {§tokenomics-client-gauge}
+-- normalized under provider_requests. {§tokenomics}
 INSERT INTO turns (loop_id, sequence, producer, kind, status, packet, usage_curation_budget)
 VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet, $curation_budget);
 

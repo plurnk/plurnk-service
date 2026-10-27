@@ -164,7 +164,7 @@ export default class TurnMaterialization {
 
     async materializeStreamDeltas(args: {
         workspaceId: number; sessionId: number; loopId: number; turnId: number; fromSequence: number;
-        // {§context-fit} — a closed stream's result is one the model asked for: whole when it fits, else its size.
+        // {§tokenomics} — a closed stream's result is one the model asked for: whole when it fits, else its size.
         fit?: ContextFit;
     }): Promise<number[]> {
         const { workspaceId, sessionId, loopId, turnId, fromSequence, fit } = args;
@@ -199,7 +199,7 @@ export default class TurnMaterialization {
             const empties = Object.fromEntries(group.filter((ch) => !kept.includes(ch)).map((ch) => [`#${ch.channel}`, 0]));
             for (const ch of kept) siblings.set(ch.publication_id, empties);
         }
-        // {§context-fit} — the rows this pass lands, known before the first one is measured.
+        // {§tokenomics} — the rows this pass lands, known before the first one is measured.
         const landing = channels.filter((ch) => (ch.state === "closed" || ch.state === "errored")
             && ch.producer_result !== null && !skipped.has(ch.publication_id));
         // {§exec-stream} — a failed execution is one failure: its status and Problem ride its
@@ -221,8 +221,8 @@ export default class TurnMaterialization {
             // {§exec-stream} — nothing publishes while a stream is active: the Open Work streams
             // list reports its size and growth ({§child-orientation}); the model READs any
             // range it wants. At close, ONE foisted READ that is exactly a markerless READ — the first
-            // page ({§markerless-first-page}, {§exec-stream}), whole when it fits the budget and
-            // otherwise its size ({§context-fit}) — with the extent, the terminal status and Problem,
+            // page ({§packet}, {§exec-stream}), whole when it fits the budget and
+            // otherwise its size ({§tokenomics}) — with the extent, the terminal status and Problem,
             // initially visible.
             // {§exec-stream} — the terminal result lands in a separate write after
             // the executor closes the channel (#818); `landing` holds only channels that have one.
@@ -255,7 +255,7 @@ export default class TurnMaterialization {
                 source: null, attrs: JSON.stringify({ streamEnd: ch.content.length }), producer: "_plurnk",
             });
             const unfit = await this.#unfit(workspaceId, loopId, turnId, fit === undefined ? undefined : reserved(fit, landing.length - index - 1), whole.content, () => streamRow(whole));
-            // {§context-fit} — too large for the remaining budget: the terminal's own status and Problem stay
+            // {§tokenomics} — too large for the remaining budget: the terminal's own status and Problem stay
             // when the stream failed; a clean close becomes the 413 receipt. The output remains at the stream.
             const result = unfit === null ? whole : Results.assert(terminal.status >= 400 && terminal.problem !== undefined
                 ? { ...whole, content: "", problem: { ...terminal.problem, ...unfit.facts } }
@@ -298,7 +298,7 @@ export default class TurnMaterialization {
     }
 
 
-    // {§context-fit} — whether one row to be landed fits the remaining budget: null when it fits or no
+    // {§tokenomics} — whether one row to be landed fits the remaining budget: null when it fits or no
     // budget exists; otherwise its tokens, the remaining budget, and the facts a receipt names.
     async #unfit(
         workspaceId: number,
@@ -324,7 +324,7 @@ export default class TurnMaterialization {
         return { tokens, remaining, facts: { lines: TextCoordinates.logicalLines(content).length, tokens, remaining } };
     }
 
-    // {§env-delta-filesystem-narration} {§file-snapshot-revision}
+    // {§env-delta} {§file-snapshot-revision}
     // — record project-file divergence once through the reserved actor.
     async logFsFictions(
         workspaceId: number,
@@ -400,7 +400,7 @@ export default class TurnMaterialization {
 
     // {§message-arrival} — an arrival is an inbound SEND row: the sender's statement as the row's
     // sent side, published by the harness (origin `_plurnk`) with the causal `source` when another
-    // actor caused it ({§message-causal-source}). `attrs.kind = "message"` tells it from the
+    // actor caused it ({§message-arrival}). `attrs.kind = "message"` tells it from the
     // engine's other harness-published SEND rows: observed activity and addressed replies.
     async writeArrivalLog({
         workspaceId,
@@ -422,10 +422,10 @@ export default class TurnMaterialization {
         body: string;
         source: string | null;
         resource: string;
-        // {§message-short-identity} the source is the transport's own name for this message, so it
+        // {§message-arrival} the source is the transport's own name for this message, so it
         // tells the model nothing its address does not; clients still read it from the row.
         selfAddressed?: boolean;
-        // {§context-fit} — an arrival the model did not ask for lands whole when it fits, otherwise folded
+        // {§tokenomics} — an arrival the model did not ask for lands whole when it fits, otherwise folded
         // with its size beside it: a fact, not an error; its body stays READable at the row.
         fit?: ContextFit;
     }): Promise<number> {

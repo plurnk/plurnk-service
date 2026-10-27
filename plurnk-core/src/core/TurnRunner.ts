@@ -173,7 +173,7 @@ type MaterializedModelRequest = {
     readonly nativeInputs: readonly string[];
 };
 
-// {§context-admission} — a request through the room: the wire the provider assessed, or the overflow
+// {§tokenomics} — a request through the room: the wire the provider assessed, or the overflow
 // that ends the loop.
 type AdmittedRequest =
     | { readonly request: TurnRequest; readonly wire: MaterializedModelRequest; readonly overflow: null }
@@ -191,7 +191,7 @@ type EngineTurnResult = {
     providerParked: boolean;
     providerFailure?: SchemeResult;
     emptyTurn: boolean;
-    // {§output-allowance-notice} — the allowance ended the turn's final emission; null when it did not.
+    // {§operation-results} — the allowance ended the turn's final emission; null when it did not.
     outputCut: OutputCut | null;
     emissionAttempts: number;
     emissionExhausted: boolean;
@@ -223,7 +223,7 @@ export type AdmittedTurnResult = {
     readonly emptyTurn: boolean;
 };
 
-// {§context-wall} — the window's one terminal: the packet exceeds the model's window.
+// {§tokenomics} — the window's one terminal: the packet exceeds the model's window.
 const WINDOW_OVERFLOW_DETAIL = "Context window overflow: the packet exceeds the model's window.";
 
 const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Results.failure(
@@ -235,9 +235,9 @@ const windowOverflowFailure = (overflow: WindowOverflow): SchemeResult => Result
     { tokens: overflow.tokens, budget: overflow.budget, wall: overflow.wall, excess: overflow.excess },
 );
 
-// {§context-over-budget-row} — over budget is a row and a request: the row is how the model hears it.
-// {§context-over-budget-row} — the row is the mandate; the gauge is the one home for the numbers
-// ({§context-gauge}), which the row's own charge would otherwise put out of agreement.
+// {§tokenomics} — over budget is a row and a request: the row is how the model hears it.
+// {§tokenomics} — the row is the mandate; the gauge is the one home for the numbers
+// ({§tokenomics}), which the row's own charge would otherwise put out of agreement.
 const OVER_BUDGET_DETAIL = "Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn.";
 // {§session-initialization-entry} — the two NOTEs that open and close the initialization surveys, both
 // labelled as the card's own plan example is: the session's plan in steps, then its next step.
@@ -250,7 +250,7 @@ const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
     op: "NOTE", aside: "plan", metadata: null, target: null, lineMarker: null,
     body: "Evaluate and react to the Open Message.", position: UNKNOWN_POSITION,
 };
-// {§continued-without-note} — said once, in the next packet, of a continuing turn that carried no NOTE.
+// {§operation-results} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
 // {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
@@ -264,7 +264,7 @@ const overBudgetFailure = (): SchemeResult => Results.failure("engine:context", 
 
 const INVALID_EMISSION_RECOVERY_MESSAGE = "Response rejected before dispatch; no operations were performed.";
 
-// {§output-allowance-notice} — THE single derivation of a ceiling cut: a
+// {§operation-results} — THE single derivation of a ceiling cut: a
 // `length` finish is the engine's own allowance ending the emission, and it
 // outranks every other diagnosis (parser symptom, rails verdict) on every
 // path. Null means the emission was not cut by the allowance.
@@ -323,7 +323,7 @@ type TurnContainer = {
     readonly systemCtx: PlurnkSchemeContext;
 };
 
-// What packet assembly reads from the turn; the fit test rebuilds from the same facts ({§context-fit}).
+// What packet assembly reads from the turn; the fit test rebuilds from the same facts ({§tokenomics}).
 type PacketFacts = {
     readonly turnId: number;
     readonly seq: number;
@@ -333,9 +333,9 @@ type PacketFacts = {
 };
 
 // Phase 3 — the model request: the inference turn's identity, its action cursor and
-// the packet, which admission rebuilds ({§context-admission}) and the attempt loop re-attributes per call.
+// the packet, which admission rebuilds ({§tokenomics}) and the attempt loop re-attributes per call.
 type TurnRequest = PacketFacts & {
-    // {§context-fit} — the measure every row this turn lands is tested against.
+    // {§tokenomics} — the measure every row this turn lands is tested against.
     readonly fit: ContextFit;
     readonly createdTurnIds: number[];
     readonly sessionName: string;
@@ -372,7 +372,7 @@ type ProviderAttempts = {
     readonly recoveryBackoff: number;
     readonly signal: AbortSignal | undefined;
     readonly providerSessionId: string;
-    // {§turn-accounting-notice} (#465) — every physical exchange this turn pays
+    // {§operation-results} (#465) — every physical exchange this turn pays
     // for, successes and failed calls alike, so the completion notice carries
     // the exact settled wire spend.
     readonly turnWireAccounting: ProviderRequestAccounting[];
@@ -516,7 +516,7 @@ export default class TurnRunner {
             count: number; id: number; sequence: number;
         }>({ loop_id: args.loopId });
         if (packetCount === undefined) throw new Error(`loop ${args.loopId}: packet count row missing`);
-        // {§tokenomics-client-gauge} The turn's inference is recorded: its packet and its call are the gauge now.
+        // {§tokenomics} The turn's inference is recorded: its packet and its call are the gauge now.
         const gauge = await this.#loopGauge(args.loopId);
         this.#notify.loopPacketNotify(args.workspaceId, {
             sessionId: args.sessionId,
@@ -677,7 +677,7 @@ export default class TurnRunner {
             if (container.initializationTurn !== null) await this.#runInitializationTurn(args, container, container.initializationTurn, gitStatus);
             const composed = await this.#composeRequest(args, container, gitStatus);
             const admitted = await this.#admitPacket(args, composed);
-            // {§context-wall} — only the window ends a loop.
+            // {§tokenomics} — only the window ends a loop.
             if (admitted.overflow !== null) return await this.#failCuration(admitted.request, admitted.overflow);
             const request = admitted.request;
             const attempts = await this.#prepareProviderAttempts(args, request, admitted.wire);
@@ -747,7 +747,7 @@ export default class TurnRunner {
             ? await Turn.open(this.#db, { loopId, producer: "model", kind: "inference" })
             : null;
         if (modelTurn !== null) createdTurnIds.push(modelTurn.id);
-        // {§env-delta-log-pull} — creation atomically owns the ordinary session
+        // {§env-delta} — creation atomically owns the ordinary session
         // baseline or fork snapshot. Packet assembly consumes, never invents,
         // that durable observation boundary.
         const ambientCursor = await this.#db.engine_initialize_ambient_cursor.get<{
@@ -832,7 +832,7 @@ export default class TurnRunner {
         // The warm materialized membership before deriving. This second pass is the
         // ordinary cheap change detector and captures any drift that landed meanwhile.
         const fsDivergences = await GitMembership.indexGitMembership(systemCtx);
-        // {§packet-git-status} — one post-reconciliation snapshot supplies both
+        // {§packet-inject} — one post-reconciliation snapshot supplies both
         // the compact packet summary and each causal file event's exact XY state.
         const gitStatus = await GitState.status(this.#db, workspaceId, this.#loopSignal(loopId));
         await this.#materialization.logFsFictions(workspaceId, fsDivergences, gitStatus);
@@ -941,7 +941,7 @@ export default class TurnRunner {
             },
             ...this.#toolExpansions(workspaceId, initializationPolicies),
             {
-                // {§members-projection} — enabled members definitions survey at alias
+                // {§tools-resource-materialization} — enabled members definitions survey at alias
                 // level; each row's summary is what its glob resolved to.
                 op: "FIND", aside: null,
                 target: { kind: "url", raw: "workspace:///_plurnk/members/*.md", scheme: "workspace", username: null, password: null, hostname: null, port: null, pathname: generatedPathname("/members/*.md"), query: null, fragment: null },
@@ -1004,7 +1004,7 @@ export default class TurnRunner {
 
     // Phase 3 — the inference turn and its request: the prompts the model has not
     // seen, their open-path READs, the ambient and stream deltas, then the packet
-    // ({§packet-stored-shape}).
+    // ({§packet}).
     async #composeRequest(args: TurnArgs, container: TurnContainer, gitStatus: GitStatusSnapshot | null): Promise<TurnRequest> {
         const { workspaceId, sessionId, loopId } = args;
         // Initialization is a complete preceding turn, not a set of rows
@@ -1014,13 +1014,13 @@ export default class TurnRunner {
         if (container.modelTurn === null) container.createdTurnIds.push(modelTurn.id);
         const { id: turnId, sequence: seq } = modelTurn;
         const systemCtx = this.#schemeContext(args, turnId);
-        // {§context-fit} — one measure for everything this turn lands: the budget less the packet as it
+        // {§tokenomics} — one measure for everything this turn lands: the budget less the packet as it
         // would render now. The drained notices join the same facts below.
         const facts: PacketFacts = { turnId, seq, gitStatus, notices: [], transientOpenLogEntryId: container.transientOpenLogEntryId };
         const fit = this.#fitFor(args, facts);
         const messages = await this.#publishMessages(args, turnId, fit);
         let nextActionIndex = await this.#readOpenPaths(args, turnId, messages.openPaths, messages.nextActionIndex, fit);
-        // {§env-delta-log-pull} — materialize ambient observations before packet
+        // {§env-delta} — materialize ambient observations before packet
         // composition and reserve their action indices. {§exec-stream} owns the
         // distinct byte-cursor path for this session's streams.
         // {§exec-lifetime} — a `"turn"` lifetime: reap the session's open turn-scoped streams (necessarily
@@ -1044,7 +1044,7 @@ export default class TurnRunner {
         // Drain once and thread the same set through every overflow rebuild.
         facts.notices.push(...this.#notices.drain(loopId)
             .filter((event) => (event as { level?: string }).level !== "info"));
-        // Build the model request packet ({§packet-stored-shape}). The log build
+        // Build the model request packet ({§packet}). The log build
         // queries log_entries scoped to the session, including this turn's newly
         // published message arrivals.
         const packet = await this.#buildPacket(args, facts);
@@ -1054,7 +1054,7 @@ export default class TurnRunner {
     // Pre-model writes. Each message the model has not seen yet becomes an inbound `SEND`
     // row; model operations continue the same turn sequence after these rows. Returns the
     // next action index and the messages' open paths.
-    // {§message-loop-containment}: the loop contains every message that arrived before this
+    // {§message-arrival}: the loop contains every message that arrived before this
     // boundary. Publish each unpublished inbox row oldest-first, exactly once, as an inbound
     // SEND row ({§message-arrival}); its selected paths ride along for the READs that follow.
     async #publishMessages(
@@ -1123,7 +1123,7 @@ export default class TurnRunner {
         });
     }
 
-    // {§context-fit} — the budget left for one more row, measured by building the packet as it would
+    // {§tokenomics} — the budget left for one more row, measured by building the packet as it would
     // render now: every row landed so far, every KILL already honoured. Null without a budget.
     #fitFor(args: TurnArgs, facts: PacketFacts): ContextFit {
         return {
@@ -1135,7 +1135,7 @@ export default class TurnRunner {
         };
     }
 
-    // {§context-over-budget-row} — one `_plurnk` error row at the head of the turn's own rows, then the
+    // {§tokenomics} — one `_plurnk` error row at the head of the turn's own rows, then the
     // packet as it renders with it. The row is shown in this packet alone and retired from later ones
     // by the packet query (#1097); a later packet that is over mints its own.
     async #noteOverBudget(args: TurnArgs, request: TurnRequest): Promise<TurnRequest> {
@@ -1150,10 +1150,10 @@ export default class TurnRunner {
         return { ...request, nextActionIndex: request.nextActionIndex + 1, packet };
     }
 
-    // {§context-admission} — one request through the room: over the wall by the estimate, it ends the loop;
-    // over budget, it carries one row whose own weight takes the same wall ({§context-over-budget-row});
+    // {§tokenomics} — one request through the room: over the wall by the estimate, it ends the loop;
+    // over budget, it carries one row whose own weight takes the same wall ({§tokenomics});
     // then the provider assesses the exact wire request, and an exact refusal ends the loop
-    // ({§context-wall-measure}). The daemon never hides, folds, or strips stored rows.
+    // ({§tokenomics}). The daemon never hides, folds, or strips stored rows.
     async #admitPacket(args: TurnArgs, request: TurnRequest): Promise<AdmittedRequest> {
         const { provider, loopId, signal } = args;
         let current = request;
@@ -1171,7 +1171,7 @@ export default class TurnRunner {
         return { request: current, wire, overflow: null };
     }
 
-    // {§context-wall} — the packet exceeds the model's window: the turn completes on the
+    // {§tokenomics} — the packet exceeds the model's window: the turn completes on the
     // overflow and the loop rules the terminal; no provider I/O.
     async #failCuration(request: TurnRequest, overflow: WindowOverflow): Promise<EngineTurnResult> {
         const curationFailure = windowOverflowFailure(overflow);
@@ -1218,7 +1218,7 @@ export default class TurnRunner {
     // spends one, and a valid emission ends the loop ({§emission-admission}).
     async #attemptProvider(args: TurnArgs, request: TurnRequest, attempts: ProviderAttempts): Promise<ProviderEmission> {
         const { provider, workspaceId, sessionId, loopId, signal } = args;
-        // {§turn-lifecycle}: bracket the complete provider-attempt window with liveness notices.
+        // {§operation-results}: bracket the complete provider-attempt window with liveness notices.
         if (!signal?.aborted) this.#notices.push(workspaceId, sessionId, loopId, { source: "engine:turn", kind: "turn_awaiting_model", level: "info", message: "awaiting model response" });
         attempts.railGrammar = await this.#operatorGrammar(provider);
         attempts.wellFormed = await this.#bodyChecks(workspaceId);
@@ -1235,7 +1235,7 @@ export default class TurnRunner {
                 kind: "turn_generated",
                 level: "info",
                 message: "parsing model response",
-                // {§turn-accounting-notice} (#465) — the exact settled derivation,
+                // {§operation-results} (#465) — the exact settled derivation,
                 // never a second stored fact: a live watcher accrues loop cost per turn.
                 accounting: {
                     requests: attempts.turnWireAccounting.length,
@@ -1317,7 +1317,7 @@ export default class TurnRunner {
                 await this.#recoverProviderFailure(args, request, attempts, modelCall, attemptRow.id, error);
                 return "reissued";
             }
-            // {§context-wall-measure} — admission already shed for an exact refusal of this wire request;
+            // {§tokenomics} — admission already shed for an exact refusal of this wire request;
             // an upstream refusal is the provider's own 413.
             throw error;
         } finally {
@@ -1664,7 +1664,7 @@ export default class TurnRunner {
         });
     }
 
-    // Phase 5, admitted — the emission's notices, then {§packet-stored-shape}: admitted
+    // Phase 5, admitted — the emission's notices, then {§packet}: admitted
     // emission data extends the packet while provider-call metadata remains on the
     // Turn row.
     async #recordAdmittedEmission({ provider, workspaceId, sessionId, loopId }: TurnArgs, request: TurnRequest, emission: ProviderEmission): Promise<void> {
@@ -1738,7 +1738,7 @@ export default class TurnRunner {
             evidence: {
                 packet: StoredPacket.stringify(packet),
                 sections: StoredPacket.sections(packet),
-                usageCurationBudget: this.#packets.curationBudgetFor(request.packet), // {§tokenomics-client-gauge}
+                usageCurationBudget: this.#packets.curationBudgetFor(request.packet), // {§tokenomics}
                 finishReason: callMetadata.finishReason,
                 model: callMetadata.model,
                 // Opaque provider metadata plus the grammar transport key.
@@ -1789,7 +1789,7 @@ export default class TurnRunner {
             onDispatch,
             onSettled,
         });
-        // {§continued-without-note} — a turn the loop continues past or parks on, having carried no NOTE
+        // {§operation-results} — a turn the loop continues past or parks on, having carried no NOTE
         // forward in its program or from its reasoning, is told so in the next packet, in the card's own
         // words. An empty turn has its own no-operation row instead.
         const ops = split.packetAssistant.ops;

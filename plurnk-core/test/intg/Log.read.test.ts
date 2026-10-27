@@ -588,7 +588,7 @@ describe("Log.find", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const findEditStmt = (pathname: string, content: string): EditStatement => ({
     metadata: null,
@@ -723,7 +723,7 @@ test("{§find} an exact log FIND rejects a supplied /OP delimiter that disagrees
     } finally { await db.close(); }
 });
 
-test("{§markerless-first-page} a markerless log FIND returns its first page of rows, every row when they fit; an explicit <1,-1> is the whole", async () => {
+test("{§packet} a markerless log FIND returns its first page of rows, every row when they fit; an explicit <1,-1> is the whole", async () => {
     const { db, engine, workspaceId, sessionId, loopId, turnId } = await setup();
     try {
         for (let sequence = 4; sequence <= 20; sequence++) {
@@ -1932,7 +1932,7 @@ for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/
             assert.ok(automatic, "the automatic output observation names the resource actually read");
             assert.equal(automatic.source, undefined);
             assert.equal(automatic.stream, undefined);
-            assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§context-fit})");
+            assert.equal(automatic.range, "40 lines", "the automatic observation is a markerless READ: whole, because it fits ({§tokenomics})");
             assert.match(String(automatic.body), /40:result 40\n$/u);
 
             const mistaken = await turn(frame(`READ (${invocation.logPath}) <17,40>`, null));
@@ -2456,8 +2456,8 @@ test("{§log-kill-scope} {§range-starts-at-one}: `KILL (log:///…/READ) <0, -1
     const refused = await dispatch("````KILL (log:///1/1/2/READ) <0, -1>````");
     assert.equal(refused.status, 416);
     assert.match(refused.problem.type, /\/range-not-satisfiable$/);
-    assert.equal(refused.problem.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1."); // {§problems-functionality}
-    assert.equal(refused.problem.recovery, "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/1/2/READ) with no scope retires the whole row."); // {§problems-functionality}
+    assert.equal(refused.problem.detail, "Range <0,-1> starts at 0, which is not a line; lines are numbered from 1."); // {§operation-results}
+    assert.equal(refused.problem.recovery, "Trim one line with <L> or lines L through M with <L,M>; KILL (log:///1/1/2/READ) with no scope retires the whole row."); // {§operation-results}
     assert.equal((await dispatch("````KILL (log:///1/1/2/READ) <1,-1>````")).status, 200);
     assert.equal((await dispatch("````KILL (log:///1/1/2/READ)````")).status, 200);
 });

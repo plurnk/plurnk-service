@@ -20,7 +20,7 @@ import type { LineMarker, RangeExtent } from "@plurnk/plurnk-contracts";
 export type { SliceResult, EditResult };
 
 export default class LineMarkerOps {
-    // {§markerless-first-page} — a retrieval without a scope selects everything: `<1,-1>` in whatever unit the
+    // {§packet} — a retrieval without a scope selects everything: `<1,-1>` in whatever unit the
     // projection counts. A fresh object each time; marks are owned by their statement.
     static whole(): LineMarker {
         return { marks: [1, -1] };

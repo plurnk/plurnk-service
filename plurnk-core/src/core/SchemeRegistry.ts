@@ -429,7 +429,7 @@ export default class SchemeRegistry {
             && (scheme === null || (!excluded.has(scheme) && this.manifestFor(scheme, workspaceId)?.modelVisible === true)));
         for (const name of this.#effectiveHandlers(workspaceId).keys()) {
             if (this.#isRuntimeScheme(name, workspaceId)) continue; // {§exec} — runtime aliases share exec's doc, not their own
-            if (excluded.has(name)) continue; // {§schemes-directory} — exclude drops the doc
+            if (excluded.has(name)) continue; // {§tools-resource-materialization} — exclude drops the doc
             const manifest = this.manifestFor(name, workspaceId);
             if (manifest?.modelVisible !== true) continue;
             const inline = manifest.documentation;
@@ -440,7 +440,7 @@ export default class SchemeRegistry {
     }
 
 
-    // {§scheme-packet-transform} {§packet-extension-transform}.
+    // {§scheme-packet-transform} {§packet-assembly}.
     async transformSections(sections: PacketSectionDraft[], workspaceId?: number): Promise<PacketSectionDraft[]> {
         let current = PacketSections.assertDrafts(sections, "core packet defaults");
         for (const [name, handler] of this.#effectiveHandlers(workspaceId)) {

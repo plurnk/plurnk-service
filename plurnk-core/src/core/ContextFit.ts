@@ -3,14 +3,14 @@ import type { RangeExtent } from "@plurnk/plurnk-contracts";
 import Results from "./results.ts";
 import type { DispatchResult } from "./Dispatcher.ts";
 
-// {§context-fit} — the tokens left in this turn's packet for one more result, measured now: the
+// {§tokenomics} — the tokens left in this turn's packet for one more result, measured now: the
 // budget less the packet as it would render with every row landed so far, or null without a budget
-// ({§tokenomics-window-unpollable-deliberate}).
+// ({§tokenomics}).
 export interface ContextFit {
     remaining(): Promise<number | null>;
 }
 
-// {§context-fit} — the room a turn still owes before one more result may land whole: one receipt's
+// {§tokenomics} — the room a turn still owes before one more result may land whole: one receipt's
 // measured weight for each result still to land in the same turn, and the head of the emission that
 // answers the packet. A bodiless receipt row is a heading, a status, a Problem type and detail, a
 // size and a path: as the log renders one it weighs under 160, and that is the reserve. It sizes no
@@ -39,7 +39,7 @@ export const resultSize = (result: { readonly range?: RangeExtent; readonly cont
     return { unit: "line", total: typeof result.content === "string" ? TextCoordinates.logicalLines(result.content).length : 0 };
 };
 
-// {§context-fit} — a result the model asked for that does not fit: a `413` receipt naming the result's
+// {§tokenomics} — a result the model asked for that does not fit: a `413` receipt naming the result's
 // size, its tokens, the remaining budget, the units it delivered above the receipt, and the two verbs.
 // The complete result stays where it was read from.
 export const RESULT_EXCEEDS_BUDGET = "https://problems.plurnk.xyz/engine/context/result-exceeds-budget";
@@ -62,7 +62,7 @@ export const unfitResult = (
     { [`${size.unit}s`]: size.total, tokens, remaining, ...(delivered > 0 ? { delivered } : {}) },
 );
 
-// {§context-fit} — the first `count` lines of a READ result as a result of its own: the content cut at
+// {§tokenomics} — the first `count` lines of a READ result as a result of its own: the content cut at
 // the line boundary, the per-line anchors and source ordinals cut with it, and the returned range closed
 // on the last line delivered. The rest of the result is what the receipt names.
 export const resultPrefix = <T extends { readonly content: string }>(result: T, count: number): T => {
@@ -83,7 +83,7 @@ export const resultPrefix = <T extends { readonly content: string }>(result: T, 
     };
 };
 
-// {§context-fit} — the receipt is an outcome, never a broken program: an internal turn that fails on
+// {§tokenomics} — the receipt is an outcome, never a broken program: an internal turn that fails on
 // operation errors lets it stand.
 export const isContextReceipt = (result: { readonly problem?: { readonly type?: unknown } }): boolean =>
     result.problem?.type === RESULT_EXCEEDS_BUDGET;

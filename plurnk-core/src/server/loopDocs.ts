@@ -6,7 +6,7 @@
 //      ({§session-initialization-entry}, {§session-initialization-entry});
 //   2. the exact current scheme and executable-tool reference set under
 //      workspace:///_plurnk/plurnk/ and workspace:///_plurnk/tools/ — discovered by the
-//      turn-0 FIND surveys ({§schemes-self-doc-materialization},
+//      turn-0 FIND surveys ({§tools-resource-materialization},
 //      {§tools-resource-materialization}).
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
@@ -25,7 +25,7 @@ import DispatchAsPlurnk from "./dispatch-as-plurnk.ts";
 import GitMembership from "../core/git-membership.ts";
 
 export default class LoopDocs {
-    // {§schemes-self-doc-materialization} {§tools-resource-materialization} —
+    // {§tools-resource-materialization} {§tools-resource-materialization} —
     // the generated-reference surface tracks a content signature so repeated
     // boot/module-publish materializations dispatch nothing when nothing
     // changed (the entry layer's 304 no-op never even runs).

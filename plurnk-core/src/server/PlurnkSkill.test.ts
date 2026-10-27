@@ -7,7 +7,7 @@ import EnvDefaults from "../core/env-defaults.ts";
 import Paths from "../Paths.ts";
 import PlurnkSkill from "./PlurnkSkill.ts";
 
-test("{§skills-installation-boundary} {§plurnk-skill} listing is lazy and chapters retain their native owners", async () => {
+test("{§skills-installation-boundary} {§tools-resource-materialization} listing is lazy and chapters retain their native owners", async () => {
     const tree = await PlurnkSkill.load(resolve("../node_modules"));
     assert.equal(tree.document.name, "plurnk");
     assert.ok(tree.document.description);
@@ -26,7 +26,7 @@ test("{§skills-installation-boundary} {§plurnk-skill} listing is lazy and chap
     assert.equal(await tree.resource("/SKILL.md").size(), null);
 });
 
-test("{§plurnk-skill} each installed ecosystem package's contract is a chapter where its package installed it", async () => {
+test("{§tools-resource-materialization} each installed ecosystem package's contract is a chapter where its package installed it", async () => {
     const tree = await PlurnkSkill.load(resolve("../node_modules"));
     const contracts = (await tree.list()).filter((path) => path.startsWith("packages/"));
     for (const name of ["@plurnk/plurnk-service", "@plurnk/plurnk-modules", "@plurnk/plurnk-execs", "@plurnk/plurnk-schemes", "@plurnk/plurnk-meta"]) {
@@ -42,7 +42,7 @@ test("{§plurnk-skill} each installed ecosystem package's contract is a chapter 
     assert.equal(await tree.resource("packages/@plurnk/plurnk-absent/SPEC.md").size(), null, "an unlisted contract is not found");
 });
 
-test("{§plurnk-skill} a contract package's type declarations sit beside its SPEC, never through a link", async (t) => {
+test("{§tools-resource-materialization} a contract package's type declarations sit beside its SPEC, never through a link", async (t) => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-skill-contracts-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const fixture = join(root, "node_modules", "@plurnk", "plurnk-fixture");
@@ -70,7 +70,7 @@ test("{§plurnk-skill} a contract package's type declarations sit beside its SPE
     assert.equal(await tree.resource("packages/@plurnk/plurnk-fixture/dist/linked.d.ts").size(), null);
 });
 
-test("{§plurnk-skill} only reading generated defaults collects the installed catalog", async (t) => {
+test("{§tools-resource-materialization} only reading generated defaults collects the installed catalog", async (t) => {
     const tree = await PlurnkSkill.load(resolve("../node_modules"));
     const collect = t.mock.method(EnvDefaults, "collect", async () => ({
         files: [{ owner: "fixture", text: "# fixture\nKNOB=1\n", parsed: { KNOB: "1" } }],

@@ -89,7 +89,7 @@ export default class Engine {
     #lifecycle: LoopLifecycle;
     #schemes: SchemeRegistry;
     #mimetypes: Mimetypes;
-    // {§tokenomics-agnostic-ruler} — the stable model-independent ruler used
+    // {§tokenomics} — the stable model-independent ruler used
     // for write-time, catalog, receipt, and packet weights.
     #weighContent: (text: string) => number;
     // Boot-discovered runtime executors. Daemon builds + sets via
@@ -116,7 +116,7 @@ export default class Engine {
     // Streaming schemes (exec) chain their per-spawn controllers off
     // ctx.signal so cancelled loops tear down their background spawns.
     #loopSignals = new Map<number, AbortSignal>();
-    // {§message-loop-containment}: one loop's message allocation and
+    // {§message-arrival}: one loop's message allocation and
     // persistence is a serial critical section. A completed later write can
     // therefore never overtake or replace an earlier concurrent arrival.
     #messageWriteLocks = new Map<number, Promise<unknown>>();
@@ -276,7 +276,7 @@ export default class Engine {
         // production-configured Mimetypes via the constructor arg.
         this.#mimetypes = mimetypes ?? new Mimetypes({
             discovery: { registry: emptyRegistry(), handlers: new Map(), packageAttributions: new Map(), skipped: [] } });
-        // {§tokenomics-agnostic-ruler} — standalone construction and the daemon
+        // {§tokenomics} — standalone construction and the daemon
         // use the same default; provider request counting remains confined to
         // provider-owned capacity assessment.
         this.#weighContent = weigh ?? contentWeight;
@@ -478,7 +478,7 @@ export default class Engine {
     }
 
     // The request ledger is cardinal evidence; its aggregate and the latest-turn
-    // occupancy gauge are derived projections. {§tokenomics-client-gauge},
+    // occupancy gauge are derived projections. {§tokenomics},
     // {§notifications}, {§provider-accounting}
     async loopUsage(loopId: number): Promise<LoopUsage> {
         const [gauge, requests] = await Promise.all([
@@ -488,12 +488,12 @@ export default class Engine {
         return { accounting: aggregateProviderAccounting(requests.map(providerRequestFromStorageRow)), ...gauge };
     }
 
-    // {§tokenomics-client-gauge} The four facts a client's gauge shows.
+    // {§tokenomics} The four facts a client's gauge shows.
     static clientGauge({ curationWeight, curationBudget, contextTokens, contextCapacity }: ApplicationGauge): ApplicationGauge {
         return { curationWeight, curationBudget, contextTokens, contextCapacity };
     }
 
-    // {§tokenomics-client-gauge} The loop's client gauge and its latest turn's provider metadata.
+    // {§tokenomics} The loop's client gauge and its latest turn's provider metadata.
     async loopGauge(loopId: number): Promise<Omit<LoopUsage, "accounting">> {
         const row = await this.#db.engine_loop_usage.get<{
             context_tokens: number | null;
@@ -540,7 +540,7 @@ export default class Engine {
         return this.#packets.sessionCurationOverflow(sessionId, provider);
     }
 
-    // {§env-delta-log-pull} — materialize one closed interval of the ambient
+    // {§env-delta} — materialize one closed interval of the ambient
     // occurrence journal into this session's self-contained log. #67 owns only
     // the remaining model-facing actor-name projection.
     cancelSubscription(subscriptionId: number): Promise<boolean> {
@@ -700,7 +700,7 @@ export default class Engine {
     > {
         const turnRow = await this.#db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });
         const turnSeq = turnRow?.next ?? 1;
-        // {§message-loop-containment}: the inbox keeps arrival order; the next turn boundary publishes.
+        // {§message-arrival}: the inbox keeps arrival order; the next turn boundary publishes.
         const appended = await this.#db.drain_enqueue_message.get<{ id: number; ordinal: number }>({
             loop_id: loopId, source: source ?? null, body: prompt, open_paths: JSON.stringify(openPaths),
             evidence: JSON.stringify(evidence),

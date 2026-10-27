@@ -867,7 +867,7 @@ is curated normally. Explicit NOTE remains the taught form.
 It has no target, scope, metadata, or lifecycle effect. Its full body participates
 in ordinary log token accounting and model-driven curation; prior notes are not
 automatically hidden. A continuing or parked turn that carried no NOTE is told so in
-the next packet ({§continued-without-note}); the omission is never a failure. A
+the next packet ({§operation-results}); the omission is never a failure. A
 NOTE-only turn does not request completion; ordinary repetition and strike rules
 still apply.
 
@@ -997,7 +997,7 @@ Without a `#` the field is absent.
 URL, with optional `#channel` fragment or `[metadata]`) and has no body. A
 `<scope>` on READ selects
 a text region from that exact target. Without a scope, READ takes the configured
-first page ({§markerless-first-page}); `<1,-1>` explicitly selects all text. Decimal scope components are
+first page ({§packet}); `<1,-1>` explicitly selects all text. Decimal scope components are
 invalid on READ.
 
 Mutation semantics:
@@ -1038,7 +1038,7 @@ unit after scheme address resolution ({§entry-address-resolution}). An exact
 resource target with a matcher pages flat match locations; a glob or
 folder target, and every matcher-less FIND, pages resources. Resolving a glob to
 one resource does not make it exact. The same `<N>`, inclusive `<N,M>`,
-configured markerless first page ({§markerless-first-page}), and explicit-all
+configured markerless first page ({§packet}), and explicit-all
 `<1,-1>` forms apply to either unit.
 
 §copy-move-observation COPY and MOVE log projections preserve both admitted operand selections,
@@ -1227,7 +1227,7 @@ The operation column names the canonical AST operation after
 
 | Operation             | Canonical components                   | Meaning                                                                    |
 |-----------------------|----------------------------------------|----------------------------------------------------------------------------|
-| FIND                  | 0–2 positions                          | Inclusive resource or exact-target location positions ({§find-result-unit}; markerless first page under {§markerless-first-page}) |
+| FIND                  | 0–2 positions                          | Inclusive resource or exact-target location positions ({§find-result-unit}; markerless first page under {§packet}) |
 | READ                  | 0/1/2/4 text coordinates               | Text projection from one exact selected file, entry, or log item           |
 | EDIT                  | 0/1/2/4 text coordinates               | Text replacement, deletion, prepend, or append                             |
 | COPY/MOVE source      | 0/1/2/4 text coordinates               | Region copied or moved from the selected source                            |

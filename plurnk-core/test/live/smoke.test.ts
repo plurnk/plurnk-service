@@ -1,4 +1,4 @@
-// Thin live smoke for {§provider-conformance-matrix}, {§tier-census}, and {§read}:
+// Thin live smoke for {§test-artifact-retention}, {§test-artifact-retention}, and {§read}:
 // boots the production daemon against the active model route, runs one loop that
 // reads a seeded entry and replies, and verifies the post-cleanup digest and
 // session census witness. The full live and demo specimen corpus lives in

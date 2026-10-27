@@ -15,7 +15,7 @@ const IGNORED_DIRECTORIES = new Set([".git", ".tmp", "coverage", "dist", "node_m
 const TEXT_EXTENSIONS = new Set([".cjs", ".js", ".json", ".md", ".mjs", ".sh", ".ts"]);
 const PATH_OWNER = "plurnk-core/src/core/HostPaths.ts";
 // {§test-artifact-retention} — the benchmark home is an evidence location, not a daemon host path,
-// and the candidate launcher ({§candidate-pinned-runtime}) must resolve it without TypeScript: its
+// and the candidate launcher ({§share}) must resolve it without TypeScript: its
 // one resolver forms exactly one path, `~/benchmarks`, and is the one other owner.
 const BENCHMARK_HOME_OWNER = "scripts/lib/benchmarks-root.mjs";
 const OWNERS = new Set([PATH_OWNER, BENCHMARK_HOME_OWNER]);

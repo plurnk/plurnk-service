@@ -194,7 +194,7 @@ test("{§fs-write-surface}: an active Git create is incorporated by an exact gen
 });
 
 test("{§fs-write-surface}: ignore, hide, and view refuse automatic creation", async (t) => {
-    await t.test("active Git ignore requires an explicit pick", async () => {
+    await t.test("{§fs-write-surface} active Git ignore requires an explicit pick", async () => {
         await withWorkspace(async ({ root, file, ctx }) => {
             await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
             await writeFile(join(root, ".gitignore"), "ignored.md\n");
@@ -204,7 +204,7 @@ test("{§fs-write-surface}: ignore, hide, and view refuse automatic creation", a
         });
     });
 
-    await t.test("an exclusion refuses creation", async () => {
+    await t.test("{§fs-write-surface} an exclusion refuses creation", async () => {
         await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
             await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "exclude", glob: "blocked.md", source: "members" });
             const result = await file.edit(edit("blocked.md", "blocked\n"), ctx);
@@ -284,7 +284,7 @@ test("{§fs-write-surface}: service and workspace scopes compose monotonically",
         });
     });
 
-    await t.test("a workspace cannot widen root to namespace", async () => {
+    await t.test("{§fs-write-surface} a workspace cannot widen root to namespace", async () => {
         process.env.PLURNK_SERVICE_FILE_CREATE_SCOPE = "root";
         await withWorkspace(async ({ outside, file, db, workspaceId, ctx }) => {
             await db.test_set_workspace_settings.run({
@@ -372,7 +372,7 @@ test("{§fs-write-surface}: a member definition over a created path never overwr
 });
 
 test("{§fs-write-surface}: exclusions mask creation records without consuming their provenance", async (t) => {
-    await t.test("removing the exclusion restores the created member", async () => {
+    await t.test("{§fs-write-surface} removing the exclusion restores the created member", async () => {
         await withWorkspace(async ({ file, db, workspaceId, ctx }) => {
             await acceptCreate(file, ctx, "masked.md");
             await db.crud_insert_family_workspace_constraint.run({ workspace_id: workspaceId, effect: "exclude", glob: "masked.md", source: "members" });
@@ -394,7 +394,7 @@ test("{§fs-write-surface}: exclusions mask creation records without consuming t
         });
     });
 
-    await t.test("a later Git-ignore rule is likewise reversible", async () => {
+    await t.test("{§fs-write-surface} a later Git-ignore rule is likewise reversible", async () => {
         await withWorkspace(async ({ root, file, db, workspaceId, ctx }) => {
             await acceptCreate(file, ctx, "ignored-later.md");
             await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
@@ -535,7 +535,7 @@ test("{§fs-namespace} execution receipts and failed targets do not expose a red
 });
 
 describe("File.read", () => {
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const filePath = (pathname: string): ParsedPath => ({ kind: "local", raw: pathname });
 
@@ -625,7 +625,7 @@ const withHeadlessWorkspace = async (fn: (ctx: PlurnkSchemeContext, db: Db) => P
     } finally { await db.close(); }
 };
 
-test("{§markerless-first-page} File.read: read existing file inside workspace → 200 + content + text/markdown", async () => {
+test("{§packet} File.read: read existing file inside workspace → 200 + content + text/markdown", async () => {
     // plurnk-service's text primitive is text/markdown — File.read of a
     // .txt with no specific handler falls back to it (any plain text is
     // valid markdown; auto-derived text mimetype is never text/plain).
@@ -639,7 +639,7 @@ test("{§markerless-first-page} File.read: read existing file inside workspace �
     });
 });
 
-test("{§markerless-first-page} File.read: nested path inside workspace works", async () => {
+test("{§packet} File.read: nested path inside workspace works", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "docs"));
         await writeFile(join(root, "docs", "readme.md"), "# Doc\n");
@@ -664,7 +664,7 @@ test("{§mimetype-parser-coordinates}: READ preserves an indented Python referen
     });
 });
 
-test("{§markerless-first-page} File.read: missing file → 404", async () => {
+test("{§packet} File.read: missing file → 404", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const result = await readFileScheme(readStmt(filePath("missing.txt")), ctx);
         assert.equal(result.status, 404);
@@ -672,7 +672,7 @@ test("{§markerless-first-page} File.read: missing file → 404", async () => {
     });
 });
 
-test("{§markerless-first-page} File.read: workspace escape via .. → 403 or 404", async () => {
+test("{§packet} File.read: workspace escape via .. → 403 or 404", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
@@ -683,7 +683,7 @@ test("{§markerless-first-page} File.read: workspace escape via .. → 403 or 40
     });
 });
 
-test("{§markerless-first-page} File.read: symlink pointing outside workspace → 404 (never a member)", async () => {
+test("{§packet} File.read: symlink pointing outside workspace → 404 (never a member)", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const outside = await mkdtemp(join(tmpdir(), "plurnk-outside-"));
         try {
@@ -698,7 +698,7 @@ test("{§markerless-first-page} File.read: symlink pointing outside workspace �
     });
 });
 
-test("{§markerless-first-page} File.read: headless workspace (no entries) → 404", async () => {
+test("{§packet} File.read: headless workspace (no entries) → 404", async () => {
     await withHeadlessWorkspace(async (ctx) => {
         // Entry-backed read: a headless workspace materializes no file entries, so
         // any file read finds nothing → 404 (uniform with stored entries; the old
@@ -708,14 +708,14 @@ test("{§markerless-first-page} File.read: headless workspace (no entries) → 4
     });
 });
 
-test("{§markerless-first-page} File.read: null path → 400", async () => {
+test("{§packet} File.read: null path → 400", async () => {
     await withWorkspaceRoot(async (_root, ctx) => {
         const result = await readFileScheme(readStmt(null), ctx);
         assert.equal(result.status, 400);
     });
 });
 
-test("{§markerless-first-page} File.read: lineMarker <N> selects line N as raw content with startLine=N", async () => {
+test("{§packet} File.read: lineMarker <N> selects line N as raw content with startLine=N", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\ngamma\n");
         await addMember(ctx, "f.txt");
@@ -726,7 +726,7 @@ test("{§markerless-first-page} File.read: lineMarker <N> selects line N as raw 
     });
 });
 
-test("{§markerless-first-page} File.read: lineMarker <N,M> selects inclusive range as raw content with startLine=N", async () => {
+test("{§packet} File.read: lineMarker <N,M> selects inclusive range as raw content with startLine=N", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "a\nb\nc\nd\n");
         await addMember(ctx, "f.txt");
@@ -737,7 +737,7 @@ test("{§markerless-first-page} File.read: lineMarker <N,M> selects inclusive ra
     });
 });
 
-test("{§markerless-first-page} File.read: lineMarker out of range returns 416", async () => {
+test("{§packet} File.read: lineMarker out of range returns 416", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
@@ -770,7 +770,7 @@ test("{§text-scope-semantics} File.read: an invalid exact region remains a comp
     });
 });
 
-test("{§markerless-first-page} File.find: an exact matcher returns flat match locations", async () => {
+test("{§packet} File.find: an exact matcher returns flat match locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "foo\nbar foo");
         await addMember(ctx, "f.txt");
@@ -785,7 +785,7 @@ test("{§markerless-first-page} File.find: an exact matcher returns flat match l
     });
 });
 
-test("{§markerless-first-page} File.find: a binary member does not poison a body search across readable members", async () => {
+test("{§packet} File.find: a binary member does not poison a body search across readable members", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "readme.md"), "the needle is here\n");
         await addMember(ctx, "readme.md");
@@ -802,7 +802,7 @@ test("{§markerless-first-page} File.find: a binary member does not poison a bod
     });
 });
 
-test("{§matcher-invalid-expression} File.find: an invalid matcher preserves the matcher Problem", async () => {
+test("{§matcher-dispatch} File.find: an invalid matcher preserves the matcher Problem", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\n");
         await addMember(ctx, "f.txt");
@@ -841,7 +841,7 @@ test("{§problems-schemes} File.find: an invalid matcher exposes stable cause an
     });
 });
 
-test("{§markerless-first-page} File.find: matcher evaluates the full resource before <L> pages locations", async () => {
+test("{§packet} File.find: matcher evaluates the full resource before <L> pages locations", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nprojected\nfoo later\n");
         await addMember(ctx, "f.txt");
@@ -855,7 +855,7 @@ test("{§markerless-first-page} File.find: matcher evaluates the full resource b
     });
 });
 
-test("{§markerless-first-page} File.find: a zero-match selector returns 204", async () => {
+test("{§packet} File.find: a zero-match selector returns 204", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "alpha\nbeta\n");
         await addMember(ctx, "f.txt");
@@ -867,14 +867,14 @@ test("{§markerless-first-page} File.find: a zero-match selector returns 204", a
         assert.equal(r.problem, undefined);
     });
 });
-test("{§markerless-first-page} File.read: long content round-trips", async () => {
+test("{§packet} File.read: long content round-trips", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const big = "lorem ipsum dolor sit amet ".repeat(1000);
         await writeFile(join(root, "big.txt"), big);
         await addMember(ctx, "big.txt");
         const result = await readFileScheme(readStmt(filePath("big.txt")), ctx);
         assert.equal(result.status, 200);
-        assert.equal(result.content, big.slice(0, Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS)), "a markerless READ is the first page: the character bound cuts the single line ({§markerless-first-page})");
+        assert.equal(result.content, big.slice(0, Number(process.env.PLURNK_SERVICE_PREVIEW_CHARS)), "a markerless READ is the first page: the character bound cuts the single line ({§packet})");
         const complete = await readFileScheme({ ...readStmt(filePath("big.txt")), lineMarker: { marks: [1, -1] } }, ctx);
         assert.equal(complete.status, 200);
         assert.equal(complete.content, big, "the explicitly requested full content round-trips unchanged");
@@ -892,7 +892,7 @@ test("{§fs-namespace} File.read: an absolute spelling resolves the existing mem
     });
 });
 
-test("{§markerless-first-page} File.read: bare relative path (no leading slash) normalizes to the member key and resolves", async () => {
+test("{§packet} File.read: bare relative path (no leading slash) normalizes to the member key and resolves", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "notes.md"), "Codename: Bluejay\n");
         await addMember(ctx, "notes.md");
@@ -904,7 +904,7 @@ test("{§markerless-first-page} File.read: bare relative path (no leading slash)
     });
 });
 
-test("{§markerless-first-page} File.read: a markerless exact READ is the first page, which holds all 20 lines; an explicit <1,-1> is the whole", async () => {
+test("{§packet} File.read: a markerless exact READ is the first page, which holds all 20 lines; an explicit <1,-1> is the whole", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const content = Array.from({ length: 20 }, (_, index) => `line ${index + 1}`).join("\n");
         await writeFile(join(root, "bounded.txt"), content);
@@ -924,7 +924,7 @@ test("{§markerless-first-page} File.read: a markerless exact READ is the first 
     });
 });
 
-test("{§markerless-first-page} File.read: bare nested relative path resolves to its member key too", async () => {
+test("{§packet} File.read: bare nested relative path resolves to its member key too", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "src"));
         await writeFile(join(root, "src", "app.js"), "// TODO: rename\n");
@@ -978,7 +978,7 @@ test("{§file-snapshot-revision}: a grown file exposes newly valid lines and its
 });
 
 // {§local-path-fragment} — the channel a receipt advertises is addressable in the bare spelling.
-test("{§markerless-first-page} READ of a bare path with #readable reads the readable channel, not a file named users.html#readable", async () => {
+test("{§packet} READ of a bare path with #readable reads the readable channel, not a file named users.html#readable", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "data"), { recursive: true });
         await writeFile(join(root, "data/users.html"), "<html>\n  <body>\n    <h1>Team Roster</h1>\n    <p>Alice</p>\n  </body>\n</html>\n");
@@ -1051,8 +1051,8 @@ test("{§fs-namespace} {§diagnostic-observation}: a directory target says it is
         "'changelog' is a directory, not a file; READ reads one file.",
         "`FIND (changelog/)` lists its files.",
     ]);
-    assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; READ reads one file."); // {§pinned-wording-core}
-    assert.equal(slashed?.problem?.recovery, "`FIND (tests/forms_tests/)` lists its files."); // {§pinned-wording-core}
+    assert.equal(slashed?.problem?.detail, "'tests/forms_tests' is a directory, not a file; READ reads one file."); // {§operation-results}
+    assert.equal(slashed?.problem?.recovery, "`FIND (tests/forms_tests/)` lists its files."); // {§operation-results}
     assert.equal(listing?.status, 200, "the named listing form works");
     assert.match(String(listing?.content), /changelog\/7122\.bugfix\.rst/u);
     assert.equal(member?.status, 200, "and the listed path reads");
@@ -1716,15 +1716,15 @@ test("{§fs-namespace}: facts distinguish a wrong address, occupancy, and an emp
         // ENOENT on a READ miss carries the resolved name in wire canon.
         const miss = await readFileScheme(readStmt(join(root, "no/such.md")), ctx);
         assert.equal(miss.status, 404);
-        assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§problems-file}
-        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."); // {§problems-file}
+        assert.equal(miss.problem?.detail, "No member of this workspace is at 'no/such.md'.", "the READ miss states its fact — resolved form, wire canon"); // {§operation-results}
+        assert.equal(miss.problem?.recovery, "FIND lists paths. EDIT creates files; `plurnk (members)` admits existing files with a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."); // {§operation-results}
 
         // Exact-path FIND distinguishes absence from a successful empty survey.
         const findMissStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
             target: { kind: "local", raw: "no/such.md" }, matcher: null, body: null } as never;
         const findMiss = await file.find(findMissStmt, ctx);
         assert.equal(findMiss.status, 404, "FIND over an absent exact path cannot certify an empty set");
-        assert.equal(findMiss.problem?.detail, "No member of this workspace is at 'no/such.md'."); // {§problems-file}
+        assert.equal(findMiss.problem?.detail, "No member of this workspace is at 'no/such.md'."); // {§operation-results}
 
         // A FOLDER scope with zero matches stays the blessed orienting empty survey.
         const surveyStmt = { op: "FIND", aside: null, lineMarker: null, position: { line: 1, column: 1 },
@@ -1737,15 +1737,15 @@ test("{§fs-namespace}: facts distinguish a wrong address, occupancy, and an emp
         const clobber = await file.edit(editStmt("occupied.md", "x\n"), ctx);
         assert.equal(clobber.status, 403);
         assert.equal(clobber.problem?.type, "https://problems.plurnk.xyz/scheme/file/path-occupied-by-nonmember");
-        assert.equal(clobber.problem?.detail, "A non-member file already occupies 'occupied.md'."); // {§problems-file}
+        assert.equal(clobber.problem?.detail, "A non-member file already occupies 'occupied.md'."); // {§operation-results}
         assert.equal(clobber.problem?.path, "occupied.md");
         // {§fs-namespace} — a READ of that same non-member names the door, not absence.
         const peek = await readFileScheme(readStmt("occupied.md"), ctx);
         assert.equal(peek.status, 404);
         assert.equal(peek.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-member");
-        assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace."); // {§pinned-wording-core}
-        assert.equal(peek.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."); // {§pinned-wording-core}
-        assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path."); // {§problems-file}
+        assert.equal(peek.problem?.detail, "'occupied.md' exists on disk but is not a member of this workspace."); // {§operation-results}
+        assert.equal(peek.problem?.recovery, "Admit it with `plurnk (members)` and a `{\"verb\": \"add\", \"files\": [\"<path>\"]}` body."); // {§operation-results}
+        assert.equal(clobber.problem?.recovery, "Choose an unoccupied member path."); // {§operation-results}
         assert.equal(clobber.problem?.retryable, false);
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -1780,7 +1780,7 @@ test("{§fs-namespace}: beyond the root a miss is the same sentence whether or n
             assert.equal(result.problem?.type, "https://problems.plurnk.xyz/scheme/file/entry-not-found");
             const address = resolve(root, "..", name);   // {§fs-namespace} absolute beyond the root
             assert.equal(result.problem?.detail, `No member of this workspace is at '${address}'.`, "about the address's membership: it neither claims absence nor hints at presence");
-            assert.equal(result.problem?.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§problems-file}
+            assert.equal(result.problem?.recovery, `'${address}' is outside the project root: only a members definition under the operator's namespace scope admits it.`, "the recovery speaks of the address too, true under every members scope (#1005)"); // {§operation-results}
         }
         // The disk beyond the root stays dark: swap the names and the two answers are one answer,
         // apart from where each refused read was recorded.
@@ -1828,7 +1828,7 @@ test("{§fs-namespace} an in-root file no grantor admits DOES NOT EXIST; a clien
     } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
-test("{§problems-file} {§diagnostic-observation} a file target named like an executor misses like any path, presuming no fence (#902)", async () => {
+test("{§operation-results} {§diagnostic-observation} a file target named like an executor misses like any path, presuming no fence (#902)", async () => {
     const { root, db, ctx } = await setup();
     try {
         const executors = await testExecutors();
@@ -1845,7 +1845,7 @@ test("{§problems-file} {§diagnostic-observation} a file target named like an e
 
 describe("refusal-recovery", () => {
 // {§problem-details} — a refusal carries the next step its producer knows (#1005).
-// {§fs-namespace} {§log-history-projection} {§exec-target-routing} {§unregistered-scheme-recovery} {§find-result-projection} {§exec-lifetime}
+// {§fs-namespace} {§log-history-projection} {§exec-target-routing} {§operation-results} {§find-result-projection} {§exec-lifetime}
 
 
 
@@ -2037,7 +2037,7 @@ test("{§log-history-projection} a log miss beside real rows names them", async 
     assert.equal((await dispatch("````READ (log:///7/1/1/READ)````")).problem.recovery, undefined, "a loop with no rows has nothing to name");
 });
 
-test("{§unregistered-scheme-recovery} {§diagnostic-observation} an unregistered scheme names what is registered, whatever its authority", async (t) => {
+test("{§operation-results} {§diagnostic-observation} an unregistered scheme names what is registered, whatever its authority", async (t) => {
     const { dispatch } = await runtime(t);
     const executorAuthority = await dispatch("````WORK (tool://sh/run)\nls\n````");
     assert.equal(executorAuthority.status, 501);
@@ -2083,7 +2083,7 @@ test("{§exec-target-routing} an execution id written under another runtime name
 });
 
 describe("resource-state", () => {
-// {§fs-resource-state} Positive and negative integrity witnesses; the soak covers repeated turns.
+// {§test-artifact-retention} Positive and negative integrity witnesses; the soak covers repeated turns.
 
 
 
@@ -2093,7 +2093,7 @@ describe("resource-state", () => {
 
 
 
-test("{§fs-resource-state} consistent resource state reports no violations after real lifecycle traffic", async () => {
+test("{§test-artifact-retention} consistent resource state reports no violations after real lifecycle traffic", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ws-"));
     const db = await openMigrated();
     try {

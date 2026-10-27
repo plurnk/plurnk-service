@@ -116,7 +116,7 @@ Each server's document lists enabled tool calls with required-field previews
 and links to full input schemas under `tools/<server>/<encoded-tool>.json`.
 The manager uses the same layout under `tools/plurnk.md` and `tools/plurnk/mcp.json`;
 schema documents preserve descriptions and constraints without adding them to
-the initial survey ({§tools-resource-discovery}).
+the initial survey ({§tools-resource-materialization}).
 
 ## Operator settings
 

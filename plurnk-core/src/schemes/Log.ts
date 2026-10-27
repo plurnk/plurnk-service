@@ -481,7 +481,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             : { status, ...fields };
     }
 
-    // {§relation-indexed-dialects} An indexed dialect over rows the index does not yet cover.
+    // {§matcher-dispatch} An indexed dialect over rows the index does not yet cover.
     static #incompleteIndex(search: Extract<SearchCandidateSet, { state: "incomplete" }>, what: string): FindResult {
         return Log.#emptyFind(
             503,
@@ -576,7 +576,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return { candidateRows, rows };
     }
 
-    // {§relation-indexed-dialects} The rows an indexed dialect reads, their derivation settled once when the
+    // {§matcher-dispatch} The rows an indexed dialect reads, their derivation settled once when the
     // pass has not covered them yet.
     static async #settleIndexedCandidates(
         statement: FindStatement,
@@ -586,7 +586,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         maxLogEntryId: number | null,
     ): Promise<Candidate[]> {
         const { db, sessionId } = core;
-        // {§relation-indexed-dialects} — an index-backed dialect (~, &) holds the program until the pass
+        // {§matcher-dispatch} — an index-backed dialect (~, &) holds the program until the pass
         // covers its candidates: settle once, then re-read the attachments it produced. The 503s
         // below remain the truth when coverage is still incomplete afterwards.
         if (statement.matcher !== null && (statement.matcher.dialect === "fts" || statement.matcher.dialect === "graph") && core.settleDerivations !== undefined) {

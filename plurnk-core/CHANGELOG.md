@@ -45,13 +45,13 @@
 - b28031f: `@opencode-ai/models` moves to `^0.0.113` ({§model-catalog-build}).
   `effort-unsupported` and `effort-invalid` name the route's supported or valid
   efforts in `recovery`, and `provider-unavailable` includes the provider's
-  instantiation failure ({§session-model-selection}, {§problems-functionality}).
+  instantiation failure ({§session-model-selection}, {§operation-results}).
 - 2b882f9: Translate the calibrated curation budget additively by measured overhead
   without extrapolating unmeasured content, remove daemon-side row shedding at
   the context wall, resolve `PLURNK_PROVIDERS_OUTPUT_FLOOR` percentages against
   the effective output ceiling, and refuse model changes whose calibrated budget
   cannot hold the worker's current context with `413 context-exceeds-model-budget`
-  ({§tokenomics-calibrated-readout}, {§context-wall}, {§provider-output-floor},
+  ({§tokenomics}, {§tokenomics}, {§provider-output-floor},
   {§session-model-selection}) (#1225).
 - Updated dependencies [c30873c]
 - Updated dependencies [2b882f9]
@@ -106,7 +106,7 @@
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
   the loop's number among its worker's loops, beside `loopId`
   ({§notifications}, {§notifications},
-  {§loop-status-notice}). The AG-UI status gauge carries it as `status.loopSeq`,
+  {§operation-results}). The AG-UI status gauge carries it as `status.loopSeq`,
   replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
   conformance kit's gauge carries it.
 - 4e4cb32: AG-UI: an accepted message is discoverable before its arrival (#1166).
@@ -136,7 +136,7 @@
 - 4b70069: Every receipt's H3 names its operand (`→ path`, `→ from → to` for
   COPY/MOVE), whether or not it is paired with its replayed operation; a
   paired receipt still leaves the pattern, scope, aside, metadata and body to
-  that operation ({§paired-receipt}).
+  that operation ({§emission-history}).
 - b3864d5: `plurnk-service stop` ends the service that holds the configured database
   and returns once it has exited; a database nobody holds is not running, and
   that is success ({§startup-admission}). A `shared` launch without a log file
@@ -189,7 +189,7 @@
   ({§startup-admission}). `daemon/provider/not-configured` recovers with
   "Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as
   the service default; that provider's API key must be in the service's
-  environment." ({§problems-functionality}). The generated
+  environment." ({§operation-results}). The generated
   `~/.config/plurnk/.env` cites no spec tag.
 - 1fc7b1f: Membership honors the daemon user's own git excludes file, the configured
   `core.excludesFile` or git's default, and a refusal or `discover` verdict for an
@@ -205,11 +205,11 @@
   ({§exec-lifetime}, {§notifications}).
 - 6f3d277: A file beyond the model's members scope is admitted only by a client or operator
   definition, the user's to give: the `model-scope` refusal and the members
-  teaching say so and no longer suggest staging a file ({§members-model-scope}).
+  teaching say so and no longer suggest staging a file ({§tools-resource-materialization}).
 - 2606732: A `members` glob is matched against member keys: an absolute spelling admits
   exactly what its root-relative spelling does, inside the root or beyond it, and
   READ reaches those members by either spelling. An absolute glob used to list
-  matches that no READ could reach ({§members-functionality}).
+  matches that no READ could reach ({§tools-resource-materialization}).
 - 22ec9ca: A result range of neither one nor two positions is refused naming
   `requestedPositions` as written and no extent ({§range-extent}).
 - 68e8d53: A mounted route's failure ends its own request, never the daemon: its request
@@ -352,7 +352,7 @@
   turn that continues or parks without a NOTE in its program or from its
   reasoning is told so in the next packet by the `engine:turn` notice
   `continued_without_note` (`level: warn`, that command as its directive). A
-  notice, never a failure ({§continued-without-note}).
+  notice, never a failure ({§operation-results}).
 
 ### Patch Changes
 
@@ -586,7 +586,7 @@ waterfall, composer and web approval presentation remain separate work.
 - be45046: The live and demo tiers write a census: every run lands its workers and a
   `census.md`/`census.json` under one `tier-<kind>-<stamp>/` directory in the
   benchmark home, each specimen declares what it requires of its route and host
-  and skips by name when unmet, and `tier:history` ledgers runs ({§tier-census}).
+  and skips by name when unmet, and `tier:history` ledgers runs ({§test-artifact-retention}).
   The third-party MCP composition, the llama-server rails, the upstream A2A TCK
   and the client's real-model TUI tier are live specimens, no longer opt-in flags
   or scripts. `digest-missing` recovers workers inside tier runs and resolves the

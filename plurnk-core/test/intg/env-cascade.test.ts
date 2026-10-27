@@ -1919,7 +1919,7 @@ test("{§operator-config-precedence} the template ships no double policy, no act
     const foreign = [...env.keys()].filter((k) => !SERVICE_OWNED.test(k));
     assert.deepEqual(foreign, [], `the template declares only service-owned knobs; foreign: ${foreign.join(", ")}`);
     assert.equal(env.get("PLURNK_SERVICE_MAX_TURNS"), "-1", "model-call ceilings are opt-in, not a lifetime allowance");
-    // {§markerless-first-page} — the page's two knobs ship: 100 lines, 16000 characters.
+    // {§packet} — the page's two knobs ship: 100 lines, 16000 characters.
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_LINES"), "100", "the only correct default is 100");
     assert.equal(env.get("PLURNK_SERVICE_PREVIEW_CHARS"), "16000");
     assert.equal(env.get("PLURNK_SERVICE_EMISSION_HISTORY"), "all");

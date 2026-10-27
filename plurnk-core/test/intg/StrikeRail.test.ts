@@ -148,7 +148,7 @@ test("{§engine-rails}: a successful operation does not exempt a repeating turn 
     assert.equal(crossed?.thresholdCrossed, true);
 });
 
-test("{§engine-rails} {§output-allowance-notice}: a cut is no repetition evidence and closes the cycle window", async () => {
+test("{§engine-rails} {§operation-results}: a cut is no repetition evidence and closes the cycle window", async () => {
     const rail = new StrikeRail(db);
     const same = { ...base, fingerprint: "empty:", outcomes: [] };
     const cut = async () => (await rail.assess(loopId, { ...same, cut: true })).cycleDetected;
@@ -162,7 +162,7 @@ test("{§engine-rails} {§output-allowance-notice}: a cut is no repetition evide
     assert.equal((await rail.assess(loopId, same)).cycleDetected, true, "the window the cut opened detects its own repetition");
 });
 
-test("{§engine-rails} {§output-allowance-notice}: a cut turn's strike is the allowance's, whatever else it struck on", async () => {
+test("{§engine-rails} {§operation-results}: a cut turn's strike is the allowance's, whatever else it struck on", async () => {
     const rail = new StrikeRail(db);
     const sources = [
         { emptyTurn: true, outcomes: [] },
@@ -851,7 +851,7 @@ test("{§loop-completion} Engine.runLoop: three edits are observed before answer
     } finally { await db.close(); }
 });
 
-test("{§loop-terminals} Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns flag", async () => {
+test("{§tokenomics} Engine.runLoop: maxTurns hit — force-terminate with 429 and hitMaxTurns flag", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -1066,7 +1066,7 @@ test("{§lifecycle-terms} Engine.runLoop: turn sequence numbers monotonic", asyn
     } finally { await db.close(); }
 });
 
-test("{§problems-loop}: a strike-threshold abandonment names itself in its exact terminal Problem", async () => {
+test("{§operation-results}: a strike-threshold abandonment names itself in its exact terminal Problem", async () => {
     const db = await openMigrated();
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {
@@ -1091,7 +1091,7 @@ going
     } finally { await db.close(); }
 });
 
-test("{§loop-terminals} the full terminal enumeration names itself — max_turns included", async () => {
+test("{§tokenomics} the full terminal enumeration names itself — max_turns included", async () => {
     const db = await openMigrated();
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     try {

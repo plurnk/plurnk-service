@@ -441,7 +441,7 @@ test("{§lifecycle-terms} proposal: status=202 + state='proposed' rows hidden fr
     } finally { await db.close(); }
 });
 
-test("{§problems-functionality} proposal: resolveProposal for unknown id throws", () => {
+test("{§operation-results} proposal: resolveProposal for unknown id throws", () => {
     return openMigrated().then(async (db) => {
         try {
             const ctx = await setupEngine(db);
@@ -449,7 +449,7 @@ test("{§problems-functionality} proposal: resolveProposal for unknown id throws
                 assert.ok(error instanceof OperationFailureError);
                 assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/proposal/resolution/proposal-not-pending");
                 assert.equal(error.result.problem.logEntryId, 99999);
-                assert.equal(error.result.problem.recovery, "Refresh pending proposals before resolving one."); // {§problems-functionality}
+                assert.equal(error.result.problem.recovery, "Refresh pending proposals before resolving one."); // {§operation-results}
                 return true;
             });
         } finally { await db.close(); }

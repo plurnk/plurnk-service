@@ -72,7 +72,7 @@ export default class LogWriter {
     }
 
     // The row a dispatch would write, before it is written: the fit test renders it to weigh it
-    // ({§context-fit}) and writeLog inserts it. A failed result gets its instance here.
+    // ({§tokenomics}) and writeLog inserts it. A failed result gets its instance here.
     async record({
         statement, result, workspaceId, sessionId, loopId, turnId, sequence, origin, curationPlan, modelCallId, emissionIndex,
     }: {

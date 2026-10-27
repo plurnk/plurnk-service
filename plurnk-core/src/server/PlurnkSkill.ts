@@ -10,7 +10,7 @@ import EnvDefaults from "../core/env-defaults.ts";
 
 const SERVICE = "@plurnk/plurnk-service";
 
-// {§plurnk-skill} Core composes sources; their packages remain their authors.
+// {§tools-resource-materialization} Core composes sources; their packages remain their authors.
 export default class PlurnkSkill implements SkillTree {
     readonly document: SkillDocument;
     readonly #nodeModules: string;

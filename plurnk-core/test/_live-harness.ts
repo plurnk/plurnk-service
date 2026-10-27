@@ -47,7 +47,7 @@ export interface LiveWorkspace {
 // Every live/demo session is a self-contained benchmark artifact. The filesystem
 // allocates a unique, human-readable directory; nothing counts, reuses, moves,
 // or conditionally sweeps it. DB, workspace label, and digest stay together.
-// {§tier-census} — under a stamped tier run, every session lands inside the run's own directory.
+// {§test-artifact-retention} — under a stamped tier run, every session lands inside the run's own directory.
 const BENCHMARKS = benchmarksRoot();
 
 // A test-file process owns one extension generation, matching production's long-lived daemon
@@ -79,7 +79,7 @@ export interface SessionCensus {
     readonly cost: { readonly usd: number; readonly kinds: readonly string[] };
 }
 
-// {§tier-census} — what one session's digest says it did, named by the specimen that drove it; a run
+// {§test-artifact-retention} — what one session's digest says it did, named by the specimen that drove it; a run
 // that kept no database (a tier driven elsewhere) counts nothing.
 const sessionCensus = (runDir: string, label: string, specimen: LiveSpecimen | undefined): SessionCensus => {
     type Request = { accounting?: { usage?: { inputTokens?: number; outputTokens?: number }; cost?: { kind?: string; amount?: { amount?: string; currency?: string } } } };

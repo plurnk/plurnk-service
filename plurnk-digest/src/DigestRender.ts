@@ -988,7 +988,7 @@ export default class DigestRender {
                 );
             }
             if (packet !== null) {
-                // {§packet-wire-envelope} — the exact text messages the request carried; a stored packet
+                // {§packet-assembly} — the exact text messages the request carried; a stored packet
                 // whose log cannot be projected is evidence of its own, never a reason to stop the digest.
                 try {
                     const messages = packet.messages();

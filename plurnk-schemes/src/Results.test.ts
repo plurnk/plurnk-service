@@ -201,7 +201,7 @@ test("{§problem-details} problem identifiers fail hard instead of minting ambig
     assert.throws(() => Results.problem("scheme:notes", "Entry_Not_Found", 404, "Missing."), /problem code/);
 });
 
-test("{§matcher-selection-signal} match evidence requires a locator or a complete exact/enclosing TextRegion", () => {
+test("{§matcher-dispatch} match evidence requires a locator or a complete exact/enclosing TextRegion", () => {
     assert.deepEqual(
         Results.assertMatchEvidence({
             locator: "$.users[0]",
@@ -232,7 +232,7 @@ test("{§matcher-selection-signal} match evidence requires a locator or a comple
     );
 });
 
-test("{§matcher-selection-signal} match evidence lists validate every extension-produced item", () => {
+test("{§matcher-dispatch} match evidence lists validate every extension-produced item", () => {
     const evidence = [
         { locator: "//item" },
         { region: { startLine: 1, startColumn: 1, endLine: 1, endColumn: 5 } },
@@ -248,7 +248,7 @@ test("{§matcher-selection-signal} match evidence lists validate every extension
     );
 });
 
-test("{§matcher-selection-signal} read-result validation applies the shared evidence contracts", () => {
+test("{§matcher-dispatch} read-result validation applies the shared evidence contracts", () => {
     const result = {
         status: 200,
         content: "hello",

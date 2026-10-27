@@ -22,7 +22,7 @@ export const testArtifactDirectory = async (lane: string): Promise<string> => {
     return directory;
 };
 
-// {§tier-census} — a real-model tier run is one directory too: the driver stamps PLURNK_TIER_RUN as
+// {§test-artifact-retention} — a real-model tier run is one directory too: the driver stamps PLURNK_TIER_RUN as
 // `<kind>-<stamp>`, every session the run claims lands inside it, and the census is written beside
 // them. Unstamped (a bare `node --test` on one specimen), a session lands directly in the home.
 export const tierRunPath = (run: string | undefined = process.env.PLURNK_TIER_RUN): string | null =>

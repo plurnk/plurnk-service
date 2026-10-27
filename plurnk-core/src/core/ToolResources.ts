@@ -189,7 +189,7 @@ export default class ToolResources {
                 throw new Error("runtime summary derives from tools but the runtime has no exact tool registry");
             }
             const schema = source.invocation.inputSchema;
-            // {§tool-document-header-only} — the catalog row must not advertise teaching that is not there.
+            // {§tools-resource-materialization} — the catalog row must not advertise teaching that is not there.
             const headerOnly = schema === undefined && source.details.trim().length === 0;
             const summary = headerOnly ? `${source.summary} (invocation only)` : source.summary;
             const child = schema === undefined ? [] : [schemaDocument(

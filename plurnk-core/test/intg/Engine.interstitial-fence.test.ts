@@ -851,7 +851,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
 describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
-// {§continued-without-note} {§notice-directive} — the card's command as the notice's directive, in callout form.
+// {§operation-results} {§notice-directive} — the card's command as the notice's directive, in callout form.
 const NOTICE = "> [!WARNING]\n> YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE. [continued_without_note]";
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
@@ -869,7 +869,7 @@ const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: st
 };
 
 for (const parked of [false, true]) for (const location of ["absent", "content", "reasoning", "both"]) {
-    test(`{§continued-without-note} {§reasoning-operations}: ${parked ? "parked" : "continuing"} work with NOTE ${location}`, async () => {
+    test(`{§operation-results} {§reasoning-operations}: ${parked ? "parked" : "continuing"} work with NOTE ${location}`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `optional-note-${parked}-${location}`);
@@ -916,7 +916,7 @@ for (const parked of [false, true]) for (const location of ["absent", "content",
     });
 }
 
-test("{§outside-text} {§continued-without-note}: an operation-free response keeps its failure receipt and takes no notice", async () => {
+test("{§outside-text} {§operation-results}: an operation-free response keeps its failure receipt and takes no notice", async () => {
     const db = await openMigrated();
     try {
         const result = await runLoop(db, [
@@ -1112,10 +1112,10 @@ test("{§engine-rails}: repeated reasoning-only responses are not reported as re
     } finally { await db.close(); }
 });
 
-// {§output-allowance-notice} — the ceiling cut each response, so the verdict names the ceiling: identical cut
+// {§operation-results} — the ceiling cut each response, so the verdict names the ceiling: identical cut
 // responses are no repetition, whether the cut left nothing to admit or exhausted every emission attempt.
 for (const [shape, content, calls] of [["before any text", "", 3], ["inside an operation", "````READ (src/a", 9]] as const) {
-    test(`{§output-allowance-notice} {§engine-rails}: responses the output allowance cut ${shape} cross as the allowance, never a cycle`, async () => {
+    test(`{§operation-results} {§engine-rails}: responses the output allowance cut ${shape} cross as the allowance, never a cycle`, async () => {
         const { db, engine, workspaceId, sessionId, loopId } = await setup();
         try {
             const cut: MockResponse = { assistant: { content, reasoning: "Considering the next step.", finishReason: "length" }, assistantRaw: null };

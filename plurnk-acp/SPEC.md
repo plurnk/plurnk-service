@@ -614,7 +614,7 @@ arrival rows.** Until observed at a turn boundary, an accepted message appears i
 with its durable coordinate.
 
 §acp-run-source **The session's user message is the causal actor behind its inbound SEND**
-({§message-causal-source}), addressed as
+({§message-arrival}), addressed as
 `acp://operator/sessions/<sessionId>/messages/<messageId>` (each segment URI-encoded).
 
 §acp-http-authorization **`/acp` is a protected resource requiring scope `acp`.** When

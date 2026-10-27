@@ -5,7 +5,7 @@ import { assertEditBatchReceipt, projectEditReceipt } from "./edit-receipt.ts";
 import type { DispatchResult } from "../core/mutation-types.ts";
 import LineMarkerOps from "./line-marker.ts";
 
-// {§edit-pattern} {§kill-pattern} — a matcher's evidence over one resource becomes a batch of
+// {§edit-pattern} {§op-invariants} — a matcher's evidence over one resource becomes a batch of
 // ordinary coordinate edits, all relative to the same original content, so the existing batch
 // machinery (merges, compare-and-swap on touched lines, receipts) does the work.
 export type PatternEdit = { readonly marker: { readonly marks: [number] | [number, number, number, number] }; readonly body: string };
@@ -50,7 +50,7 @@ export default class PatternEdits {
         });
     }
 
-    // {§slice-semantics-compose-pattern} Selection consumes evidence; it never matches again.
+    // {§zero-width-column-one-insert} Selection consumes evidence; it never matches again.
     static spans(evidence: readonly MatchEvidence[], bounds: TextRegion | null): TextRegion[] {
         const compare = (line: number, column: number, otherLine: number, otherColumn: number): number => line - otherLine || column - otherColumn;
         return evidence.flatMap(({ region }) => region === undefined ? [] : [region])
@@ -82,7 +82,7 @@ export default class PatternEdits {
         } })), null);
     }
 
-    // {§slice-semantics-compose-pattern} Resolve scopes through the existing text algebra.
+    // {§zero-width-column-one-insert} Resolve scopes through the existing text algebra.
     static bounds(marks: readonly number[] | undefined, content: string): TextRegion | null | { readonly error: string } {
         if (marks === undefined || marks.length === 0) return null;
         if (marks.length === 1 && marks[0] <= 0) return { error: "A pattern scope selects source text, not a prepend or append position." };

@@ -1,4 +1,4 @@
-// {§slice-semantics-compose-pattern} — JSONPath selects the value's source text.
+// {§zero-width-column-one-insert} — JSONPath selects the value's source text.
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";

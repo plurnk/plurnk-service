@@ -1,7 +1,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// {§candidate-pinned-runtime} — a candidate runs its daemon and exports its digest from a copy of
+// {§share} — a candidate runs its daemon and exports its digest from a copy of
 // the service build taken at launch. The checkout's `dist` is shared: a concurrent candidate's
 // build, or a developer's, replaces it mid-run, and a run must finish on the code it started with.
 // Each workspace keeps its package projection (`files`); third-party dependencies are linked, not

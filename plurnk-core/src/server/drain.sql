@@ -91,7 +91,7 @@ RETURNING id, ordinal, message_key;
 SELECT path FROM message_sources WHERE id = $id;
 
 -- PREP: drain_unpublished_messages_for_loop
--- {§message-loop-containment}: the messages the loop contains but has not yet published, oldest
+-- {§message-arrival}: the messages the loop contains but has not yet published, oldest
 -- first; the next turn boundary publishes each as an inbound SEND row exactly once.
 SELECT id, ordinal, source, body, open_paths, key_path AS path, path AS durable_path
 FROM message_sources
@@ -99,7 +99,7 @@ WHERE loop_id = $loop_id AND log_entry_id IS NULL
 ORDER BY ordinal ASC;
 
 -- PREP: drain_has_unpublished_messages
--- {§completion-defers-to-messages}: existence is enough to defer conclusion;
+-- {§message-arrival}: existence is enough to defer conclusion;
 -- publication alone needs the bodies and their ordering.
 SELECT 1 AS pending
 FROM loop_messages
@@ -113,7 +113,7 @@ WHERE id = $id AND log_entry_id IS NULL
 RETURNING id;
 
 -- PREP: drain_enqueue_orphan_recovery_loop
--- {§message-loop-containment}: recovery identity is the concluded source loop.
+-- {§message-arrival}: recovery identity is the concluded source loop.
 -- The database copies its posture and first unpublished arrival directly; the caller needs only
 -- the recovery identity and expected cardinality, never the stored message bodies or policy.
 INSERT INTO loops (

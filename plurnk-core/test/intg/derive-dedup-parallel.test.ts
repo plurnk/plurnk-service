@@ -323,7 +323,7 @@ test("{§execution-output-identity} named and unnamed resources retain bytes, do
     }
 });
 
-test("{§env-delta-entry-materialization} entry() materializes an https resource as plurnk narration rows", async () => {
+test("{§env-delta} entry() materializes an https resource as plurnk narration rows", async () => {
     const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire();
     try {
         const result = await engine.dispatch({
@@ -381,7 +381,7 @@ test("{§env-delta-entry-materialization} entry() materializes an https resource
         assert.equal(narrations[0]?.source, "session://researcher", "source uses the calling session's control identity");
         assert.ok((narrations[0]?.weight ?? 0) > 0, "the row carries the write's real curation weight");
         assert.equal(JSON.parse(narrations[0]?.attrs ?? "{}").kind, "entry_materialized", "machine acquisition is typed so live clients compact it without erasing durable history");
-        // {§env-delta-entry-materialization} — durable narration retains the
+        // {§env-delta} — durable narration retains the
         // write statement and its source-numbered resulting span.
         const full = await db.test_log_entries_by_session_op_full.all<{
             hostname: string | null;

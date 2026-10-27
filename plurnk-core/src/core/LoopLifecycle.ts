@@ -165,7 +165,7 @@ export default class LoopLifecycle {
         return row.terminated_by === "cancel";
     }
 
-    // {§loop-status-notice} {§notifications} — Unix milliseconds, as the status gauge carries them.
+    // {§operation-results} {§notifications} — Unix milliseconds, as the status gauge carries them.
     async observation(loopId: number): Promise<{ loopSeq: number; claimedAt: number | null; terminatedAt: number | null; packetCount: number }> {
         const row = await this.#db.lifecycle_loop_observation.get<{ loopSeq: number; claimedAt: string | null; terminatedAt: string | null; packetCount: number }>({
             loop_id: loopId,

@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     sequence        INTEGER NOT NULL           CHECK (sequence >= 1),
     at              TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     origin          TEXT    NOT NULL           CHECK (origin IN ('model', 'client', '_plurnk', 'plugin')),
-    -- {§env-delta-attribution}: a causal session:// identity, log:/// operation
+    -- {§env-delta}: a causal session:// identity, log:/// operation
     -- address, or stable subsystem token ('file'); NULL = the owning session
     -- itself, rendered without causal attribution.
     source          TEXT,
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ) VIRTUAL REFERENCES native_contents(hash),
 
     -- Complete canonical LogBody content before coordinate/presentation
-    -- projection; persistence envelopes do not contribute. {§tokenomics-weight-stored-at-write}
+    -- projection; persistence envelopes do not contribute. {§tokenomics}
     weight          INTEGER NOT NULL DEFAULT 0 CHECK (weight >= 0),
 
     state           TEXT    NOT NULL DEFAULT 'resolved'
@@ -215,7 +215,7 @@ CREATE VIEW IF NOT EXISTS unanswered_messages AS
 SELECT m.* FROM message_sources m
 WHERE NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id);
 
--- {§message-reply-delivery}: a reply reaches the message's own session and the session that sent it.
+-- {§message-arrival}: a reply reaches the message's own session and the session that sent it.
 CREATE VIEW IF NOT EXISTS message_reply_deliveries AS
 SELECT DISTINCT r.id AS source_record_id, r.loop_id, m.workspace_id,
        r.session_id AS producer_session_id, m.session_id AS recipient_session_id
@@ -629,7 +629,7 @@ SELECT *
 FROM (
     SELECT w.workspace_id,
            le.session_id AS producer_session_id,
-           -- {§env-delta-child-activity} — the runtime's own materialization (turn-0
+           -- {§env-delta} — the runtime's own materialization (turn-0
            -- initialization, doc-reconciliation maintenance, operation batches) is
            -- private to the session it serves and never crosses to the parent.
            CASE

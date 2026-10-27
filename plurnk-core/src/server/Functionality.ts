@@ -425,7 +425,7 @@ export default class Functionality {
         return body;
     }
 
-    // Each document carries its family so the projection can follow the family's admission ({§schemes-directory}).
+    // Each document carries its family so the projection can follow the family's admission ({§tools-resource-materialization}).
     documents(workspaceId: number): Array<{ family: string; pathname: string; content: string }> {
         const out: Array<{ family: string; pathname: string; content: string }> = [];
         const prefix = `${workspaceId}:`;

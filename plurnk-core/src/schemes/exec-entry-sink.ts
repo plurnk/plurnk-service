@@ -1,4 +1,4 @@
-// {§execution-output-identity} {§env-delta-entry-materialization} — the executor's `entry()` sink. Each materialization is one
+// {§execution-output-identity} {§env-delta} — the executor's `entry()` sink. Each materialization is one
 // durable entry write, serialized behind the previous, narrated as one `_plurnk` EDIT row through the one
 // reserved-session turn this spawn owns; the spawn's tail settles the chain and closes that turn ({§execution-output-identity}).
 

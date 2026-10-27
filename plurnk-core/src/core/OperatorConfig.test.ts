@@ -34,7 +34,7 @@ test("{§credential-authority} the seed teaches the posture and sets no credenti
     assert.equal(seed, OperatorConfig.renderSeed(), "the seed is one text, with nothing minted into it");
 });
 
-test("{§policy} {§host-path-layout} first run creates private user-owned config once", async () => {
+test("{§packet-inject} {§host-path-layout} first run creates private user-owned config once", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-operator-config-"));
     const paths = new HostPaths({ env: {}, home: join(root, "home") });
     const policySource = join(root, "policy.md");

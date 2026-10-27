@@ -12,7 +12,7 @@ import { aliasesSatisfying, checkoutPath, onPath, parseRequirement, requirements
 import { failAfterCleanup } from "../test/live-failure.ts";
 import { tierRunPath } from "../../scripts/lib/test-artifacts.ts";
 
-test("{§live-harness-deadline} live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
+test("{§test-artifact-retention} live and demo deadline reads the existing env knob and rejects invalid limits", (t) => {
     const previous = process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
     t.after(() => {
         if (previous === undefined) delete process.env.PLURNK_SERVICE_LIVE_TIMEOUT;
@@ -28,13 +28,13 @@ test("{§live-harness-deadline} live and demo deadline reads the existing env kn
     }
 });
 
-test("{§tier-census} the live catalog contains the smoke specimen", async () => {
+test("{§test-artifact-retention} the live catalog contains the smoke specimen", async () => {
     const files = await liveFiles();
     const names = await collectLiveTestNames(files);
     assert.deepEqual(names, ["live: smoke — boot, read one entry, complete, and write digest evidence"]);
 });
 
-test("{§tier-specimen-selection} the full tier and exact specimen share one invocation", async () => {
+test("{§test-artifact-retention} the full tier and exact specimen share one invocation", async () => {
     const full = await liveInvocation();
     const names = await collectLiveTestNames(await liveFiles());
     const specimen = await liveInvocation(names[0]);
@@ -48,12 +48,12 @@ test("{§tier-specimen-selection} the full tier and exact specimen share one inv
     assert.deepEqual(specimen.env, full.env);
 });
 
-test("{§provider-conformance-matrix} the specimen selector rejects absent and duplicate names", () => {
+test("{§test-artifact-retention} the specimen selector rejects absent and duplicate names", () => {
     assert.throws(() => exactSpecimen("missing", ["present"]), /matched 0 registered tests/);
     assert.throws(() => exactSpecimen("duplicate", ["duplicate", "duplicate"]), /matched 2 registered tests/);
 });
 
-test("{§tier-census} a stamped run names its directory, adds the census reporter and stamps the child; an unstamped one does neither", async () => {
+test("{§test-artifact-retention} a stamped run names its directory, adds the census reporter and stamps the child; an unstamped one does neither", async () => {
     assert.equal(stampTierRun("live", new Date("2026-10-12T23:59:59.123Z")), "live-20261012T235959Z");
     const files = ["/x/a.test.ts"];
     const stamped = tierArguments({ files, pattern: undefined, run: "live-20261012T235959Z" });
@@ -67,7 +67,7 @@ test("{§tier-census} a stamped run names its directory, adds the census reporte
     assert.equal((await tierEnvironment(undefined)).PLURNK_TIER_RUN, undefined);
 });
 
-test("{§tier-census} every specimen declares requirements from the closed vocabulary", async () => {
+test("{§test-artifact-retention} every specimen declares requirements from the closed vocabulary", async () => {
     const specimens = await collectLiveSpecimens(await liveFiles());
     for (const { name, requires } of specimens) {
         for (const requirement of requires) assert.doesNotThrow(() => parseRequirement(requirement), `${name} declares ${requirement}`);
@@ -82,7 +82,7 @@ test("{§tier-census} every specimen declares requirements from the closed vocab
     assert.throws(() => parseRequirement("checkout:bench"), /is not a live requirement/);
 });
 
-test("{§tier-census} an unmet requirement is named with what the route or host showed; a met one is silent", async (t) => {
+test("{§test-artifact-retention} an unmet requirement is named with what the route or host showed; a met one is silent", async (t) => {
     const facts = async () => ({ inputModalities: new Set(["image"]), supportedEfforts: ["off", "adaptive"], outputBudget: null });
     const present = await mkdtemp(join(tmpdir(), "plurnk-checkout-"));
     t.after(() => rm(present, { recursive: true, force: true }));
@@ -110,7 +110,7 @@ test("{§tier-census} an unmet requirement is named with what the route or host 
     assert.deepEqual(requirementsOfSkip("The selected route does not advertise native pdf input."), []);
 });
 
-test("{§tier-census} the catalog answers which declared aliases satisfy a route-bound requirement", () => {
+test("{§test-artifact-retention} the catalog answers which declared aliases satisfy a route-bound requirement", () => {
     const snapshot = catalogSnapshot();
     const cataloged = (predicate) => {
         for (const [provider, models] of Object.entries(snapshot)) {
@@ -133,7 +133,7 @@ test("{§tier-census} the catalog answers which declared aliases satisfy a route
     assert.equal(aliasesSatisfying("checkout:client", aliases), null);
 });
 
-test("{§tier-census} a census row is a specimen's own verdict, never a file's or a subtest's", () => {
+test("{§test-artifact-retention} a census row is a specimen's own verdict, never a file's or a subtest's", () => {
     const file = "/x/a.test.ts";
     assert.ok(isSpecimenVerdict({ type: "test:pass", data: { name: "live: a", file, nesting: 0 } }));
     assert.ok(isSpecimenVerdict({ type: "test:fail", data: { name: "live: a", file, nesting: 0 } }));
@@ -142,7 +142,7 @@ test("{§tier-census} a census row is a specimen's own verdict, never a file's o
     assert.ok(!isSpecimenVerdict({ type: "test:diagnostic", data: { nesting: 0, message: "x" } }));
 });
 
-test("{§tier-census} the census joins verdicts with the sessions each specimen claimed and names unmet requirements; the history ledgers runs", async (t) => {
+test("{§test-artifact-retention} the census joins verdicts with the sessions each specimen claimed and names unmet requirements; the history ledgers runs", async (t) => {
     const home = await mkdtemp(join(tmpdir(), "plurnk-census-"));
     t.after(() => rm(home, { recursive: true, force: true }));
     const dir = join(home, "tier-live-20261012T000000Z");
@@ -174,7 +174,7 @@ test("{§tier-census} the census joins verdicts with the sessions each specimen 
     assert.match(markdown, /\| input:pdf \| 1 \| none declared \|/u);
 });
 
-test("{§live-harness-deadline} live failure preserves cancellation failure without obscuring either cause", async () => {
+test("{§test-artifact-retention} live failure preserves cancellation failure without obscuring either cause", async () => {
     const primary = new Error("loop timed out");
     await assert.rejects(
         failAfterCleanup(primary, async () => {}),

@@ -1289,7 +1289,7 @@ test("{§executor-tool-registry} exact tools own admission and their invocation 
     }
 });
 
-test("{§tools-resource-discovery} target recovery follows a runtime's declared document root", async () => {
+test("{§tools-resource-materialization} target recovery follows a runtime's declared document root", async () => {
     for (const resourcesPath of ["/tools", "/modules/custom"]) {
         const ctx = await wire(resourcesPath);
         try {
@@ -3266,7 +3266,7 @@ test("{§exec-target-routing} {§diagnostic-observation} a bare execution of a t
             const receipt = JSON.parse(receipts[0].rx) as { exitCode?: number; problem?: { type?: string; detail?: string; recovery?: string; toolRuntimes?: string[]; tool?: string } };
             assert.equal(receipt.exitCode, 127);
             assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/exec/program-is-a-tool");
-            assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`."); // {§pinned-wording-core}
+            assert.equal(receipt.problem?.detail, "'sh' exited with code 127; `fail` is a registered tool of `fixture`."); // {§operation-results}
             assert.equal(
                 receipt.problem?.recovery,
                 "`fail`'s contract: workspace:///_plurnk/tools/fixture/fail.json.",

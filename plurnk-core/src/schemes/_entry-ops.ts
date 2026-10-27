@@ -185,7 +185,7 @@ export default class EntryOps {
                 channel: targetChannel,
             });
 
-        // {§ext-mimetype-extension-mimetype} Resolve a type only for a new channel.
+        // {§zero-width-column-one-insert} Resolve a type only for a new channel.
         const effectiveMimetype = channel?.mimetype
             ?? await PathMimetype.resolveEntryMimetype(
                 pathname,

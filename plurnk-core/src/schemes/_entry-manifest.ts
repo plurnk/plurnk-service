@@ -1,4 +1,4 @@
-// The entry catalog ({§packet-catalog}) — the complete, unranked directory for
+// The entry catalog ({§packet}) — the complete, unranked directory for
 // one addressed owner. Recursive FIND serves it recursively; shallow FIND projects it as
 // a one-level map in _entry-find. An omitted owner selects the shared commons.
 // Each item is a non-empty, default-first array of addressable channels.
@@ -80,7 +80,7 @@ export default class EntryManifest {
         authorityFilter?: string,
     ): Promise<CatalogEntry[]> {
         const { db, workspaceId } = ctx;
-        // Weight and extent are stored beside the content ({§tokenomics-weight-stored-at-write}):
+        // Weight and extent are stored beside the content ({§tokenomics}):
         // the listing never hydrates a body.
         const rows = await db.engine_list_catalog_entries.all<ManifestRow>({
             workspace_id: workspaceId,

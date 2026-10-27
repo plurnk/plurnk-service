@@ -151,12 +151,12 @@ test("{§log-wire-format} a stored packet admits attachments of a known kind and
     assert.throws(() => StoredPacket.assert({ ...base, attachments: [{ contentHash, coordinate: "1/1/1", path: "a.png", scheme: "file", pathname: "/a.png", mimetype: "image/png", kind: "hologram", weight: 1 }] }), /kind/);
     assert.throws(() => StoredPacket.assert({ ...base, attachments: [{ contentHash, coordinate: "1/1/1", path: "a.png", scheme: "file", pathname: "/a.png", mimetype: "image/png", kind: "image", width: -1, height: 1, weight: 1 }] }), /width/);
     const withAttachment = { ...base, attachments: [{ contentHash, coordinate: "1/1/1", path: "a.pdf", scheme: "file", pathname: "/a.pdf", mimetype: "application/pdf", kind: "pdf" as const, pages: 2, weight: 3000 }] };
-    // {§packet-items} — the stored bag is the packet without its sections, which are rows.
+    // {§packet} — the stored bag is the packet without its sections, which are rows.
     const { sections: _sections, ...bag } = withAttachment;
     assert.deepEqual(JSON.parse(StoredPacket.stringify(withAttachment)), bag, "stored request evidence retains its native deliveries");
 });
 
-test("{§packet-wire-envelope}: historical unbound native attachments retain their recorded whole-log placement", async () => {
+test("{§packet-assembly}: historical unbound native attachments retain their recorded whole-log placement", async () => {
     const emissionRow = {
         coordinate: "1/1/1", op: "READ", origin: "_plurnk", producer: "model", status: 200,
         attrs: { kind: "emission" },
@@ -201,7 +201,7 @@ test("{§log-wire-format} native-only observations are weighed and reclaimable",
     assert.equal(folded.attachments.length, 1, "a bodyless native row folds nothing: the picture is the row");
 });
 
-test("{§packet-wire-envelope} historical native requests retain their recorded previous-program role and tail", async () => {
+test("{§packet-assembly} historical native requests retain their recorded previous-program role and tail", async () => {
     const rendered = PacketWire.renderLogWithAccounting([readRow()], weigh);
     const program = "```READ (logo.png)\n```";
     const packet: RequestPacket = {

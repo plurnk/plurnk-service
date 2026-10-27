@@ -1,5 +1,5 @@
 // Core facade over the shared resolver; callers supply their creation type
-// under {§ext-mimetype-extension-mimetype} and {§copy}.
+// under {§zero-width-column-one-insert} and {§copy}.
 import { PathMimetype as _PathMimetype } from "@plurnk/plurnk-schemes";
 import type { Mimetypes } from "@plurnk/plurnk-mimetypes";
 

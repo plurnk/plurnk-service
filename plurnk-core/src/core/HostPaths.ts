@@ -109,7 +109,7 @@ export default class HostPaths {
         this.globalPluginsDir = join(this.globalAgentsDir, "plugins");
     }
 
-    // {§share-folder}: command defaults use the same host path authority as the daemon.
+    // {§share}: command defaults use the same host path authority as the daemon.
     shareFolder(env: NodeJS.ProcessEnv = process.env, now = new Date()): string {
         const configured = env.PLURNK_SERVICE_SHARE_FOLDER;
         const root = configured === undefined || configured === ""

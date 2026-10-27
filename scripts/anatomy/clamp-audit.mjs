@@ -580,7 +580,18 @@ const scanRepo = (repoName) => {
     return { repoName, root, specs, tests, citations };
 };
 
-const assignAll = (scans) => {
+const assignAll = (scans, existing = null, force = false) => {
+    const existingCoreTestOwner = new Map();
+    if (!force && existing?.units !== undefined) {
+        for (const [uid, u] of Object.entries(existing.units)) {
+            if (!uid.startsWith("core-") || u.tests === undefined) continue;
+            for (const f of Object.keys(u.tests)) {
+                if (!existingCoreTestOwner.has(f)) {
+                    existingCoreTestOwner.set(f, uid);
+                }
+            }
+        }
+    }
     const unitMap = new Map(
         WORK_UNITS.map((u) => [
             u.id,
@@ -673,16 +684,16 @@ const assignAll = (scans) => {
                     unitVotes.set(targetUnit, (unitVotes.get(targetUnit) ?? 0) + 1);
                 }
             }
-            let chosen = null;
-            if (unitVotes.size > 0) {
+            let chosen = existingCoreTestOwner.get(rel) ?? null;
+            if (chosen === null && unitVotes.size > 0) {
                 chosen = [...unitVotes.entries()].toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
-            } else if (rel.includes("/content/")) {
+            } else if (chosen === null && rel.includes("/content/")) {
                 chosen = "core-04-ops-read-edit-log";
-            } else if (rel.includes("/server/") || rel.includes("/methods")) {
+            } else if (chosen === null && (rel.includes("/server/") || rel.includes("/methods"))) {
                 chosen = "core-08-methods";
-            } else if (rel.includes("/packet")) {
+            } else if (chosen === null && rel.includes("/packet")) {
                 chosen = "core-09-packet-matchers-problems";
-            } else {
+            } else if (chosen === null) {
                 chosen = "core-01-arch-actors";
             }
             unitMap.get(chosen)?.testFiles.push(t);
@@ -708,7 +719,7 @@ const buildSyncedState = (force = false) => {
         ? JSON.parse(fs.readFileSync(LEDGER_PATH, "utf8"))
         : null;
     const scans = loadAllScans();
-    const assignedMap = assignAll(scans);
+    const assignedMap = assignAll(scans, existing, force);
     const ledgerUnits = {};
 
     for (const [id, u] of assignedMap.entries()) {

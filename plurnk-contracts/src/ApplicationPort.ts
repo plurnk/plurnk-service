@@ -230,7 +230,7 @@ export interface ApplicationPort extends HttpHost {
         readonly total: number;
         readonly percent: number;
         readonly message: string;
-        // {§notice-level}: the producer's level rides unchanged — `warn` when a completed pass carries failed members.
+        // {§operation-results}: the producer's level rides unchanged — `warn` when a completed pass carries failed members.
         readonly level: "info" | "warn" | "error";
     } | null;
     readEntry(args: {

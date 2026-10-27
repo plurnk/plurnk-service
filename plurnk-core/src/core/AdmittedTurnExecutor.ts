@@ -106,7 +106,7 @@ export default class AdmittedTurnExecutor {
         emptyTurn?: boolean;
         completionAllowed?: boolean;
         bare?: BareExecution;
-        // {§context-fit} — the turn's measure of the budget left for one more result; absent, rows land whole.
+        // {§tokenomics} — the turn's measure of the budget left for one more result; absent, rows land whole.
         fit?: ContextFit;
         signal?: AbortSignal;
         onDispatch?: (logEntryId: number) => void;

@@ -159,7 +159,7 @@ only through the generated ```` ```plurnk (skills) ```` tool
 ## Problems
 
 §problems-skills **Agent Skills source and setup Problems.** Shared coordination failures use
-{§problems-functionality}. Placeholders below describe the failing source or definition.
+{§operation-results}. Placeholders below describe the failing source or definition.
 
 | code | status | contract |
 |---|---:|---|

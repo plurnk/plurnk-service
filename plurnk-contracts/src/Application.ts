@@ -174,7 +174,7 @@ export interface ApplicationLoopPacket {
     readonly gauge: ApplicationGauge;
 }
 
-/** {§tokenomics-client-gauge} The client gauge: a packet's curation pair and the physical pair of its emission call. */
+/** {§tokenomics} The client gauge: a packet's curation pair and the physical pair of its emission call. */
 export interface ApplicationGauge {
     readonly curationWeight: number | null;
     readonly curationBudget: number | null;

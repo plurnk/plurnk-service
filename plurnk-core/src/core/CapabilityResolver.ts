@@ -34,7 +34,7 @@ export interface CapabilityDenial {
 const isLowercase = (name: string): name is RuntimeTag => name === name.toLowerCase();
 
 export default class CapabilityResolver {
-    // {§pinned-wording-core} The owner ring is the one refusal the model can act on.
+    // {§operation-results} The owner ring is the one refusal the model can act on.
     static readonly UNATTENDED_RECOVERY =
         "Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve.";
 
@@ -250,7 +250,7 @@ export default class CapabilityResolver {
             .every((descriptor) => CapabilityAdmission.allowsAcross(policies, descriptor));
     }
 
-    // {§schemes-directory} References describe the whole scheme; any admitted
+    // {§tools-resource-materialization} References describe the whole scheme; any admitted
     // resource capability makes that reference useful. Examples are not policy.
     allowsSchemeAcross(
         scheme: string,

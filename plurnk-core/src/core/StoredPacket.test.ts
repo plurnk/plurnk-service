@@ -8,13 +8,13 @@ const request = (): RequestPacket => ({
     attributions: ["creator:ada", "topic:search"],
 });
 
-test("{§packet-items} StoredPacket: NULL is the singular no-request representation", () => {
+test("{§packet} StoredPacket: NULL is the singular no-request representation", () => {
     assert.equal(StoredPacket.parse(null), null);
 });
 
-// {§packet-items} — storage splits a packet into the bag (turns.packet) and its sections (rows);
+// {§packet} — storage splits a packet into the bag (turns.packet) and its sections (rows);
 // the two halves rejoin to the exact measured request.
-test("{§packet-items} StoredPacket: request-only round trip preserves the exact measured request", () => {
+test("{§packet} StoredPacket: request-only round trip preserves the exact measured request", () => {
     const packet = request();
     const bag = JSON.parse(StoredPacket.stringify(packet)) as Record<string, unknown>;
     assert.equal(bag.sections, undefined, "the bag carries no sections");
@@ -23,7 +23,7 @@ test("{§packet-items} StoredPacket: request-only round trip preserves the exact
     assert.deepEqual(StoredPacket.parse(JSON.stringify({ ...bag, sections })), packet);
 });
 
-test("{§packet-stored-shape}: assistant-role sections retain their bodies and position", () => {
+test("{§packet}: assistant-role sections retain their bodies and position", () => {
     const packet: RequestPacket = { ...request(), sections: [
         request().sections[0],
         { name: "emission-history", slot: "assistant", header: null, content: "```EDIT (a)\nwhole body\n```", weight: 15 },
@@ -35,13 +35,13 @@ test("{§packet-stored-shape}: assistant-role sections retain their bodies and p
     assert.deepEqual(sections[1].items, [packet.sections[1].content]);
 });
 
-test("{§packet-items} StoredPacket: a section's items must join back to its content", () => {
+test("{§packet} StoredPacket: a section's items must join back to its content", () => {
     const packet = request();
     const broken = { ...packet, sections: packet.sections.map((section) => ({ ...section, items: ["not", "the content"] })) };
     assert.throws(() => StoredPacket.sections(broken), /items do not join to its content/);
 });
 
-test("{§packet-stored-shape} StoredPacket: admission extends the request without changing its weight", () => {
+test("{§packet} StoredPacket: admission extends the request without changing its weight", () => {
     const packet = StoredPacket.admit(request(), { content: "response", ops: [], reasoning: null }, undefined);
     assert.equal(packet.weight, 3);
     assert.equal(packet.assistantRaw, null);
@@ -63,7 +63,7 @@ test("{§emission-admission} StoredPacket: attribution evidence is a canonical o
     );
 });
 
-test("{§packet-stored-shape} StoredPacket: malformed durable shapes fail with their causal location", () => {
+test("{§packet} StoredPacket: malformed durable shapes fail with their causal location", () => {
     assert.throws(() => StoredPacket.parse("{"), /contains invalid JSON/);
     assert.throws(() => StoredPacket.parse("{}", "turn 7"), /turn 7 has an invalid packet shape/);
     assert.throws(

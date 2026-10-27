@@ -126,7 +126,7 @@ WHERE entry_id = $entry_id
   );
 
 -- PREP: crud_attach_channel_derivation_by_hash
--- The same guard by stored identity ({§tokenomics-content-hash-identity}): a channel whose
+-- The same guard by stored identity ({§tokenomics}): a channel whose
 -- artifact is already complete attaches without its body crossing into the process.
 UPDATE entry_channels
 SET deep_hash = $deep_hash
@@ -201,7 +201,7 @@ DELETE FROM workspace_constraints
 WHERE workspace_id = $workspace_id AND effect = 'include' AND glob = $glob AND source = 'create';
 
 -- PREP: crud_delete_family_workspace_constraints
--- {§members-projection}: the members family owns its projected rows and replaces them whole.
+-- {§tools-resource-materialization}: the members family owns its projected rows and replaces them whole.
 DELETE FROM workspace_constraints
 WHERE workspace_id = $workspace_id AND source IN ('members', 'model');
 

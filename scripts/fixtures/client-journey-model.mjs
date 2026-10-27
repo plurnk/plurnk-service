@@ -74,7 +74,7 @@ const frame = (value) => `data: ${JSON.stringify(value)}\n\n`;
 
 const textOf = (message) => typeof message?.content === "string" ? message.content : "";
 
-// {§emission-history} {§paired-receipt}: a paired receipt leaves the request (path, scope, pattern) to its replayed
+// {§emission-history} {§emission-history}: a paired receipt leaves the request (path, scope, pattern) to its replayed
 // operation, so read each replayed turn as the model does: its operations, then their receipts in program order.
 const pairedReceipts = (messages) => messages.flatMap((message, index) => {
     if (message.role !== "assistant") return [];
@@ -148,7 +148,7 @@ export const startClientJourneyModel = async () => {
             const [journey, definition] = matches[0];
             const index = counts.get(journey) ?? 0;
             const program = definition.programs[index];
-            // {§packet-wire-envelope}: the system and user messages carry the packet; the assistant messages replay the session's operations.
+            // {§packet-assembly}: the system and user messages carry the packet; the assistant messages replay the session's operations.
             const text = (body.messages ?? []).filter((message) => message.role !== "assistant").map(textOf).join("\n\n");
             if (journey === "files" && index > 0) {
                 const edits = pairedReceipts(body.messages ?? []).filter((row) => row.op === "EDIT" && row.path === "integrity.txt");

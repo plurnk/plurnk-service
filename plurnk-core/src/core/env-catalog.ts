@@ -130,7 +130,7 @@ export default class EnvCatalog {
 
     // The projection. An empty query is the whole catalog: there is no remote index to search
     // and nothing to page, so dumping it is honest — it arrives whole when it fits and as its size
-    // otherwise ({§context-fit}), and the model scopes or patterns into the rest with native tools.
+    // otherwise ({§tokenomics}), and the model scopes or patterns into the rest with native tools.
     static project(files: readonly EnvDefaultsFile[], query: EnvCatalogQuery = {}): string {
         const { query: term, source } = query;
         const selected = source === undefined ? files : files.filter((file) => file.owner === source);

@@ -9,7 +9,7 @@ import { Knob } from "@plurnk/plurnk-meta";
 interface GitFileStatus {
     path: string;
     status: string;
-    // {§packet-git-status} — an untracked path's membership truth: the inclusion pattern that
+    // {§packet-inject} — an untracked path's membership truth: the inclusion pattern that
     // admits it, `created` for a creation record, `member` otherwise; null when it is not a
     // member; absent beyond the rendered paths.
     member?: string | null;
@@ -72,7 +72,7 @@ export default class GitState {
         return snapshot;
     }
 
-    // {§packet-git-status} — the rendered untracked paths never contradict the catalog: an
+    // {§packet-inject} — the rendered untracked paths never contradict the catalog: an
     // untracked file an inclusion or a creation record admits is named as the member it is.
     static renderedPaths(): number { return Knob.integer("PLURNK_SERVICE_GIT_STATUS_PATHS", 0); }
 

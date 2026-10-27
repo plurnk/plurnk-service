@@ -1,4 +1,4 @@
--- {§graph-relations} symbol_defs/refs population + &< / &> / &
+-- {§matcher-dispatch} symbol_defs/refs population + &< / &> / &
 -- resolution. Populated delete-then-insert per readable derivation by SearchIndex;
 -- queried by the `graph` dialect via EntryGraph. Traversal is kind-agnostic
 -- (every ref is an edge; `kind` is edge metadata, never filtered here). 1-hop —

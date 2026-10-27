@@ -354,7 +354,7 @@ describe("history-addressing", () => {
 const frame = PlurnkParser.frame;
 const program = (name: string) => `${frame("NOTE", `${name} source`)}\n\n${frame(`READ (note://${name}/1/1/1)`, null)}`;
 
-test("{§env-delta-child-activity}: file deletion, session cancellation and stream cancellation remain observable", async () => {
+test("{§env-delta}: file deletion, session cancellation and stream cancellation remain observable", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-ambient-kill-"));
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -541,7 +541,7 @@ test("{§turn-source-resources}: a SEND shares a note; the recipient deliberatel
     } finally { await db.close(); }
 });
 
-for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit ${exitCode} is observed by its session without forwarding output READs`, async () => {
+for (const exitCode of [0, 7]) test(`{§env-delta}: executor exit ${exitCode} is observed by its session without forwarding output READs`, async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     const exec = schemes.get("exec") as Exec;
@@ -584,7 +584,7 @@ for (const exitCode of [0, 7]) test(`{§env-delta-child-activity}: executor exit
     }
 });
 
-test("{§env-delta-child-activity}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and received requests stay local", async () => {
+test("{§env-delta}: WORK, FORK and outgoing SEND are observable; BARE, WAIT and received requests stay local", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "delegation-observation");
@@ -622,7 +622,7 @@ test("{§env-delta-child-activity}: WORK, FORK and outgoing SEND are observable;
     } finally { await db.close(); }
 });
 
-test("{§env-delta-child-activity}: parent receives actions, never child exploration or log curation", async () => {
+test("{§env-delta}: parent receives actions, never child exploration or log curation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "action-observation");
@@ -668,7 +668,7 @@ afterAll(() => { if (prevReasoningRows === undefined) delete process.env.PLURNK_
 
 const task = PlurnkParser.frame("NOTE", "Review the result.");
 
-for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources} {§context-fit}: an explicit reasoning READ is exact — ${mode === "fits" ? "whole when it fits" : "a bodiless receipt when it does not"}`, async () => {
+for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources} {§tokenomics}: an explicit reasoning READ is exact — ${mode === "fits" ? "whole when it fits" : "a bodiless receipt when it does not"}`, async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-budget-${mode}`);
@@ -718,7 +718,7 @@ for (const mode of ["fits", "receipt"] as const) test(`{§turn-source-resources}
             // Source identity never depends on the reader ({§turn-source-resources}); alice's READs and packets are counted below.
             const observer = await insertSession(db, workspaceId, null, "observer");
             const range = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(PlurnkParser.frame("READ (reasoning://alice/1/2) <1,10>", null)) });
-            assert.equal(range.status, 200, "a range READ of the source still works ({§context-verbs})");
+            assert.equal(range.status, 200, "a range READ of the source still works ({§tokenomics})");
             assert.ok("content" in range);
             assert.equal(range.content, reasoning.split("\n").slice(0, 10).join("\n"));
             const source = (await db.test_model_reasoning_resources.all<Resource>({ session_id: sessionId }))[0];

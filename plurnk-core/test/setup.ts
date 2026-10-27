@@ -45,7 +45,7 @@ const fixture = {
     PLURNK_SERVICE_PROVIDER_RECOVERY: "1500",
     PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "20",
     // The Mock tier's fixtures are small: a result fits the fixture budget or lands as its size
-    // ({§context-fit}); the shipped panel is asserted by shipped-defaults.test.ts.
+    // ({§tokenomics}); the shipped panel is asserted by shipped-defaults.test.ts.
     PLURNK_SERVICE_DB_PATH: join(testArtifactPath(LANE), "plurnk.test.db"),
     // Retained module files belong with this tier's database evidence, in the run's own
     // directory under PLURNK_BENCHMARKS ({§test-artifact-retention}).

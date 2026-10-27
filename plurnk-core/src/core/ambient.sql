@@ -13,7 +13,7 @@ BEGIN
 END;
 
 -- INIT: log_entries_deliver_replies
--- {§message-reply-delivery}: the reply and its addressed occurrence commit together.
+-- {§message-arrival}: the reply and its addressed occurrence commit together.
 DROP TRIGGER IF EXISTS log_entries_deliver_replies;
 CREATE TRIGGER log_entries_deliver_replies
 AFTER INSERT ON log_entries
@@ -40,7 +40,7 @@ WHERE kind = 'reply' AND source_record_id = $log_entry_id;
 -- A session begins after the history that predates its existence. This trigger
 -- runs in the session INSERT statement, so an occurrence is either in the
 -- baseline or after it. Fork INSERTs supply their own cursor/boundary and skip
--- this ordinary-session baseline. {§env-delta-log-pull}
+-- this ordinary-session baseline. {§env-delta}
 DROP TRIGGER IF EXISTS sessions_capture_ambient_baseline;
 CREATE TRIGGER sessions_capture_ambient_baseline
 AFTER INSERT ON sessions
@@ -80,7 +80,7 @@ BEGIN
     FROM sessions w
     WHERE w.id = NEW.session_id
       AND w.parent_session_id IS NOT NULL
-      -- {§env-delta-child-termination}: runtime administrative work is not a
+      -- {§env-delta}: runtime administrative work is not a
       -- delegated conclusion. A spawn failing before its first turn still is.
       AND (
           NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = NEW.id)
@@ -94,7 +94,7 @@ BEGIN
 END;
 
 -- INIT: log_entries_append_ambient_event_insert
--- {§env-delta-child-activity} The candidate view owns action eligibility.
+-- {§env-delta} The candidate view owns action eligibility.
 -- Commons effects add the workspace audience; observer rows and copied fork
 -- history cannot republish themselves.
 DROP TRIGGER IF EXISTS log_entries_append_ambient_event_insert;

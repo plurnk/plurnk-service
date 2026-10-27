@@ -555,7 +555,7 @@ test("{§fence-pairing} a literal nested NOTE remains data in the complete opera
     }
 });
 
-test("{§tokenomics-provider-usage} a provider-authoritative charge is the settled turn and loop cost", async () => {
+test("{§tokenomics} a provider-authoritative charge is the settled turn and loop cost", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new Mock({
@@ -695,7 +695,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
     }
 });
 
-test("{§operation-result-no-error-scheme} {§matcher-refusal} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
+test("{§operation-results} {§matcher-refusal} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const malformed = "\n````FIND (workspace:///x) $fC````\n\n````NOTE\ninspect the results next\n````";
@@ -1871,7 +1871,7 @@ test("{§emission-admission} a valid turn with a failed operation remains recove
     }
 });
 
-test("{§output-allowance-notice} a length finish surfaces the output allowance on the next packet, never grammar blame", async () => {
+test("{§operation-results} a length finish surfaces the output allowance on the next packet, never grammar blame", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -3110,7 +3110,7 @@ test("{§session-model-selection}: an oversized FORK fails as an ordinary child 
             makeMockResponse("````SEND [200]\nobserved child failure\n````"),
         ],
     });
-    // {§context-wall} — a window whose wall cannot hold the inherited packet.
+    // {§tokenomics} — a window whose wall cannot hold the inherited packet.
     const child = new Mock({ contextWindow: 1537, responses: [] });
     ProviderInstantiate.registerInstance(parent, parentSpec);
     ProviderInstantiate.registerInstance(child, childSpec);
@@ -3136,7 +3136,7 @@ test("{§session-model-selection}: an oversized FORK fails as an ordinary child 
                 }
             }
             assert.ok(selectedChildLoop, "FORK created a real child loop on the selected provider before admission");
-            assert.equal(selectedChildLoop.status, 413, "the wall, not preflight spawn logic, rejects the inherited packet ({§context-wall})");
+            assert.equal(selectedChildLoop.status, 413, "the wall, not preflight spawn logic, rejects the inherited packet ({§tokenomics})");
             const [event] = await waitFor(
                 () => (terminated() as Array<{ loopId: number; result: { status: number } }>).filter(({ loopId }) => loopId === selectedChildLoop.id),
                 (events) => events.length > 0,
@@ -3187,7 +3187,7 @@ test("{§emission-admission} a stored client id never reaches the provider call"
     assert.equal(await captureClient("@plurnk/plurnk-tui/1.4.0"), undefined, "the client id stays inside the daemon");
 });
 
-test("{§pinned-wording-core} workspace.create refuses an empty client id", async () => {
+test("{§operation-results} workspace.create refuses an empty client id", async () => {
     const mock = new Mock({ contextWindow: 8192, responses: [] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -3196,7 +3196,7 @@ test("{§pinned-wording-core} workspace.create refuses an empty client id", asyn
             const problem = rpcProblem(r);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/setting-invalid");
             assert.equal(problem.field, "settings.client");
-            assert.equal(problem.recovery, "Provide the client identifier."); // {§pinned-wording-core}
+            assert.equal(problem.recovery, "Provide the client identifier."); // {§operation-results}
         } finally { ws.close(); }
     });
 });

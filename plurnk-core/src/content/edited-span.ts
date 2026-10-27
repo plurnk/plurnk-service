@@ -1,6 +1,6 @@
 import { diffLines } from "diff";
 
-// {§env-delta-filesystem-narration} — render the net changed region in the
+// {§env-delta} — render the net changed region in the
 // materialized body, with one-based line numbers and bounded surrounding lines.
 export const editedSpan = (original: string, updated: string, context = 2): string => {
     const rows: { text: string; changed: boolean }[] = [];

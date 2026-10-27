@@ -1,4 +1,4 @@
-// {§tier-census} — what a specimen needs from its route and its host, declared once on the specimen,
+// {§test-artifact-retention} — what a specimen needs from its route and its host, declared once on the specimen,
 // checked before its body runs and named in the census when unmet. The vocabulary is closed so a
 // census row reads the same across runs, routes and hosts.
 import { accessSync, constants, existsSync } from "node:fs";

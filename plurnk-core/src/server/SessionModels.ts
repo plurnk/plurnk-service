@@ -33,7 +33,7 @@ type LoopGenerationPolicy = {
 // What an injection asks of a loop, by the supervisor's own declaration.
 type InjectionCompatibilityArgs = Parameters<ConstructorParameters<typeof DrainSupervisor>[0]["assertInjectionCompatibility"]>[0];
 
-// {§problems-functionality} A session with no model to run, whether a selection or a loop found none.
+// {§operation-results} A session with no model to run, whether a selection or a loop found none.
 export const providerNotConfigured = (): OperationFailureError => new OperationFailureError(Results.failure(
     "daemon:provider",
     "not-configured",

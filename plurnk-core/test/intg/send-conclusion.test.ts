@@ -777,7 +777,7 @@ test("{§message-completion} every progress SEND executes before a later complet
     } finally { await db.close(); }
 });
 
-test("{§loop-terminals} a later cancellation cannot overwrite a successful conclusion", async () => {
+test("{§tokenomics} a later cancellation cannot overwrite a successful conclusion", async () => {
     const { db, env, engine, lifecycle } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: {
@@ -1616,7 +1616,7 @@ test("{§send-wait-scope} WAIT ignores a non-duration decoration and continues w
         assert.equal(row.length, 1);
         assert.equal(row[0].status_rx, 102);
         assert.equal(JSON.parse(row[0].rx).problem, undefined);
-        assert.equal(JSON.parse(row[0].rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
+        assert.equal(JSON.parse(row[0].rx).detail, "Nothing is in flight. Continuing."); // {§operation-results}
     } finally { await db.close(); }
 });
 
@@ -1641,7 +1641,7 @@ test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, a
         const task = rows.find(({ op }) => op === "WAIT");
         assert.equal(task?.status_rx, 102);
         assert.equal(JSON.parse(task.rx).problem, undefined);
-        assert.equal(JSON.parse(task.rx).detail, "Nothing is in flight. Continuing."); // {§pinned-wording-core}
+        assert.equal(JSON.parse(task.rx).detail, "Nothing is in flight. Continuing."); // {§operation-results}
         const packet = await db.test_get_packet.get<{ packet: string }>({ id: result.turnId });
         assert.ok(packet);
         assert.equal(JSON.parse(packet.packet).assistant.content, content);
@@ -1938,7 +1938,7 @@ for (const body of [null, "", " \n\t"]) {
 }
 
 for (const stage of ["inference", "terminal transition"] as const) {
-    test(`{§completion-defers-to-messages}: a reply cannot resolve an unseen message arriving during ${stage}`, async (t) => {
+    test(`{§message-arrival}: a reply cannot resolve an unseen message arriving during ${stage}`, async (t) => {
         const f = await setup([response(frame("SEND [200]")), response(frame("SEND [200]"))]);
         t.after(() => f.db.close());
         let injected = false;
@@ -2057,7 +2057,7 @@ const withSettlement = async (ms: string, fn: () => Promise<void>): Promise<void
 };
 
 for (const command of ["true", "hostname"]) {
-    for (const earlyReply of [false, true]) test(`a successful ${command} reaches the next packet, early reply=${earlyReply}`, async (approvalContext) => {
+    for (const earlyReply of [false, true]) test(`{§loop-completion} a successful ${command} reaches the next packet, early reply=${earlyReply}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const answer = command === "hostname" ? hostname() : "The command completed successfully.";
         const reply = earlyReply ? "\n````SEND\nThe hostname is plurnk-sandbox.\n````" : "";
@@ -2282,7 +2282,7 @@ test("{§message-completion}: a delivered reply names the open messages it answe
     });
 });
 
-test("{§log-wire-format} {§context-fit}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async (approvalContext) => {
+test("{§log-wire-format} {§tokenomics}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
     const mock = new Mock({ contextWindow: 100_000, responses: [
@@ -2320,7 +2320,7 @@ describe("send-target-recipient", () => {
 
 
 
-test("{§problems-dispatch} a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async (approvalContext) => {
+test("{§operation-results} a SEND addressed to a turn source the model may not write is refused 400 with neutral recipient guidance", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (reasoning://alice/1/1)\nthe answer\n````", 10),
@@ -2337,8 +2337,8 @@ test("{§problems-dispatch} a SEND addressed to a turn source the model may not 
             assert.equal(sends[0]?.status_rx, 400, "the directed SEND was refused 400, not 403");
             const problem = (JSON.parse(sends[0].rx) as { problem?: Record<string, unknown> }).problem;
             assert.equal(problem?.type, "https://problems.plurnk.xyz/engine/dispatcher/send-target-not-a-recipient");
-            assert.equal(problem?.detail, "The addressed scheme is not a SEND recipient."); // {§problems-dispatch}
-            assert.equal(problem?.recovery, "Name a message address or a recipient that implements SEND."); // {§problems-dispatch}
+            assert.equal(problem?.detail, "The addressed scheme is not a SEND recipient."); // {§operation-results}
+            assert.equal(problem?.recovery, "Name a message address or a recipient that implements SEND."); // {§operation-results}
             assert.doesNotMatch(JSON.stringify(problem), /meant|intended|wanted|tried/u);
             assert.ok(!sends.some((r) => r.status_rx === 403), "the writer rule never speaks first");
             assert.deepEqual(sends.map(({ status_rx }) => status_rx), [400, 200]);
@@ -2348,7 +2348,7 @@ test("{§problems-dispatch} a SEND addressed to a turn source the model may not 
     });
 });
 
-test("{§problems-dispatch} a SEND addressed to a file path preserves the scheme's factual 501", async (approvalContext) => {
+test("{§operation-results} a SEND addressed to a file path preserves the scheme's factual 501", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND (.)\nwaiting\n````", 10),
@@ -2364,7 +2364,7 @@ test("{§problems-dispatch} a SEND addressed to a file path preserves the scheme
             const first = rows.find((r) => r.op === "SEND" && r.origin === "model");
             assert.equal(first?.status_rx, 501);
             const problem = (JSON.parse(first.rx) as { problem?: Record<string, unknown> }).problem;
-            assert.equal(problem?.detail, "Scheme 'file' does not implement SEND."); // {§problems-dispatch}
+            assert.equal(problem?.detail, "Scheme 'file' does not implement SEND."); // {§operation-results}
             assert.equal(problem?.recovery, undefined);
         } finally { ws.close(); }
     });

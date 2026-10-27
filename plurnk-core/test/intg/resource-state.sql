@@ -1,4 +1,4 @@
--- ResourceState invariant queries ({§fs-resource-state}).
+-- ResourceState invariant queries ({§test-artifact-retention}).
 -- Read-only; integration and demo harnesses run these checks over their specimens.
 
 -- PREP: ws_dup_identities

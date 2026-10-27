@@ -102,8 +102,8 @@ test("{§persistent-search-index} search artifacts index the exact READ body rat
 });
 
 describe("contract-mimetypes", () => {
-// Composed coverage for {§matcher-dispatch}, {§slice-semantics-compose-pattern},
-// {§kill-scope-entry}, {§mimetype}, and {§mimetype}.
+// Composed coverage for {§matcher-dispatch}, {§zero-width-column-one-insert},
+// {§op-invariants}, {§mimetype}, and {§mimetype}.
 
 
 
@@ -127,7 +127,7 @@ describe("contract-mimetypes", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 const execFileP = promisify(execFile);
 const readFileScheme = (statement: ReadStatement, ctx: PlurnkSchemeContext) =>
@@ -180,7 +180,7 @@ const binaryProjectionMimetypes = (revision: string): Mimetypes => {
 // handler's parseTree fails → QueryParseFailureError → Matcher.matchAgainstContent
 // maps to 203, returning the RAW bytes as the text primitive plus `reason`.
 
-test("{§slice-semantics-compose-pattern} jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
+test("{§zero-width-column-one-insert} jsonpath on malformed-JSON entry returns 203 with raw bytes as text/markdown + reason", async () => {
     const { db, workspaceId, sessionId, mimetypes } = await setup();
     try {
         const k = new Workspace();
@@ -200,9 +200,9 @@ test("{§slice-semantics-compose-pattern} jsonpath on malformed-JSON entry retur
     } finally { await db.close(); }
 });
 
-// --- {§slice-semantics-compose-pattern}: matcher evidence guides a later <L> -------------
+// --- {§zero-width-column-one-insert}: matcher evidence guides a later <L> -------------
 
-test("{§kill-scope-entry} an exact matcher FIND returns flat coordinates for a surgical follow-up READ", async () => {
+test("{§op-invariants} an exact matcher FIND returns flat coordinates for a surgical follow-up READ", async () => {
     const { db, workspaceId, sessionId, mimetypes } = await setup();
     try {
         const loopId = await insertLoop(db, sessionId, 1, "compose");
@@ -260,7 +260,7 @@ test("{§kill-scope-entry} an exact matcher FIND returns flat coordinates for a 
     } finally { await db.close(); }
 });
 
-// --- {§kill-scope-entry} KILL(path#fragment) deletes only the named channel ----------
+// --- {§op-invariants} KILL(path#fragment) deletes only the named channel ----------
 // Multi-channel entry: 410 with a #fragment must delete exactly that channel
 // and leave the other channel (and the entry row) intact.
 

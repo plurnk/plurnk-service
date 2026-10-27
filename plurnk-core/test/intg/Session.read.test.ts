@@ -108,7 +108,7 @@ test("{§read} Session.read: nonexistent path returns 404 with null content/mime
     } finally { db.close(); }
 });
 
-test("{§problems-dispatch} Session.read: null path returns 400", async () => {
+test("{§operation-results} Session.read: null path returns 400", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const result = await readThroughScheme("workspace", null, readStatement({ target: null }), makeSchemeCtx({ db, workspaceId, sessionId }));
@@ -132,7 +132,7 @@ test("{§read} Session.read: lineMarker <N> on text source returns raw line + te
     } finally { db.close(); }
 });
 
-test("{§text-scope-runtime} Session.read: four-coordinate scope returns an exact Unicode text region", async () => {
+test("{§zero-width-column-one-insert} Session.read: four-coordinate scope returns an exact Unicode text region", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const k = new Workspace();
@@ -241,7 +241,7 @@ test("{§execution-output-identity} Session.read: read against workspace A doesn
 
 // --- Extension-based mimetype ----------------------------------------
 
-test("{§ext-mimetype} Session: path suffix `.json` declares mimetype; READ returns application/json", async () => {
+test("{§zero-width-column-one-insert} Session: path suffix `.json` declares mimetype; READ returns application/json", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -261,7 +261,7 @@ test("{§ext-mimetype} Session: path suffix `.json` declares mimetype; READ retu
     } finally { db.close(); }
 });
 
-test("{§ext-mimetype-extension-mimetype} Session: extension `.json` does not change line shorthand semantics", async () => {
+test("{§zero-width-column-one-insert} Session: extension `.json` does not change line shorthand semantics", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -285,7 +285,7 @@ test("{§ext-mimetype-extension-mimetype} Session: extension `.json` does not ch
     } finally { db.close(); }
 });
 
-test("{§ext-mimetype} Session: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
+test("{§zero-width-column-one-insert} Session: no path suffix → scheme default (text/markdown); <L> is line-based", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     const mimetypes = new Mimetypes();
     await mimetypes.ready();
@@ -535,7 +535,7 @@ describe("READ.bytes", () => {
 
 
 
-const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
+const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§packet} — the first page a markerless retrieval is
 
 process.env.PLURNK_MIMETYPES_BINARY_INPUT_MAX_BYTES ??= "104857600";
 
@@ -577,7 +577,7 @@ test("{§binary-parity} a binary member reads as hex lines: the first page witho
     try {
         const head = await readThroughScheme("file", null, bytesReadStmt(root, "blob.bin"), ctx);
         assert.equal(head.status, 200, JSON.stringify(head.problem));
-        assert.equal(head.content, ByteView.hexLines(BLOB), "without a scope, the first page of bytes: 40 fit it ({§markerless-first-page})");
+        assert.equal(head.content, ByteView.hexLines(BLOB), "without a scope, the first page of bytes: 40 fit it ({§packet})");
         assert.equal(head.startLine, 1);
         assert.equal(head.mimetype, "application/octet-stream", "the source mimetype is never relabelled");
         assert.deepEqual(head.range, { unit: "byte", total: 40, requested: [1, PAGE], returned: [1, 40] });
@@ -644,7 +644,7 @@ test("{§binary-parity} a FIND over a binary member matches bytes and reports by
     }
 });
 
-test("{§markerless-first-page} a retrieval without a scope is its first page, whatever its unit", async () => {
+test("{§packet} a retrieval without a scope is its first page, whatever its unit", async () => {
     const { root, db, ctx } = await setup();
     try {
         for (let n = 1; n <= 7; n += 1) {
@@ -783,7 +783,7 @@ test("{§log-wire-format} a seeing route receives the picture as a native part b
     assert.ok(typeof system?.content === "string" && !system.content.includes("## Attachments"), "native delivery adds no permanent hot-path teaching");
 });
 
-test("{§context-fit}: a READ that does not fit is a bodiless receipt; native output that fits attaches, and another READ attaches it again", async (approvalContext) => {
+test("{§tokenomics}: a READ that does not fit is a bodiless receipt; native output that fits attaches, and another READ attaches it again", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const root = await mkdtemp(join(tmpdir(), "plurnk-image-fit-"));
     try {
@@ -824,7 +824,7 @@ test("{§context-fit}: a READ that does not fit is a bodiless receipt; native ou
         assert.doesNotMatch(text, /evidence evidence/u, "no part of a body that did not fit is shown");
         const gauge = /^## Context\n(.*)$/mu.exec(text)?.[1] ?? "";
         assert.match(gauge, /^\{"tokens":/u, "the gauge rides the request");
-        assert.doesNotMatch(gauge, /\[!WARNING\]|YOU MUST/u, "no mandate rides the gauge ({§context-gauge})");
+        assert.doesNotMatch(gauge, /\[!WARNING\]|YOU MUST/u, "no mandate rides the gauge ({§tokenomics})");
         const renewed = nativeParts(provider.received[3]);
         const image = renewed.find((part) => part.type === "file");
         assert.ok(image?.type === "file" && Buffer.from(image.data).equals(PNG), "another READ attaches the picture again");
@@ -1537,7 +1537,7 @@ test("{§read} zero matches read as empty (204) with matched 0", async () => {
     } finally { await db.close(); }
 });
 
-test("{§markerless-first-page} a whole-resource pattern READ returns every selected line, never the unselected ones", async () => {
+test("{§packet} a whole-resource pattern READ returns every selected line, never the unselected ones", async () => {
     const lines = Array.from({ length: 40 }, (_, index) => index % 2 === 0 ? `keep ${index + 1}` : `skip ${index + 1}`);
     const { db, dispatch } = await setup(lines.join("\n"));
     try {

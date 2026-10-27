@@ -113,7 +113,7 @@ export const holdChild = async (db: Db, workspaceId: number, sessionId: number):
     return insertLoop(db, childId, 1, "Fixture-controlled work.");
 };
 
-// {§packet-items} — the stored bag carries no sections; an empty composition reads back as [].
+// {§packet} — the stored bag carries no sections; an empty composition reads back as [].
 const MIN_PACKET = JSON.stringify({
     weight: 0,
     attributions: [],
@@ -121,7 +121,7 @@ const MIN_PACKET = JSON.stringify({
     assistantRaw: null,
 });
 
-// {§packet-items} — store a complete packet the way the engine does: an open inference turn,
+// {§packet} — store a complete packet the way the engine does: an open inference turn,
 // the bag and its sections through the write view, then the turn's terminal status.
 export const insertPacketTurn = async (db: Db, loopId: number, sequence: number, packet: DurablePacket, status: number = 200): Promise<number> => {
     const row = await db.test_open_inference_turn.get<{ id: number }>({ loop_id: loopId, sequence });

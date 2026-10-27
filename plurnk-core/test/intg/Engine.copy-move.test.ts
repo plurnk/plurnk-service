@@ -238,7 +238,7 @@ test("{§copy} Engine.move cross-scheme (session commons → fixture) deletes so
     } finally { await db.close(); }
 });
 
-test("{§copy-l-source-range} Engine.copy with <L> slices the source range into the dest, no N:\\t prefix", async () => {
+test("{§op-invariants} Engine.copy with <L> slices the source range into the dest, no N:\\t prefix", async () => {
     const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await new Workspace().edit(editStmt(urlPath("workspace", "/long"), "alpha\nbeta\ngamma\ndelta"), makeSchemeCtx({ db, workspaceId, sessionId }));

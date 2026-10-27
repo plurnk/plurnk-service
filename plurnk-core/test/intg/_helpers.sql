@@ -32,14 +32,14 @@ VALUES ($loop_id, $sequence, 'model', 'inference', $status, $packet)
 RETURNING id;
 
 -- PREP: test_open_inference_turn
--- {§packet-items}: an open model inference turn at a chosen sequence, ready for
+-- {§packet}: an open model inference turn at a chosen sequence, ready for
 -- Turn.recordInference — the only path that stores a packet with its sections.
 INSERT INTO turns (loop_id, sequence, producer, kind, status, completed_at, packet)
 VALUES ($loop_id, $sequence, 'model', 'inference', 102, NULL, NULL)
 RETURNING id;
 
 -- PREP: test_turn_items
--- {§packet-items}: the items a turn's sections reference, in composition order.
+-- {§packet}: the items a turn's sections reference, in composition order.
 SELECT tsi.section, tsi.position, tsi.item_hash, pi.text
 FROM turn_section_items tsi JOIN packet_items pi ON pi.hash = tsi.item_hash
 WHERE tsi.turn_id = $turn_id
@@ -119,7 +119,7 @@ SELECT m.id, m.loop_id, m.ordinal, m.source, m.body, m.open_paths, m.log_entry_i
 FROM loop_messages m JOIN loops l ON l.id = m.loop_id
 WHERE l.session_id = $session_id ORDER BY m.id;
 -- PREP: test_get_turn
--- {§packet-items}: the packet assembled, as every whole-packet reader sees it.
+-- {§packet}: the packet assembled, as every whole-packet reader sees it.
 SELECT id, loop_id, sequence, producer, kind, status, completed_at,
        finish_reason, model, packet
 FROM turn_packets WHERE id = $id;
@@ -505,7 +505,7 @@ SELECT id, name, model_route_id, spawn_model_route_id, effort FROM sessions ORDE
 SELECT pathname, state FROM log_entries WHERE op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_all_packets
--- {§rail-accounting-private} — every stored packet, to prove no section carries strike state.
+-- {§operation-results} — every stored packet, to prove no section carries strike state.
 SELECT packet FROM turn_packets WHERE packet IS NOT NULL;
 
 -- PREP: test_deep_hash
@@ -804,7 +804,7 @@ VALUES (
 );
 
 -- PREP: test_bag_of_turn
--- {§packet-items}: the bag exactly as turns.packet stores it, sections not assembled.
+-- {§packet}: the bag exactly as turns.packet stores it, sections not assembled.
 SELECT packet FROM turns WHERE id = $id;
 
 -- PREP: test_set_channel_content

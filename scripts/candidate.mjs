@@ -11,7 +11,7 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run candidate [-- <client arguments>]
-Boots a source-built daemon and the terminal client from this checkout under a fresh state directory and runs the whole-platform candidate journey ({§candidate-pinned-runtime}).
+Boots a source-built daemon and the terminal client from this checkout under a fresh state directory and runs the whole-platform candidate journey ({§share}).
 Reads: PLURNK_CLIENT_CHECKOUT (required: the explicit client checkout, never a default), PLURNK_CANDIDATE_CLIENT_ENV, PLURNK_CANDIDATE_SKIP_BUILD, PLURNK_CANDIDATE_GRADE_DEADLINE_SEC; the model and credentials of the operator environment.
 Writes: <benchmark home>/candidate-*/ with the daemon's database, workspace and digest.
 `);
@@ -39,9 +39,9 @@ if (process.env.PLURNK_CANDIDATE_SKIP_BUILD !== "1") {
     run("npm", ["run", "build"], root);
     run("npm", ["run", "build"], clientRoot);
 }
-// {§candidate-pinned-runtime} — the daemon and the digest run from this copy, never the shared checkout.
+// {§share} — the daemon and the digest run from this copy, never the shared checkout.
 const runtime = pinRuntime(root, resolve(stateDir, "runtime"));
-// {§candidate-pinned-runtime} — the launcher is the pinned service's own, never the checkout's.
+// {§share} — the launcher is the pinned service's own, never the checkout's.
 const { default: Launch } = await import(pathToFileURL(resolve(runtime, "plurnk-core", "dist", "launch", "Launch.js")).href);
 const { default: HostPaths } = await import(pathToFileURL(resolve(runtime, "plurnk-core", "dist", "core", "HostPaths.js")).href);
 

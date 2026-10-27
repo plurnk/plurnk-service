@@ -17,13 +17,13 @@ test("{§execution-output-identity} a folder is spelled from the daemon's home: 
     ]) assert.equal(paths.abbreviateUserPath(folder), label, folder);
 });
 
-test("{§share-folder} an unset share folder is a stamped child of the XDG state shares folder", () => {
+test("{§share} an unset share folder is a stamped child of the XDG state shares folder", () => {
     const paths = new HostPaths({ home: "/home/tester", env: {} });
     const now = new Date("2026-09-26T15:04:05.678Z");
     assert.equal(paths.shareFolder({}, now), `${paths.stateDir}/shares/share-20260926T150405Z`);
 });
 
-test("{§share-folder} a configured share folder expands a leading ~/ like every explicit Plurnk path", () => {
+test("{§share} a configured share folder expands a leading ~/ like every explicit Plurnk path", () => {
     const paths = new HostPaths({ home: "/home/tester", env: {} });
     const now = new Date("2026-09-26T15:04:05.678Z");
     assert.equal(paths.shareFolder({ PLURNK_SERVICE_SHARE_FOLDER: "~/benchmarks" }, now), "/home/tester/benchmarks/share-20260926T150405Z");

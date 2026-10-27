@@ -18,8 +18,8 @@ extensions included in the default installation. The terminal client is a separa
 | Install, build, gate | `npm install`, `npm run build`, `npm test` (the drill, `scripts/drill.mjs`; the pre-push hook runs it on a push to `main`; {§lint-gate}). `CONTRIBUTING.md` § Setup has the lifecycle table. |
 | A choice: a limit, a default, a posture | Each package's `.env.defaults`; `ARCHITECTURE.md` § Configuration authority is the law. The real-model layers, highest first: the shell, `plurnk-core/.env.test`, `$XDG_CONFIG_HOME/plurnk/.env`, the defaults, the floor ({§environment-layers}; `scripts/lib/environment.mjs` is the code). |
 | A model | `PLURNK_MODEL_<alias>=<provider>/<model>` declared once in `$XDG_CONFIG_HOME/plurnk/.env`; `PLURNK_MODEL=<alias>` selects one per run, or standing in that file (`plurnk-aliases/SPEC.md`; provider ids in `plurnk-models`). Credentials live in the login shell, which `scripts/operator-environment.sh` carries into every real-model run. |
-| A real-model run | From `plurnk-core`: `npm run test:live` (the thin live smoke; `--help` for its one-specimen form); `npm run candidate` at the root for the whole platform ({§candidate-pinned-runtime}); the full `live` and `demo` specimen corpora live in `../plurnk-bench/tiers/README.md`. |
-| A run's evidence | `$PLURNK_BENCHMARKS/tier-<live\|demo>-<stamp>/census.md` and each session's `digest/` ({§tier-census}; the digest's files in `plurnk-digest/README.md`); `npm run digest:missing -w @plurnk/plurnk-service` re-digests interrupted specimens; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy it takes itself ({§share}). The database is evidence; the digest is the diagnostic interface. |
+| A real-model run | From `plurnk-core`: `npm run test:live` (the thin live smoke; `--help` for its one-specimen form); `npm run candidate` at the root for the whole platform ({§share}); the full `live` and `demo` specimen corpora live in `../plurnk-bench/tiers/README.md`. |
+| A run's evidence | `$PLURNK_BENCHMARKS/tier-<live\|demo>-<stamp>/census.md` and each session's `digest/` ({§test-artifact-retention}; the digest's files in `plurnk-digest/README.md`); `npm run digest:missing -w @plurnk/plurnk-service` re-digests interrupted specimens; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy it takes itself ({§share}). The database is evidence; the digest is the diagnostic interface. |
 | The deterministic tiers | `test:lint`, `test:unit`, `test:intg` per package, booted by `plurnk-core/test/setup.ts` (a fake `mocktest` provider on fixture-scaled reserves, never a real model). |
 | A release | `npm run changeset` with the change; `npm run release:version`, `release:check`, `release:publish`, `release:finalize` ({§package-release-contract}, {§release-finalization}); `CONTRIBUTING.md` § Release has the procedure, the major-only maintenance classes, and the per-major sweep. |
 | The bench | The `plurnk-bench` checkout beside this one; read `../plurnk-bench/deepswe/README.md` before launching anything, and never reconstruct its invocation from memory. |
@@ -31,7 +31,7 @@ extensions included in the default installation. The terminal client is a separa
   readiness by name only; never print, echo or log a credential's value.
 - **A daemon you did not start is a live session**: never stop it to free a port, and read its
   database only through `npm run share`. A daemon reads the card at every loop start and wake
-  ({§card-read-per-wake}), so a card edit needs no restart.
+  ({§packet-inject}), so a card edit needs no restart.
 - **Select processes by pid**, never by pattern or location: `fuser -k <dir>` signals every process
   using that directory, the daemon included, and `pgrep -f`/`pkill -f` match the calling shell's own
   command line. When a pattern is unavoidable, bracket its first character (`[d]rill\.mjs`).
@@ -208,7 +208,7 @@ issues and published changelogs.
 **A benchmark is evidence on one axis, never the scope.** A page or contract serves every model and
 every task.
 
-**The model curates its context.** The verbs are the curation ({§context-verbs}): the daemon adds no
+**The model curates its context.** The verbs are the curation ({§tokenomics}): the daemon adds no
 compaction, folding, summary or other mechanism the model did not emit, however a benchmark goes.
 
 **Teach stricter than tolerated.** The card and reference pages teach one canonical form; the parser may

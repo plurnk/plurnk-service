@@ -1,4 +1,4 @@
-// {§matcher-dispatch} {§matcher-selection-signal} {§matcher-index-readiness} Core candidate-set composition over the public schemes
+// {§matcher-dispatch} {§matcher-dispatch} {§matcher-dispatch} Core candidate-set composition over the public schemes
 // matcher adapter. Mimetypes owns content-dialect execution and evidence; the
 // adapter owns operation-result mapping; this layer preserves caller identity
 // across heterogeneous entry/log candidate sets.

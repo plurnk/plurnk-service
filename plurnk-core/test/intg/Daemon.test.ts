@@ -1235,14 +1235,14 @@ test("{§methods} the client-interface seam does not manufacture a resolver from
     });
 });
 
-test("{§tokenomics-window-partition} the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law", async () => {
+test("{§tokenomics} the client-interface seam — runLoop drives a loop end to end on the daemon's own provider + law", async () => {
     // The loop-control hook: the module supplies only workspace/session/prompt; runLoop fills in the provider
     // and the law-file system prompt (core's), fires the drain via the unified inject, and returns. The
     // outcome arrives on the event source, not a socket. `cancelDrain` (already public) is the cancel hook.
     // A window that comfortably holds the packet: this test drives a loop to CONCLUSION and asserts
     // 200, so the full system prompt (law/definition) + the materialized docs must fit the prompt
     // budget. This test verifies the seam path, not small-window viability
-    // ({§tokenomics-window-partition}).
+    // ({§tokenomics}).
     const mock = new Mock({ contextWindow: viableWindow(), responses: [
         makeMockResponse("````SEND [200]\ndone\n````", 50),
         makeMockResponse("````SEND [200]\ndone again\n````", 50),
@@ -1547,7 +1547,7 @@ test("{§methods} the client-interface seam — readEntry returns an entry's sha
             assert.equal(offset.status, 400);
             assert.ok("problem" in offset);
             assert.equal(offset.problem.type, "https://problems.plurnk.xyz/daemon/entry/offset-channel-required");
-            assert.equal(offset.problem.recovery, "Select the channel to read from the offset."); // {§problems-functionality}
+            assert.equal(offset.problem.recovery, "Select the channel to read from the offset."); // {§operation-results}
 
             const networkEntry = await db.test_seed_entry_workspace.get<{ id: number }>({ attributes: "{}", default_channel: "body", output: 0,
                 workspace_id: created.id,
@@ -2492,7 +2492,7 @@ test("{§session-scheme}: an empty directed SEND refuses before admission and th
         assert.equal(refused.status_rx, 422);
         const receipt = refused.rx as SchemeResult;
         assert.equal(receipt.problem?.type, "https://problems.plurnk.xyz/scheme/session/message-empty");
-        assert.equal(receipt.problem?.detail, "SEND has no message text or attachments."); // {§problems-entries}
+        assert.equal(receipt.problem?.detail, "SEND has no message text or attachments."); // {§operation-results}
         assert.ok(rows.some((row) => row.origin === "model" && row.op === "NOTE" && row.status_rx === 200));
         assert.deepEqual(await daemon.listSessionLoops({ workspaceId, sessionId: receiver.sessionId }), [], "no empty receiving loop is created");
         assert.deepEqual(await daemon.readMessages({ workspaceId, sessionId: receiver.sessionId }), [], "no empty message is stored");
@@ -2505,7 +2505,7 @@ test("{§session-scheme}: an empty directed SEND refuses before admission and th
     });
 });
 
-test("{§message-reply-delivery} {§connection-lifecycle}: a person's answer, sent as a client operation, wakes its assigned session without making another request", async () => {
+test("{§message-arrival} {§connection-lifecycle}: a person's answer, sent as a client operation, wakes its assigned session without making another request", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse("````WAIT\nA collaborator may answer the request.\n````"),
         makeMockResponse("````WAIT\nThe collaborator answered; the held child is still running.\n````"),
@@ -2602,7 +2602,7 @@ test("{§methods} a message accepted mid-turn is in the inbox until its arrival 
     });
 });
 
-test("{§methods} {§message-loop-containment} a loop cancelled before observing a message leaves it in the inbox with that terminal lifecycle", async () => {
+test("{§methods} {§message-arrival} a loop cancelled before observing a message leaves it in the inbox with that terminal lifecycle", async () => {
     const { provider, release, calls } = heldProvider();
     await withDaemon(provider, async (_db, daemon) => {
         const { workspaceId } = await daemon.createWorkspace({ name: "inbox-cancel" });
@@ -2626,7 +2626,7 @@ test("{§methods} {§message-loop-containment} a loop cancelled before observing
 describe("Daemon.loop-status-notice", () => {
 type LoopStatusNotice = { sessionId: number; loopId: number; notice: { source: string; kind: string; level: string; status: number; waitUntil: number | null; packetCount: number; claimedAt: number | null } };
 
-test("{§loop-status-notice}: claim, park and wake each broadcast the loop's status as a lifecycle notice", async () => {
+test("{§operation-results}: claim, park and wake each broadcast the loop's status as a lifecycle notice", async () => {
     const provider = new Mock({
         contextWindow: 65536,
         responses: [
@@ -3511,7 +3511,7 @@ test("{§methods-workspace-create} {§methods-workspace-create}: fresh named ses
                     assert.ok(error instanceof OperationFailureError);
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/session/name-invalid");
                     assert.equal(error.result.problem.name, "_plurnk");
-                    assert.equal(error.result.problem.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit."); // {§pinned-wording-core}
+                    assert.equal(error.result.problem.recovery, "Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit."); // {§operation-results}
                     return true;
                 },
             );
@@ -3533,7 +3533,7 @@ test("{§methods-workspace-create} {§methods-workspace-create}: fresh named ses
                     assert.equal(error.result.problem.type, "https://problems.plurnk.xyz/daemon/session/name-conflict");
                     assert.equal(error.result.problem.workspaceId, workspaceId);
                     assert.equal(error.result.problem.name, "Thread_2");
-                    assert.equal(error.result.problem.recovery, "Choose another session name."); // {§problems-functionality}
+                    assert.equal(error.result.problem.recovery, "Choose another session name."); // {§operation-results}
                     return true;
                 },
             );
@@ -3775,7 +3775,7 @@ test("{§methods-workspace-create} workspace.create without projectRoot leaves t
     });
 });
 
-test("{§pinned-wording-core} workspace.create rejects non-absolute projectRoot", async () => {
+test("{§operation-results} workspace.create rejects non-absolute projectRoot", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
@@ -3785,7 +3785,7 @@ test("{§pinned-wording-core} workspace.create rejects non-absolute projectRoot"
             const problem = rpcProblem(response);
             assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/input/project-root-not-absolute");
             assert.equal(problem.value, "relative/path");
-            assert.equal(problem.recovery, "Provide an absolute project path."); // {§pinned-wording-core}
+            assert.equal(problem.recovery, "Provide an absolute project path."); // {§operation-results}
         } finally { ws.close(); }
     });
 });

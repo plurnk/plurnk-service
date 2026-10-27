@@ -429,7 +429,7 @@ test("{§session-causal-admission}: cancellation wins before a queued causal del
     assert.deepEqual(messages, ["new independent message"]);
 });
 
-test("{§card-read-per-wake} every wake reads the card afresh and hands that reading to the settlement", async () => {
+test("{§packet-inject} every wake reads the card afresh and hands that reading to the settlement", async () => {
     let reads = 0;
     const handed: string[] = [];
     const drains = supervisor(async () => `card ${++reads}`, () => {}, {

@@ -313,7 +313,7 @@ test("{§scheme-manifest} register requires one identity-matched static or insta
     assert.doesNotThrow(() => registry.register("dynamic", handler("dynamic")));
 });
 
-test("{§schemes-directory}: documentation exclusion omits references without disabling their schemes", async () => {
+test("{§tools-resource-materialization}: documentation exclusion omits references without disabling their schemes", async () => {
     const registry = new SchemeRegistry();
     const prior = process.env.PLURNK_SERVICE_DOCS_EXCLUDE;
     try {
@@ -330,7 +330,7 @@ test("{§schemes-directory}: documentation exclusion omits references without di
     }
 });
 
-test("{§schemes-directory}: hidden schemes do not publish model references", async () => {
+test("{§tools-resource-materialization}: hidden schemes do not publish model references", async () => {
     const registry = new SchemeRegistry();
     registry.register("webby", {
         manifest: { ...manifest("webby"), modelVisible: false, documentation: "# Internal resource" },

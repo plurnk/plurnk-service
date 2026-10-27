@@ -53,7 +53,7 @@
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
   the loop's number among its worker's loops, beside `loopId`
   ({§notifications}, {§notifications},
-  {§loop-status-notice}). The AG-UI status gauge carries it as `status.loopSeq`,
+  {§operation-results}). The AG-UI status gauge carries it as `status.loopSeq`,
   replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
   conformance kit's gauge carries it.
 - 50fbe81: An interactive `McpOAuth` definition may name the `issuer` its sign-in binds
@@ -169,7 +169,7 @@
   turn that continues or parks without a NOTE in its program or from its
   reasoning is told so in the next packet by the `engine:turn` notice
   `continued_without_note` (`level: warn`, that command as its directive). A
-  notice, never a failure ({§continued-without-note}).
+  notice, never a failure ({§operation-results}).
 - acffc4f: The card teaches NOTE as working memory — save all new facts, ideas and plans
   for later turns — with `fact`, `idea` and `plan` examples in place of `plan`,
   `finding`, `decision` and `next`. The initialization turn's two NOTEs follow:

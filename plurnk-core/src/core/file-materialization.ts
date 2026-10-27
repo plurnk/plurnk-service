@@ -30,7 +30,7 @@ export default class FileMaterialization {
         if (mimetypes === undefined) throw new Error("File materialization requires the configured mimetype registry.");
         const detected = MimetypeBinary.normalizeAutoTextMimetype(await mimetypes.detect({ path }));
         if (await MimetypeBinary.isBinaryMimetype(detected, mimetypes)) return detected;
-        // {§membership-binary-sniff} The extension map cannot turn NUL-bearing bytes into prose.
+        // {§tokenomics} The extension map cannot turn NUL-bearing bytes into prose.
         return (await source.read(1, 8192)).includes(0) ? "application/octet-stream" : detected;
     }
 

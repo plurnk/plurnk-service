@@ -113,7 +113,7 @@ export default class ReadProjector {
     }
 
     // {§binary-parity} — one hexadecimal octet per line under the text coordinate algebra: without a
-    // scope the first page of bytes ({§markerless-first-page}), `<a,b>` selects bytes, `<1,-1>` is everything.
+    // scope the first page of bytes ({§packet}), `<a,b>` selects bytes, `<1,-1>` is everything.
     // The source is sized, then only the window is read; the source mimetype is never relabelled.
     static async #projectBytes(
         statement: ReadStatement,

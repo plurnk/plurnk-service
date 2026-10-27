@@ -19,7 +19,7 @@ export interface FunctionalityIdentity extends WorkspaceCapabilityIdentity {
 export type FunctionalityDiscoverInput = keyof FunctionalityDiscoverQuery;
 
 // Who invoked a verb: a client action, or the model's execution ({§functionality-model-projection}).
-// A family may bound the model's authority ({§members-model-scope}) without a second grammar.
+// A family may bound the model's authority ({§tools-resource-materialization}) without a second grammar.
 export type FunctionalityCaller = "action" | "operation";
 
 // `Definition` is the definition a family's `definitionSchema` admits ({§functionality-adapter}); the

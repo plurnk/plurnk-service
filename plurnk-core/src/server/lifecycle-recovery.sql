@@ -127,7 +127,7 @@ WHERE status = 202
       AND held.streams = 0 AND held.sessions = 0 AND held.messages = 0));
 
 -- PREP: recovery_orphan_message_sources
--- {§message-loop-containment}: finish an absent or partially staged orphan
+-- {§message-arrival}: finish an absent or partially staged orphan
 -- recovery before queued drains become visible at boot. A non-queued recovery
 -- already crossed its delivery boundary and must never be replayed.
 SELECT source.id AS loop_id, source.session_id AS session_id, w.origin

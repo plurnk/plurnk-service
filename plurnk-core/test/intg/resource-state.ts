@@ -1,4 +1,4 @@
-// {§fs-resource-state} Read-only integrity checks over each workspace's resource projection.
+// {§test-artifact-retention} Read-only integrity checks over each workspace's resource projection.
 import type { Db } from "../../src/core/Db.ts";
 import Namespace from "../../src/core/namespace.ts";
 

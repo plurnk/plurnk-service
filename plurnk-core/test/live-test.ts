@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { pathToFileURL } from "node:url";
 import { type LiveRequirement, needsRoute, type RouteFacts, unmetRequirements } from "./live-requirements.ts";
 
-// {§tier-census} — a specimen is its name and what it requires of the route.
+// {§test-artifact-retention} — a specimen is its name and what it requires of the route.
 export interface LiveSpecimen {
     readonly name: string;
     readonly requires: readonly LiveRequirement[];

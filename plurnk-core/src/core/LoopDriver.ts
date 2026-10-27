@@ -289,7 +289,7 @@ export default class LoopDriver {
                     emptyTurn: turn.emptyTurn,
                     cut: turn.outputCut !== null,
                     minCycles, maxCyclePeriod, maxStrikes });
-                // {§loop-terminals}: accounting cannot replace a settled loop's outcome.
+                // {§tokenomics}: accounting cannot replace a settled loop's outcome.
                 if (await this.#lifecycle.result(loopId) !== null) continue;
                 if (verdict.thresholdCrossed) {
                     // {§engine-rails} — the source on the crossing turn classifies

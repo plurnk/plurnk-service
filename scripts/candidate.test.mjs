@@ -50,7 +50,7 @@ test("{§operator-config-precedence} a pinned runtime retains the installed nati
     assert.equal(catalog(pinned), installed, "linking dependencies preserves every installed owner's panel");
 });
 
-test("{§candidate-pinned-runtime} candidate SIGTERM stops its client and daemon, runs and exports from its pinned runtime, and preserves the signal status", { timeout: 30_000 }, async (t) => {
+test("{§share} candidate SIGTERM stops its client and daemon, runs and exports from its pinned runtime, and preserves the signal status", { timeout: 30_000 }, async (t) => {
     const fixture = mkdtempSync(resolve(tmpdir(), "plurnk-candidate-signal-"));
     const clientRoot = resolve(fixture, "client");
     const candidateDir = resolve(fixture, "candidate");
@@ -65,7 +65,7 @@ test("{§candidate-pinned-runtime} candidate SIGTERM stops its client and daemon
         'import { registerHooks } from "node:module";',
         "registerHooks({ load(url, context, nextLoad) {",
         '    if (url.endsWith(".ts")) throw new Error("Candidate imported unbuilt source: " + url);',
-        // {§candidate-pinned-runtime} — no service module may load from the shared checkout.
+        // {§share} — no service module may load from the shared checkout.
         `    if (url.startsWith(${JSON.stringify(pathToFileURL(root).href + "/plurnk-")}) && !url.includes("/node_modules/")) throw new Error("Candidate imported the live checkout: " + url);`,
         "    return nextLoad(url, context);",
         "} });",

@@ -316,7 +316,7 @@ test("{§content-store}: a superseded derivation and its full-text shadow are co
     } finally { await db.close(); }
 });
 
-test("{§derivation-in-flight}: collection preserves unattached search snapshots through derivation and query", async (t) => {
+test("{§matcher-dispatch}: collection preserves unattached search snapshots through derivation and query", async (t) => {
     await using db = await openMigrated();
     const workspaceId = await insertWorkspace(db, `snapshot-retention-${crypto.randomUUID()}`);
     const sessionId = await insertSession(db, workspaceId);

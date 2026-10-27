@@ -2,7 +2,7 @@ import type { LineMarker } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import { Knob } from "@plurnk/plurnk-meta";
 
-// {§body-projection} — one selector for ordinary packet previews and implicit
+// {§packet} — one selector for ordinary packet previews and implicit
 // text acquisition. Explicit operation scopes never pass through this policy.
 export default class BodyPreview {
     // Structured previews keep complete items under the same line/character allowance.
@@ -13,7 +13,7 @@ export default class BodyPreview {
         return items.slice(0, complete);
     }
 
-    // {§markerless-first-page} — the implicit marker of every markerless retrieval. A marker's unit
+    // {§packet} — the implicit marker of every markerless retrieval. A marker's unit
     // is whatever the projection counts: lines of text, bytes of a byte view, results of a FIND.
     static firstPage(): LineMarker {
         return { marks: [1, Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1)] };

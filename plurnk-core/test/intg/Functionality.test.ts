@@ -1314,9 +1314,9 @@ test("{§functionality-model-projection} {§proposal-disposition} management ver
     }
 });
 
-// {§schemes-directory} — a family the effective policy denies is a door the model is never shown:
+// {§tools-resource-materialization} — a family the effective policy denies is a door the model is never shown:
 // no tool schema, no generated document, and its tool refuses at admission (#842).
-test("{§schemes-directory} {§capability-admission}: a denied family has no schema, no generated document and no runnable tool", async () => {
+test("{§tools-resource-materialization} {§capability-admission}: a denied family has no schema, no generated document and no runnable tool", async () => {
     const db = await openMigrated();
     const log: string[] = [];
     const workspaceId = await insertWorkspace(db, `fx-denied-${crypto.randomUUID()}`);

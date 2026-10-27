@@ -11,7 +11,7 @@ export interface TurnRow {
 
 export interface InferenceEvidence {
     readonly packet: string;
-    // {§packet-items} — the sections as StoredPacket.sections renders them for the write view.
+    // {§packet} — the sections as StoredPacket.sections renders them for the write view.
     readonly sections: string;
     readonly usageCurationBudget: number | null;
     readonly finishReason: string | null;
@@ -36,7 +36,7 @@ export default class Turn {
         return turn;
     }
 
-    // {§packet-items} — one statement through the turn_inference_evidence view: the bag, the
+    // {§packet} — one statement through the turn_inference_evidence view: the bag, the
     // sections as items, and the provider metadata land together, or the view's trigger refuses.
     static async recordInference(db: Db, id: number, evidence: InferenceEvidence): Promise<void> {
         await db.turn_record_inference.run({

@@ -38,7 +38,7 @@ export const testDeferredProviderCapacity = (source = "core:test-fixture"): Prov
         },
     });
 
-// Test-only viable context ({§definition-table-projection}, {§tokenomics-window-partition}):
+// Test-only viable context ({§packet}, {§tokenomics}):
 // preserve three times the current authored teaching as input under the provider-owned
 // output policy. Conclusion fixtures stay viable as teaching grows; pressure
 // tests pin their own envelopes. Resolve the shipped percentage or an operator's
