@@ -15,8 +15,8 @@ import { httpServer, stdioServer } from "../test/definitions.ts";
 import { serveMcpHttp, type ReceivedRequest } from "../test/http-fixture.ts";
 import { context, preparationRequest } from "../test/scheme-fixture.ts";
 
-const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
-const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
+const fixture = fileURLToPath(new URL("../test/fixtures/echo-server.mjs", import.meta.url));
+const interactionFixture = fileURLToPath(new URL("../test/fixtures/interaction-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",

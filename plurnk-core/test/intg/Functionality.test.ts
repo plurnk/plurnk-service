@@ -1964,8 +1964,8 @@ const skillsFamily = async (): Promise<Family> => {
 };
 
 const mcpFamily = async (): Promise<Family> => {
-    const echo = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/echo-server.mjs", import.meta.url));
-    const legacy = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures/legacy-server.mjs", import.meta.url));
+    const echo = fileURLToPath(new URL("../../../plurnk-mcp/test/fixtures/echo-server.mjs", import.meta.url));
+    const legacy = fileURLToPath(new URL("../../../plurnk-mcp/test/fixtures/legacy-server.mjs", import.meta.url));
     // {§mcp-configuration}
     const home = await mkdtemp(join(tmpdir(), "plurnk-parity-mcp-"));
     const hostPaths = new HostPaths({ home, env: {} });

@@ -6,7 +6,7 @@
 
 - **Protocol authority:** Pinned wire revision `2026-07-28`, specification commit `5f5440bb26a62e2cf3440b92da5a667efa03b267`, `@modelcontextprotocol/client@2.4.0`. Optional Tasks authority: `experimental-ext-tasks` (`io.modelcontextprotocol/tasks`) at commit `2c1425d9a288b9b1f489430fe1e00bb392b47e48`.
 - **Negotiate-and-degrade:** A server negotiating `2026-07-28` and offering `server/discover` is a **modern** peer (uses `_meta` envelope, `resultType`, Tasks extension, `server/discover` identity/capabilities). A server negotiated below the pin is an ordinary legacy peer (`initialize` result at its negotiated revision; no modern envelope, `server/discover`, or Tasks required). Dual-era mixing on one connection is forbidden.
-- **Accountable capability matrix (`capabilityMatrix.ts`):** One row per core surface, official extension, or selected experimental candidate, carrying authority, disposition (`supported`, `partial`, `excluded`, `deferred`), advertisement (`always`, `conditional`, `none`), interactivity, and evidence citations. Static wire advertisement (`staticClientCapabilities`) derives from `always` rows; `conditional` extensions are added by connection logic ({§oauth-client-credentials}).
+- **Client capability advertisement (`protocol.ts`):** Static wire advertisement (`staticClientCapabilities`) advertises `elicitation: { form: {}, url: {} }` and `extensions: { "io.modelcontextprotocol/tasks": {} }`; conditional extensions (`io.modelcontextprotocol/oauth-client-credentials`) are added by connection logic ({§oauth-client-credentials}).
 
 | Surface | Upstream contract | Plurnk host disposition |
 | --- | --- | --- |

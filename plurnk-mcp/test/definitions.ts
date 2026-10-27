@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { McpStdioServerDefinition, McpStreamableHttpServerDefinition } from "@plurnk/plurnk-contracts";
 
-export const FIXTURES = fileURLToPath(new URL("../src/fixtures", import.meta.url));
+export const FIXTURES = fileURLToPath(new URL("./fixtures", import.meta.url));
 
 export const fixture = (file: string): string => join(FIXTURES, file);
 

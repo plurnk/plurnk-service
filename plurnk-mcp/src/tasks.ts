@@ -1,3 +1,4 @@
+// {§mcp-tasks}
 import {
     ProtocolError,
     ProtocolErrorCode,
@@ -289,7 +290,7 @@ const taskAwareToolLeg = async (
     timeout: number,
     onProgress: ((progress: Progress) => void) | undefined,
 ): Promise<CallToolResult | InputRequiredResult | CreateTaskResult> => {
-    const value = await channel.request("tools/call", params, {
+    const value = await channel.requestExtension("tools/call", params, {
         signal,
         timeout,
         onProgress,
@@ -313,7 +314,7 @@ const taskRequest = async (
     params: Readonly<Record<string, unknown>>,
     timeout: number,
     signal?: AbortSignal,
-): Promise<unknown> => channel.request(method, params, { signal, timeout });
+): Promise<unknown> => channel.requestExtension(method, params, { signal, timeout });
 
 const cancelTask = async (
     channel: ExtensionChannel,

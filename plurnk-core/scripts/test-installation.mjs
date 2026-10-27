@@ -615,7 +615,7 @@ ok(
 );
 
 const mcpStartMarker = resolve(sandbox, "packed-mcp-starts.txt");
-const mcpFixture = resolve(import.meta.dirname, "../../plurnk-mcp/src/fixtures/echo-server.mjs");
+const mcpFixture = resolve(import.meta.dirname, "../../plurnk-mcp/test/fixtures/echo-server.mjs");
 // {§mcp-configuration} A missing executable beside a healthy peer.
 const dormantMcpEnv = {
     PLURNK_SERVICE_DB_PATH: packedSkillDb,

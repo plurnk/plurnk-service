@@ -1,3 +1,4 @@
+// {§mcp-result-content}
 import type { ContentBlock, ResourceLink, TextContent } from "@modelcontextprotocol/client";
 import type { EntryData } from "@plurnk/plurnk-schemes";
 import ResourceContent from "./ResourceContent.ts";

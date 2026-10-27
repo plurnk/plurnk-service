@@ -101,7 +101,7 @@ test(`{§mcp-model-projection} ${name}`, {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const holder = fileURLToPath(new URL("../watchdog-holder.mjs", import.meta.url));
-const fixture = fileURLToPath(new URL("../../src/fixtures/echo-server.mjs", import.meta.url));
+const fixture = fileURLToPath(new URL("../fixtures/echo-server.mjs", import.meta.url));
 const watchdog = fileURLToPath(new URL("../../src/mcp-watchdog.mjs", import.meta.url));
 const gracefulChild = fileURLToPath(new URL("../watchdog-graceful-child.mjs", import.meta.url));
 

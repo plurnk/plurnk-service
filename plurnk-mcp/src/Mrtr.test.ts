@@ -14,7 +14,7 @@ import { serveMcpHttp } from "../test/http-fixture.ts";
 import { taskHandler, taskId, wireRequest } from "../test/task-fixture.ts";
 import { httpServer, stdioServer } from "../test/definitions.ts";
 
-const interactionServerFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
+const interactionServerFixture = fileURLToPath(new URL("../test/fixtures/interaction-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
@@ -307,7 +307,7 @@ const taskEnv = {
     PLURNK_MCP_REQUEST_TIMEOUT: "3000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
 };
 
-const taskStdioFixture = fileURLToPath(new URL("./fixtures/task-server.mjs", import.meta.url));
+const taskStdioFixture = fileURLToPath(new URL("../test/fixtures/task-server.mjs", import.meta.url));
 
 test("{§mcp-tasks} current HTTP Tasks preserve MRTR, task input, polling, notifications, and routing", async (t) => {
     const fixture = taskHandler();

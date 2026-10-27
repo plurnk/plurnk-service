@@ -7,18 +7,15 @@ import { fileURLToPath } from "node:url";
 import ServerConnection from "./client.ts";
 import packageJson from "../package.json" with { type: "json" };
 import {
-    MCP_CLIENT_VERSION,
-    MCP_CONFORMANCE_VERSION,
     MCP_PROTOCOL_VERSION,
-    MCP_SPECIFICATION_COMMIT,
     MCP_TASKS_EXTENSION_ID,
-    MCP_TASKS_SPECIFICATION_COMMIT,
+    staticClientCapabilities,
 } from "./protocol.ts";
 import { FIXTURES, stdioServer } from "../test/definitions.ts";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 
-const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
+const fixture = fileURLToPath(new URL("../test/fixtures/echo-server.mjs", import.meta.url));
 const env = {
     PLURNK_MCP_CONNECT_TIMEOUT: "30000",
     PLURNK_MCP_REQUEST_TIMEOUT: "30000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
@@ -30,7 +27,7 @@ test("{§mcp-configuration} a plugin process receives reserved variables and lit
     const context = { root: join(directory, "plugin"), data: join(directory, "data") };
     await mkdir(context.root);
     const executable = join(context.root, "run");
-    await writeFile(executable, `#!${process.execPath}\nimport ${JSON.stringify(new URL("./fixtures/echo-server.mjs", import.meta.url).href)};\n`);
+    await writeFile(executable, `#!${process.execPath}\nimport ${JSON.stringify(new URL("../test/fixtures/echo-server.mjs", import.meta.url).href)};\n`);
     await chmod(executable, 0o755);
     const definition = {
         name: "plugin", type: "stdio" as const, command: "./run", cwd: "${PLUGIN_DATA}",
@@ -168,20 +165,12 @@ test("{§mcp-host-composition} concurrent callers share one launch and one conne
 // Protocol Authority ({§mcp-authority})
 // ─────────────────────────────────────────────────────────────────────────────
 
-test("{§mcp-authority} protocol authority exact-pins the final SDK and frozen conformance referee", () => {
+test("{§mcp-authority} protocol authority pins the MCP revision, SDK version, and static client capabilities", () => {
     assert.equal(MCP_PROTOCOL_VERSION, "2026-07-28");
-    assert.match(MCP_SPECIFICATION_COMMIT, /^[0-9a-f]{40}$/);
-    assert.equal(packageJson.dependencies["@modelcontextprotocol/client"], MCP_CLIENT_VERSION);
-    assert.equal(
-        packageJson.devDependencies["@modelcontextprotocol/conformance"],
-        MCP_CONFORMANCE_VERSION,
-    );
-});
-
-test("{§mcp-authority} the optional Tasks authority is exact-pinned without reviving legacy Tasks", () => {
-    assert.equal(MCP_TASKS_EXTENSION_ID, "io.modelcontextprotocol/tasks");
-    assert.equal(
-        MCP_TASKS_SPECIFICATION_COMMIT,
-        "2c1425d9a288b9b1f489430fe1e00bb392b47e48",
-    );
+    assert.equal(packageJson.dependencies["@modelcontextprotocol/client"], "2.4.0");
+    assert.equal(packageJson.devDependencies["@modelcontextprotocol/conformance"], "0.2.0-alpha.12");
+    assert.deepEqual(staticClientCapabilities(), {
+        elicitation: { form: {}, url: {} },
+        extensions: { [MCP_TASKS_EXTENSION_ID]: {} },
+    });
 });

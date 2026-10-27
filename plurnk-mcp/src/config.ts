@@ -7,8 +7,6 @@ import { readDefinition } from "./definition.ts";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-export type { McpAuthorization } from "@plurnk/plurnk-contracts";
-
 const PREFIX = "PLURNK_MCP_";
 const CONTROLS = ["CONNECT_TIMEOUT", "REQUEST_TIMEOUT", "RETRY_FLOOR_MS", "RETRY_CEILING_MS", "EXPANDED", "REGISTRY_URL", "REGISTRY_LIMIT"];
 const SERVER_NAME = /^[a-z][a-z0-9-]*$/;
@@ -163,7 +161,7 @@ export const expandedServerNames = (environ: NodeJS.ProcessEnv = process.env): s
     return names.toSorted();
 };
 
-export const isServerName = (name: string): boolean => SERVER_NAME.test(name);
+const isServerName = (name: string): boolean => SERVER_NAME.test(name);
 
 export const connectTimeoutMs = (environ: NodeJS.ProcessEnv = process.env): number =>
     Knob.integer("PLURNK_MCP_CONNECT_TIMEOUT", 1, environ);

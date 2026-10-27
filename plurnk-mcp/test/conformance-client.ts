@@ -4,9 +4,9 @@ import type { Tool } from "@modelcontextprotocol/client";
 import type {
     ClientInteractionRequest,
     ClientInteractionResolution,
+    McpAuthorization,
 } from "@plurnk/plurnk-contracts";
 import ServerConnection, { AuthorizationRequiredError } from "../src/client.ts";
-import type { McpAuthorization } from "../src/config.ts";
 import { httpServer } from "./definitions.ts";
 
 interface ConformanceContext {

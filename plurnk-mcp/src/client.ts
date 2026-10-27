@@ -6,13 +6,13 @@ import {
     SdkHttpError,
     ProtocolError,
     METHOD_NOT_FOUND,
-    Client,
     ClientCredentialsProvider,
     StreamableHTTPClientTransport,
     auth,
     createFetchWithInit,
     type AuthProvider,
     type CallToolResult,
+    type Client,
     type ClientCapabilities,
     type CompleteRequest,
     type CompleteResult,
@@ -61,8 +61,8 @@ import { assertHeaderDeclarations, mcpRoutingHeaderValue } from "./protocolHeade
 import {
     MCP_OAUTH_CLIENT_CREDENTIALS_EXTENSION_ID,
     MCP_PROTOCOL_VERSION,
+    staticClientCapabilities,
 } from "./protocol.ts";
-import { staticClientCapabilities } from "./capabilityMatrix.ts";
 import Subscriptions from "./subscriptions.ts";
 import PluginConfiguration, { type PluginContext } from "./PluginConfiguration.ts";
 import {
@@ -376,7 +376,7 @@ const LIST_COLLECTIONS = new Map([
     ["prompts/list", "prompts"],
 ]);
 
-export class CatalogNonConvergenceError extends Error {
+class CatalogNonConvergenceError extends Error {
     readonly method: string;
     readonly cursor: string;
     constructor(method: string, cursor: string) {
@@ -387,7 +387,7 @@ export class CatalogNonConvergenceError extends Error {
     }
 }
 
-class CatalogClient extends Client {
+class CatalogClient extends ExtensionChannel {
     // Cursors the server has returned in the current walk of each list method; a walk begins at
     // the SDK's cursorless first page.
     readonly #returned = new Map<string, Set<string>>();
@@ -574,22 +574,10 @@ const openClient = async (
     const negotiated = client.getNegotiatedProtocolVersion() ?? "";
     const discover = client.getDiscoverResult();
     const modern = era === "modern" && negotiated === MCP_PROTOCOL_VERSION && discover !== undefined;
-    const extensions = modern
-        ? new ExtensionChannel(transport, {
-            protocolVersion: MCP_PROTOCOL_VERSION,
-            clientInfo,
-            clientCapabilities,
-            cancelRequest: async (requestId) => client.notification({
-                method: "notifications/cancelled",
-                params: { requestId },
-            }),
-            onError: options.onInfrastructureError,
-        })
-        : null;
     return {
         client,
         transport,
-        extensions,
+        extensions: modern ? client : null,
         protocolVersion: negotiated,
         subscriptions: new Subscriptions(client, {
             timeout: requestTimeoutMs(environ),
@@ -1040,10 +1028,9 @@ export default class ServerConnection {
         if (openingTransport !== undefined) closures.push(openingTransport.close());
         if (client !== undefined) {
             closures.push(client.then(
-                async ({ client: connected, extensions, subscriptions }) => {
+                async ({ client: connected, subscriptions }) => {
                     // {§mcp-setup} — active Task cleanup still needs the transport.
                     await Promise.all([...this.#requests, subscriptions.retire()]);
-                    extensions?.close();
                     await connected.close();
                 },
                 () => undefined,

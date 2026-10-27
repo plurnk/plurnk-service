@@ -7,7 +7,6 @@ const toolSummary = (tool: Tool): string =>
     summaryLine(tool.description) ?? summaryLine(tool.title) ?? summaryLine(tool.annotations?.title) ?? tool.name;
 
 export const toolRegistry = (
-    server: string,
     source: readonly Tool[],
 ): RuntimeToolRegistry => {
     const tools = source.toSorted((left, right) => left.name.localeCompare(right.name));

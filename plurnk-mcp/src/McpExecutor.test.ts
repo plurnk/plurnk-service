@@ -16,8 +16,8 @@ import { toolRegistry } from "./ToolPresentation.ts";
 import ServerConnection, { type ServerCatalog } from "./client.ts";
 import { HeaderDeclarationError } from "./protocolHeaders.ts";
 
-const fixture = fileURLToPath(new URL("./fixtures/echo-server.mjs", import.meta.url));
-const interactionFixture = fileURLToPath(new URL("./fixtures/interaction-server.mjs", import.meta.url));
+const fixture = fileURLToPath(new URL("../test/fixtures/echo-server.mjs", import.meta.url));
+const interactionFixture = fileURLToPath(new URL("../test/fixtures/interaction-server.mjs", import.meta.url));
 const retainWorkspace = (): (() => void) => () => undefined;
 
 const configured = (): {
@@ -655,7 +655,7 @@ test("{§mcp-model-projection} derives exact summaries and invocations from the 
             properties: { title: { type: "string" } },
         },
     }];
-    const registry = toolRegistry("gitea", tools);
+    const registry = toolRegistry(tools);
     assert.deepEqual(registry.tools, [{
         target: "issue_read",
         summary: "Read one issue.",
@@ -671,7 +671,7 @@ test("{§mcp-model-projection} derives exact summaries and invocations from the 
 
 test("{§mcp-configuration} tool purpose precedes titles; blank values fall through in protocol title order", () => {
     const tool = { name: "web_search", inputSchema: { type: "object" as const } };
-    const summary = (fields: Partial<Tool>) => toolRegistry("search", [{ ...tool, ...fields }]).tools[0].summary;
+    const summary = (fields: Partial<Tool>) => toolRegistry([{ ...tool, ...fields }]).tools[0].summary;
     assert.equal(summary({ description: "Search the Web. Return matching pages.", title: "Search", annotations: { title: "Old title" } }), "Search the Web.");
     assert.equal(summary({ description: " \n ", title: "Search", annotations: { title: "Old title" } }), "Search");
     assert.equal(summary({ title: " \t ", annotations: { title: "Search title" } }), "Search title");
@@ -679,13 +679,13 @@ test("{§mcp-configuration} tool purpose precedes titles; blank values fall thro
 });
 
 test("{§mcp-model-projection} an empty enabled set exposes no hidden tool names", () => {
-    assert.deepEqual(toolRegistry("gitea", []), {
+    assert.deepEqual(toolRegistry([]), {
         tools: [],
     });
 });
 
 test("{§mcp-model-projection} missing remote prose falls back to the tool name", () => {
-    assert.equal(toolRegistry("gitea", [{
+    assert.equal(toolRegistry([{
         name: "issue_read",
         inputSchema: { type: "object" },
     }]).tools[0]?.summary, "issue_read");
@@ -698,10 +698,10 @@ test("{§mcp-model-projection} a long description trims to its first sentence", 
         inputSchema: { type: "object" },
     }];
     assert.equal(
-        toolRegistry("brave", tools).tools[0]?.summary,
+        toolRegistry(tools).tools[0]?.summary,
         "Performs web searches using the API and returns results.",
     );
-    assert.equal(toolRegistry("brave", tools).tools[0]?.details, tools[0].description,
+    assert.equal(toolRegistry(tools).tools[0]?.details, tools[0].description,
         "summary shortening does not discard the full description from the input document");
 });
 
@@ -718,7 +718,7 @@ test("{§mcp-result-content} Apps metadata remains inert catalog data, absent fr
             },
         },
     }];
-    const registry = toolRegistry("apps", tools);
+    const registry = toolRegistry(tools);
     const entry = registry.tools.find((candidate) => candidate.target === "analytics");
     assert.ok(entry);
     assert.equal(entry.summary, "Interactive analytics.");
@@ -742,7 +742,7 @@ test("{§mcp-model-projection} catalogs preserve complete original tool records 
         name: "list", inputSchema: { type: "object", additionalProperties: false },
     }];
     const before = structuredClone(tools);
-    const registry = toolRegistry("docs", tools);
+    const registry = toolRegistry(tools);
     assert.deepEqual(registry.tools.map(({ definition }) => definition), [tools[1], tools[0]]);
     assert.deepEqual(tools, before, "presentation does not mutate the received catalog");
 });

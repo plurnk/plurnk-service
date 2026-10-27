@@ -9,7 +9,7 @@ import {
     createMcpHandler,
     type McpHttpHandler,
 } from "@modelcontextprotocol/server";
-import type { JSONRPCMessage, Tool, Transport } from "@modelcontextprotocol/client";
+import type { Tool, Transport } from "@modelcontextprotocol/client";
 import { z } from "zod/v4";
 import { serveMcpHttp } from "../test/http-fixture.ts";
 import { wireRequest } from "../test/task-fixture.ts";
@@ -944,44 +944,53 @@ test("{§mcp-transports} every declaration form SEP-2243 forbids is refused nami
 
 test("{§mcp-authority} coalesced core progress is delivered before its response settles", async () => {
     const observed: string[] = [];
-    let pending = true;
     const transport: Transport = {
         start: async () => undefined,
-        send: async () => undefined,
-        close: async () => undefined,
-        onmessage: (message) => {
-            if ("method" in message && message.method === "notifications/progress") {
-                queueMicrotask(() => {
-                    if (pending) observed.push("progress");
+        send: async (message) => {
+            if (!("method" in message) || !("id" in message)) return;
+            if (message.method === "server/discover") {
+                transport.onmessage?.({
+                    jsonrpc: "2.0",
+                    id: message.id,
+                    result: {
+                        resultType: "complete",
+                        protocolVersion: "2026-07-28",
+                        supportedVersions: ["2026-07-28"],
+                        serverInfo: { name: "fixture", version: "1.0.0" },
+                        capabilities: { tools: {} },
+                    },
                 });
                 return;
             }
-            pending = false;
-            observed.push("response");
+            transport.onmessage?.({
+                jsonrpc: "2.0",
+                method: "notifications/progress",
+                params: {
+                    progressToken: message.id,
+                    progress: 1,
+                    _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+                },
+            });
+            transport.onmessage?.({
+                jsonrpc: "2.0",
+                id: message.id,
+                result: { resultType: "complete", tools: [], ttlMs: 0, cacheScope: "private" },
+            });
         },
+        close: async () => undefined,
     };
-    const channel = new ExtensionChannel(transport, {
-        protocolVersion: "2026-07-28",
-        clientInfo: { name: "test", version: "1.0.0" },
-        clientCapabilities: {},
-        cancelRequest: async () => undefined,
+    const channel = new ExtensionChannel(
+        { name: "test", version: "1.0.0" },
+        { versionNegotiation: { mode: "auto" } },
+    );
+    await channel.connect(transport);
+    await channel.listTools(undefined, {
+        onprogress: () => {
+            observed.push("progress");
+        },
     });
-    const progress: JSONRPCMessage = {
-        jsonrpc: "2.0",
-        method: "notifications/progress",
-        params: { progressToken: 1, progress: 1 },
-    };
-    const response: JSONRPCMessage = {
-        jsonrpc: "2.0",
-        id: 1,
-        result: {},
-    };
-
-    transport.onmessage?.(progress);
-    transport.onmessage?.(response);
-    await Promise.resolve();
-    await Promise.resolve();
+    observed.push("response");
 
     assert.deepEqual(observed, ["progress", "response"]);
-    channel.close();
+    await channel.close();
 });

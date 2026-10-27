@@ -284,7 +284,7 @@ export default class McpExecutor extends BaseExecutor {
         const selected = this.#selectTools(catalog.tools);
         this.#read = new Set(selected.filter((tool) => tool.annotations?.readOnlyHint === true).map((tool) => tool.name));
         this.#registry = RuntimeInvocation.assertToolRegistry(
-            presentTools(this.runtime, selected),
+            presentTools(selected),
             "@plurnk/plurnk-mcp",
             this.runtime,
         );

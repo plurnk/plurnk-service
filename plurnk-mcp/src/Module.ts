@@ -21,6 +21,7 @@ import { type Notice,
     type FunctionalityPreparation,
     type FunctionalityPreparedDefinition,
     type FunctionalityPrepared,
+    type McpAuthorization,
     type McpServerDefinition,
     type McpOAuthCompletionResult,
     type McpOAuthBeginResult,
@@ -47,7 +48,6 @@ import {
     retryPacing,
     registrySettings,
     serverSettings,
-    type McpAuthorization,
     type ToolPolicy,
 } from "./config.ts";
 import { RegistryError, registryEntries, searchRegistry, type RegistryServer } from "./registry.ts";
@@ -129,10 +129,6 @@ interface PendingAuthorization extends McpBinding {
 
 export interface ModuleOptions {
     readonly env?: NodeJS.ProcessEnv;
-}
-
-interface ClosableConnection {
-    close(): Promise<void>;
 }
 
 class ModuleActionError extends Error {
@@ -226,20 +222,6 @@ const preparationError = (
         },
         completeCause,
     );
-};
-
-export const closeConnections = async (
-    connections: readonly ClosableConnection[],
-): Promise<void> => {
-    const results = await Promise.allSettled(
-        [...new Set(connections)].map((connection) => connection.close()),
-    );
-    const errors = results
-        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
-        .flatMap((result) => errorsOf(result.reason));
-    if (errors.length > 0) {
-        throw new AggregateError(errors, "MCP connection shutdown failed");
-    }
 };
 
 const objectOf = (value: unknown): Record<string, unknown> | null => isRecord(value) ? value : null;

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import HostPaths from "../../src/core/HostPaths.ts";
 
-export const MCP_FIXTURES = fileURLToPath(new URL("../../../plurnk-mcp/src/fixtures", import.meta.url));
+export const MCP_FIXTURES = fileURLToPath(new URL("../../../plurnk-mcp/test/fixtures", import.meta.url));
 
 // One stdio transport definition, before its alias is bound.
 export const stdioEntry = (file: string, env?: Readonly<Record<string, string>>): object => ({

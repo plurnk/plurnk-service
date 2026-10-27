@@ -54,7 +54,7 @@ export class HeaderDeclarationError extends Error {
 const pathName = (path: readonly string[]): string => path.length === 0 ? "(root)" : path.join(".");
 
 // {§mcp-transports} — every declaration the schema carries, or the first one that breaks the contract.
-export const headerDeclarations = (tool: Tool): HeaderDeclaration[] => {
+const headerDeclarations = (tool: Tool): HeaderDeclaration[] => {
     const declarations: HeaderDeclaration[] = [];
     const seen = new Map<string, string>();
     function refuse(path: readonly string[], what: string): never {

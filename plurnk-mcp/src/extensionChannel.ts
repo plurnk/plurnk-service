@@ -1,21 +1,19 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
 import {
-    CLIENT_CAPABILITIES_META_KEY,
-    CLIENT_INFO_META_KEY,
-    PROTOCOL_VERSION_META_KEY,
+    Client,
     ProtocolError,
     SdkError,
     SdkErrorCode,
-    type ClientCapabilities,
-    type Implementation,
     type JSONRPCMessage,
+    type JSONRPCNotification,
+    type JSONRPCResponse,
+    type MessageExtraInfo,
     type Progress,
-    type Transport,
 } from "@modelcontextprotocol/client";
 
 const REQUEST_ID_PREFIX = "plurnk-extension:";
 
-interface RequestOptions {
+interface ExtensionRequestOptions {
     readonly signal?: AbortSignal;
     readonly timeout: number;
     readonly headers?: Readonly<Record<string, string>>;
@@ -33,16 +31,7 @@ interface PendingRequest {
     readonly onProgress?: (progress: Progress) => void;
 }
 
-interface ExtensionChannelOptions {
-    readonly protocolVersion: string;
-    readonly clientInfo: Implementation;
-    readonly clientCapabilities: ClientCapabilities;
-    readonly cancelRequest: (requestId: string) => Promise<void>;
-    readonly onError?: (error: Error) => void;
-}
-
 type TaskNotificationHandler = (params: unknown) => void;
-type MessageExtra = Parameters<NonNullable<Transport["onmessage"]>>[1];
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined => isRecord(value) ? value : undefined;
 
@@ -50,31 +39,11 @@ const asError = (cause: unknown): Error => cause instanceof Error
     ? cause
     : new Error(String(cause));
 
-export default class ExtensionChannel {
-    readonly #transport: Transport;
-    readonly #options: ExtensionChannelOptions;
+export default class ExtensionChannel extends Client {
     readonly #pending = new Map<string, PendingRequest>();
     readonly #taskHandlers = new Set<TaskNotificationHandler>();
-    readonly #priorMessage: Transport["onmessage"];
-    readonly #priorClose: Transport["onclose"];
-    readonly #messageHandler: NonNullable<Transport["onmessage"]>;
-    readonly #closeHandler: NonNullable<Transport["onclose"]>;
     #nextId = 0;
     #closed = false;
-
-    constructor(transport: Transport, options: ExtensionChannelOptions) {
-        this.#transport = transport;
-        this.#options = options;
-        this.#priorMessage = transport.onmessage;
-        this.#priorClose = transport.onclose;
-        this.#messageHandler = (message, extra): void => this.#receive(message, extra);
-        this.#closeHandler = (): void => {
-            this.#rejectAll(new SdkError(SdkErrorCode.ConnectionClosed, "MCP extension channel closed."));
-            this.#priorClose?.();
-        };
-        transport.onmessage = this.#messageHandler;
-        transport.onclose = this.#closeHandler;
-    }
 
     onTaskNotification(handler: TaskNotificationHandler): () => void {
         if (this.#closed) throw new Error("MCP extension channel is closed.");
@@ -82,12 +51,15 @@ export default class ExtensionChannel {
         return () => this.#taskHandlers.delete(handler);
     }
 
-    async request(
+    async requestExtension(
         method: string,
         params: Readonly<Record<string, unknown>>,
-        options: RequestOptions,
+        options: ExtensionRequestOptions,
     ): Promise<unknown> {
-        if (this.#closed) throw new Error("MCP extension channel is closed.");
+        const transport = this.transport;
+        const metaEnvelope = this._outboundMetaEnvelope();
+        if (this.#closed || transport === undefined) throw new Error("MCP extension channel is closed.");
+        if (metaEnvelope === undefined) throw new Error("MCP extension channel requires a modern protocol connection.");
         options.signal?.throwIfAborted();
         const id = `${REQUEST_ID_PREFIX}${this.#nextId += 1}`;
         const requestAbort = new AbortController();
@@ -101,7 +73,7 @@ export default class ExtensionChannel {
                 requestAbort.abort(new Error(`MCP extension request '${method}' timed out.`));
                 if (
                     options.cancelRequestOnSharedTransport === true
-                    && this.#transport.hasPerRequestStream !== true
+                    && transport.hasPerRequestStream !== true
                 ) {
                     void this.#cancelSharedRequest(id);
                 }
@@ -115,7 +87,7 @@ export default class ExtensionChannel {
                     requestAbort.abort(reason);
                     if (
                         options.cancelRequestOnSharedTransport === true
-                        && this.#transport.hasPerRequestStream !== true
+                        && transport.hasPerRequestStream !== true
                     ) {
                         void this.#cancelSharedRequest(id);
                     }
@@ -138,15 +110,13 @@ export default class ExtensionChannel {
             params: {
                 ...params,
                 _meta: {
-                    [PROTOCOL_VERSION_META_KEY]: this.#options.protocolVersion,
-                    [CLIENT_INFO_META_KEY]: this.#options.clientInfo,
-                    [CLIENT_CAPABILITIES_META_KEY]: this.#options.clientCapabilities,
+                    ...metaEnvelope,
                     ...(options.onProgress === undefined ? {} : { progressToken: id }),
                     ...asRecord(params._meta),
                 },
             },
         };
-        void this.#transport.send(message, {
+        void transport.send(message, {
             requestSignal: requestAbort.signal,
             headers: options.headers,
             onRequestStreamEnd: () => this.#settle(
@@ -162,50 +132,28 @@ export default class ExtensionChannel {
 
     async #cancelSharedRequest(id: string): Promise<void> {
         try {
-            await this.#options.cancelRequest(id);
+            await this.notification({
+                method: "notifications/cancelled",
+                params: { requestId: id },
+            });
         } catch (cause) {
-            this.#options.onError?.(asError(cause));
+            this.onerror?.(asError(cause));
         }
     }
 
-    #receive(message: JSONRPCMessage, extra?: MessageExtra): void {
-        const record = asRecord(message);
-        if (record === undefined) {
-            this.#priorMessage?.(message, extra);
-            return;
-        }
-        const id = record.id;
-        if (typeof id === "string" && id.startsWith(REQUEST_ID_PREFIX)) {
-            const pending = this.#pending.get(id);
-            if (pending === undefined) return;
-            if ("error" in record) {
-                const error = asRecord(record.error);
-                this.#settle(id, ProtocolError.fromError(
-                    typeof error?.code === "number" ? error.code : -32603,
-                    typeof error?.message === "string" ? error.message : "MCP extension request failed.",
-                    error?.data,
-                ));
-                return;
-            }
-            if (!("result" in record)) {
-                this.#settle(id, new ProtocolError(-32600, "MCP extension response omitted its result."));
-                return;
-            }
-            this.#settle(id, undefined, record.result);
-            return;
-        }
-        if (record.method === "notifications/tasks") {
+    protected override _onnotification(raw: JSONRPCNotification, extra?: MessageExtraInfo): void {
+        if (raw.method === "notifications/tasks") {
             for (const handler of this.#taskHandlers) {
                 try {
-                    handler(record.params);
+                    handler(raw.params);
                 } catch (cause) {
-                    this.#options.onError?.(asError(cause));
+                    this.onerror?.(asError(cause));
                 }
             }
             return;
         }
-        if (record.method === "notifications/progress") {
-            const params = asRecord(record.params);
+        if (raw.method === "notifications/progress") {
+            const params = asRecord(raw.params);
             const token = params?.progressToken;
             if (typeof token === "string" && token.startsWith(REQUEST_ID_PREFIX)) {
                 const pending = this.#pending.get(token);
@@ -217,25 +165,69 @@ export default class ExtensionChannel {
                         ...(typeof params.message === "string" ? { message: params.message } : {}),
                     });
                 } else {
-                    this.#options.onError?.(new Error("MCP extension progress omitted numeric progress."));
+                    this.onerror?.(new Error("MCP extension progress omitted numeric progress."));
                 }
                 return;
             }
         }
-        if (record.id !== undefined && ("result" in record || "error" in record)) {
-            // {§mcp-authority} The SDK defers notification callbacks but
-            // settles responses synchronously. A microtask checkpoint keeps
-            // coalesced notification/response frames in their wire order.
-            queueMicrotask(() => {
-                try {
-                    this.#priorMessage?.(message, extra);
-                } catch (cause) {
-                    this.#options.onError?.(asError(cause));
-                }
-            });
+        super._onnotification(raw, extra);
+    }
+
+    protected override _onresponse(response: JSONRPCResponse): void {
+        const record = asRecord(response);
+        const id = record?.id;
+        if (typeof id === "string" && id.startsWith(REQUEST_ID_PREFIX)) {
+            const pending = this.#pending.get(id);
+            if (pending === undefined) return;
+            if ("error" in record!) {
+                const error = asRecord(record.error);
+                this.#settle(id, ProtocolError.fromError(
+                    typeof error?.code === "number" ? error.code : -32603,
+                    typeof error?.message === "string" ? error.message : "MCP extension request failed.",
+                    error?.data,
+                ));
+                return;
+            }
+            if (!("result" in record!)) {
+                this.#settle(id, new ProtocolError(-32600, "MCP extension response omitted its result."));
+                return;
+            }
+            this.#settle(id, undefined, record.result);
             return;
         }
-        this.#priorMessage?.(message, extra);
+        if (typeof id === "string" || this.getProtocolEra() !== "modern") {
+            super._onresponse(response);
+            return;
+        }
+        // {§mcp-authority} The SDK defers notification callbacks but
+        // settles responses synchronously. A microtask checkpoint keeps
+        // coalesced notification/response frames in their wire order.
+        queueMicrotask(() => {
+            try {
+                super._onresponse(response);
+            } catch (cause) {
+                this.onerror?.(asError(cause));
+            }
+        });
+    }
+
+    protected override _onclose(): void {
+        this.#closeChannel();
+        super._onclose();
+    }
+
+    override async close(): Promise<void> {
+        this.#closeChannel();
+        await super.close();
+    }
+
+    #closeChannel(): void {
+        if (this.#closed) return;
+        this.#closed = true;
+        this.#taskHandlers.clear();
+        for (const id of [...this.#pending.keys()]) {
+            this.#settle(id, new SdkError(SdkErrorCode.ConnectionClosed, "MCP extension channel closed."));
+        }
     }
 
     #settle(id: string, error?: unknown, value?: unknown): void {
@@ -248,22 +240,5 @@ export default class ExtensionChannel {
         }
         if (error === undefined) pending.resolve(value);
         else pending.reject(error);
-    }
-
-    #rejectAll(error: Error): void {
-        for (const id of [...this.#pending.keys()]) this.#settle(id, error);
-    }
-
-    close(): void {
-        if (this.#closed) return;
-        this.#closed = true;
-        this.#taskHandlers.clear();
-        this.#rejectAll(new SdkError(SdkErrorCode.ConnectionClosed, "MCP extension channel closed."));
-        if (this.#transport.onmessage === this.#messageHandler) {
-            this.#transport.onmessage = this.#priorMessage;
-        }
-        if (this.#transport.onclose === this.#closeHandler) {
-            this.#transport.onclose = this.#priorClose;
-        }
     }
 }
