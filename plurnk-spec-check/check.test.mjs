@@ -9,6 +9,7 @@ import { packRecords } from "../scripts/lib/npm-json.mjs";
 import {
     ambiguousIssueShorthands,
     analyzeSpecReferences,
+    untaggedTests,
     unwitnessedAnchors,
     witnessViolations,
 } from "./check.mjs";
@@ -25,7 +26,7 @@ test("{§spec-check-tags} a repository issue shorthand is distinct from the vali
         {
             name: "alpha/SPEC.md",
             text: [
-                `${declare("current-law")} **Current law.**`,
+                `## ${declare("current-law")} Current law`,
                 `The shorthand ${serviceReference} is ambiguous.`,
                 `Inline code \`${packageReference}\` is an inert example.`,
                 "```md",
@@ -57,35 +58,38 @@ test("{§spec-check-tags} a qualified cross-repo citation is the correct form, n
     ], "owner/repo#N resolves; the bare shorthand does not");
 });
 
-test("{§spec-check-tags} the first semantic token of a SPEC heading, paragraph, list item, or table row declares a tag", () => {
+test("{§spec-check-tags} only the first semantic token of a SPEC heading declares a tag; paragraph, list, and table declarations fail", () => {
     const files = [
         {
             name: "alpha/SPEC.md",
             text: [
                 `### ${declare("one-owner")} First invariant`,
                 "",
-                `${declare("paragraph-owner")} **Second invariant.** Its continuation may cite`,
-                `${cite("list-owner")} without declaring it again.`,
+                `${declare("paragraph-owner")} **Second invariant.**`,
                 "",
                 `- ${declare("list-owner")} **Third invariant.**`,
                 "",
                 "| Contract | Meaning |",
                 "|---|---|",
-                `| ${declare("row-owner")} one | The row owns its invariant. |`,
+                `| ${declare("row-owner")} one | The row may not declare a tag. |`,
             ].join("\n"),
         },
         {
             name: "beta/SPEC.md",
-            text: `${declare("cross-package-owner")} **Cross-package invariant.** It cites ${cite("one-owner")}.`,
+            text: `## ${declare("cross-package-owner")} Cross-package invariant\n\nIt cites ${cite("one-owner")}.`,
         },
-        { name: "alpha/code.ts", text: `// ${cite("one-owner")} ${cite("paragraph-owner")} ${cite("row-owner")}` },
+        { name: "alpha/code.ts", text: `// ${cite("one-owner")} ${cite("cross-package-owner")}` },
     ];
 
     assert.deepEqual(analyzeSpecReferences(files), {
         duplicateDeclarations: [],
         unresolvedReferences: [],
         ambiguousReferences: [],
-        invalidTagUsages: [],
+        invalidTagUsages: [
+            { name: "alpha/SPEC.md", line: 3, tag: "paragraph-owner" },
+            { name: "alpha/SPEC.md", line: 5, tag: "list-owner" },
+            { name: "alpha/SPEC.md", line: 9, tag: "row-owner" },
+        ],
         emptyDeclarations: [],
     });
 });
@@ -142,7 +146,7 @@ test("{§spec-check-tags} unresolved citations are checked inside and outside sp
     });
 });
 
-test("{§spec-check-tags} an unbraced named tag outside a declaration position is invalid", () => {
+test("{§spec-check-tags} an unbraced named tag outside a heading declaration position is invalid", () => {
     const files = [
         {
             name: "alpha/SPEC.md",
@@ -152,7 +156,7 @@ test("{§spec-check-tags} an unbraced named tag outside a declaration position i
                 `### Heading ${declare("late-tag")}`,
                 "",
                 "A paragraph begins here",
-                `${declare("late-paragraph")} is not its first semantic token.`,
+                `${declare("late-paragraph")} is not a declaration.`,
                 "",
                 `- A list item with ${declare("late-list")} later in it.`,
                 "",
@@ -186,7 +190,7 @@ test("{§spec-check-tags} malformed named tags report the complete token instead
     const files = [{
         name: "alpha/SPEC.md",
         text: [
-            `${declare("real-owner")} **Real invariant.**`,
+            `## ${declare("real-owner")} Real invariant`,
             `A camel-case typo ${declare("isProposal")} must not be truncated to its lowercase prefix.`,
             `An underscore typo {${declare("old_anchor")}} is not a citation.`,
             `An uppercase typo ${declare("Imperatives")} is not a named contract tag.`,
@@ -231,7 +235,7 @@ test("{§spec-check-tags} a backtick code span at column zero does not hide subs
     const files = [{ name: "alpha/SPEC.md", text: [
         "```READ (notes.md)```",
         "",
-        `${declare("after-span")} The following contract remains visible.`,
+        `## ${declare("after-span")} The following contract remains visible`,
         "",
         cite("after-span"),
     ].join("\n") }];
@@ -245,7 +249,7 @@ test("{§spec-check-tags} inline and indented code neither declare nor cite tags
     const files = [{
         name: "alpha/SPEC.md",
         text: [
-            `${declare("real-owner")} **Real invariant.**`,
+            `## ${declare("real-owner")} Real invariant`,
             `Inline \`${cite("missing-inline")} ${declare("not-a-declaration")}\` is inert.`,
             `\`code\` ${declare("late-after-code")} is not a paragraph declaration.`,
             `### \`code\` ${declare("late-heading-code")} is not a heading declaration.`,
@@ -271,19 +275,16 @@ test("{§spec-check-tags} inline and indented code neither declare nor cite tags
     });
 });
 
-test("{§spec-check-tags} a declaration owns contract text in the same Markdown block", () => {
+test("{§spec-check-tags} a heading declaration must share its heading with a title", () => {
     const files = [{
         name: "alpha/SPEC.md",
         text: [
-            declare("empty-heading"),
+            `## ${declare("empty-heading")}`,
             "",
             `### ${declare("empty-heading-two")}`,
             "",
-            `- ${declare("continued-list")}`,
-            "  The list item's contract continues here.",
-            "",
-            declare("continued-paragraph"),
-            "The paragraph's contract continues here.",
+            `## ${declare("titled-heading")} Contract title`,
+            "The section's contract continues here.",
         ].join("\n"),
     }];
 
@@ -299,27 +300,61 @@ test("{§spec-check-tags} a declaration owns contract text in the same Markdown 
     });
 });
 
-test("{§spec-check-tags} an anchor is witnessed by the implementation, a panel or a test — prose citing prose is not a witness", () => {
+test("{§spec-check-tags} an anchor requires both an implementation/panel witness and a test witness", () => {
     const files = [
         { name: "alpha/SPEC.md", text: [
-            `${declare("held")} **A contract a test holds.**`,
+            `## ${declare("dual-held")} Held by both implementation and test`,
             "",
-            `${declare("configured")} **A contract a panel states.**`,
+            `## ${declare("test-only")} Held only by a test`,
             "",
-            `${declare("lectured")} **A principle only other prose mentions.** See ${cite("held")}.`,
+            `## ${declare("impl-only")} Held only by a panel`,
             "",
-            `${declare("forgotten")} **Nothing mentions this at all.**`,
+            `## ${declare("lectured")} Mentioned only by prose (${cite("dual-held")})`,
+            "",
+            `## ${declare("forgotten")} Nothing mentions this at all`,
         ].join("\n") },
-        { name: "alpha/src/thing.test.ts", text: `// ${cite("held")} it holds` },
-        { name: "alpha/.env.defaults", text: `# ${cite("configured")}\nPLURNK_X=1\n` },
+        { name: "alpha/src/thing.ts", text: `// ${cite("dual-held")}` },
+        { name: "alpha/src/thing.test.ts", text: `// ${cite("dual-held")} ${cite("test-only")}` },
+        { name: "alpha/.env.defaults", text: `# ${cite("impl-only")}\nPLURNK_X=1\n` },
         { name: "ARCHITECTURE.md", text: `The lecture cites ${cite("lectured")}.` },
     ];
-    assert.deepEqual(unwitnessedAnchors(files), { "alpha/SPEC.md": ["forgotten", "lectured"] });
+    assert.deepEqual(unwitnessedAnchors(files), {
+        "alpha/SPEC.md": ["forgotten", "impl-only", "lectured", "test-only"],
+    });
+});
+
+test("{§spec-check-tags} deterministic test blocks must cite at least one specification tag in their title", () => {
+    const callTest = (fn, title) => `${fn}(${JSON.stringify(title)}, () => {});`;
+    const files = [
+        {
+            name: "alpha/src/unit.test.ts",
+            text: [
+                callTest("test", `${cite("dual-held")} tagged unit test`),
+                callTest("test", "untagged unit test"),
+                `    ${callTest("await t.test", "untagged nested subtest")}`,
+                callTest("it", "untagged it block"),
+            ].join("\n"),
+        },
+        {
+            name: "alpha/tiers/live/smoke.test.ts",
+            text: callTest("test", "live tier tests are exempt from title tag requirement"),
+        },
+        {
+            name: "alpha/test/tui/screen.test.ts",
+            text: callTest("test", "tui tier tests are exempt from title tag requirement"),
+        },
+    ];
+    assert.deepEqual(untaggedTests(files), [
+        { name: "alpha/src/unit.test.ts", line: 2, title: "untagged unit test" },
+        { name: "alpha/src/unit.test.ts", line: 3, title: "untagged nested subtest" },
+        { name: "alpha/src/unit.test.ts", line: 4, title: "untagged it block" },
+    ]);
 });
 
 test("{§spec-check-tags} the witness allowance only shrinks", () => {
     const files = [
-        { name: "alpha/SPEC.md", text: `${declare("old-debt")} **Known debt.**\n\n${declare("new-debt")} **Born unwitnessed.**\n\n${declare("paid")} **Now held.**` },
+        { name: "alpha/SPEC.md", text: `## ${declare("old-debt")} Known debt\n\n## ${declare("new-debt")} Born unwitnessed\n\n## ${declare("paid")} Now held` },
+        { name: "alpha/src/paid.ts", text: `// ${cite("paid")}` },
         { name: "alpha/src/paid.test.ts", text: `// ${cite("paid")}` },
     ];
     assert.deepEqual(witnessViolations(files, { "alpha/SPEC.md": ["new-debt", "old-debt"] }), []);
@@ -359,10 +394,13 @@ test("{§spec-check-cli} packed CLI checks only the selected consumer tree", { t
     const spec = `# ${declare("fixture-contract")} One real contract\n`;
     const specPath = path.join(source, "SPEC.md");
     const witnessPath = path.join(source, "witness.js");
+    const witnessTestPath = path.join(source, "witness.test.js");
+    const validTestText = `test("${cite("fixture-contract")} holds", () => {});\n`;
     await writeFile(specPath, spec);
     await writeFile(witnessPath, `// ${cite("fixture-contract")}\n`);
+    await writeFile(witnessTestPath, validTestText);
     await writeFile(path.join(source, "removed.md"), "tracked but deleted\n");
-    await run("git", ["add", "SPEC.md", "witness.js", "removed.md"], { cwd: source });
+    await run("git", ["add", "SPEC.md", "witness.js", "witness.test.js", "removed.md"], { cwd: source });
     await rm(path.join(source, "removed.md"));
     await writeFile(path.join(source, ".gitignore"), "generated/\n");
     await mkdir(path.join(source, "generated"));

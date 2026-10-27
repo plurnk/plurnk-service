@@ -1071,7 +1071,7 @@ test("{§http-lifecycle} finite origin statuses never become nonterminal channel
     const stored = await makeHandlerCtx(ctx, { ...Http.manifest, name: "http" }, authority);
     const http = new Http();
     for (const status of [200, 201, 202, 203, 204, 206, 299, 300, 302, 307, 400, 404, 503, 599, 600, 999]) {
-        await t.test(`{§http-entry} HTTP ${status}`, async () => {
+        await t.test(`{§http-manifest} HTTP ${status}`, async () => {
             const read = parsedRead(`http://${authority}/${status}`);
             const expected = status === 204 ? 204 : status > 599 ? 502 : status >= 400 ? status : 200;
             for (let attempt = 0; attempt < 2; attempt++) {
@@ -1731,7 +1731,7 @@ test("{§revalidation} wire validators select reuse or reacquisition of durable 
     ];
     for (const binary of [false, true]) {
         for (const specimen of cases) {
-            await t.test(`{§http-entry} ${binary ? "binary" : "text"}: ${specimen.name}`, async (t) => {
+            await t.test(`{§http-manifest} ${binary ? "binary" : "text"}: ${specimen.name}`, async (t) => {
                 const db = await openMigrated();
                 t.after(() => db.close());
                 const requests: Array<{ etag: string | undefined; modified: string | undefined }> = [];

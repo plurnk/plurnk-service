@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-27T05:11:10.422Z",
+  "updatedAt": "2026-10-27T05:30:36.383Z",
   "rules": {
     "headingOnlyDeclarations": true,
     "forbidMapBlocks": true,
@@ -83,7 +83,7 @@
           "baselineLine": 108,
           "baselineShape": "heading",
           "liveShape": "heading",
-          "codeCitations": 1,
+          "codeCitations": 3,
           "testCitations": 1,
           "disposition": "keep-heading",
           "target": null,
@@ -358,8 +358,8 @@
         "plurnk-spec-check/check.test.mjs": {
           "tier": "unit",
           "baselineLines": 330,
-          "liveLines": 428,
-          "testCount": 18,
+          "liveLines": 466,
+          "testCount": 19,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
           "usesLaunch": false,
@@ -3188,7 +3188,7 @@
         "plurnk-parser/test/unit/fenced-operations.test.ts": {
           "tier": "unit",
           "baselineLines": 209,
-          "liveLines": 319,
+          "liveLines": 321,
           "testCount": 27,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -20231,7 +20231,6 @@
             "copy",
             "find",
             "find-result-projection",
-            "http-entry",
             "http-lifecycle",
             "http-manifest",
             "matcher-dispatch",
@@ -34802,7 +34801,7 @@
           "usesLaunch": false,
           "citedTags": [
             "loop-completion",
-            "session-scheme-spawn"
+            "machine-processes"
           ],
           "disposition": "keep-suite",
           "target": null,

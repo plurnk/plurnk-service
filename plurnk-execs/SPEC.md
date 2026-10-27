@@ -46,7 +46,7 @@ abstract class BaseExecutor {
 }
 ```
 
-- `ExecArgs` carries **no Session identity**: an executor is a session-agnostic capability. A runtime whose behavior depends on a workspace is published per workspace by its module ({§functionality-model-projection}). The framework constructs one executor per matched runtime tag with `{ runtime, glyph }`. The derived addressable runtime scheme retains `glyph` for client discovery ({§scheme-contract}); runtime aliases remain excluded from scheme model-teaching because the execution invocation directory owns that hot-path surface.
+- `ExecArgs` carries **no Session identity**: an executor is a session-agnostic capability. A runtime whose behavior depends on a workspace is published per workspace by its module ({§functionality-model-projection}). The framework constructs one executor per matched runtime tag with `{ runtime, glyph }`. The derived addressable runtime scheme retains `glyph` for client discovery ({§resource-tree-scheme}); runtime aliases remain excluded from scheme model-teaching because the execution invocation directory owns that hot-path surface.
 
 | `ExecArgs` field | Contract |
 | --- | --- |
@@ -65,10 +65,10 @@ abstract class BaseExecutor {
 
 - **Invocation metadata ownership:** The invoked executor owns its `[metadata]` for every target kind; an internal source READ carries no execution metadata.
   - **Preparation:** Optional `prepare(input)` receives `runtime`, `body`, logical `target`, default `cwd`, and ordered raw `metadata`, before effect admission or source acquisition. Validates options without executing the program and returns `200` with a concrete `cwd` or `null`, or one universal failure.
-  - **Framework default:** `BaseExecutor.prepare` refuses unknown fields, duplicates, and malformed values. An unknown field's recovery names every field the run takes, the service's ({§scheme-contract}), and nothing more ({§diagnostic-observation}): `` Its field is `lifetime`. ``
+  - **Framework default:** `BaseExecutor.prepare` refuses unknown fields, duplicates, and malformed values. An unknown field's recovery names every field the run takes, the service's ({§resource-tree-scheme}), and nothing more ({§diagnostic-observation}): `` Its field is `lifetime`. ``
   - **Execution & evidence:** `run()` receives prepared `cwd`, realized `target`, unchanged `body`, and original `metadata`. Raw metadata follows the transient proposal handoff, never added to proposal attrs or emitted as receipt metadata.
 - **`tokenizeArgv`:** Splits a command line into argv by shell quoting alone. Plain words split on whitespace; quoted multi-word and quoted empty arguments stay whole; escapes are honoured; nothing is expanded (no variables, command substitution, or metacharacters); unterminated quoting is refused as `CommandSyntaxError`.
-- **Channels:** The executor declares every channel it may write (`ChannelDecl: { mimetype, defaultState? }`). `defaultChannel` is the fragmentless READ channel and defaults to the first declared channel. Subprocess executors declare `stdout` and `stderr` (`stdout` first); logical runtimes commonly declare `results`. Incremental vs atomic publication derives from the channel's mimetype ({§exec-stream}). Generated JSON values use `renderJsonResult` ({§contracts-ownership}) so a top-level result array has one addressable item per physical line.
+- **Channels:** The executor declares every channel it may write (`ChannelDecl: { mimetype, defaultState? }`). `defaultChannel` is the fragmentless READ channel and defaults to the first declared channel. Subprocess executors declare `stdout` and `stderr` (`stdout` first); logical runtimes commonly declare `results`. Incremental vs atomic publication derives from the channel's mimetype ({§exec-stream}). Generated JSON values use `renderJsonResult` ({§operation-results}) so a top-level result array has one addressable item per physical line.
 
 ## §executor-results Results, failures, notices, effect, and availability probe
 
@@ -78,7 +78,7 @@ abstract class BaseExecutor {
 - **Subprocess exit code:** A subprocess that exits resolves `200` with its integer `exitCode` (zero or non-zero), closes its channels, and carries no Problem. A subprocess that did not run to an exit is a failure: `spawn-failed` when it could not start, `cancelled` under the consumer's abort ({§executor-subprocess}), and `terminated-by-signal` when an unsent signal ended it (with `signal` name and `exitCode: -1`).
 - **Notices:** `emit` is only for transient progress or nonterminal observations; runtime-neutral Notice types are re-exported from `@plurnk/plurnk-contracts`.
 - **Effect (`effect(target)`):** Pure, synchronous, cheap, and target-classified (`"host" | "read" | "pure"`), called once before proposal policy. Unknown or unclassifiable work defaults to `host` (human proposal gate); `read` and `pure` are automatically accepted. After acceptance, external execution uses the background stream path ({§exec-lifetime}, {§exec-stream}).
-- **Availability (`probe(signal?)`):** Reports `{ available: boolean, detail?: string }` per runtime tag at boot under a per-probe timeout (`{ available: true }` default). Probe rejection, timeout, or typed `ConfigurationError` during loading/construction/probing marks only that tag unavailable without publishing an executable or output scheme ({§configuration-authority}).
+- **Availability (`probe(signal?)`):** Reports `{ available: boolean, detail?: string }` per runtime tag at boot under a per-probe timeout (`{ available: true }` default). Probe rejection, timeout, or typed `ConfigurationError` during loading/construction/probing marks only that tag unavailable without publishing an executable or output scheme ({§operator-config-workspace-settings}).
 
 ## §executor-output-address Tag-addressed output and optional materialization
 
@@ -90,7 +90,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
 | Fragmentless read | `<tag>:///<id>` $\to$ the declared default channel |
 | Example subprocess stdout / structured result | `sh:///ab3d5678#stdout`, `mcp:///c2d45678#results` |
 
-- `publishedChannel` selects one declared channel for automatic stream observations; absent/null selects all channels. Non-published channels remain READ-addressable ({§exec-stream}, {§scheme-contract}).
+- `publishedChannel` selects one declared channel for automatic stream observations; absent/null selects all channels. Non-published channels remain READ-addressable ({§exec-stream}, {§resource-tree-scheme}).
 - **`entry(path, content, { mimetype?, name? })` sink:** Consumer-implemented materialization returning the canonical address of an ordinary resource:
   - **Absolute resource URL:** Materialize or update that resource through its scheme owner.
   - **`path: null`:** Publish beneath this invocation's output address in `resources/`. Preserve `name` as one URI-encoded component; otherwise allocate an 8-character hex identifier. Duplicate names receive a hash suffix and never overwrite another publication. The returned address is workspace-stable and carries no Session selector.
@@ -114,7 +114,7 @@ Every available runtime receives one derived read-only scheme face from its tag,
   - `target` (optional): `{ role: string, required: boolean, kind: "literal" | "path" | "resource" | "script" }` ({§exec-lifetime}, {§op-shapes}).
   - `exclusive?: true`: body and target are mutually exclusive (requires `target`). Every execution must supply at least a body or target.
   - Exactly one of `example` (`{ body?, target? }`), `signature` (`string`), or `inputSchema` (JSON Schema object) is required.
-  - **Blank invocation:** A refusal of an absent required body/target (or neither supplied) carries in `recovery` the invocation's copyable fence (`header` + input preview, or every enabled target's fence for a registry runtime) ({§system-entry-owners}).
+  - **Blank invocation:** A refusal of an absent required body/target (or neither supplied) carries in `recovery` the invocation's copyable fence (`header` + input preview, or every enabled target's fence for a registry runtime) ({§functionality-coordinator}).
 - **Tool registry (`toolRegistry(workspaceId?)`):** Returns `{ tools: readonly { target, summary, invocation, details?, definition?, traits? }[] }`. Each entry has a required `literal` target and nonempty one-line summary. Replaces the generic invocation for model presentation and admission (empty set exposes and admits no target). If `definition` is present, it must be supplied for every tool or none, and renders as an on-demand sibling `.json` catalog `{"tools":[...definitions]}`.
 - **Tool documents and schema previews:**
   - General runtime: H2 `Summary` and `Invocation` sections with compact witness.

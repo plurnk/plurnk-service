@@ -1,4 +1,4 @@
-// {§script-help} — the one usage seam every named entry point shares: `--help` (or `-h`) prints the
+// {§scripts-layout} — the one usage seam every named entry point shares: `--help` (or `-h`) prints the
 // text and exits 0 before the script does anything else. The text's first line is `usage: …`, then what
 // the script does, then `Reads:` (environment and files it consults) and `Writes:` (what it produces).
 export const usage = (meta, text) => {

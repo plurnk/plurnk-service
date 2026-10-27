@@ -86,7 +86,7 @@ A package declares one or more handlers in `package.json` under `"plurnk"`:
 |---|---|
 | `name`, `kind` | Identify one named structural definition using the closed `SymbolKind` vocabulary. Include top-level, module, type, class, and private/public member declarations plus durable document structure (headings, CSV fields, JSON keys); exclude function-local variables, control flow, comments, literals, anonymous declarations, and imports/re-exports. |
 | `line`, `endLine` | Positive 1-based inclusive line interval (`endLine >= line`). |
-| `column`, `endColumn` | Present together as a complete {§text-coordinates} span (1-based Unicode code points, start inclusive, end exclusive). |
+| `column`, `endColumn` | Present together as a complete {§text-region} span (1-based Unicode code points, start inclusive, end exclusive). |
 | `params` | Function/method parameter spellings (`["source", "options"]`, `["{host, port}"]`, `["...args"]`, `["entryRule=\"program\""]`) when exposed by the grammar; omitted otherwise. |
 | `level` | Heading depth `1`–`6`; meaningful only for `kind: "heading"`. |
 | `container` | Dot-joined path of enclosing *emitted* named symbols (`"Parser"`, `"Outer.Inner"`); absent (never `""`) at top level. Anonymous/unemitted scopes contribute nothing; dotted symbol names (`Foo.Bar`, `database.options`) remain verbatim single segments. `container` is extraction-time truth for the code graph `(entry, container, name)`. |
@@ -139,7 +139,7 @@ A package declares one or more handlers in `package.json` under `"plurnk"`:
 
 ### §mimetype-parser-coordinates 6.1 Parser coordinate boundary
 
-Parser-native spans are materialized into 1-based Unicode code-point `TextRegion` coordinates (`startLine`, `startColumn`, `endLine`, `endColumn`, exclusive end; {§text-coordinates}) against the exact original source through `ParserCoordinates`:
+Parser-native spans are materialized into 1-based Unicode code-point `TextRegion` coordinates (`startLine`, `startColumn`, `endLine`, `endColumn`, exclusive end; {§text-region}) against the exact original source through `ParserCoordinates`:
 
 | Producer | Retained native span | Materialization rule |
 |---|---|---|

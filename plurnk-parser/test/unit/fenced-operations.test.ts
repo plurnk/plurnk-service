@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
+import * as Contracts from "@plurnk/plurnk-contracts";
 import { Validator, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
+import * as Parser from "../../src/index.ts";
 import { PlurnkParser } from "../../src/index.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";

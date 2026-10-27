@@ -293,7 +293,7 @@ writeFileSync(${JSON.stringify(started)}, JSON.stringify({ checkout: process.arg
     try {
         for (let attempt = 0; attempt < 100 && checkout === undefined; attempt++) {
             try { checkout = (JSON.parse(await readFile(started, "utf8")) as { checkout: string }).checkout; }
-            catch (cause) { if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause; }
+            catch (cause) { if ((cause as NodeJS.ErrnoException).code !== "ENOENT" && !(cause instanceof SyntaxError)) throw cause; }
             if (checkout === undefined) await delay(10);
         }
         assert.ok(checkout, "the fixture child reaches its held fetch");

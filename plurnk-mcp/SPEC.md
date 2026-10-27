@@ -56,7 +56,7 @@
 
 ## §mcp-configuration Configuration, files, plugins, isolation, and summaries
 
-MCP servers are complete connection definitions ({§contracts-ownership}, {§configuration-authority}, {§functionality-coordinator}). Definitions resolve by alias (`[a-z][a-z0-9-]*`), highest precedence first:
+MCP servers are complete connection definitions ({§operation-results}, {§operator-config-workspace-settings}, {§functionality-coordinator}). Definitions resolve by alias (`[a-z][a-z0-9-]*`), highest precedence first:
 
 | Precedence | Source | Location / Key |
 | --- | --- | --- |
@@ -75,12 +75,12 @@ MCP servers are complete connection definitions ({§contracts-ownership}, {§con
 - **Environment knobs ({§env-knob}):**
   - `PLURNK_MCP_ENABLED` (default `1`), `PLURNK_MCP_<alias>_ENABLED` (`0` or `1`).
   - `PLURNK_MCP_<alias>_TOOLS`: optional JSON array of enabled tool names; absent/`""` enables all, `[]` enables none.
-  - `PLURNK_MCP_EXPANDED`: JSON array of aliases whose tool invocations are surveyed at turn 0 ({§system-entry-owners}); default `[]`.
+  - `PLURNK_MCP_EXPANDED`: JSON array of aliases whose tool invocations are surveyed at turn 0 ({§functionality-coordinator}); default `[]`.
   - `PLURNK_MCP_REGISTRY_URL` (default `""`), `PLURNK_MCP_REGISTRY_LIMIT` (default `5`).
   - Native `stdio` definitions expand `${NAME}` once in `args`, `env`, and explicit absolute `cwd` against the workspace-composed operator environment; implicit `cwd` uses Core's workspace-and-alias state directory ({§module-seam-slices}). `streamable-http` definitions expand `${NAME}` in `headers` and `authorization` (`bearer.token`, `client-credentials.clientSecret`, `oauth.clientSecret`) only at connection preparation; supplying both `authorization` and an `Authorization` header is invalid.
 - **Cold endpoint isolation & unavailable runtimes:** Cold failure during workspace activation leaves the server enabled and client-visible as `unavailable` (or `authorization-required`). Preparation still registers the alias as an unavailable runtime ({§exec-lifetime}) whose availability detail names `it awaits the operator's sign-in` (for `authorization-required`) or its Problem's bounded diagnostic/detail (for `unavailable`).
 - **Summary derivation:** Whitespace-normalized, first sentence, clipped within 80 chars + `…`:
-  - **Server:** `serverInfo.description` $\to$ `instructions` $\to$ `serverInfo.title` $\to$ effective admitted tool-name list (`Tools: ...`) $\to$ `MCP server <alias>.` With tools, `runtimeDecl` uses `{ from: "tools", description? }` and full `instructions` as `details` ({§scheme-contract}, {§system-entry-owners}).
+  - **Server:** `serverInfo.description` $\to$ `instructions` $\to$ `serverInfo.title` $\to$ effective admitted tool-name list (`Tools: ...`) $\to$ `MCP server <alias>.` With tools, `runtimeDecl` uses `{ from: "tools", description? }` and full `instructions` as `details` ({§resource-tree-scheme}, {§functionality-coordinator}).
   - **Tool:** `description` $\to$ `title` $\to$ `annotations.title` $\to$ tool `name`.
 
 ## §mcp-module Module adapter, launch environment, management, registry, and diagnostics
@@ -124,8 +124,8 @@ MCP servers are complete connection definitions ({§contracts-ownership}, {§con
 
 ## §mcp-result-content Result content, prompt content, Apps exclusion, and Skills deferral
 
-- **Tool result channels:** `#json` stores the complete raw MCP result object. Default `#body` writes the result without the envelope: single/multiple text blocks join with `\n` (pretty-printed `application/json` via `renderJsonResult` when a complete JSON document, else `text/plain` under {§contracts-ownership}); empty `content` with `structuredContent` writes pretty-printed JSON; inline `image`/`audio` and embedded `resource` items publish via `entry(null, ...)` ({§executor-output-address}) and link as `<runtime>:///<id>/resources/<name-or-hex8>`; `resource_link` items link as `<runtime>:///resources/<encoded-uri>`. Standalone `blob` items in `tools/call` are rejected as protocol-invalid.
-- **Prompt content (`/prompts/<name>?key=val`):** Preserves `#json` raw response and writes projected `GetPromptResult` JSON to `#body` where non-text parts become `resource_link` items pointing to snapshot children under `/prompts/<name>/resources/<name-or-hex8>` (or `<runtime>:///resources/<encoded-uri>` for remote `resource_link`s) ({§log-wire-format}, {§scheme-contract}). Reading a snapshot never re-executes the prompt.
+- **Tool result channels:** `#json` stores the complete raw MCP result object. Default `#body` writes the result without the envelope: single/multiple text blocks join with `\n` (pretty-printed `application/json` via `renderJsonResult` when a complete JSON document, else `text/plain` under {§operation-results}); empty `content` with `structuredContent` writes pretty-printed JSON; inline `image`/`audio` and embedded `resource` items publish via `entry(null, ...)` ({§executor-output-address}) and link as `<runtime>:///<id>/resources/<name-or-hex8>`; `resource_link` items link as `<runtime>:///resources/<encoded-uri>`. Standalone `blob` items in `tools/call` are rejected as protocol-invalid.
+- **Prompt content (`/prompts/<name>?key=val`):** Preserves `#json` raw response and writes projected `GetPromptResult` JSON to `#body` where non-text parts become `resource_link` items pointing to snapshot children under `/prompts/<name>/resources/<name-or-hex8>` (or `<runtime>:///resources/<encoded-uri>` for remote `resource_link`s) ({§log-wire-format}, {§resource-tree-scheme}). Reading a snapshot never re-executes the prompt.
 - **Exclusions:** MCP Apps (`_meta.ui` remains inert in raw catalogs and is excluded from compact invocations) and `io.modelcontextprotocol/skills` (SEP-2640, #654) are not advertised or implemented.
 
 ## §mcp-model-projection Model projection, tool presentation, conformance, and Problems

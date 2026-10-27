@@ -9,9 +9,6 @@ const LIST_ITEM = /^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/;
 const BLOCK_WITHOUT_DECLARATION = /^ {0,3}(?:>|\||<)/;
 const NAMED_TAG = "§([a-z][a-z0-9-]*)(?![a-z0-9_-])(?=[ \\t]|$)";
 const HEADING_DECLARATION = new RegExp(`^ {0,3}#{1,6}[ \\t]+${NAMED_TAG}`);
-const LIST_DECLARATION = new RegExp(`^ {0,3}(?:[-+*]|\\d{1,9}[.)])[ \\t]+${NAMED_TAG}`);
-const TABLE_ROW_DECLARATION = new RegExp(`^ {0,3}\\|[ \\t]*${NAMED_TAG}`);
-const PARAGRAPH_DECLARATION = new RegExp(`^ {0,3}${NAMED_TAG}`);
 const REFERENCE_TAG = /\{§([a-z][a-z0-9-]*)\}(?![a-z0-9_-])/g;
 const UNBRACED_NAMED_TAG = /§([A-Za-z][A-Za-z0-9_-]*)/g;
 // A repository's issue abbreviated to `plurnk-x#N` names no host. An owner-qualified citation
@@ -24,11 +21,14 @@ const UNBRACED_SOURCE_EXTENSIONS = new Set([
     ".cjs", ".g4", ".js", ".jsx", ".md", ".mjs", ".mts", ".sh", ".sql",
     ".ts", ".tsx", ".yaml", ".yml",
 ]);
+const DETERMINISTIC_TEST_FILE = /\.test\.(?:[cm]?[jt]sx?)$/i;
+const LIVE_OR_TUI_TEST_PATH = /(?:^|\/)(?:tiers\/(?:live|demo)|test\/(?:live|demo|tui))\//;
+const TEST_CALL = /^[ \t]*(?:await[ \t]+)?(?:[A-Za-z_$][\w$]*\.)?(?:test|it)\s*\(\s*(`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')\s*,/gm;
 
 const locationOrder = (left, right) =>
     left.name.localeCompare(right.name)
     || left.line - right.line
-    || left.tag.localeCompare(right.tag);
+    || (left.tag ?? "").localeCompare(right.tag ?? "");
 
 const mask = (text) => " ".repeat(text.length);
 const maskSemanticCode = (text) => "x".repeat(text.length);
@@ -63,13 +63,7 @@ const markdownLines = (name, text) => {
     });
 };
 
-const declarationIn = (line, paragraphStart) => {
-    const structural = line.match(HEADING_DECLARATION)
-        ?? line.match(LIST_DECLARATION)
-        ?? line.match(TABLE_ROW_DECLARATION);
-    if (structural !== null) return structural;
-    return paragraphStart ? line.match(PARAGRAPH_DECLARATION) : null;
-};
+const declarationIn = (line) => line.match(HEADING_DECLARATION);
 
 const checksUnbracedTags = (name) =>
     UNBRACED_SOURCE_EXTENSIONS.has(path.extname(name).toLowerCase())
@@ -104,7 +98,7 @@ const collectSpecTags = (files) => {
             const otherBlock = BLOCK_WITHOUT_DECLARATION.test(line);
             const paragraphStart = !paragraphOpen && !heading && !listItem && !otherBlock;
             if (heading || listItem || otherBlock || paragraphStart) closeDeclaration();
-            const declaration = isSpec ? declarationIn(line, paragraphStart) : null;
+            const declaration = isSpec ? declarationIn(line) : null;
             if (declaration !== null) {
                 const tag = declaration[1];
                 const locations = declarations.get(tag) ?? [];
@@ -176,19 +170,21 @@ const collectSpecTags = (files) => {
 
 export const analyzeSpecReferences = (files) => collectSpecTags(files).verdicts;
 
-// SPEC.md is documentation anchored to the implementation, the panels and the tests. An anchor that
-// nothing outside prose cites is not doing that job: it is a principle in the wrong document
-// (ARCHITECTURE.md lectures), orientation in the wrong document (AGENTS.md guides), or a contract
-// nobody witnesses — and, cited by nothing, it rots without anything failing. Citing an anchor from
-// a test that does not witness it is worse than leaving it here: this counts honesty, not tags.
 const isProse = (name) => path.extname(name).toLowerCase() === ".md";
+const isTest = (name) =>
+    DETERMINISTIC_TEST_FILE.test(name) || /(?:^|\/)test\//.test(name);
 
 export const unwitnessedAnchors = (files) => {
     const { declarations, references } = collectSpecTags(files);
-    const witnessed = new Set(references.filter(({ name }) => !isProse(name)).map(({ tag }) => tag));
+    const implWitnessed = new Set(
+        references.filter(({ name }) => !isProse(name) && !isTest(name)).map(({ tag }) => tag),
+    );
+    const testWitnessed = new Set(
+        references.filter(({ name }) => isTest(name)).map(({ tag }) => tag),
+    );
     const bySpec = new Map();
     for (const [tag, locations] of declarations) {
-        if (witnessed.has(tag)) continue;
+        if (implWitnessed.has(tag) && testWitnessed.has(tag)) continue;
         const { name } = locations[0];
         bySpec.set(name, [...(bySpec.get(name) ?? []), tag]);
     }
@@ -197,8 +193,8 @@ export const unwitnessedAnchors = (files) => {
         .map(([name, tags]) => [name, tags.toSorted()]));
 };
 
-// The allowance only shrinks: an anchor is born witnessed, and one that gains a witness, moves to the
-// document whose job it is, or is deleted must be struck in the same change.
+// The allowance only shrinks: an anchor is born with both an implementation/panel witness and a
+// test witness, and one that gains its witnesses or is deleted must be struck in the same change.
 export const witnessViolations = (files, allowance) => {
     const actual = unwitnessedAnchors(files);
     const violations = [];
@@ -215,6 +211,24 @@ export const witnessViolations = (files, allowance) => {
         }
     }
     return violations.toSorted();
+};
+
+export const untaggedTests = (files) => {
+    const violations = [];
+    for (const { name, text } of files) {
+        if (!DETERMINISTIC_TEST_FILE.test(name) || LIVE_OR_TUI_TEST_PATH.test(name)) continue;
+        for (const match of text.matchAll(TEST_CALL)) {
+            const literal = match[1] ?? "";
+            if ([...literal.matchAll(REFERENCE_TAG)].length > 0) continue;
+            const line = text.slice(0, match.index ?? 0).split("\n").length;
+            const title = literal.slice(1, -1).replace(/\s+/g, " ").slice(0, 100);
+            violations.push({ name, line, title });
+        }
+    }
+    return violations.toSorted((left, right) =>
+        left.name.localeCompare(right.name)
+        || left.line - right.line
+        || left.title.localeCompare(right.title));
 };
 
 export const unresolvedSpecReferences = (files) =>
@@ -284,6 +298,7 @@ const main = async () => {
     }
     const analysis = analyzeSpecReferences(files);
     const issueShorthands = ambiguousIssueShorthands(files);
+    const untagged = untaggedTests(files);
     const allowance = allowancePath === null ? {} : JSON.parse(await fs.readFile(allowancePath, "utf8"));
     if (allowance === null || Array.isArray(allowance) || typeof allowance !== "object"
         || Object.values(allowance).some((tags) => !Array.isArray(tags) || tags.some((tag) => typeof tag !== "string"))) {
@@ -291,7 +306,7 @@ const main = async () => {
     }
     const unwitnessed = witnessViolations(files, allowance);
     const failed = Object.values(analysis).some((entries) => entries.length > 0)
-        || issueShorthands.length > 0 || unwitnessed.length > 0;
+        || issueShorthands.length > 0 || unwitnessed.length > 0 || untagged.length > 0;
     if (!failed) {
         const debt = Object.values(allowance).reduce((sum, tags) => sum + tags.length, 0);
         console.log(`spec references OK${debt === 0 ? "" : ` — ${debt} anchors await a witness or their proper document`}`);
@@ -323,6 +338,11 @@ const main = async () => {
         "Specification-tag declarations without an owning contract",
         analysis.emptyDeclarations,
         ({ name, line, tag }) => `${name}:${line} §${tag}`,
+    );
+    printLocations(
+        "Deterministic test blocks without a specification-tag citation",
+        untagged,
+        ({ name, line, title }) => `${name}:${line} ${title}`,
     );
     printLocations(
         "Ambiguous issue shorthands (use a current local #N, a specification tag, or a full URL)",
