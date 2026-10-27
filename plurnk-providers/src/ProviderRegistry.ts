@@ -102,7 +102,7 @@ export const instantiateProvider = async (
         name,
         env,
         model,
-        modelTransport: providerExtension.model(model),
+        providerModel: providerExtension.model(model),
         contextWindow,
         attributions,
         ...(grammarStyles.get(name) === undefined ? {} : { grammarStyle: grammarStyles.get(name) }),

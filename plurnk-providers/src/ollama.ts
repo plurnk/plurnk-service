@@ -1,10 +1,8 @@
-import { createOpenAICompatibleModel } from "./modelTransport.ts";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
 import { contextWindowFromEnv, effectiveContextWindow, parseTimeoutMs, requireEnv } from "./env.ts";
 import { providerFromModelAdapter } from "./catalogProvider.ts";
-import type { Provider, ProviderOptions } from "./types.ts";
-import { withoutNativeTools } from "./native-tools.ts";
+import type { Provider, ProviderModel, ProviderOptions } from "./types.ts";
 
 const fetchContextWindow = async ({
     baseUrl,
@@ -51,18 +49,33 @@ export const ollamaProviderFromEnv = async (
         contextWindowFromEnv(env, "ollama"),
         await fetchContextWindow({ baseUrl, model, timeout }),
     );
-    const modelTransport = (fetch: typeof globalThis.fetch) => createOpenAICompatibleModel(model, {
-        name: "ollama",
-        baseURL: `${baseUrl}/v1`,
-        includeUsage: true,
-        fetch,
-        transformRequestBody: (body) => withoutNativeTools(body, "openai"),
-    });
+    const providerModel: ProviderModel = {
+        id: model,
+        name: model,
+        api: "openai-completions",
+        provider: "ollama",
+        namespace: "ollama",
+        baseUrl: `${baseUrl}/v1`,
+        reasoning: true,
+        input: ["text", "image"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow,
+        maxTokens: 16_384,
+        apiKey: "ollama",
+        includeTopK: true,
+        compat: {
+            supportsStore: false,
+            supportsDeveloperRole: false,
+            maxTokensField: "max_tokens",
+            supportsReasoningEffort: false,
+            supportsFinishReason: true,
+        },
+    };
     return providerFromModelAdapter({
         name: "ollama",
         env,
         model,
-        modelTransport,
+        providerModel,
         endpoint: `${baseUrl}/v1`,
         contextWindow,
     });

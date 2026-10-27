@@ -2,6 +2,7 @@
 // content unparsed (consumer parses via @plurnk/plurnk-contracts), reasoning
 // is the wire-reported CoT only.
 
+import type { OpenAICompletionsCompat } from "@earendil-works/pi-ai";
 import type { ProviderNotice } from "./notices.ts";
 import type {
     ExtensionAttribution,
@@ -44,96 +45,37 @@ export type CallWarning =
         readonly message: string;
     };
 
-export interface ModelUsage {
-    readonly inputTokens: number | undefined;
-    readonly inputTokenDetails: {
-        readonly noCacheTokens: number | undefined;
-        readonly cacheReadTokens: number | undefined;
-        readonly cacheWriteTokens: number | undefined;
-    };
-    readonly outputTokens: number | undefined;
-    readonly outputTokenDetails: {
-        readonly textTokens: number | undefined;
-        readonly reasoningTokens: number | undefined;
-    };
-    readonly totalTokens: number | undefined;
-}
+export type ProviderModelApi =
+    | "openai-completions"
+    | "openai-responses"
+    | "anthropic-messages"
+    | "google-generative-ai"
+    | "bedrock-converse-stream";
 
-export interface ModelFinishReason {
-    readonly unified: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
-    readonly raw: string | undefined;
-}
-
-export type ModelPromptMessage =
-    | {
-        readonly role: "system";
-        readonly content: string;
-        readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
-    }
-    | {
-        readonly role: "user";
-        readonly content: ReadonlyArray<
-            | { readonly type: "text"; readonly text: string }
-            | { readonly type: "file"; readonly data: Uint8Array | string | { readonly type: "data"; readonly data: Uint8Array | string }; readonly mediaType: string }
-        >;
-        readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
-    }
-    | {
-        readonly role: "assistant";
-        readonly content: ReadonlyArray<{ readonly type: "text"; readonly text: string }>;
-        readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
-    };
-
-export interface ModelTransportCallOptions {
-    readonly prompt: readonly ModelPromptMessage[];
-    readonly streaming: boolean;
-    readonly maxOutputTokens?: number;
-    readonly temperature?: number;
-    readonly stopSequences?: string[];
-    readonly topP?: number;
-    readonly topK?: number;
-    readonly presencePenalty?: number;
-    readonly frequencyPenalty?: number;
-    readonly seed?: number;
-    readonly headers?: Record<string, string | undefined>;
-    readonly abortSignal?: AbortSignal;
-    readonly toolChoice?: { readonly type: "none" };
-    readonly tools?: undefined;
-    readonly reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "none" | "provider-default";
-    readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
-    readonly includeRawChunks?: boolean;
-    readonly observeText?: (delta: string) => void;
-    readonly observeReasoning?: (delta: string) => void;
-    readonly observeRawChunk?: (chunk: unknown) => void;
-    readonly observeResponse?: (response: {
-        readonly id?: string;
-        readonly modelId?: string;
-        readonly headers?: Record<string, string>;
-    }) => void;
-}
-
-export interface ModelTransportResult {
-    readonly content: string;
-    readonly reasoning: string;
-    readonly nativeToolCalls?: boolean;
-    readonly finishReason: ModelFinishReason;
-    readonly usage?: ModelUsage;
-    readonly rawChunks: readonly unknown[];
-    readonly providerMetadata?: Record<string, Record<string, JSONValue>>;
-    readonly response?: {
-        readonly id?: string;
-        readonly timestamp?: Date;
-        readonly modelId?: string;
-        readonly headers?: Record<string, string>;
-        readonly body?: unknown;
-    };
-    readonly warnings: readonly CallWarning[];
-}
-
-export interface ModelTransport {
+export interface ProviderModel {
+    readonly id: string;
+    readonly api: ProviderModelApi;
     readonly provider: string;
-    readonly modelId: string;
-    execute(options: ModelTransportCallOptions): PromiseLike<ModelTransportResult>;
+    readonly baseUrl: string;
+    readonly name?: string;
+    readonly reasoning?: boolean;
+    readonly input?: readonly ("text" | "image")[];
+    readonly cost?: {
+        readonly input: number;
+        readonly output: number;
+        readonly cacheRead: number;
+        readonly cacheWrite: number;
+    };
+    readonly contextWindow?: number;
+    readonly maxTokens?: number;
+    readonly headers?: Readonly<Record<string, string>>;
+    readonly compat?: OpenAICompletionsCompat;
+    readonly apiKey?: string;
+    readonly env?: Readonly<Record<string, string | undefined>>;
+    readonly namespace?: string;
+    readonly includeTopK?: boolean;
+    readonly xaiPreferResponses?: boolean;
+    readonly onPayload?: (payload: unknown, model: ProviderModel) => unknown;
 }
 
 export type {
@@ -475,5 +417,5 @@ export interface ProviderOptions {
 // A discovered provider extension default-exports a provider factory. PLURNK owns
 // the adapter into Provider; the extension owns only its protocol binding.
 export interface ProviderExtension extends ExtensionAttributionSource {
-    model(model: string): ModelTransport;
+    model(model: string): ProviderModel;
 }

@@ -115,18 +115,16 @@ test("{§provider-sdk-boundary} createProviderModel constructs Cerebras from Mod
     });
     assert.notEqual(sdk, null);
     assert.equal(sdk?.catalog?.adapter, "cerebras");
-    assert.notEqual(sdk?.modelTransport, undefined);
+    assert.notEqual(sdk?.providerModel, undefined);
     assert.equal(sdk?.compatible, undefined);
 });
 
 test("{§provider-effort} adapter construction does not freeze request-local reasoning controls", () => {
-    const source = createProviderModel("openrouter", "z-ai/glm-5.3-flash", {
+    const model = createProviderModel("openrouter", "z-ai/glm-5.3-flash", {
         OPENROUTER_API_KEY: "test-key",
-    })?.modelTransport;
-    assert.equal(typeof source, "function");
-    const model = (typeof source === "function" ? source(globalThis.fetch) : source) as { settings?: { reasoning?: unknown } };
+    })?.providerModel;
     assert.ok(model);
-    assert.equal(model.settings?.reasoning, undefined);
+    assert.equal("settings" in model, false);
 });
 
 test("{§provider-request-authority} attribution rejects malformed URLs", () => {
@@ -154,7 +152,7 @@ test("{§provider-monetary-evidence} createProviderModel attaches DeepInfra's do
     const sdk = createProviderModel("deepinfra", "zai-org/GLM-5.2", {
         DEEPINFRA_API_KEY: "test-key",
     });
-    assert.notEqual(sdk?.modelTransport, undefined);
+    assert.notEqual(sdk?.providerModel, undefined);
     assert.deepEqual(sdk?.normalizeCost?.({
         usage: { estimated_cost: 5.04e-5 },
         response: { id: "response-1" },
@@ -170,7 +168,7 @@ test("{§model-fact-resolution} catalog credential names are law without any pac
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "key",
     }));
-    assert.equal(sdk?.modelTransport, undefined);
+    assert.equal(sdk?.providerModel, undefined);
     assert.deepEqual(sdk?.compatible, {
         url: "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
         headers: { Authorization: "Bearer key" },
@@ -294,9 +292,9 @@ const KEYS = {
 
 const nativeProvider = (provider: string, model: string, extra: Partial<ModelProviderConfig> = {}): ModelProvider => {
     const sdk = createProviderModel(provider, model, KEYS);
-    assert.ok(sdk?.modelTransport, `${provider} is a native route`);
+    assert.ok(sdk?.providerModel, `${provider} is a native route`);
     return new ModelProvider({
-        model, modelTransport: sdk.modelTransport, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+        model, providerModel: sdk.providerModel, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         retryAttempts: 0, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null },
         ...(sdk.requestControls === undefined ? {} : { requestControls: sdk.requestControls }),
         ...extra,
@@ -313,15 +311,8 @@ const captureBodies = (respond: (body: Record<string, unknown>) => Response): Ar
     return bodies;
 };
 
-const openAiReply = (body: Record<string, unknown>): Response => {
+const openAiReply = (): Response => {
     const logprobs = { content: [{ token: "ok", logprob: -0.25, bytes: [111, 107], top_logprobs: [{ token: "ok", logprob: -0.25, bytes: [111, 107] }] }] };
-    if (body.stream !== true) {
-        return new Response(JSON.stringify({
-            id: "c", object: "chat.completion", created: 1, model: "gpt-4.1",
-            choices: [{ index: 0, message: { role: "assistant", content: "ok" }, logprobs, finish_reason: "stop" }],
-            usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
-        }), { headers: { "content-type": "application/json" } });
-    }
     const chunks = [
         { id: "c", object: "chat.completion.chunk", created: 1, model: "gpt-4.1", choices: [{ index: 0, delta: { role: "assistant", content: "ok" }, logprobs, finish_reason: null }] },
         { id: "c", object: "chat.completion.chunk", created: 1, model: "gpt-4.1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } },
@@ -329,25 +320,23 @@ const openAiReply = (body: Record<string, unknown>): Response => {
     return new Response(`${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`).join("\n\n")}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
 };
 
-for (const streaming of [true, false]) {
-    test(`{§provider-request-authority} the native OpenAI route sends the service tier and logprobs it was configured with (${streaming ? "streaming" : "buffered"})`, async (t) => {
-        t.after(() => mock.restoreAll());
-        const bodies = captureBodies(openAiReply);
-        const provider = nativeProvider("openai", "gpt-4.1", { serviceTier: "priority", topLogprobs: 3, streaming });
-        const result = await provider.generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
-        assert.equal(result.assistant.content, "ok");
-        assert.equal(bodies.length, 1);
-        assert.equal(bodies[0].service_tier, "priority", "the tier rides the adapter's documented option");
-        assert.equal(bodies[0].logprobs, true);
-        assert.equal(bodies[0].top_logprobs, 3);
-        if (!streaming) assert.equal(result.assistant.logprobs?.[0]?.token, "ok", "the requested evidence comes back");
-    });
-}
+test("{§provider-request-authority} the native OpenAI route sends the service tier and logprobs it was configured with", async (t) => {
+    t.after(() => mock.restoreAll());
+    const bodies = captureBodies(openAiReply);
+    const provider = nativeProvider("openai", "gpt-4.1", { serviceTier: "priority", topLogprobs: 3 });
+    const result = await provider.generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
+    assert.equal(result.assistant.content, "ok");
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0].service_tier, "priority", "the tier rides the adapter's documented option");
+    assert.equal(bodies[0].logprobs, true);
+    assert.equal(bodies[0].top_logprobs, 3);
+    assert.equal(result.assistant.logprobs?.[0]?.token, "ok", "the requested evidence comes back");
+});
 
 test("{§provider-request-authority} logprobs count 0 asks for the chosen token only", async (t) => {
     t.after(() => mock.restoreAll());
     const bodies = captureBodies(openAiReply);
-    await nativeProvider("openai", "gpt-4.1", { topLogprobs: 0, streaming: false }).generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
+    await nativeProvider("openai", "gpt-4.1", { topLogprobs: 0 }).generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
     assert.equal(bodies[0].logprobs, true);
     assert.equal(bodies[0].top_logprobs, 0, "no alternative tokens are requested");
 });
@@ -363,7 +352,7 @@ for (const [provider, model, tier] of [
     test(`{§provider-request-authority} ${provider} receives its documented service tier`, async (t) => {
         t.after(() => mock.restoreAll());
         const bodies = captureBodies(() => new Response("{}", { status: 500 }));
-        await nativeProvider(provider, model, { serviceTier: tier, streaming: false })
+        await nativeProvider(provider, model, { serviceTier: tier })
             .generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] })
             .catch(() => undefined);
         assert.equal(bodies.length, 1, "one request was serialized");
@@ -377,8 +366,8 @@ test("{§provider-request-authority} a control the adapter does not document is 
     const warned: string[] = [];
     mock.method(process, "emitWarning", (message: string, options: { code?: string }) => { warned.push(`${options.code}: ${message}`); });
     const bodies = captureBodies(() => new Response("{}", { status: 500 }));
-    for (let i = 0; i < 2; i++) nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2, streaming: false });
-    await nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2, streaming: false })
+    for (let i = 0; i < 2; i++) nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2 });
+    await nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2 })
         .generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] })
         .catch(() => undefined);
     const named = warned.filter((line) => line.startsWith("PLURNK_REQUEST_CONTROL_UNSUPPORTED"));

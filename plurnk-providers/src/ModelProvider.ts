@@ -1,18 +1,17 @@
-// PLURNK provider over a model transport or OpenAI-compatible endpoint. Implements
+// PLURNK provider over a pi-ai model descriptor or OpenAI-compatible endpoint. Implements
 // the universal generate() spine — signal merging, the SSE call, usage mapping,
 // finishReason normalization, response assembly.
 //
-// Composition, not inheritance: a ModelTransport adapter supplies the vendor
+// Composition, not inheritance: a ProviderModel descriptor supplies the vendor
 // protocol. The compatible URL path serves PLURNK extensions and local endpoint
 // probes.
 
-import type { CallWarning, ChatMessage, GrammarEvidence, JSONValue, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
+import type { CallWarning, ChatMessage, GrammarEvidence, JSONValue, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderModel, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import { executeModelTransport, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./modelTransport.ts";
-import type { ModelTransportSource } from "./modelTransport.ts";
+import { executeProviderModel, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./modelTransport.ts";
 import { APICallError, RetryError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
@@ -110,7 +109,7 @@ export type ModelProviderConfig = {
     inferenceAdmission?: InferenceAdmission;
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
-    modelTransport?: ModelTransportSource;    // native model transport, or factory binding the request's fetch
+    providerModel?: ProviderModel;            // native pi-ai model descriptor
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
     fetchTimeoutMs: number;                    // discovery/tokenizer HTTP only; zero disables
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
@@ -160,7 +159,6 @@ export type ModelProviderConfig = {
     // {§provider-request-authority} — which global request controls a native route's adapter documents as
     // provider options, and under which namespace. Absent on a native route means none.
     requestControls?: NativeRequestControls;
-    streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
     apiKeyRejectedMessage?: string;            // friendly hint when a present key is 401/403-rejected (distinct from unset); default undefined
     eosText?: string;                          // server-reported eos_token, stripped from the content tail (--special renders it as text); default undefined
     // Slot affinity wiring is provider-internal, never consumer-facing.
@@ -309,7 +307,7 @@ export default class ModelProvider implements Provider {
     readonly #inferenceAdmission: InferenceAdmission | undefined;
     #model: string;
     #url: string | undefined;
-    #modelTransport: ModelTransportSource | undefined;
+    #providerModel: ProviderModel | undefined;
     #fetchTimeoutMs: number;
     #operationTimeoutMs: number;
     #headers: Record<string, string>;
@@ -351,7 +349,6 @@ export default class ModelProvider implements Provider {
     #reasoningResponseProviderOptions: ModelProviderOptions | undefined;
     #serviceTier: string | undefined;
     #controlOptions: ModelProviderOptions | undefined;
-    #streaming: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
     #retryAttempts: number;
@@ -372,9 +369,9 @@ export default class ModelProvider implements Provider {
         this.#inferenceAdmission = config.inferenceAdmission;
         this.#model = config.model;
         this.#url = config.url;
-        this.#modelTransport = config.modelTransport;
+        this.#providerModel = config.providerModel;
         this.attributions = config.attributions;
-        if ((this.#url === undefined) === (this.#modelTransport === undefined)) {
+        if ((this.#url === undefined) === (this.#providerModel === undefined)) {
             throw new Error(`${config.source ?? "provider"}: configure exactly one model transport or OpenAI-compatible URL`);
         }
         for (const [name, value] of [
@@ -432,10 +429,10 @@ export default class ModelProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
-        if (this.#modelTransport !== undefined && (config.outputTokenField !== undefined || config.reasoningRequestBody !== undefined)) {
+        if (this.#providerModel !== undefined && (config.outputTokenField !== undefined || config.reasoningRequestBody !== undefined)) {
             throw new TypeError(`${config.source ?? "provider"}: compatible request body projections require an OpenAI-compatible URL`);
         }
-        if (this.#modelTransport === undefined && config.reasoningRequestProviderOptions !== undefined) {
+        if (this.#providerModel === undefined && config.reasoningRequestProviderOptions !== undefined) {
             throw new TypeError(`${config.source ?? "provider"}: native reasoning provider options require a model transport`);
         }
         this.#outputTokenField = config.outputTokenField ?? "max_tokens";
@@ -458,19 +455,19 @@ export default class ModelProvider implements Provider {
         this.#cacheAffinity = config.cacheAffinity;
         this.#systemCacheProviderOptions = config.systemCacheProviderOptions;
         this.#reasoningResponseProviderOptions = config.reasoningResponseProviderOptions;
-        if (this.#modelTransport === undefined && this.#cacheAffinity?.target === "provider-option") {
+        if (this.#providerModel === undefined && this.#cacheAffinity?.target === "provider-option") {
             throw new Error(`${this.#source}: native provider-option cache affinity requires a model transport`);
         }
-        if (this.#modelTransport !== undefined && this.#cacheAffinity?.target === "body") {
+        if (this.#providerModel !== undefined && this.#cacheAffinity?.target === "body") {
             throw new Error(`${this.#source}: body cache affinity requires an OpenAI-compatible URL`);
         }
-        if (this.#modelTransport === undefined && this.#systemCacheProviderOptions !== undefined) {
+        if (this.#providerModel === undefined && this.#systemCacheProviderOptions !== undefined) {
             throw new Error(`${this.#source}: system cache provider options require a model transport`);
         }
-        if (this.#modelTransport === undefined && this.#reasoningResponseProviderOptions !== undefined) {
+        if (this.#providerModel === undefined && this.#reasoningResponseProviderOptions !== undefined) {
             throw new Error(`${this.#source}: reasoning response provider options require a model transport`);
         }
-        if (this.#modelTransport === undefined && this.#additiveReasoningProvider !== undefined) {
+        if (this.#providerModel === undefined && this.#additiveReasoningProvider !== undefined) {
             throw new Error(`${this.#source}: additive reasoning projection requires a model transport`);
         }
         if (this.#cacheAffinity?.target === "provider-option"
@@ -481,17 +478,16 @@ export default class ModelProvider implements Provider {
             throw new Error(`${this.#source}: reasoning response options conflict with cache-affinity option ${this.#cacheAffinity.provider}.${this.#cacheAffinity.name}`);
         }
         this.#serviceTier = config.serviceTier;
-        this.#streaming = config.streaming ?? true;
         this.#apiKeyRejectedMessage = config.apiKeyRejectedMessage;
         this.#eosText = config.eosText;
         this.#hasApiKey = "Authorization" in this.#headers;
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
-        if (this.#modelTransport === undefined && config.requestControls !== undefined) {
+        if (this.#providerModel === undefined && config.requestControls !== undefined) {
             throw new Error(`${this.#source}: native request controls require a model transport`);
         }
-        this.#controlOptions = this.#modelTransport === undefined
+        this.#controlOptions = this.#providerModel === undefined
             ? undefined
             : nativeControlOptions(this.#source, config.requestControls, this.#serviceTier, this.#topLogprobs);
         this.#rawBody = config.rawBody ?? false;
@@ -857,7 +853,7 @@ export default class ModelProvider implements Provider {
             };
             let response;
             try {
-                response = this.#modelTransport === undefined
+                response = this.#providerModel === undefined
                     ? await executeOpenAICompatible({
                         url: this.#url!,
                         model: this.#model,
@@ -866,13 +862,13 @@ export default class ModelProvider implements Provider {
                         messages,
                         signal: operationSignal,
                         fetch,
-                        streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
                     })
-                    : await executeModelTransport({
-                        modelTransport: this.#modelTransport,
+                    : await executeProviderModel({
+                        providerModel: this.#providerModel,
                         fetch,
+                        ...(capture === undefined ? {} : { captureRequest: (req) => capture.record(req) }),
                         headers: requestHeaders,
                         providerOptions: this.#requestBody.requestProviderOptions(
                             sessionId,
@@ -882,7 +878,6 @@ export default class ModelProvider implements Provider {
                         systemProviderOptions: this.#systemCacheProviderOptions,
                         messages,
                         signal: operationSignal,
-                        streaming: this.#streaming,
                         captureRawBody: this.#rawBody,
                         ...observers,
                         temperature: typeof requestSampling.temperature === "number" ? requestSampling.temperature : undefined,

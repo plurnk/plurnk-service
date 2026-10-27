@@ -2,24 +2,16 @@ import { isProviderCredentialName, lookupProvider, providerCatalogSnapshot, type
 import { Validator, type ModelReadiness, type ModelReadinessCause } from "@plurnk/plurnk-contracts";
 import { providerCostNormalizer } from "./accounting.ts";
 import { providerSetting, providerEnvPrefix as envPrefix } from "./provider-env.ts";
-import { withoutNativeToolsFetch } from "./native-tools.ts";
-import { createOpenAICompatibleModel } from "./modelTransport.ts";
-import {
-    createAmazonBedrockModel,
-    createAnthropicModel,
-    createGoogleModel,
-    createXaiModel,
-} from "./vendorTransports.ts";
 import type {
     ModelProviderOptions,
     CacheAffinity,
     NativeRequestControls,
 } from "./ModelProvider.ts";
-import type { ModelTransport, ProviderCostNormalizer } from "./types.ts";
+import type { ProviderModel, ProviderCostNormalizer } from "./types.ts";
 
 export type ProviderModelAdapter = {
     readonly endpoint?: string;
-    readonly modelTransport?: (fetch: typeof globalThis.fetch) => ModelTransport;
+    readonly providerModel?: ProviderModel;
     readonly normalizeCost?: ProviderCostNormalizer;
     readonly compatible?: {
         readonly url: string;
@@ -342,6 +334,44 @@ export const createProviderModel = (
     };
 };
 
+const ZERO_COST = Object.freeze({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
+
+const openAICompletionsModel = (
+    id: string,
+    options: {
+        provider: string;
+        namespace: string;
+        baseUrl: string;
+        apiKey?: string;
+        headers?: Readonly<Record<string, string>>;
+        includeTopK?: boolean;
+        maxTokensField?: "max_tokens" | "max_completion_tokens";
+    },
+): ProviderModel => ({
+    id,
+    name: id,
+    api: "openai-completions",
+    provider: options.provider,
+    namespace: options.namespace,
+    baseUrl: options.baseUrl.replace(/\/+$/, ""),
+    reasoning: true,
+    input: ["text", "image"],
+    cost: ZERO_COST,
+    contextWindow: 128_000,
+    maxTokens: 16_384,
+    ...(options.apiKey === undefined ? {} : { apiKey: options.apiKey }),
+    ...(options.headers === undefined ? {} : { headers: options.headers }),
+    ...(options.includeTopK === undefined ? {} : { includeTopK: options.includeTopK }),
+    compat: {
+        supportsStore: false,
+        supportsDeveloperRole: false,
+        maxTokensField: options.maxTokensField ?? "max_tokens",
+        supportsReasoningEffort: false,
+        supportsUsageInStreaming: options.provider !== "mistral",
+        supportsFinishReason: true,
+    },
+});
+
 const modelFromAdapter = (
     provider: string,
     model: string,
@@ -357,12 +387,11 @@ const modelFromAdapter = (
     switch (catalog.adapter) {
         case "openai":
             return {
-                modelTransport: (fetch) => createOpenAICompatibleModel(model, {
-                    name: "openai",
+                providerModel: openAICompletionsModel(model, {
+                    provider: "openai",
                     namespace: "openai",
-                    baseURL: url ?? "https://api.openai.com/v1",
+                    baseUrl: url ?? "https://api.openai.com/v1",
                     apiKey: requireApiKey(provider, env, catalog),
-                    fetch: withoutNativeToolsFetch("openai", fetch),
                     includeTopK: false,
                 }),
                 requestControls: { namespace: "openai", serviceTier: true, logprobs: true },
@@ -370,12 +399,11 @@ const modelFromAdapter = (
             };
         case "groq":
             return {
-                modelTransport: (fetch) => createOpenAICompatibleModel(model, {
-                    name: "groq",
+                providerModel: openAICompletionsModel(model, {
+                    provider: "groq",
                     namespace: "groq",
-                    baseURL: url ?? "https://api.groq.com/openai/v1",
+                    baseUrl: url ?? "https://api.groq.com/openai/v1",
                     apiKey: requireApiKey(provider, env, catalog),
-                    fetch: withoutNativeToolsFetch("openai", fetch),
                     includeTopK: false,
                 }),
                 requestControls: { namespace: "groq", serviceTier: true, logprobs: false },
@@ -383,12 +411,11 @@ const modelFromAdapter = (
             };
         case "cerebras":
             return {
-                modelTransport: (fetch) => createOpenAICompatibleModel(model, {
-                    name: "cerebras",
+                providerModel: openAICompletionsModel(model, {
+                    provider: "cerebras",
                     namespace: "cerebras",
-                    baseURL: url ?? "https://api.cerebras.ai/v1",
+                    baseUrl: url ?? "https://api.cerebras.ai/v1",
                     apiKey: requireApiKey(provider, env, catalog),
-                    fetch: withoutNativeToolsFetch("openai", fetch),
                     includeTopK: false,
                 }),
                 requestControls: { namespace: "cerebras", serviceTier: true, logprobs: false },
@@ -396,26 +423,23 @@ const modelFromAdapter = (
             };
         case "mistral":
             return {
-                modelTransport: (fetch) => createOpenAICompatibleModel(model, {
-                    name: "mistral",
+                providerModel: openAICompletionsModel(model, {
+                    provider: "mistral",
                     namespace: "mistral",
-                    baseURL: url ?? "https://api.mistral.ai/v1",
+                    baseUrl: url ?? "https://api.mistral.ai/v1",
                     apiKey: requireApiKey(provider, env, catalog),
-                    fetch: withoutNativeToolsFetch("openai", fetch),
                     includeTopK: false,
-                    includeUsage: false,
                 }),
                 requestControls: { namespace: "mistral", serviceTier: false, logprobs: false },
                 catalog,
             };
         case "togetherai":
             return {
-                modelTransport: (fetch) => createOpenAICompatibleModel(model, {
-                    name: "togetherai",
+                providerModel: openAICompletionsModel(model, {
+                    provider: "togetherai",
                     namespace: "togetherai",
-                    baseURL: url ?? "https://api.together.xyz/v1",
+                    baseUrl: url ?? "https://api.together.xyz/v1",
                     apiKey: requireApiKey(provider, env, catalog),
-                    fetch: withoutNativeToolsFetch("openai", fetch),
                     includeTopK: false,
                 }),
                 requestControls: { namespace: "togetherai", serviceTier: false, logprobs: false },
@@ -423,23 +447,34 @@ const modelFromAdapter = (
             };
         case "xai":
             return {
-                modelTransport: (fetch) => createXaiModel(model, {
+                providerModel: {
+                    id: model,
+                    name: model,
+                    api: "openai-responses",
+                    provider: "xai",
+                    namespace: "xai",
+                    baseUrl: (url ?? "https://api.x.ai/v1").replace(/\/+$/, ""),
+                    reasoning: true,
+                    input: ["text", "image"],
+                    cost: ZERO_COST,
+                    contextWindow: 128_000,
+                    maxTokens: 16_384,
                     apiKey: requireApiKey(provider, env, catalog),
-                    baseURL: url,
-                    fetch: withoutNativeToolsFetch("openai", fetch),
-                }),
+                    includeTopK: false,
+                    xaiPreferResponses: true,
+                },
                 requestControls: { namespace: "xai", serviceTier: true, logprobs: false },
                 catalog,
             };
         case "deepinfra":
             return {
-                modelTransport: (fetch) => createOpenAICompatibleModel(model, {
-                    name: "deepinfra",
+                providerModel: openAICompletionsModel(model, {
+                    provider: "deepinfra",
                     namespace: "deepinfra",
-                    baseURL: url ?? "https://api.deepinfra.com/v1/openai",
+                    baseUrl: url ?? "https://api.deepinfra.com/v1/openai",
                     apiKey: requireApiKey(provider, env, catalog),
-                    fetch: withoutNativeToolsFetch("openai", fetch),
                     includeTopK: false,
+                    maxTokensField: "max_tokens",
                 }),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 requestControls: { namespace: "deepinfra", serviceTier: false, logprobs: false },
@@ -447,11 +482,20 @@ const modelFromAdapter = (
             };
         case "google":
             return {
-                modelTransport: (fetch) => createGoogleModel(model, {
+                providerModel: {
+                    id: model,
+                    name: model,
+                    api: "google-generative-ai",
+                    provider: "google",
+                    namespace: "google",
+                    baseUrl: (url ?? "https://generativelanguage.googleapis.com/v1beta").replace(/\/+$/, ""),
+                    reasoning: true,
+                    input: ["text", "image"],
+                    cost: ZERO_COST,
+                    contextWindow: 128_000,
+                    maxTokens: 16_384,
                     apiKey: requireApiKey(provider, env, catalog),
-                    baseURL: url,
-                    fetch: withoutNativeToolsFetch("generate-content", fetch),
-                }),
+                },
                 reasoningResponseProviderOptions: {
                     google: { thinkingConfig: { includeThoughts: true } },
                 },
@@ -460,41 +504,59 @@ const modelFromAdapter = (
             };
         case "anthropic":
             return {
-                modelTransport: (fetch) => createAnthropicModel(model, {
+                providerModel: {
+                    id: model,
+                    name: model,
+                    api: "anthropic-messages",
+                    provider: "anthropic",
+                    namespace: "anthropic",
+                    baseUrl: (url ?? "https://api.anthropic.com").replace(/\/+$/, "").replace(/\/v1$/, ""),
+                    reasoning: true,
+                    input: ["text", "image"],
+                    cost: ZERO_COST,
+                    contextWindow: 200_000,
+                    maxTokens: 16_384,
                     apiKey: requireApiKey(provider, env, catalog),
-                    baseURL: url,
-                    fetch: withoutNativeToolsFetch("messages", fetch),
-                }),
+                },
                 additiveReasoningProvider: "anthropic",
                 requestControls: { namespace: "anthropic", serviceTier: true, logprobs: false },
                 catalog,
             };
-        case "amazon-bedrock":
+        case "amazon-bedrock": {
+            const region = env.AWS_REGION ?? env.AWS_DEFAULT_REGION ?? "us-east-1";
             return {
-                modelTransport: (fetch) => createAmazonBedrockModel(model, {
-                    fetch,
-                    region: env.AWS_REGION ?? env.AWS_DEFAULT_REGION,
-                    accessKeyId: env.AWS_ACCESS_KEY_ID,
-                    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-                    sessionToken: env.AWS_SESSION_TOKEN,
-                    apiKey: env.AWS_BEARER_TOKEN_BEDROCK,
-                    baseURL: url,
-                }),
+                providerModel: {
+                    id: model,
+                    name: model,
+                    api: "bedrock-converse-stream",
+                    provider: "amazon-bedrock",
+                    namespace: "bedrock",
+                    baseUrl: (url ?? `https://bedrock-runtime.${region}.amazonaws.com`).replace(/\/+$/, ""),
+                    reasoning: true,
+                    input: ["text", "image"],
+                    cost: ZERO_COST,
+                    contextWindow: 200_000,
+                    maxTokens: 16_384,
+                    ...(env.AWS_BEARER_TOKEN_BEDROCK ? { apiKey: env.AWS_BEARER_TOKEN_BEDROCK } : {}),
+                    env: { ...env },
+                },
                 ...(model.includes("anthropic")
                     ? { additiveReasoningProvider: "bedrock" as const }
                     : {}),
                 requestControls: { namespace: "bedrock", serviceTier: true, logprobs: false },
                 catalog,
             };
+        }
         case "openrouter":
             return {
-                modelTransport: (fetch) => createOpenAICompatibleModel(model, {
-                    name: "openrouter",
+                providerModel: openAICompletionsModel(model, {
+                    provider: "openrouter",
                     namespace: "openrouter",
-                    baseURL: url ?? "https://openrouter.ai/api/v1",
+                    baseUrl: url ?? "https://openrouter.ai/api/v1",
                     apiKey: requireApiKey(provider, env, catalog),
-                    headers: attributionHeaders,
-                    fetch: withoutNativeToolsFetch("openai", fetch),
+                    ...(attributionHeaders && Object.keys(attributionHeaders).length > 0 ? { headers: attributionHeaders } : {}),
+                    includeTopK: true,
+                    maxTokensField: "max_tokens",
                 }),
                 ...(normalizeCost === undefined ? {} : { normalizeCost }),
                 requestControls: { namespace: "openrouter", serviceTier: false, logprobs: false },

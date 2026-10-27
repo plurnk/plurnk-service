@@ -148,7 +148,7 @@ const heldProvider = (): { provider: ModelProvider; release: () => void; calls: 
     });
     const provider = new ModelProvider({
         model: "inbox-witness", url: "https://example.test/v1/chat/completions",
-        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
+        contextWindow: 100_000, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
         fetch: async () => {
             calls++;

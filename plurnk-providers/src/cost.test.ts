@@ -4,7 +4,7 @@ import ModelProvider from "./ModelProvider.ts";
 import { addDecimals, estimateProviderCost, providerCostUsd, resolveProviderCost, sumProviderCostsUsd, validateChargedCost } from "./cost.ts";
 import { aggregateProviderAccounting, providerCostNormalizer } from "./accounting.ts";
 import { calculateCostUsdDecimal, normalizeUsage, UsageDetailError } from "./usage.ts";
-import { createOpenAICompatibleModel } from "./modelTransport.ts";
+import { createProviderModel } from "./modelAdapters.ts";
 import { ProviderError } from "./errors.ts";
 import { type ProviderUsage } from "./types.ts";
 
@@ -567,61 +567,21 @@ const charged = (amount: string, byok = true) => ({
 });
 
 // {§provider-monetary-evidence} Exercise the installed router SDK's actual wire translation.
-const fixture = (streaming: boolean, billing: Record<string, unknown>, failure = false) => {
+const fixture = (billing: Record<string, unknown>, failure = false) => {
     let calls = 0;
     const wireUsage = { ...usage, ...billing };
     const identity = { id: "router-response", model: "served-model", provider: "Z.AI", created: 1 };
-    const modelTransport = createOpenAICompatibleModel(
+    const sdk = createProviderModel(
+        "openrouter",
         "requested-model",
-        {
-            name: "openrouter",
-            namespace: "openrouter",
-            baseURL: "https://openrouter.ai/api/v1",
-            apiKey: "test-key",
-            fetch: async (_url, init) => {
-                calls += 1;
-                const request = JSON.parse(init!.body as string) as Record<string, unknown>;
-                assert.equal(request.model, "requested-model");
-                assert.equal(request.max_tokens, 1024);
-                assert.deepEqual(request.reasoning, { effort: "low" });
-                if (streaming) {
-                    assert.equal(request.stream, true);
-                    const content = {
-                        ...identity,
-                        object: "chat.completion.chunk",
-                        choices: [{ index: 0, delta: { content: "ok" }, finish_reason: null }],
-                    };
-                    const settlement = {
-                        ...identity,
-                        object: "chat.completion.chunk",
-                        choices: [],
-                        usage: wireUsage,
-                    };
-                    const finish = failure
-                        ? { error: { code: 500, message: "upstream interrupted" } }
-                        : { ...identity, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
-                    return new Response([
-                        ...[content, settlement, finish].map((frame) => `data: ${JSON.stringify(frame)}`),
-                        "data: [DONE]",
-                        "",
-                    ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
-                }
-                return Response.json(failure ? {
-                    error: { message: "upstream interrupted", code: 502 },
-                    usage: wireUsage,
-                } : {
-                    ...identity,
-                    object: "chat.completion",
-                    choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
-                    usage: wireUsage,
-                }, { status: failure ? 502 : 200 });
-            },
-        },
-        { reasoning: { effort: "low" } },
+        { OPENROUTER_API_KEY: "test-key" },
+        "https://openrouter.ai/api/v1",
     );
+    assert.ok(sdk?.providerModel);
     const provider = new ModelProvider({
         model: "requested-model",
-        modelTransport,
+        providerModel: sdk.providerModel,
+        reasoningRequestProviderOptions: (effort) => ({ openrouter: { reasoning: { effort } } }),
         normalizeCost: providerCostNormalizer("openrouter"),
         estimateCost: () => ({ kind: "estimated", amount: { amount: "999", currency: "USD" }, source: "fixture catalog" }),
         source: "provider:openrouter",
@@ -634,8 +594,34 @@ const fixture = (streaming: boolean, billing: Record<string, unknown>, failure =
         fetchTimeoutMs: 2000,
         operationTimeoutMs: 2000,
         retryAttempts: 0,
-        streaming,
         rawBody: false,
+        fetch: async (_url, init) => {
+            calls += 1;
+            const request = JSON.parse(init!.body as string) as Record<string, unknown>;
+            assert.equal(request.model, "requested-model");
+            assert.equal(request.max_tokens, 1024);
+            assert.deepEqual(request.reasoning, { effort: "low" });
+            assert.equal(request.stream, true);
+            const content = {
+                ...identity,
+                object: "chat.completion.chunk",
+                choices: [{ index: 0, delta: { content: "ok" }, finish_reason: null }],
+            };
+            const settlement = {
+                ...identity,
+                object: "chat.completion.chunk",
+                choices: [],
+                usage: wireUsage,
+            };
+            const finish = failure
+                ? { error: { code: 500, message: "upstream interrupted" } }
+                : { ...identity, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] };
+            return new Response([
+                ...[content, settlement, finish].map((frame) => `data: ${JSON.stringify(frame)}`),
+                "data: [DONE]",
+                "",
+            ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+        },
     });
     return {
         generate: () => provider.generate({
@@ -648,43 +634,41 @@ const fixture = (streaming: boolean, billing: Record<string, unknown>, failure =
     };
 };
 
-for (const streaming of [false, true]) {
-    test(`{§provider-monetary-evidence} real router SDK ${streaming ? "streamed" : "buffered"} accounting`, async (t) => {
-        for (const specimen of [
-            { name: "BYOK fee waived", billing: { is_byok: true, cost: 0, cost_details: upstream }, cost: charged("0.00000745") },
-            { name: "BYOK fee charged", billing: { is_byok: true, cost: 0.00000032, cost_details: upstream }, cost: charged("0.00000777") },
-            { name: "router-funded", billing: { is_byok: false, cost: 0.00000745, cost_details: upstream }, cost: charged("0.00000745", false) },
-            { name: "missing upstream charge", billing: { is_byok: true, cost: 0 }, cost: { kind: "unknown", reason: "OpenRouter BYOK usage.cost_details.upstream_inference_cost is missing" } },
-        ]) {
-            await t.test(`{§provider-monetary-evidence} ${specimen.name}`, async () => {
-                const probe = fixture(streaming, specimen.billing);
-                const response = await probe.generate();
-                assert.equal(probe.calls(), 1);
-                assert.equal(response.assistant.content, "ok");
-                assert.equal(response.assistant.model, "served-model");
-                assert.equal(response.meta?.provider, "Z.AI");
-                assert.equal(response.rawBody, undefined, "billing evidence does not require opt-in raw capture");
-                assert.deepEqual(response.accounting[0]?.cost, specimen.cost);
-                assert.deepEqual(response.accounting[0]?.usage, {
-                    inputTokens: 33, outputTokens: 5, totalTokens: 38,
-                    inputTokenDetails: { noCacheTokens: 17, cacheReadTokens: 16, cacheWriteTokens: 0 },
-                    outputTokenDetails: { textTokens: 3, reasoningTokens: 2 },
-                });
-            });
-        }
-        await t.test("{§provider-monetary-evidence} failed request retains its reported BYOK charge", async () => {
-            const probe = fixture(streaming, { is_byok: true, cost: 0, cost_details: upstream }, true);
-            await assert.rejects(probe.generate, (error: unknown) => {
-                assert.ok(error instanceof ProviderError);
-                assert.match(error.message, /upstream interrupted/);
-                assert.equal(error.accounting.length, 1);
-                assert.equal(error.accounting[0]?.outcome, "error");
-                assert.deepEqual(error.accounting[0]?.cost, charged("0.00000745"));
-                assert.equal(error.accounting[0]?.usage?.inputTokens, 33);
-                return true;
-            });
+test("{§provider-monetary-evidence} real router SDK streamed accounting", async (t) => {
+    for (const specimen of [
+        { name: "BYOK fee waived", billing: { is_byok: true, cost: 0, cost_details: upstream }, cost: charged("0.00000745") },
+        { name: "BYOK fee charged", billing: { is_byok: true, cost: 0.00000032, cost_details: upstream }, cost: charged("0.00000777") },
+        { name: "router-funded", billing: { is_byok: false, cost: 0.00000745, cost_details: upstream }, cost: charged("0.00000745", false) },
+        { name: "missing upstream charge", billing: { is_byok: true, cost: 0 }, cost: { kind: "unknown", reason: "OpenRouter BYOK usage.cost_details.upstream_inference_cost is missing" } },
+    ]) {
+        await t.test(`{§provider-monetary-evidence} ${specimen.name}`, async () => {
+            const probe = fixture(specimen.billing);
+            const response = await probe.generate();
             assert.equal(probe.calls(), 1);
+            assert.equal(response.assistant.content, "ok");
+            assert.equal(response.assistant.model, "served-model");
+            assert.equal(response.meta?.provider, "Z.AI");
+            assert.equal(response.rawBody, undefined, "billing evidence does not require opt-in raw capture");
+            assert.deepEqual(response.accounting[0]?.cost, specimen.cost);
+            assert.deepEqual(response.accounting[0]?.usage, {
+                inputTokens: 33, outputTokens: 5, totalTokens: 38,
+                inputTokenDetails: { noCacheTokens: 17, cacheReadTokens: 16, cacheWriteTokens: 0 },
+                outputTokenDetails: { textTokens: 3, reasoningTokens: 2 },
+            });
         });
+    }
+    await t.test("{§provider-monetary-evidence} failed request retains its reported BYOK charge", async () => {
+        const probe = fixture({ is_byok: true, cost: 0, cost_details: upstream }, true);
+        await assert.rejects(probe.generate, (error: unknown) => {
+            assert.ok(error instanceof ProviderError);
+            assert.match(error.message, /upstream interrupted/);
+            assert.equal(error.accounting.length, 1);
+            assert.equal(error.accounting[0]?.outcome, "error");
+            assert.deepEqual(error.accounting[0]?.cost, charged("0.00000745"));
+            assert.equal(error.accounting[0]?.usage?.inputTokens, 33);
+            return true;
+        });
+        assert.equal(probe.calls(), 1);
     });
-}
+});
 }

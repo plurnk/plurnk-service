@@ -7,6 +7,8 @@ export type {
     ProviderAssistant,
     ProviderAttempt,
     ProviderAttemptFinishReason,
+    ProviderModel,
+    ProviderModelApi,
     ProviderResponse,
     ProviderUsage,
     PromptTokenMeasurement,

@@ -286,7 +286,7 @@ for (const capture of [false, true]) {
         let calls = 0;
         const bodies: string[] = [];
         const provider = new ModelProvider({
-            model: "evidence", url: "https://example.test/v1/chat/completions", streaming: true,
+            model: "evidence", url: "https://example.test/v1/chat/completions",
             rawBody: capture, contextWindow: 100_000, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
             estimateCost: (usage) => usage === undefined ? { kind: "unknown", reason: "no usage" }

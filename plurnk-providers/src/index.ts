@@ -7,6 +7,8 @@ export type {
     ProviderAttempt,
     ProviderAttemptFinishReason,
     ProviderExtension,
+    ProviderModel,
+    ProviderModelApi,
     ProviderOptions,
     ProviderResponse,
 

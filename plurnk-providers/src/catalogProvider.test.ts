@@ -8,9 +8,10 @@ import { catalogSnapshot, lookupProvider, resolveModel } from "@plurnk/plurnk-mo
 import { calculateCostUsdDecimal } from "./usage.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
-import { UnsupportedEffortError, type ModelTransport, type ModelTransportCallOptions, type ModelTransportResult } from "./types.ts";
+import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
+import { UnsupportedEffortError } from "./types.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
-import { executeModelTransport, executeOpenAICompatible } from "./modelTransport.ts";
+import { executeProviderModel, executeOpenAICompatible } from "./modelTransport.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 
@@ -193,7 +194,7 @@ test("{§provider-effort}: discovery never offers a fixed effort the installed t
     assert.throws(() => providerFromModelAdapter({
         name: "openai", model: "fixture", contextWindow: 32_768, info,
         env: { ...declared, PLURNK_PROVIDERS_EFFORT: "max" },
-        modelTransport: { provider: "openai", modelId: "fixture", execute: async () => { throw new Error("unreachable"); } },
+        providerModel: createProviderModel("openai", "fixture", { OPENAI_API_KEY: "test-key" })!.providerModel!,
     }), UnsupportedEffortError);
 });
 
@@ -475,15 +476,14 @@ test("{§provider-effort} Meta Muse adaptive reasoning is requested even when th
 
 test("{§provider-effort} native graded requests use only the supported configured fallback", async () => {
     let body: Record<string, unknown> | undefined;
-    const modelTransport = createProviderModel("openai", "o3", { OPENAI_API_KEY: "test-key" })!.modelTransport!(
-        async (_input, init) => {
-            body = JSON.parse(requestBody(init));
-            return new Response(`data: ${JSON.stringify({
-                id: "fallback", object: "chat.completion.chunk", created: 1, model: "o3",
-                choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
-            })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
-        },
-    );
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        body = JSON.parse(requestBody(init));
+        return new Response(`data: ${JSON.stringify({
+            id: "fallback", object: "chat.completion.chunk", created: 1, model: "o3",
+            choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+        })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+    });
+    const providerModel = createProviderModel("openai", "o3", { OPENAI_API_KEY: "test-key" })!.providerModel!;
     for (const [efforts, fallback, expected] of [
         [["low", "medium", "high", "xhigh", "max"], "high", "high"],
         [["low", "medium", "xhigh"], "high", undefined],
@@ -492,7 +492,7 @@ test("{§provider-effort} native graded requests use only the supported configur
         [["high", "xhigh"], "", undefined],
     ] as const) {
         const provider = providerFromModelAdapter({
-            name: "openai", model: "o3", modelTransport,
+            name: "openai", model: "o3", providerModel,
             contextWindow: 16_384,
             env: {
                 ...env,
@@ -570,38 +570,28 @@ test("{§provider-effort} Google adaptive reasoning requests and preserves reada
 });
 
 test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinking rather than a fixed high effort", async () => {
-    let request: ModelTransportCallOptions | undefined;
-    const modelTransport: ModelTransport = {
-        provider: "anthropic.messages",
-        modelId: "claude-sonnet-4-6",
-        execute: async (options) => {
-            request = options;
-            return {
-                content: "ok",
-                reasoning: "",
-                finishReason: { unified: "stop", raw: "stop" },
-                usage: {
-                    inputTokens: 1,
-                    outputTokens: 1,
-                    totalTokens: 2,
-                    inputTokenDetails: { noCacheTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
-                    outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
-                },
-                rawChunks: [],
-                response: { id: "response", modelId: "claude-sonnet-4-6" },
-                warnings: [],
-            };
-        },
-    };
+    let body: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        body = JSON.parse(requestBody(init));
+        const chunks = [
+            { type: "message_start", message: { id: "response", type: "message", role: "assistant", model: "claude-sonnet-4-6", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } },
+            { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+            { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+            { type: "content_block_stop", index: 0 },
+            { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } },
+            { type: "message_stop" },
+        ];
+        return new Response(chunks.map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+    });
+    const providerModel = createProviderModel("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "test-key" })!.providerModel!;
     const provider = providerFromModelAdapter({
         name: "anthropic",
         env: {
             ...env,
             PLURNK_PROVIDERS_EFFORT: "adaptive",
-            PLURNK_PROVIDERS_STREAMING: "0",
         },
         model: "claude-sonnet-4-6",
-        modelTransport,
+        providerModel,
         additiveReasoningProvider: "anthropic",
         contextWindow: 16_384,
         info: {
@@ -616,10 +606,8 @@ test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinkin
         },
     });
     await provider.generate({ sessionId: "session", messages: [{ role: "user", content: "hello" }] });
-    assert.equal(request?.reasoning, "provider-default");
-    assert.deepEqual(request?.providerOptions, {
-        anthropic: { thinking: { type: "adaptive", display: "summarized" } },
-    });
+    assert.deepEqual(body?.thinking, { type: "adaptive" });
+    assert.equal(body?.output_config, undefined);
 });
 
 test("{§provider-effort} native provider routes project their documented cache controls through the actual SDK request", async (t) => {
@@ -1055,33 +1043,9 @@ for (const [name, usage, expected] of [
 }
 
 {
-class MockModelTransport implements ModelTransport {
-    readonly provider = "mock.v4";
-    readonly modelId = "mock-model";
-    readonly executeCalls: ModelTransportCallOptions[] = [];
-    readonly #executeImpl: (options: ModelTransportCallOptions) => Promise<ModelTransportResult>;
-
-    constructor({
-        execute,
-    }: {
-        execute: (options: ModelTransportCallOptions) => Promise<ModelTransportResult>;
-    }) {
-        this.#executeImpl = execute;
-    }
-
-    async execute(options: ModelTransportCallOptions): Promise<ModelTransportResult> {
-        this.executeCalls.push(options);
-        return this.#executeImpl(options);
-    }
-}
-
-
-
-
-
 type Protocol = "chat" | "responses" | "messages" | "generate-content";
 
-const response = (protocol: Protocol, streaming: boolean): Response => {
+const response = (protocol: Protocol): Response => {
     const message = {
         id: "reply", type: "message", role: "assistant", model: "fixture",
         content: [{ type: "text", text: "answer" }], stop_reason: "end_turn", stop_sequence: null,
@@ -1103,9 +1067,6 @@ const response = (protocol: Protocol, streaming: boolean): Response => {
         choices: [{ index: 0, message: { role: "assistant", content: "answer" }, finish_reason: "stop" }],
         usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
     };
-    if (!streaming) {
-        return Response.json({ chat, responses: completed, messages: message, "generate-content": google }[protocol]);
-    }
     const chunks = {
         chat: [{ ...chat, choices: [{ index: 0, delta: { role: "assistant", content: "answer" }, finish_reason: "stop" }] }],
         responses: [
@@ -1153,26 +1114,22 @@ const assertToolFree = (body: Record<string, unknown>, protocol: Protocol): void
     assert.equal(body.parallel_tool_calls, undefined, "limiting parallel calls is not disabling tool use");
 };
 
-test("{§provider-interface} compatible wire explicitly disables native tools for both response modes", async (t) => {
-    for (const streaming of [false, true]) {
-        await t.test(`{§provider-interface} ${streaming ? "stream" : "buffered"}`, async () => {
-            const requests: Record<string, unknown>[] = [];
-            const result = await executeOpenAICompatible({
-                ...request, streaming, url: "https://fixture.test/v1/chat/completions", model: "fixture",
-                body: { reasoning_effort: "high" },
-                fetch: async (_url, init) => {
-                    requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
-                    return response("chat", streaming);
-                },
-            });
-            assert.equal(result.content, "answer");
-            assert.equal(result.usage?.totalTokens, 12);
-            assert.equal(requests.length, 1);
-            assertToolFree(requests[0], "chat");
-            assert.equal(requests[0].reasoning_effort, "high");
-            assert.deepEqual(requests[0].messages, request.messages);
-        });
-    }
+test("{§provider-interface} compatible wire explicitly disables native tools", async () => {
+    const requests: Record<string, unknown>[] = [];
+    const result = await executeOpenAICompatible({
+        ...request, url: "https://fixture.test/v1/chat/completions", model: "fixture",
+        body: { reasoning_effort: "high" },
+        fetch: async (_url, init) => {
+            requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+            return response("chat");
+        },
+    });
+    assert.equal(result.content, "answer");
+    assert.equal(result.usage?.totalTokens, 12);
+    assert.equal(requests.length, 1);
+    assertToolFree(requests[0], "chat");
+    assert.equal(requests[0].reasoning_effort, "high");
+    assert.deepEqual(requests[0].messages, request.messages);
 });
 
 test("{§provider-interface} the protocol projection cannot acquire tools or mutate caller input", () => {
@@ -1196,9 +1153,9 @@ test("{§provider-interface} request extensions cannot override the managed opt-
     let dispatched = false;
     for (const field of ["tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"]) {
         await assert.rejects(executeOpenAICompatible({
-            ...request, streaming: false, url: "https://fixture.test/v1/chat/completions", model: "fixture",
+            ...request, url: "https://fixture.test/v1/chat/completions", model: "fixture",
             body: { [field]: "caller override" },
-            fetch: async () => { dispatched = true; return response("chat", false); },
+            fetch: async () => { dispatched = true; return response("chat"); },
         }), {
             name: "TypeError", message: `OpenAI-compatible request extensions may not override SDK-owned field ${JSON.stringify(field)}`,
         });
@@ -1206,47 +1163,28 @@ test("{§provider-interface} request extensions cannot override the managed opt-
     assert.equal(dispatched, false);
 });
 
-test("{§provider-interface} opaque provider extensions receive portable none intent in both modes", async () => {
-    const usage = {
-        inputTokens: 10,
-        outputTokens: 2,
-        totalTokens: 12,
-        inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
-        outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
-    };
-    const finishReason = { unified: "stop" as const, raw: "stop" };
-    const model = new MockModelTransport({
-        execute: async () => ({ content: "answer", reasoning: "", finishReason, usage, rawChunks: [], warnings: [] }),
-    });
-    for (const streaming of [false, true]) {
-        const result = await executeModelTransport({ ...request, streaming, modelTransport: model });
-        assert.equal(result.content, "answer");
-        assert.equal(result.usage?.totalTokens, 12);
-    }
-    for (const call of model.executeCalls) {
-        assert.deepEqual(call.toolChoice, { type: "none" });
-        assert.equal(call.tools, undefined);
-    }
-    assert.equal(model.executeCalls.length, 2);
-});
-
 test("{§provider-interface} Bedrock uses its valid no-tool configuration", async (t) => {
     let body: Record<string, unknown> | undefined;
-    t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
-        body = JSON.parse(requestBody(init)) as Record<string, unknown>;
-        return Response.json({
-            output: { message: { role: "assistant", content: [{ text: "answer" }] } },
-            stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
-            metrics: { latencyMs: 1 },
-        });
+    t.mock.method(BedrockRuntimeClient.prototype, "send", async (command: { input: unknown }) => {
+        body = command.input as Record<string, unknown>;
+        return {
+            $metadata: { httpStatusCode: 200, requestId: "req-1" },
+            stream: (async function* () {
+                yield { messageStart: { role: "assistant" } };
+                yield { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "answer" } } };
+                yield { contentBlockStop: { contentBlockIndex: 0 } };
+                yield { messageStop: { stopReason: "end_turn" } };
+                yield { metadata: { usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, metrics: { latencyMs: 1 } } };
+            })(),
+        };
     });
     const sdk = createProviderModel("fixture", "fixture", {
         PLURNK_PROVIDERS_PROVIDER_FIXTURE_ADAPTER: "amazon-bedrock",
         PLURNK_PROVIDERS_PROVIDER_FIXTURE_BASE_URL: "https://fixture.test",
         AWS_BEARER_TOKEN_BEDROCK: "fixture-only", AWS_REGION: "us-east-1",
     });
-    assert.ok(sdk?.modelTransport);
-    const result = await executeModelTransport({ ...request, streaming: false, modelTransport: sdk.modelTransport });
+    assert.ok(sdk?.providerModel);
+    const result = await executeProviderModel({ ...request, providerModel: sdk.providerModel });
     assert.equal(result.content, "answer");
     assert.equal(result.usage?.totalTokens, 12);
     assert.ok(body);
@@ -1260,20 +1198,18 @@ test("{§provider-interface} Ollama keeps its probe unmodified and disables nati
         bodies.push(body);
         if (String(url).endsWith("/api/show")) return Response.json({ model_info: { "fixture.context_length": 32768 } });
         assert.ok(String(url).endsWith("/v1/chat/completions"));
-        return response("chat", body.stream === true);
+        return response("chat");
     });
-    for (const streaming of [false, true]) {
-        const provider = await ollamaProviderFromEnv(withProviderDefaults({
-            PLURNK_PROVIDERS_EFFORT: "off", PLURNK_PROVIDERS_STREAMING: streaming ? "1" : "0",
-        }), "fixture", { baseUrl: "http://fixture.test" });
-        assert.deepEqual(bodies.at(-1), { model: "fixture" });
-        for (const callKind of ["emission", "bare"] as const) {
-            const result = await provider.generate({ sessionId: "fixture", messages: request.messages, callKind });
-            assert.equal(result.assistant.content, "answer");
-            assertToolFree(bodies.at(-1)!, "chat");
-        }
+    const provider = await ollamaProviderFromEnv(withProviderDefaults({
+        PLURNK_PROVIDERS_EFFORT: "off",
+    }), "fixture", { baseUrl: "http://fixture.test" });
+    assert.deepEqual(bodies.at(-1), { model: "fixture" });
+    for (const callKind of ["emission", "bare"] as const) {
+        const result = await provider.generate({ sessionId: "fixture", messages: request.messages, callKind });
+        assert.equal(result.assistant.content, "answer");
+        assertToolFree(bodies.at(-1)!, "chat");
     }
-    assert.equal(bodies.length, 6);
+    assert.equal(bodies.length, 3);
 });
 
 test("{§provider-interface} configured adapter families preserve the opt-out on the actual wire", async (t) => {
@@ -1290,28 +1226,26 @@ test("{§provider-interface} configured adapter families preserve the opt-out on
         ["google", "generate-content"],
     ];
     for (const [adapter, protocol] of families) {
-        for (const streaming of [false, true]) {
-            await t.test(`{§provider-interface} ${adapter}, ${streaming ? "stream" : "buffered"}`, async (t) => {
-                const requests: Record<string, unknown>[] = [];
-                t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
-                    requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
-                    assert.equal(new Headers(init?.headers).get("x-fixture"), "preserved");
-                    return response(protocol, streaming);
-                });
-                const sdk = createProviderModel("fixture", "fixture", {
-                    PLURNK_PROVIDERS_PROVIDER_FIXTURE_ADAPTER: adapter,
-                    PLURNK_PROVIDERS_PROVIDER_FIXTURE_API_KEY_ENV: "FIXTURE_API_KEY",
-                    PLURNK_PROVIDERS_PROVIDER_FIXTURE_BASE_URL: "https://fixture.test/v1",
-                    FIXTURE_API_KEY: "fixture-only",
-                });
-                assert.ok(sdk?.modelTransport);
-                const result = await executeModelTransport({ ...request, streaming, modelTransport: sdk.modelTransport });
-                assert.equal(result.content, "answer");
-                assert.equal(result.usage?.totalTokens, 12);
-                assert.equal(requests.length, 1);
-                assertToolFree(requests[0], protocol);
+        await t.test(`{§provider-interface} ${adapter}`, async (t) => {
+            const requests: Record<string, unknown>[] = [];
+            t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
+                requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+                assert.equal(new Headers(init?.headers).get("x-fixture"), "preserved");
+                return response(protocol);
             });
-        }
+            const sdk = createProviderModel("fixture", "fixture", {
+                PLURNK_PROVIDERS_PROVIDER_FIXTURE_ADAPTER: adapter,
+                PLURNK_PROVIDERS_PROVIDER_FIXTURE_API_KEY_ENV: "FIXTURE_API_KEY",
+                PLURNK_PROVIDERS_PROVIDER_FIXTURE_BASE_URL: "https://fixture.test/v1",
+                FIXTURE_API_KEY: "fixture-only",
+            });
+            assert.ok(sdk?.providerModel);
+            const result = await executeProviderModel({ ...request, providerModel: sdk.providerModel });
+            assert.equal(result.content, "answer");
+            assert.equal(result.usage?.totalTokens, 12);
+            assert.equal(requests.length, 1);
+            assertToolFree(requests[0], protocol);
+        });
     }
 });
 }

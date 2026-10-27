@@ -33,14 +33,13 @@ import ModelProvider, {
 } from "./ModelProvider.ts";
 import { configuredProviderInfo, createProviderModel } from "./modelAdapters.ts";
 import { providerSource } from "./notices.ts";
-import type { InputModality, Provider, ProviderCostNormalizer } from "./types.ts";
+import type { InputModality, Provider, ProviderCostNormalizer, ProviderModel } from "./types.ts";
 import { INPUT_MODALITIES } from "./types.ts";
 import { EFFORTS, type Effort } from "@plurnk/plurnk-contracts";
 import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import type { ModelTransportSource } from "./modelTransport.ts";
 import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
 // {§provider-interface} — the catalog's input modalities, kept to the vocabulary the wire
@@ -318,7 +317,7 @@ export const providerFromModelAdapter = ({
     name,
     env,
     model,
-    modelTransport,
+    providerModel,
     normalizeCost,
     url,
     headers,
@@ -336,7 +335,7 @@ export const providerFromModelAdapter = ({
     name: string;
     env: NodeJS.ProcessEnv;
     model: string;
-    modelTransport?: ModelTransportSource;
+    providerModel?: ProviderModel;
     normalizeCost?: ProviderCostNormalizer;
     url?: string;
     headers?: Readonly<Record<string, string>>;
@@ -377,7 +376,7 @@ export const providerFromModelAdapter = ({
         reasoningRequestBody,
         reasoningRequestProviderOptions,
     } = reasoningCapabilities(
-        name, env, info, modelTransport !== undefined,
+        name, env, info, providerModel !== undefined,
     );
     const adaptiveEffort = adaptiveEffortProjection({
         name,
@@ -427,7 +426,7 @@ export const providerFromModelAdapter = ({
         inferenceAdmission: inferenceAdmissionFromEnv(env, endpoint ?? url?.replace(/\/chat\/completions$/, "") ?? `sdk:${name}`),
         model,
         ...(attributions === undefined ? {} : { attributions }),
-        ...(modelTransport === undefined ? {} : { modelTransport }),
+        ...(providerModel === undefined ? {} : { providerModel }),
         ...(normalizeCost === undefined ? {} : { normalizeCost }),
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
@@ -508,7 +507,7 @@ export const catalogProviderFromEnv = (
         name,
         env,
         model: wireModel,
-        modelTransport: adapted.modelTransport,
+        providerModel: adapted.providerModel,
         normalizeCost: adapted.normalizeCost,
         url: adapted.compatible?.url,
         endpoint: adapted.endpoint,

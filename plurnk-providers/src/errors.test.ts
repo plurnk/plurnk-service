@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { BedrockRuntimeClient } from "@aws-sdk/client-bedrock-runtime";
 import RequestCapture from "./RequestCapture.ts";
 import ModelProvider from "./ModelProvider.ts";
 import { APICallError, JSONParseError, ProviderError, RETRYABLE_PROVIDER_KINDS, RetryError, TypeValidationError, classifyProviderError, toProviderError } from "./errors.ts";
@@ -306,12 +307,15 @@ for (const native of [false, true]) {
                 if (content.startsWith("first")) await secondArrived.promise;
                 else secondArrived.resolve();
                 assert.equal(request.headers.authorization, "Bearer fixture-secret");
-                response.writeHead(200, { "content-type": "application/json" });
-                response.end(JSON.stringify({
-                    id: "fixture", model: "fixture", created: 0,
-                    choices: [{ index: 0, message: { role: "assistant", content: "observed" }, finish_reason: "stop" }],
-                    usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
-                }));
+                response.writeHead(200, { "content-type": "text/event-stream" });
+                response.end([
+                    `data: ${JSON.stringify({
+                        id: "fixture", model: "fixture", created: 0,
+                        choices: [{ index: 0, delta: { role: "assistant", content: "observed" }, finish_reason: "stop" }],
+                        usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+                    })}`,
+                    "data: [DONE]",
+                ].join("\n\n"));
             });
             server.listen(0, "127.0.0.1");
             await once(server, "listening");
@@ -322,9 +326,9 @@ for (const native of [false, true]) {
             const provider = new ModelProvider({
                 model: "fixture",
                 ...(native
-                    ? { modelTransport: createProviderModel("openai", "fixture", { OPENAI_API_KEY: "fixture-secret" }, `${origin}/v1`)!.modelTransport! }
+                    ? { providerModel: createProviderModel("openai", "fixture", { OPENAI_API_KEY: "fixture-secret" }, `${origin}/v1`)!.providerModel! }
                     : { url: `${origin}/v1/chat/completions`, headers: { Authorization: "Bearer fixture-secret" } }),
-                streaming: false, rawBody: capture,
+                rawBody: capture,
                 fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
                 temperature: 0.25, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
             });
@@ -351,33 +355,55 @@ for (const native of [false, true]) {
 }
 
 for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] as const) {
-    test(`{§provider-interface}: ${protocol} retains the native SDK body after owned transforms`, async () => {
+    test(`{§provider-interface}: ${protocol} retains the native SDK body after owned transforms`, async (t) => {
         const sdk = createProviderModel(protocol, "fixture", {
             GEMINI_API_KEY: "fixture-secret", ANTHROPIC_API_KEY: "fixture-secret", OPENROUTER_API_KEY: "fixture-secret",
             AWS_REGION: "us-east-1", AWS_BEARER_TOKEN_BEDROCK: "fixture-secret",
         });
-        assert.ok(sdk?.modelTransport);
+        assert.ok(sdk?.providerModel);
         let sent: string | undefined;
         let evidence: { request?: { body: string } } | undefined;
+        if (protocol === "amazon-bedrock") {
+            t.mock.method(BedrockRuntimeClient.prototype, "send", async (command: { input: unknown }) => {
+                sent = JSON.stringify(command.input);
+                return {
+                    $metadata: { httpStatusCode: 200, requestId: "req-1" },
+                    stream: (async function* () {
+                        yield { messageStart: { role: "assistant" } };
+                        yield { contentBlockDelta: { contentBlockIndex: 0, delta: { text: "observed" } } };
+                        yield { contentBlockStop: { contentBlockIndex: 0 } };
+                        yield { messageStop: { stopReason: "end_turn" } };
+                        yield { metadata: { usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, metrics: { latencyMs: 1 } } };
+                    })(),
+                };
+            });
+        }
         const provider = new ModelProvider({
-            model: "fixture", modelTransport: sdk.modelTransport,
-            streaming: false, rawBody: true, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
+            model: "fixture", providerModel: sdk.providerModel,
+            rawBody: true, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
             fetch: async (_url, init) => {
                 sent = requestBody(init);
-                const response = protocol === "google"
-                    ? { candidates: [{ content: { role: "model", parts: [{ text: "observed" }] }, finishReason: "STOP" }],
-                        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 } }
+                const payload = protocol === "google"
+                    ? `data: ${JSON.stringify({
+                        candidates: [{ content: { role: "model", parts: [{ text: "observed" }] }, finishReason: "STOP" }],
+                        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 },
+                    })}\n\n`
                     : protocol === "anthropic"
-                        ? { id: "fixture", type: "message", role: "assistant", model: "fixture", content: [{ type: "text", text: "observed" }],
-                            stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 10, output_tokens: 2 } }
-                        : protocol === "amazon-bedrock"
-                            ? { output: { message: { role: "assistant", content: [{ text: "observed" }] } },
-                                stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 }, metrics: { latencyMs: 1 } }
-                            : { id: "fixture", model: "fixture", created: 0,
-                                choices: [{ index: 0, message: { role: "assistant", content: "observed" }, finish_reason: "stop" }],
-                                usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 } };
-                return new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } });
+                        ? [
+                            { type: "message_start", message: { id: "fixture", type: "message", role: "assistant", model: "fixture", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } } },
+                            { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
+                            { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "observed" } },
+                            { type: "content_block_stop", index: 0 },
+                            { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 2 } },
+                            { type: "message_stop" },
+                        ].map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join("")
+                        : `data: ${JSON.stringify({
+                            id: "fixture", model: "fixture", created: 0,
+                            choices: [{ index: 0, delta: { role: "assistant", content: "observed" }, finish_reason: "stop" }],
+                            usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+                        })}\n\ndata: [DONE]\n\n`;
+                return new Response(payload, { headers: { "content-type": "text/event-stream" } });
             },
         });
         const result = await provider.generate({ sessionId: "witness", messages: [{ role: "user", content: "Inspect the native body." }],
@@ -402,16 +428,15 @@ test("{§provider-request-accounting} native Messages failures retain SDK reason
         { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Native partial reasoning." } },
         { type: "error", error: { type: "overloaded_error", message: "Native stream failed." } },
     ];
-    const modelTransport = createProviderModel("anthropic", "fixture", { ANTHROPIC_API_KEY: "fixture" })!.modelTransport!(
-        async () => new Response(
+    const providerModel = createProviderModel("anthropic", "fixture", { ANTHROPIC_API_KEY: "fixture" })!.providerModel!;
+    const provider = new ModelProvider({
+        model: "fixture", providerModel, rawBody: false,
+        fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
+        temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
+        fetch: async () => new Response(
             chunks.map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join(""),
             { headers: { "content-type": "text/event-stream" } },
         ),
-    );
-    const provider = new ModelProvider({
-        model: "fixture", modelTransport, streaming: true, rawBody: false,
-        fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
-        temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
     });
     const records: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
     await assert.rejects(provider.generate({ sessionId: "witness", messages: [],
@@ -436,7 +461,7 @@ for (const reported of [false, true]) {
         const settled: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
         const provider = new ModelProvider({
             model: "fixture", url: "https://example.test/v1/chat/completions",
-            streaming: true, rawBody: false, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
+            rawBody: false, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
             fetch: async () => new Response(`data: ${JSON.stringify(chunk)}\n\n`, {
                 headers: { "content-type": "text/event-stream", "x-request-id": "request-991" },
@@ -469,7 +494,7 @@ for (const capture of [false, true]) {
         const bodies: string[] = [];
         let calls = 0;
         const provider = new ModelProvider({
-            model: "fixture", url: "https://example.test/v1/chat/completions", streaming: false,
+            model: "fixture", url: "https://example.test/v1/chat/completions",
             rawBody: capture, fetchTimeoutMs: 1000, operationTimeoutMs: 5000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 1,
             fetch: async (_input, init) => {
@@ -479,10 +504,13 @@ for (const capture of [false, true]) {
                     ? new Response('{"error":{"message":"try again"},"witness":991}', {
                         status: 503, headers: { "content-type": "application/json", "x-should-retry": "true", "x-request-id": "failed-http" },
                     })
-                    : new Response(JSON.stringify({
-                        id: "recovered", model: "fixture",
-                        choices: [{ index: 0, message: { role: "assistant", content: "recovered" }, finish_reason: "stop" }],
-                    }), { headers: { "content-type": "application/json" } });
+                    : new Response([
+                        `data: ${JSON.stringify({
+                            id: "recovered", model: "fixture",
+                            choices: [{ index: 0, delta: { role: "assistant", content: "recovered" }, finish_reason: "stop" }],
+                        })}`,
+                        "data: [DONE]",
+                    ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
             },
         });
         const result = await provider.generate({

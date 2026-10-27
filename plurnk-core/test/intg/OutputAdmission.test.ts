@@ -30,7 +30,7 @@ for (const reported of [false, true]) {
             let calls = 0;
             const provider = new ModelProvider({
                 model: "cancellation-witness", url: "https://example.test/v1/chat/completions",
-                contextWindow: 100_000, streaming: true,
+                contextWindow: 100_000,
                 fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
                 temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 3,
                 normalizeCost: (evidence) => evidence.charge as ProviderCost | undefined,

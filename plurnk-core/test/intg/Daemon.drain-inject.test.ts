@@ -871,7 +871,7 @@ const run = async (
     let calls = 0;
     const provider = new ModelProvider({
         model: "invocation-witness", url: "https://example.test/v1/chat/completions",
-        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+        contextWindow: 100_000, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
         fetch: async () => streamed(script[Math.min(calls++, script.length - 1)]),
     });
@@ -1220,7 +1220,7 @@ test("{§methods} {§methods-invocation} beforeId pages newest first through the
     let calls = 0;
     const provider = new ModelProvider({
         model: "paging-witness", url: "https://example.test/v1/chat/completions",
-        contextWindow: 100_000, streaming: true, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+        contextWindow: 100_000, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
         fetch: async () => {
             const frames: object[] = [];
