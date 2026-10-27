@@ -1,0 +1,558 @@
+import test, { describe } from "node:test";
+import assert from "node:assert/strict";
+import ServiceHelp from "../../src/core/ServiceHelp.ts";
+import { spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import { createServer, request } from "node:http";
+import { mkdir, mkdtemp, readFile, rm, writeFile, access, readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { stdioEntry, mcpEnvironment } from "./_mcp-config.ts";
+import { createHash } from "node:crypto";
+import { insertWorkspace, openMigrated } from "./_db.ts";
+import { HARNESS_WAIT_MS } from "./_rpc.ts";
+
+describe("bin-smoke", () => {
+const here = dirname(fileURLToPath(import.meta.url));
+const BIN_PATH = resolve(here, "../../src/service.ts");
+const CONDITION_ARGS = process.execArgv.filter((a) => a.startsWith("--conditions"));
+
+interface BootedDaemon {
+    child: ChildProcess;
+    host: string;
+    port: number;
+    url: string;
+    tmpdir: string;
+}
+
+interface BootPaths {
+    readonly dir: string;
+    readonly dbPath: string;
+}
+
+const snapshotDirectory = async (root: string): Promise<Record<string, string>> => {
+    const snapshot: Record<string, string> = {};
+    const visit = async (dir: string, prefix = ""): Promise<void> => {
+        for (const entry of await readdir(dir, { withFileTypes: true })) {
+            const relative = prefix.length === 0 ? entry.name : `${prefix}/${entry.name}`;
+            const path = join(dir, entry.name);
+            if (entry.isDirectory()) {
+                snapshot[`${relative}/`] = "directory";
+                await visit(path, relative);
+            } else {
+                const content = await readFile(path);
+                snapshot[relative] = `${content.byteLength}:${createHash("sha256").update(content).digest("hex")}`;
+            }
+        }
+    };
+    await visit(root);
+    return snapshot;
+};
+
+const bootDaemon = (
+    prepare?: (paths: BootPaths) => Promise<NodeJS.ProcessEnv | void>,
+): Promise<BootedDaemon> => new Promise((resolvePromise, rejectPromise) => {
+    void (async () => {
+        const dir = await mkdtemp(join(tmpdir(), "plurnk-bin-smoke-"));
+        const dbPath = join(dir, "plurnk.db");
+        const overrides = await prepare?.({ dir, dbPath }) ?? {};
+        const env: NodeJS.ProcessEnv = {
+            ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("PLURNK_"))),
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, ".config"),
+            XDG_DATA_HOME: join(dir, ".local", "share"),
+            PLURNK_SERVICE_DB_PATH: dbPath,
+            PLURNK_HOST: "127.0.0.1",
+            PLURNK_PORT: "0",
+            PLURNK_AUTH: "0",
+            ...overrides,
+        };
+
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+        let stdoutBuf = "";
+        let stderrBuf = "";
+        let settled = false;
+
+        const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            child.kill("SIGKILL");
+            rejectPromise(new Error(`bootDaemon timeout after 90s. stdout=${stdoutBuf} stderr=${stderrBuf}`));
+        }, 90_000);
+
+        child.stdout?.on("data", (chunk: Buffer) => {
+            stdoutBuf += chunk.toString("utf8");
+            const match = stdoutBuf.match(/plurnk-service acp=(http:\/\/\S+) /u);
+            if (match !== null && !settled) {
+                settled = true;
+                clearTimeout(timer);
+                const address = new URL(match[1]);
+                if (Number(address.port) === 0) {
+                    child.kill("SIGKILL");
+                    rejectPromise(new Error(`banner acp= port unbound (configured-port leak): ${stdoutBuf}`));
+                    return;
+                }
+                resolvePromise({ child, host: address.hostname, port: Number(address.port), url: address.href, tmpdir: dir });
+            }
+        });
+        child.stderr?.on("data", (chunk: Buffer) => { stderrBuf += chunk.toString("utf8"); });
+        child.once("exit", (code, signal) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            rejectPromise(new Error(`bootDaemon: child exited before startup. code=${code} signal=${signal} stdout=${stdoutBuf} stderr=${stderrBuf}`));
+        });
+        child.once("error", (err) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            rejectPromise(err);
+        });
+    })().catch(rejectPromise);
+});
+
+const action = async (
+    booted: BootedDaemon,
+    kind: string,
+    params: Readonly<Record<string, unknown>> = {},
+    threadId = "startup-specimen",
+    workspace?: string,
+): Promise<unknown> => {
+    const wsUrl = booted.url.replace(/^http:/u, "ws:");
+    const id = crypto.randomUUID();
+    const rpc = await new Promise<{
+        result?: unknown;
+        error?: { message?: string; data?: { problem?: unknown } };
+    }>((settle, reject) => {
+        const ws = new WebSocket(wsUrl);
+        ws.addEventListener("open", () => {
+            ws.send(JSON.stringify({
+                jsonrpc: "2.0",
+                id: "init",
+                method: "initialize",
+                params: { protocolVersion: 2, info: { name: "test", version: "1.0.0" }, capabilities: {} },
+            }));
+        });
+        ws.addEventListener("message", (event) => {
+            const parsed = JSON.parse(String(event.data)) as {
+                id?: string;
+                result?: unknown;
+                error?: { message?: string; data?: { problem?: unknown } };
+            };
+            if (parsed.id === "init") {
+                ws.send(JSON.stringify(
+                    kind === "providers/list"
+                        ? { jsonrpc: "2.0", id, method: "providers/list", params: {} }
+                        : {
+                            jsonrpc: "2.0",
+                            id,
+                            method: "_plurnk/action",
+                            params: {
+                                sessionId: threadId,
+                                ...(workspace === undefined ? {} : { workspace }),
+                                kind,
+                                params,
+                            },
+                        },
+                ));
+            } else if (parsed.id === id) {
+                ws.close();
+                settle(parsed);
+            }
+        });
+        ws.addEventListener("error", (err) => reject(err));
+    });
+    assert.equal(rpc.error, undefined, `action ${kind} failed: ${JSON.stringify(rpc.error)}`);
+    return rpc.result;
+};
+
+const echoEnvironment = (dir: string, env: Readonly<Record<string, string>>): NodeJS.ProcessEnv => ({
+    HOME: dir,
+    XDG_CONFIG_HOME: join(dir, ".config"),
+    XDG_DATA_HOME: join(dir, ".local", "share"),
+    XDG_STATE_HOME: join(dir, ".local", "state"),
+    ...mcpEnvironment({ echo: stdioEntry("echo-server.mjs", env) }),
+});
+
+const markerLines = async (path: string): Promise<string[]> => {
+    try {
+        return (await readFile(path, "utf8")).trim().split("\n").filter(Boolean);
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw error;
+    }
+};
+
+const waitForMarkerLines = async (path: string): Promise<string[]> => {
+    const deadline = Date.now() + HARNESS_WAIT_MS;
+    while (Date.now() < deadline) {
+        const lines = await markerLines(path);
+        if (lines.length > 0) return lines;
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    }
+    assert.fail(`marker ${path} remained empty`);
+};
+
+const waitForExit = async (pids: readonly number[]): Promise<void> => {
+    const deadline = Date.now() + HARNESS_WAIT_MS;
+    while (Date.now() < deadline) {
+        const alive = pids.filter((pid) => {
+            try {
+                process.kill(pid, 0);
+                return true;
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+                throw error;
+            }
+        });
+        if (alive.length === 0) return;
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+    }
+    assert.fail(`processes remained alive: ${pids.join(", ")}`);
+};
+
+const stopDaemon = async (booted: BootedDaemon): Promise<{ code: number | null; signal: NodeJS.Signals | null }> => {
+    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise) => {
+        booted.child.once("exit", (code, signal) => resolvePromise({ code, signal }));
+    });
+    booted.child.kill("SIGTERM");
+    const result = await Promise.race([
+        exited,
+        new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((_, reject) =>
+            setTimeout(() => reject(new Error("daemon did not exit within 15s of SIGTERM")), 15_000),
+        ),
+    ]);
+    await rm(booted.tmpdir, { recursive: true, force: true });
+    return result;
+};
+
+test("{§acp-daemon-client} bin: spawns, the ACP listener answers HTTP on its bound port, exits cleanly on SIGTERM", { timeout: 120_000 }, async () => {
+    const booted = await bootDaemon();
+    try {
+        assert.equal(new URL(booted.url).pathname, "/acp");
+        const res = await fetch(booted.url, { signal: AbortSignal.timeout(5000) });
+        assert.equal(res.status, 404, "GET is not an ACP run");
+        assert.equal((await res.json() as { type: string }).type, "https://problems.plurnk.xyz/acp/http/route-not-found");
+        const root = await fetch(new URL("/", booted.url));
+        assert.equal(root.status, 404);
+        assert.equal((await root.json() as { type: string }).type, "https://problems.plurnk.xyz/http/route-not-found");
+    } finally {
+        const { code, signal } = await stopDaemon(booted);
+        assert.equal(code, 0, `the service handled SIGTERM and exited zero (signal=${signal})`);
+        assert.equal(signal, null, "SIGTERM was handled rather than killing the process directly");
+    }
+});
+
+test("{§module-shutdown-order} bin: an unfinished HTTP request cannot strand process teardown", { timeout: 120_000 }, async () => {
+    const booted = await bootDaemon(async () => ({ PLURNK_SERVICE_STOP_TIMEOUT_MS: "100" }));
+    const pending = request({
+        host: booted.host, port: booted.port, method: "POST", path: "/acp",
+        headers: { "Content-Type": "application/json", "Content-Length": "100", Expect: "100-continue" },
+    });
+    const disconnected = new Promise<Error>((settle) => pending.on("error", settle));
+    let diagnostic = "";
+    booted.child.stderr?.on("data", (data: Buffer) => { diagnostic += data.toString(); });
+    try {
+        pending.flushHeaders();
+        await once(pending, "continue");
+        pending.write("{");
+        const { code, signal } = await stopDaemon(booted);
+        assert.equal(code, 1, `an unfinished request reports forced teardown: ${diagnostic}`);
+        assert.equal(signal, null, "the service exits itself rather than requiring a supervisor kill");
+        assert.match(diagnostic, /stop deadline exceeded waiting for HTTP listener close/);
+        assert.equal((await disconnected as NodeJS.ErrnoException).code, "ECONNRESET");
+    } finally {
+        pending.destroy();
+        if (booted.child.exitCode === null && booted.child.signalCode === null) {
+            const exited = once(booted.child, "exit");
+            booted.child.kill("SIGKILL");
+            await exited;
+        }
+        await rm(booted.tmpdir, { recursive: true, force: true });
+    }
+});
+
+test("{§acp-daemon-client} bin: persisted and attached workspaces stay cold until capability demand", { timeout: 120_000 }, async () => {
+    let startMarker = "";
+    const booted = await bootDaemon(async ({ dir, dbPath }) => {
+        const db = await openMigrated(dbPath);
+        try {
+            await insertWorkspace(db, "cold-one");
+            await insertWorkspace(db, "cold-two");
+            await insertWorkspace(db, "cold-three");
+        } finally {
+            await db.close();
+        }
+        startMarker = join(dir, "mcp-starts.txt");
+        return echoEnvironment(dir, { PLURNK_MCP_TEST_START_MARKER: startMarker });
+    });
+    try {
+        assert.deepEqual(
+            await markerLines(startMarker),
+            [],
+            "global boot must not launch one enabled MCP process per dormant session",
+        );
+        await action(booted, "workspace.attach", { id: 1 });
+        assert.deepEqual(
+            await markerLines(startMarker),
+            [],
+            "attachment must not launch the configured MCP endpoint",
+        );
+        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
+        assert.deepEqual(await markerLines(startMarker), [], "inspection remains passive");
+        await action(booted, "workspace.mcp.enable", { alias: "echo" }, "cold-one", "cold-one");
+        const firstActivationStarts = (await markerLines(startMarker)).length;
+        assert.ok(
+            firstActivationStarts > 0,
+            "first demand opens the configured MCP endpoint",
+        );
+        await action(booted, "workspace.mcp.list", {}, "cold-one", "cold-one");
+        assert.equal(
+            (await markerLines(startMarker)).length,
+            firstActivationStarts,
+            "an already-active workspace remains warm instead of reconnecting",
+        );
+    } finally {
+        await stopDaemon(booted);
+    }
+});
+
+test("{§acp-daemon-client} bin: SIGTERM interrupts capability-demand activation and reaps its MCP process", { timeout: 120_000 }, async () => {
+    let startMarker = "";
+    const booted = await bootDaemon(async ({ dir, dbPath }) => {
+        const db = await openMigrated(dbPath);
+        try {
+            await insertWorkspace(db, "activation-stop");
+        } finally {
+            await db.close();
+        }
+        startMarker = join(dir, "mcp-starts.txt");
+        return echoEnvironment(dir, {
+            PLURNK_MCP_TEST_START_MARKER: startMarker,
+            PLURNK_MCP_TEST_START_DELAY_MS: "30000",
+        });
+    });
+    let stopped = false;
+    try {
+        await action(booted, "workspace.attach", { id: 1 });
+        assert.deepEqual(await markerLines(startMarker), [], "attachment remains passive");
+        const demand = action(
+            booted,
+            "workspace.mcp.enable",
+            { alias: "echo" },
+            "activation-stop",
+            "activation-stop",
+        ).catch((error: unknown) => error);
+        const pids = (await waitForMarkerLines(startMarker)).map((line) => Number(line.split(" ")[0]));
+        const { code, signal } = await stopDaemon(booted);
+        stopped = true;
+        assert.equal(code, 0, `SIGTERM during activation exits zero (signal=${signal})`);
+        assert.equal(signal, null, "the daemon handled SIGTERM during activation");
+        await Promise.race([
+            demand,
+            new Promise<never>((_resolvePromise, rejectPromise) =>
+                setTimeout(() => rejectPromise(new Error("capability demand did not settle after daemon shutdown")), HARNESS_WAIT_MS).unref()),
+        ]);
+        await waitForExit(pids);
+    } finally {
+        if (!stopped) await stopDaemon(booted);
+    }
+});
+
+test("{§operator-config-precedence} bin: --help prints usage without booting daemon", async () => {
+    const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "--help"], {
+            env: { ...process.env, HOME: join(tmpdir(), "plurnk-help-home"), PLURNK_SERVICE_DB_PATH: join(tmpdir(), "plurnk-help-test.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" },
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        let stdout = "";
+        let stderr = "";
+        child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+        child.once("exit", (code) => resolvePromise({ code, stdout, stderr }));
+        child.once("error", rejectPromise);
+        setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("--help timeout")); }, HARNESS_WAIT_MS).unref();
+    });
+    assert.equal(result.code, 0, `--help exits 0; got ${result.code}, stderr=${result.stderr}`);
+    assert.match(result.stdout, /usage: plurnk-service/);
+    assert.equal(result.stdout, ServiceHelp.format(await ServiceHelp.flags()), "{§operator-config-precedence}: executable help matches the packaged reference source");
+});
+
+test("{§operator-config-precedence} a working directory's .env configures nothing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-cwd-env-"));
+    try {
+        await writeFile(join(dir, ".env"), "PLURNK_MODEL_projectonly=openai/gpt-4o\nPLURNK_MODEL=projectonly\n");
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, ".config"),
+            XDG_DATA_HOME: join(dir, ".local", "share"),
+            PLURNK_SERVICE_DB_PATH: join(dir, "plurnk.db"),
+        };
+        for (const key of Object.keys(env)) if (key === "PLURNK_MODEL" || key.startsWith("PLURNK_MODEL_")) delete env[key];
+        const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, rejectPromise) => {
+            const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "config"], { env, cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+            let stdout = "";
+            let stderr = "";
+            child.stdout?.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
+            child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+            child.once("exit", (code) => resolvePromise({ code, stdout, stderr }));
+            child.once("error", rejectPromise);
+            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error("config timeout")); }, HARNESS_WAIT_MS).unref();
+        });
+        assert.equal(result.code, 0, `config exits 0; got ${result.code}, stderr=${result.stderr}`);
+        assert.match(result.stdout, /^declared aliases: none$/mu, "the project's alias is not declared");
+        assert.match(result.stdout, /^model: not selected$/mu, "the project's selector is not applied");
+        assert.equal(result.stdout.includes(join(dir, ".env")), false, "the working directory's .env is not a listed source");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("{§startup-admission} bin: a failed DB open names the path and any stale sidecars — never a bare 'disk I/O error'", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-sidecar-"));
+    try {
+        const dbPath = join(dir, "plurnk.db");
+        await mkdir(`${dbPath}-wal`);
+        const result = await new Promise<{ code: number | null; stderr: string }>((resolvePromise, rejectPromise) => {
+            const env: NodeJS.ProcessEnv = {
+                ...process.env,
+                HOME: dir,
+                PLURNK_SERVICE_DB_PATH: dbPath,
+                PLURNK_HOST: "127.0.0.1",
+                PLURNK_PORT: "0",
+                PLURNK_MODEL: "dbguard",
+                PLURNK_MODEL_dbguard: "missing/model",
+            };
+            const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
+                env,
+                stdio: ["ignore", "ignore", "pipe"],
+            });
+            let stderr = "";
+            child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+            child.once("exit", (code) => resolvePromise({ code, stderr }));
+            child.once("error", rejectPromise);
+            setTimeout(() => { child.kill("SIGKILL"); rejectPromise(new Error(`sidecar-boot timeout; stderr=${stderr}`)); }, HARNESS_WAIT_MS).unref();
+        });
+        assert.equal(result.code, 1, "a poisoned DB home fails the boot hard");
+        assert.match(result.stderr, /open .*plurnk\.db failed/, "the error names the DB path");
+        assert.match(result.stderr, /stale sidecar/, "the error names the surviving sidecars and the likely culprit");
+        assert.match(result.stderr, /plurnk\.db-wal/, "the offending sidecar path is spelled out");
+        assert.doesNotMatch(result.stderr, /unknown provider "missing"/, "provider initialization was never reached");
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("{§acp-daemon-client} bin: an occupied client port fails before durable storage is touched", { timeout: 120_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "plurnk-port-admission-"));
+    const dataDir = join(dir, "data");
+    const dbPath = join(dataDir, "plurnk.db");
+    const listener = createServer();
+    try {
+        await mkdir(dataDir, { recursive: true });
+        const db = await openMigrated(dbPath);
+        try { await insertWorkspace(db, "durable-sentinel"); }
+        finally { await db.close(); }
+        await writeFile(join(dataDir, "operator-sentinel"), "must remain byte-identical\n", "utf8");
+        const before = await snapshotDirectory(dataDir);
+
+        await new Promise<void>((resolvePromise, rejectPromise) => {
+            listener.once("error", rejectPromise);
+            listener.listen(0, "127.0.0.1", resolvePromise);
+        });
+        const address = listener.address();
+        if (address === null || typeof address === "string") throw new Error("test listener did not bind TCP");
+
+        const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, ".config"),
+            XDG_DATA_HOME: join(dir, ".local", "share"),
+            PLURNK_SERVICE_DB_PATH: dbPath,
+            PLURNK_HOST: "127.0.0.1",
+            PLURNK_PORT: String(address.port),
+        };
+        delete env.PLURNK_MODEL;
+        const child = spawn(process.execPath, [...CONDITION_ARGS, BIN_PATH, "start"], {
+            env,
+            cwd: dir,
+            stdio: ["ignore", "ignore", "pipe"],
+        });
+        let stderr = "";
+        child.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
+        const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolvePromise, rejectPromise) => {
+            const timer = setTimeout(() => {
+                child.kill("SIGKILL");
+                rejectPromise(new Error(`occupied-port startup timeout; stderr=${stderr}`));
+            }, 90_000);
+            child.once("exit", (code, signal) => {
+                clearTimeout(timer);
+                resolvePromise({ code, signal });
+            });
+            child.once("error", (cause) => {
+                clearTimeout(timer);
+                rejectPromise(cause);
+            });
+        });
+
+        assert.equal(result.code, 1, `occupied listener refuses startup (signal=${result.signal})`);
+        assert.match(stderr, /EADDRINUSE/, "the originating address error remains legible");
+        assert.deepEqual(
+            await snapshotDirectory(dataDir),
+            before,
+            "a process that does not own the client listener cannot mutate durable storage",
+        );
+    } finally {
+        await new Promise<void>((resolvePromise) => listener.close(() => resolvePromise()));
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test("{§startup-admission} bin: an unavailable provider is not constructed during startup", async () => {
+    const booted = await bootDaemon(async () => ({
+        PLURNK_MODEL: "broken",
+        PLURNK_MODEL_broken: "missing/model",
+    }));
+    try {
+        const result = await action(booted, "providers/list") as {
+            providers: Array<{ providerId: string; _meta?: { plurnk?: { alias: string; active: boolean } } }>;
+        };
+        assert.deepEqual(
+            result.providers.map((p) => ({
+                alias: p._meta?.plurnk?.alias ?? p.providerId,
+                active: p._meta?.plurnk?.active ?? false,
+            })),
+            [{ alias: "broken", active: true }],
+        );
+        assert.equal(booted.child.exitCode, null);
+    } finally {
+        assert.equal((await stopDaemon(booted)).code, 0);
+    }
+});
+
+test("{§configuration-repair-path} bin: unavailable observability preserves discovery and releases the database on shutdown", async () => {
+    const booted = await bootDaemon(async () => ({
+        OTEL_TRACES_EXPORTER: "unsupported",
+        OTEL_METRICS_EXPORTER: "none",
+    }));
+    try {
+        assert.ok(await action(booted, "discover"), "client inspection remains available");
+        const dbPath = join(booted.tmpdir, "plurnk.db");
+        await access(dbPath);
+        await access(`${dbPath}.lock`);
+        const exited = new Promise<number | null>((resolvePromise) => booted.child.once("exit", resolvePromise));
+        booted.child.kill("SIGTERM");
+        assert.equal(await exited, 0, "configuration diagnostics do not turn normal shutdown into a failure");
+        await assert.rejects(
+            access(`${dbPath}.lock`),
+            { code: "ENOENT" },
+            "the admitted database owner is closed and its lock released",
+        );
+    } finally {
+        if (booted.child.exitCode === null) await stopDaemon(booted);
+        else await rm(booted.tmpdir, { recursive: true, force: true });
+    }
+});
+});
