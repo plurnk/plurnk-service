@@ -2660,7 +2660,7 @@ test("{§operation-results}: claim, park and wake each broadcast the loop's stat
                 assert.equal(lifecycle()[0].notice.waitUntil, null, "running has no countdown");
                 assert.equal((await daemon.listSessionLoops({ workspaceId, sessionId })).find(({ id }) => id === accepted.loopId)?.waitUntil,
                     firstDeadline, "reattachment and live updates describe the same durable deadline");
-                // {§acp-status-timing} — every beat carries its loop's own packet count and claim stamp, the ones a snapshot reads.
+                // {§acp-status-descendants} — every beat carries its loop's own packet count and claim stamp, the ones a snapshot reads.
                 const projected = (await daemon.listSessionLoops({ workspaceId, sessionId })).find(({ id }) => id === accepted.loopId)!;
                 assert.deepEqual(lifecycle().map(({ notice }) => [notice.packetCount, notice.claimedAt]), [[0, Date.parse(projected.claimedAt!)], [projected.packetCount, Date.parse(projected.claimedAt!)]],
                     "claimed with no packet yet, parked after its first, the same claim stamp throughout");

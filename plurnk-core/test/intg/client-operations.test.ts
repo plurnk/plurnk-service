@@ -724,7 +724,7 @@ test("{§functionality-inspection} a stalled MCP catalog is visible over ACP bef
     assert.equal(provider.requests.length, 0, "the client can see startup before the provider is called");
     const during = await inspect();
     assert.equal(actionResult(during).ok, true, "inspection does not join the stalled activation");
-    // {§acp-workspace-state} Preparation is the workspace's, so an action that binds no session carries it too.
+    // {§acp-status-descendants} Preparation is the workspace's, so an action that binds no session carries it too.
     const wsUpdate = sessionUpdates(during).find((u) => u.sessionUpdate === "notice" && u.title === "workspace:state") as {
         _meta?: { plurnk?: { workspace?: { preparation: { family: string; alias: string | null }[] } } };
     } | undefined;

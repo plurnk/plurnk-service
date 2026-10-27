@@ -142,7 +142,7 @@ export interface ApplicationPort extends HttpHost {
         readonly turnSeq?: number;
         readonly sequence?: number;
     }): Promise<LogEntryWire[]>;
-    /** {§acp-provider-routes} Each alias is the route a session seeded from it gets, its configured effort included. */
+    /** {§acp-status-descendants} Each alias is the route a session seeded from it gets, its configured effort included. */
     listProviders(): { readonly aliases: Array<ApplicationProviderAlias> };
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
     /** {§startup-admission} Explicitly refresh the Models.dev catalog cache and installed npm package when `PLURNK_SERVICE_UPDATEABLE=1`. */

@@ -15,7 +15,7 @@ const OAUTH_MOUNTS = ["/oauth", "/.well-known/oauth-authorization-server", "/.we
 const authProblem = (code: string, status: number, detail: string, extensions: Readonly<Record<string, unknown>> = {}): ProblemDetails =>
     Problems.create("auth:http", code, status, detail, extensions);
 
-// {§auth-daemon-module} — the daemon's OAuth 2.1 authorization server module.
+// {§auth-oauth} — the daemon's OAuth 2.1 authorization server module.
 export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
     readonly #opts: ResolvedModuleOptions;
     readonly #activeRequests = new Set<Promise<void>>();
@@ -77,7 +77,7 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
         return this.#opts.issuer.length > 0 ? this.#opts.issuer : requestOrigin(req, this.#listener());
     }
 
-    // {§auth-cors} — CORS headers from PLURNK_AUTH_ALLOW_ORIGIN.
+    // {§auth-oauth} — CORS headers from PLURNK_AUTH_ALLOW_ORIGIN.
     #corsHeaders(): Record<string, string> {
         const origin = this.#opts.allowOrigin;
         if (origin.length === 0) return {};
@@ -108,7 +108,7 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
 
     async #route(req: IncomingMessage, res: ServerResponse): Promise<void> {
         if (this.#stopping) {
-            // {§problems-auth}
+            // {§auth-oauth}
             this.#writeProblem(res, 503, authProblem("service-stopping", 503, "The service is shutting down.", { stage: "shutdown", retryable: true }));
             return;
         }
@@ -119,7 +119,7 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
             return;
         }
         if (this.#oauth !== null && await this.#oauth.handle(req, res)) return;
-        // {§problems-auth}
+        // {§auth-oauth}
         this.#writeProblem(res, 404, authProblem("route-not-found", 404, "The requested HTTP route does not exist.", {
             method: req.method ?? null,
             path: req.url ?? null,

@@ -87,7 +87,7 @@ test("{§session-model-selection}: the configured default is selected on first u
     });
 });
 
-test("{§acp-provider-routes}: each alias lists the route a session seeded from it reads back, its configured effort included", async () => {
+test("{§acp-status-descendants}: each alias lists the route a session seeded from it reads back, its configured effort included", async () => {
     const spec = declaredProvider("listed", "listed-model");
     const effortKey = `PLURNK_PROVIDERS_EFFORT_${spec.alias}`;
     for (const key of ["PLURNK_MODEL", effortKey]) declaredProviderEnv.set(key, process.env[key]);

@@ -108,7 +108,7 @@ const signIn = async (base: string, query: Record<string, string>, password: str
     return fetch(`${base}/oauth/authorize`, { ...form({ ...query, password }), redirect: "manual" });
 };
 
-test("{§auth-oauth-endpoints} discovery names the issuer's endpoints, grants and PKCE method, and the resource names its authorization server", async () => {
+test("{§auth-oauth} discovery names the issuer's endpoints, grants and PKCE method, and the resource names its authorization server", async () => {
     const mod = await boot();
     try {
         assert.deepEqual([...mod.module.mounts], ["/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
@@ -139,7 +139,7 @@ test("{§auth-oauth-endpoints} discovery names the issuer's endpoints, grants an
     } finally { await mod.close(); }
 });
 
-test("{§auth-oauth-endpoints} a configured issuer names the public origin a proxy serves", async () => {
+test("{§auth-oauth} a configured issuer names the public origin a proxy serves", async () => {
     const mod = await boot({ PLURNK_AUTH_ISSUER: "https://plurnk.example" });
     try {
         const metadata = await json(await fetch(`${mod.base}/.well-known/oauth-authorization-server`));
@@ -187,7 +187,7 @@ test("{§auth-oauth-clients} the operator's secret is a client secret: client_cr
     } finally { await mod.close(); }
 });
 
-test("{§auth-oauth-login} authorization code with PKCE: a registered public client, the operator's sign-in, the code and its one exchange", async () => {
+test("{§auth-oauth-clients} authorization code with PKCE: a registered public client, the operator's sign-in, the code and its one exchange", async () => {
     const mod = await boot();
     try {
         const redirect = "http://127.0.0.1:4000/callback";
@@ -229,7 +229,7 @@ test("{§auth-oauth-login} authorization code with PKCE: a registered public cli
     } finally { await mod.close(); }
 });
 
-test("{§auth-oauth-login} a bad client or redirect is told to the person; a malformed request is redirected as an error", async () => {
+test("{§auth-oauth-clients} a bad client or redirect is told to the person; a malformed request is redirected as an error", async () => {
     const mod = await boot();
     try {
         const redirect = "http://127.0.0.1:4000/callback";
@@ -290,7 +290,7 @@ test("{§auth-oauth-tokens} a refresh token rotates on every use, narrows but ne
     } finally { await mod.close(); }
 });
 
-test("{§auth-oauth-revocation} revocation is by family and by the owning client; a stranger's revocation changes nothing; grants are independent", async () => {
+test("{§auth-oauth-tokens} revocation is by family and by the owning client; a stranger's revocation changes nothing; grants are independent", async () => {
     const mod = await boot({ PLURNK_AUTH_CLIENT_agent: JSON.stringify({ secret: "agent-secret", scopes: ["acp"] }) });
     try {
         const mintOperator = async (): Promise<string> => (await json<{ access_token: string }>(await fetch(`${mod.base}/oauth/token`, form({ grant_type: "client_credentials", client_id: "operator", client_secret: "s3cret" })))).access_token;
@@ -372,7 +372,7 @@ const sessionOf = (response: Response): string => {
     return match[1];
 };
 
-test("{§auth-oauth-session} a browser is the operator only once it signs in: the sign-in sets the session, a module's own client is then authorized silently, and a session is never a bearer", async () => {
+test("{§auth-oauth-clients} a browser is the operator only once it signs in: the sign-in sets the session, a module's own client is then authorized silently, and a session is never a bearer", async () => {
     let secret = "";
     const mod = await boot({}, {}, "s3cret", (credentials) => {
         secret = credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"] }).clientSecret;
@@ -409,7 +409,7 @@ test("{§auth-oauth-session} a browser is the operator only once it signs in: th
     } finally { await mod.close(); }
 });
 
-test("{§auth-oauth-session} a client elsewhere is shown consent: allowing with the session issues the code, denying redirects access_denied, and a POST without the session issues nothing", async () => {
+test("{§auth-oauth-clients} a client elsewhere is shown consent: allowing with the session issues the code, denying redirects access_denied, and a POST without the session issues nothing", async () => {
     const mod = await boot();
     try {
         const redirect = "http://127.0.0.1:4000/callback";
@@ -440,7 +440,7 @@ test("{§auth-oauth-session} a client elsewhere is shown consent: allowing with 
     } finally { await mod.close(); }
 });
 
-test("{§http-host} {§auth-oauth-endpoints} the authorization server answers at whatever address a request reached it by; a configured issuer is the one answer", async () => {
+test("{§http-host} {§auth-oauth} the authorization server answers at whatever address a request reached it by; a configured issuer is the one answer", async () => {
     const mod = await boot();
     try {
         for (const named of ["192.168.1.88:1066", "desktop.lan:1066", "localhost:1066"]) {
@@ -459,7 +459,7 @@ test("{§http-host} {§auth-oauth-endpoints} the authorization server answers at
     } finally { await fronted.close(); }
 });
 
-test("{§auth-oauth-session} no browser is the operator without the password: the empty password is named with the file to set it in, at 503, with no session; client credentials are unaffected", async () => {
+test("{§auth-oauth-clients} no browser is the operator without the password: the empty password is named with the file to set it in, at 503, with no session; client credentials are unaffected", async () => {
     for (const [env, heading, named] of [
         [{ PLURNK_PASS: "" }, /<h1><span role="img" aria-label="Warning">⚠<\/span> No password is set<\/h1>/u, /<code>PLURNK_PASS<\/code> is empty/u],
     ] as const) {
@@ -484,7 +484,7 @@ test("{§auth-oauth-session} no browser is the operator without the password: th
     }
 });
 
-test("{§auth-oauth-login} the password selects no account: whatever password signed them in, the browser's grants name the same operator", async () => {
+test("{§auth-oauth-clients} the password selects no account: whatever password signed them in, the browser's grants name the same operator", async () => {
     const subjects: string[] = [];
     for (const password of ["lovelace", "babbage"]) {
         const mod = await boot({ PLURNK_PASS: password });
@@ -501,7 +501,7 @@ test("{§auth-oauth-login} the password selects no account: whatever password si
     assert.equal(subjects[0], subjects[1], "a new password changes who can sign in, never who they are");
 });
 
-test("{§auth-oauth-documents} every document is a main article under a header heading, with no script, no class and a label for every visible control", () => {
+test("{§auth-oauth-clients} every document is a main article under a header heading, with no script, no class and a label for every visible control", () => {
     const specimens = authorizationDocumentSpecimens();
     assert.ok(specimens.length >= 8);
     for (const body of specimens) {
@@ -515,7 +515,7 @@ test("{§auth-oauth-documents} every document is a main article under a header h
     }
 });
 
-test("{§auth-oauth-documents} a module client's registered stylesheet replaces the standalone style on its pages; any other client, or none, gets the standalone page", async () => {
+test("{§auth-oauth-clients} a module client's registered stylesheet replaces the standalone style on its pages; any other client, or none, gets the standalone page", async () => {
     for (const password of ["lovelace", ""]) {
         const mod = await boot({ PLURNK_PASS: password }, {}, "s3cret", (credentials) => {
             credentials.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp"], stylesheetPath: "/web/assets/authority.css" });
@@ -673,7 +673,7 @@ const moduleSignIn = async (m: Awaited<ReturnType<typeof moduleBoot>>) => {
 const visit = (base: string, query: Record<string, string>, cookie: string): Promise<Response> =>
     fetch(`${base}/oauth/authorize?${new URLSearchParams(query).toString()}`, { redirect: "manual", headers: { cookie: `plurnk_session=${cookie}` } });
 
-test("{§auth-oauth-session} a module's grant joins the browser's sign-in: one family, listed once without a token, and ended from either side", async () => {
+test("{§auth-oauth-clients} a module's grant joins the browser's sign-in: one family, listed once without a token, and ended from either side", async () => {
     const m = await moduleBoot();
     const { credentials, base } = m.mod;
     try {
@@ -701,7 +701,7 @@ test("{§auth-oauth-session} a module's grant joins the browser's sign-in: one f
     } finally { await m.mod.close(); }
 });
 
-test("{§auth-oauth-session} a sign-out stays signed out: the next visit meets the sign-in form and is given no session", async () => {
+test("{§auth-oauth-clients} a sign-out stays signed out: the next visit meets the sign-in form and is given no session", async () => {
     const m = await moduleBoot();
     try {
         const { credentials, base } = m.mod;
@@ -715,7 +715,7 @@ test("{§auth-oauth-session} a sign-out stays signed out: the next visit meets t
     } finally { await m.mod.close(); }
 });
 
-test("{§auth-oauth-session} only a module's grant joins the sign-in: a consented client keeps its own grant, another browser its own sign-in, and a code not yet exchanged ends with its sign-in", async () => {
+test("{§auth-oauth-clients} only a module's grant joins the sign-in: a consented client keeps its own grant, another browser its own sign-in, and a code not yet exchanged ends with its sign-in", async () => {
     const m = await moduleBoot();
     const { credentials, base } = m.mod;
     try {
@@ -753,7 +753,7 @@ test("{§auth-oauth-session} only a module's grant joins the sign-in: a consente
     } finally { await m.mod.close(); }
 });
 
-test("{§auth-oauth-session} silence is for a module's own client: a registered public client is shown consent even when its redirect is on this daemon's origin", async () => {
+test("{§auth-oauth-clients} silence is for a module's own client: a registered public client is shown consent even when its redirect is on this daemon's origin", async () => {
     const { mod, code, session } = await moduleBoot();
     try {
         await code();

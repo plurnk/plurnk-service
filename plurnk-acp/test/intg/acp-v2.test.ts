@@ -21,7 +21,7 @@ const createAcpClient = () =>
         });
     });
 
-test("{§acp-official-client-conformance} {§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 client exercises initialize, session/new, session/resume, session/prompt, and session/request_permission over WebSocket and Streamable HTTP", async () => {
+test("{§acp-first-party-client-conformance} {§acp-first-party-client-conformance}: stock @agentclientprotocol/sdk v2 client exercises initialize, session/new, session/resume, session/prompt, and session/request_permission over WebSocket and Streamable HTTP", async () => {
     const routes = new Map<string, (req: http.IncomingMessage, res: http.ServerResponse) => void | Promise<void>>();
     const upgrades = new Map<string, (req: http.IncomingMessage, socket: Duplex, head: Buffer) => void | Promise<void>>();
     const eventHandlers = new Set<(event: Record<string, unknown>) => void>();

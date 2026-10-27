@@ -11883,9 +11883,9 @@
                     "liveShape": "list",
                     "codeCitations": 1,
                     "testCitations": 3,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-daemon-client contract section (#1270)."
                 },
                 "acp-client-types": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11895,9 +11895,9 @@
                     "liveShape": "list",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-daemon-client",
+                    "reason": "Folded §acp-client-types into heading tag §acp-daemon-client (#1270)."
                 },
                 "acp-listener-admission": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11907,9 +11907,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-daemon-client",
+                    "reason": "Folded §acp-listener-admission into heading tag §acp-daemon-client (#1270)."
                 },
                 "acp-thread-binding": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11919,9 +11919,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-daemon-client",
+                    "reason": "Folded §acp-thread-binding into heading tag §acp-daemon-client (#1270)."
                 },
                 "acp-run-authority": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11931,9 +11931,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-daemon-client",
+                    "reason": "Folded §acp-run-authority into heading tag §acp-daemon-client (#1270)."
                 },
                 "acp-thread-address": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11943,9 +11943,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-daemon-client",
+                    "reason": "Folded §acp-thread-address into heading tag §acp-daemon-client (#1270)."
                 },
                 "acp-session-owner": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11955,9 +11955,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-session-owner contract section (#1270)."
                 },
                 "acp-owner-activation": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11967,9 +11967,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-session-owner",
+                    "reason": "Folded §acp-owner-activation into heading tag §acp-session-owner (#1270)."
                 },
                 "acp-run-disconnect": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11979,9 +11979,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-session-owner",
+                    "reason": "Folded §acp-run-disconnect into heading tag §acp-session-owner (#1270)."
                 },
                 "acp-owner-connection": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -11991,9 +11991,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-session-owner",
+                    "reason": "Folded §acp-owner-connection into heading tag §acp-session-owner (#1270)."
                 },
                 "acp-held-interrupts": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12003,9 +12003,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-session-owner",
+                    "reason": "Folded §acp-held-interrupts into heading tag §acp-session-owner (#1270)."
                 },
                 "acp-shutdown": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12015,9 +12015,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-session-owner",
+                    "reason": "Folded §acp-shutdown into heading tag §acp-session-owner (#1270)."
                 },
                 "acp-body-reference": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12027,9 +12027,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-body-reference contract section (#1270)."
                 },
                 "acp-entry-route": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12039,9 +12039,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-body-reference",
+                    "reason": "Folded §acp-entry-route into heading tag §acp-body-reference (#1270)."
                 },
                 "acp-call-result": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12051,9 +12051,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-call-result into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-parse-refusal": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12063,9 +12063,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-parse-refusal into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-progress-reply": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12075,9 +12075,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-progress-reply into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-outside-text": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12087,9 +12087,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-outside-text into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-run-outcome": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12099,9 +12099,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-run-outcome into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-lifecycle-projection": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12111,9 +12111,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-lifecycle-projection into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-readable-reasoning": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12123,9 +12123,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-readable-reasoning into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-reasoning-link": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12135,9 +12135,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-reasoning-link into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-encrypted-reasoning": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12147,9 +12147,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-encrypted-reasoning into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-plurnk-metadata": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12159,9 +12159,9 @@
                     "liveShape": "list",
                     "codeCitations": 1,
                     "testCitations": 7,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-plurnk-metadata contract section (#1270)."
                 },
                 "acp-status-descendants": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12171,9 +12171,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-status-descendants contract section (#1270)."
                 },
                 "acp-status-spend": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12183,9 +12183,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-status-spend into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-status-streams": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12195,9 +12195,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-status-streams into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-status-timing": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12207,9 +12207,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-status-timing into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-numbers-passthrough": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12219,9 +12219,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-numbers-passthrough into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-state-patches": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12231,9 +12231,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-state-patches into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-provider-routes": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12243,9 +12243,9 @@
                     "liveShape": "table",
                     "codeCitations": 3,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-provider-routes into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-status-model": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12255,9 +12255,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-status-model into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-status-loop-number": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12267,9 +12267,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-status-loop-number into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-status-wait": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12279,9 +12279,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-status-wait into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-workspace-state": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12291,9 +12291,9 @@
                     "liveShape": "table",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-status-descendants",
+                    "reason": "Folded §acp-workspace-state into heading tag §acp-status-descendants (#1270)."
                 },
                 "acp-cost-evidence": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12303,9 +12303,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-cost-evidence into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-ambient": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12315,9 +12315,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-ambient into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-run-start": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12327,9 +12327,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-plurnk-metadata",
+                    "reason": "Folded §acp-run-start into heading tag §acp-plurnk-metadata (#1270)."
                 },
                 "acp-replay": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12339,9 +12339,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-history-window",
+                    "reason": "Folded §acp-replay into heading tag §acp-history-window (#1270)."
                 },
                 "acp-sync": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12351,9 +12351,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-history-window",
+                    "reason": "Folded §acp-sync into heading tag §acp-history-window (#1270)."
                 },
                 "acp-snapshot": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12363,9 +12363,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-history-window",
+                    "reason": "Folded §acp-snapshot into heading tag §acp-history-window (#1270)."
                 },
                 "acp-history-window": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12375,9 +12375,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-history-window contract section (#1270)."
                 },
                 "acp-history-page": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12387,9 +12387,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-history-window",
+                    "reason": "Folded §acp-history-page into heading tag §acp-history-window (#1270)."
                 },
                 "acp-loop-page": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12399,9 +12399,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-history-window",
+                    "reason": "Folded §acp-loop-page into heading tag §acp-history-window (#1270)."
                 },
                 "acp-history-advance": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12411,9 +12411,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-history-window",
+                    "reason": "Folded §acp-history-advance into heading tag §acp-history-window (#1270)."
                 },
                 "acp-words-by-reference": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12423,9 +12423,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-history-window",
+                    "reason": "Folded §acp-words-by-reference into heading tag §acp-history-window (#1270)."
                 },
                 "acp-overview": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12435,9 +12435,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-overview contract section (#1270)."
                 },
                 "acp-overview-run": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12447,9 +12447,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-overview",
+                    "reason": "Folded §acp-overview-run into heading tag §acp-overview (#1270)."
                 },
                 "acp-overview-state": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12459,9 +12459,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-overview",
+                    "reason": "Folded §acp-overview-state into heading tag §acp-overview (#1270)."
                 },
                 "acp-overview-updates": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12471,9 +12471,9 @@
                     "liveShape": "list",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-overview",
+                    "reason": "Folded §acp-overview-updates into heading tag §acp-overview (#1270)."
                 },
                 "acp-first-party-client-conformance": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12483,9 +12483,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-first-party-client-conformance contract section (#1270)."
                 },
                 "acp-official-client-conformance": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12495,9 +12495,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-first-party-client-conformance",
+                    "reason": "Folded §acp-official-client-conformance into heading tag §acp-first-party-client-conformance (#1270)."
                 },
                 "acp-proposal-resolve": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12507,9 +12507,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-proposal-resolve contract section (#1270)."
                 },
                 "acp-gate-deferral": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12519,9 +12519,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-proposal-resolve",
+                    "reason": "Folded §acp-gate-deferral into heading tag §acp-proposal-resolve (#1270)."
                 },
                 "acp-message-before-gate": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12531,9 +12531,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-proposal-resolve",
+                    "reason": "Folded §acp-message-before-gate into heading tag §acp-proposal-resolve (#1270)."
                 },
                 "acp-resume-before-gate": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12543,9 +12543,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-proposal-resolve",
+                    "reason": "Folded §acp-resume-before-gate into heading tag §acp-proposal-resolve (#1270)."
                 },
                 "acp-proposal-disposition": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12555,9 +12555,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-proposal-resolve",
+                    "reason": "Folded §acp-proposal-disposition into heading tag §acp-proposal-resolve (#1270)."
                 },
                 "acp-management-plane": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12567,9 +12567,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-management-plane into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-session-loops": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12579,9 +12579,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-session-loops into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-place-hiding": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12591,9 +12591,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-place-hiding into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-action-binding": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12603,9 +12603,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-action-binding contract section (#1270)."
                 },
                 "acp-client-operation": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12615,9 +12615,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-client-operation into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-session-model-actions": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12627,9 +12627,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-session-model-actions into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-session-effort-actions": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12639,9 +12639,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-session-effort-actions into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-module-action-scope": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12651,9 +12651,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-module-action-scope into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-op-parse": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12663,9 +12663,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-op-parse into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-module-actions": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12675,9 +12675,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-module-actions into heading tag §acp-action-binding (#1270)."
                 },
                 "discovery": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12687,9 +12687,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §discovery into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-stream-producer": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12699,9 +12699,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §acp-stream-producer into heading tag §acp-action-binding (#1270)."
                 },
                 "acp-topology-scope": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12711,9 +12711,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-topology-scope contract section (#1270)."
                 },
                 "acp-delegation-observation": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12723,9 +12723,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-topology-scope",
+                    "reason": "Folded §acp-delegation-observation into heading tag §acp-topology-scope (#1270)."
                 },
                 "acp-subagents": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12735,9 +12735,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-topology-scope",
+                    "reason": "Folded §acp-subagents into heading tag §acp-topology-scope (#1270)."
                 },
                 "acp-broadcast-fan": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12747,9 +12747,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-broadcast-fan into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-oauth-revocation": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12759,9 +12759,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-oauth-revocation into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-configuration": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12771,9 +12771,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-configuration into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-run-endpoint": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12783,9 +12783,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-run-endpoint into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-run-input": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12795,9 +12795,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-run-input into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-message-acceptance": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12807,9 +12807,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-message-acceptance into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-run-source": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12819,9 +12819,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-run-source into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-http-authorization": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12831,9 +12831,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for acp-http-authorization contract section (#1270)."
                 },
                 "acp-cors": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12843,9 +12843,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-cors into heading tag §acp-http-authorization (#1270)."
                 },
                 "acp-http-failure": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12855,9 +12855,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §acp-http-failure into heading tag §acp-http-authorization (#1270)."
                 },
                 "problems-acp": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12867,9 +12867,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-http-authorization",
+                    "reason": "Folded §problems-acp into heading tag §acp-http-authorization (#1270)."
                 },
                 "pinned-wording-acp": {
                     "spec": "plurnk-acp/SPEC.md",
@@ -12879,9 +12879,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "acp-action-binding",
+                    "reason": "Folded §pinned-wording-acp into heading tag §acp-action-binding (#1270)."
                 },
                 "auth-oauth": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12891,9 +12891,9 @@
                     "liveShape": "heading",
                     "codeCitations": 5,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for auth-oauth contract section (#1270)."
                 },
                 "auth-daemon-module": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12903,9 +12903,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth",
+                    "reason": "Folded §auth-daemon-module into heading tag §auth-oauth (#1270)."
                 },
                 "auth-oauth-authority": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12915,9 +12915,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth",
+                    "reason": "Folded §auth-oauth-authority into heading tag §auth-oauth (#1270)."
                 },
                 "auth-oauth-endpoints": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12927,9 +12927,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth",
+                    "reason": "Folded §auth-oauth-endpoints into heading tag §auth-oauth (#1270)."
                 },
                 "auth-oauth-clients": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12939,9 +12939,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 7,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for auth-oauth-clients contract section (#1270)."
                 },
                 "auth-oauth-session": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12951,9 +12951,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth-clients",
+                    "reason": "Folded §auth-oauth-session into heading tag §auth-oauth-clients (#1270)."
                 },
                 "auth-oauth-documents": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12963,9 +12963,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth-clients",
+                    "reason": "Folded §auth-oauth-documents into heading tag §auth-oauth-clients (#1270)."
                 },
                 "auth-oauth-login": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12975,9 +12975,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth-clients",
+                    "reason": "Folded §auth-oauth-login into heading tag §auth-oauth-clients (#1270)."
                 },
                 "auth-oauth-tokens": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12987,9 +12987,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for auth-oauth-tokens contract section (#1270)."
                 },
                 "auth-oauth-revocation": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -12999,9 +12999,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth-tokens",
+                    "reason": "Folded §auth-oauth-revocation into heading tag §auth-oauth-tokens (#1270)."
                 },
                 "auth-cors": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -13011,9 +13011,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 3,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth",
+                    "reason": "Folded §auth-cors into heading tag §auth-oauth (#1270)."
                 },
                 "problems-auth": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -13023,9 +13023,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "auth-oauth",
+                    "reason": "Folded §problems-auth into heading tag §auth-oauth (#1270)."
                 },
                 "auth-configuration": {
                     "spec": "plurnk-auth/SPEC.md",
@@ -13035,9 +13035,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary heading tag for auth-configuration contract section (#1270)."
                 }
             },
             "tests": {
@@ -13134,9 +13134,9 @@
                         "pinned-wording-acp",
                         "problems-acp"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary test suite for plurnk-acp/src/Module.test.ts (#1270)."
                 },
                 "plurnk-acp/test/intg/acp-v2.test.ts": {
                     "tier": "intg",
@@ -13150,9 +13150,9 @@
                         "acp-first-party-client-conformance",
                         "acp-official-client-conformance"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary test suite for plurnk-acp/test/intg/acp-v2.test.ts (#1270)."
                 },
                 "plurnk-auth/src/OAuthServer.test.ts": {
                     "tier": "unit",
@@ -13175,9 +13175,9 @@
                         "credential-module-client",
                         "http-request-origin"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary test suite for plurnk-auth/src/OAuthServer.test.ts (#1270)."
                 },
                 "plurnk-auth/src/config.test.ts": {
                     "tier": "unit",
@@ -13192,9 +13192,9 @@
                         "auth-oauth-clients",
                         "credential-authority"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Primary test suite for plurnk-auth/src/config.test.ts (#1270)."
                 }
             }
         },

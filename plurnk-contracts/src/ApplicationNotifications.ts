@@ -26,7 +26,7 @@ export type ReasoningEventNotification = {
     | { readonly phase: "content"; readonly delta: string }
 );
 
-// {§acp-outside-text}: one admitted emission's text outside every operation, with the exact
+// {§acp-plurnk-metadata}: one admitted emission's text outside every operation, with the exact
 // weight the model was told and the `<session>-<loop>-<turn>` coordinate its evidence is filed under.
 export interface OutsideEventNotification {
     readonly sessionId: number;

@@ -34,7 +34,7 @@
 
 | Boundary | Behaviour |
 | --- | --- |
-| Client interrupt / reattach | Live operation retains pending input across the Run boundary; synchronization re-presents it ({§acp-sync}). |
+| Client interrupt / reattach | Live operation retains pending input across the Run boundary; synchronization re-presents it ({§acp-history-window}). |
 | Client hangup / Graceful shutdown | Inherits owning client's cancellation/detachment semantics; shutdown aborts and settles owned work before closing the protocol connection ({§mcp-setup}). |
 | Restart / Workspace reactivation | No Task resume or automatic tool replay on restart; reactivation reconstructs the attachment from its definition. Active Tasks retain workspace residency ({§module-workspace-residency}). |
 | Expiry / Cancellation / Terminal | Operation deadline bounds client-input waits ({§mcp-host-composition}); expiry or owner abort invokes `tasks/cancel` before settling; terminal Tasks are never re-polled or re-resumed. |

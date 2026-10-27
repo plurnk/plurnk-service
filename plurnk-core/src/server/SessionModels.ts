@@ -49,7 +49,7 @@ export const providerNotConfigured = (): OperationFailureError => new OperationF
 
 export default class SessionModels {
     readonly #db: Db;
-    // The boot provider, whose input capacity the active alias reports ({§acp-provider-routes}).
+    // The boot provider, whose input capacity the active alias reports ({§acp-status-descendants}).
     readonly #provider: Provider | null;
     // {§notifications} Told of each write that changed a session's stored policy.
     readonly #policyChanged: (sessionId: number) => Promise<void>;
@@ -643,7 +643,7 @@ export default class SessionModels {
         return {
             aliases: aliases.map((a) => {
                 const isActive = active === a.alias;
-                // {§acp-provider-routes} — the route a session seeded from this alias gets: what it would read back.
+                // {§acp-status-descendants} — the route a session seeded from this alias gets: what it would read back.
                 const effort = this.#configuredEffort(a);
                 return {
                     ...projectModelRoute(a, effort, "default"), alias: a.alias, active: isActive,

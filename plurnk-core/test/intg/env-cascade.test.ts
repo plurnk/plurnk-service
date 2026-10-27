@@ -536,7 +536,7 @@ for (const built of [false, true]) {
             value: "inherit",
         });
         assert.equal(childSet.ok, true, JSON.stringify(childSet));
-        // {§acp-sync} A client attaches to the session it owns, as the terminal client does.
+        // {§acp-history-window} A client attaches to the session it owns, as the terminal client does.
         const sync = await acpCall(daemon.url, "session/resume", {
             sessionId: "repair",
             cwd: fx.cwd,

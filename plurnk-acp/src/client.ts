@@ -1,4 +1,4 @@
-// {§acp-client-types} Runtime-neutral client contracts for @plurnk/plurnk-acp/client.
+// {§acp-daemon-client} Runtime-neutral client contracts for @plurnk/plurnk-acp/client.
 import type {
     Effort,
     FunctionalityPreparationActivity,

@@ -1,7 +1,7 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
 import { Knob } from "@plurnk/plurnk-meta";
 
-/** {§auth-oauth-authority} The resources a credential of this daemon may name: the ACP interface. */
+/** {§auth-oauth} The resources a credential of this daemon may name: the ACP interface. */
 export const SCOPES: readonly string[] = Object.freeze(["acp"]);
 
 /** {§auth-oauth-clients} A confidential client the operator declared: its secret and the scopes it may hold. */
@@ -104,7 +104,7 @@ export const resolveModuleOptions = (options: ModuleOptions): ResolvedModuleOpti
         accessTtlSec: number("accessTtlSec", "PLURNK_AUTH_ACCESS_TTL_SEC", 1),
         refreshTtlSec: number("refreshTtlSec", "PLURNK_AUTH_REFRESH_TTL_SEC", 1),
         clients,
-        // {§auth-cors} — the panel states the origin; only its own empty value sends no CORS header.
+        // {§auth-oauth} — the panel states the origin; only its own empty value sends no CORS header.
         allowOrigin: floorString(options, env, "allowOrigin", "PLURNK_AUTH_ALLOW_ORIGIN"),
     };
 };

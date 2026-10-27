@@ -75,7 +75,7 @@
 - cfa2be9: An address at the daemon has one HTTP form:
   `GET /agui/<workspace>/<worker>/entry?target=<address>` answers the channel
   the address selects, read from that worker's perspective through
-  `ApplicationPort.readEntryChannel` ({§acp-entry-route},
+  `ApplicationPort.readEntryChannel` ({§acp-body-reference},
   {§methods}). A result's body, a turn's reasoning and a
   message's words travel by reference at it. A log row names its worker,
   `worker_name` beside `worker_id` ({§methods-invocation}).
@@ -94,7 +94,7 @@
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
   `worker/hidden`. AG-UI: `workspace.hidden.set`, `worker.hidden.set`;
   `workspace.list` and `workspace.workers` take `includeHidden`
-  ({§acp-place-hiding}). Migration 33.
+  ({§acp-action-binding}). Migration 33.
 - c3922c2: A loop stopped without failing (499) has the lifecycle `cancelled`, in the
   status gauge, the worker directory, `status.descendants` and the inbox; any
   other status of 400 or more stays `failed`. `LoopLifecycle` gains the word
@@ -107,7 +107,7 @@
   the loop's number among its worker's loops, beside `loopId`
   ({§notifications}, {§notifications},
   {§operation-results}). The AG-UI status gauge carries it as `status.loopSeq`,
-  replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
+  replaced in every delta that replaces `loopId` ({§acp-status-descendants}); the
   conformance kit's gauge carries it.
 - 4e4cb32: AG-UI: an accepted message is discoverable before its arrival (#1166).
   `status.inbox` lists the accepted messages the bound Worker has not yet
@@ -131,7 +131,7 @@
   `forwardedProps.plurnk.reasoning: "link"`: each reasoning message holds no
   text and names its turn's `reasoning://<worker>/L/T` address in its HTTP form,
   the live text arrives as `CUSTOM plurnk.reasoning`, and a snapshot holds each
-  turn's link ({§acp-reasoning-link}). Every other Run receives reasoning as
+  turn's link ({§acp-plurnk-metadata}). Every other Run receives reasoning as
   AG-UI defines it. No row repeats reasoning its message holds.
 - 4b70069: Every receipt's H3 names its operand (`→ path`, `→ from → to` for
   COPY/MOVE), whether or not it is paired with its replayed operation; a
@@ -146,7 +146,7 @@
   identity, lifetime, the row that opened it, and every channel's state, written
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
-  ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
+  ({§acp-status-descendants}). `ApplicationPort.readStreams` reads it
   ({§methods}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
@@ -157,15 +157,15 @@
   ({§notifications}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
-  `/agui/connect` ({§acp-overview-run}, {§acp-overview-state},
-  {§acp-overview-updates}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
+  `/agui/connect` ({§acp-overview}, {§acp-overview},
+  {§acp-overview}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
   `PLURNK_AGUI_EXCERPT_CHARS` caps every list excerpt.
 - 2693a59: A change to a worker's model, effort or spawn model is announced as
   `worker/policy` ({§notifications}), and every client attached to
   the worker is sent the new route as `STATE_DELTA /plurnk/status/model`,
-  whichever view made the change ({§acp-status-model}). A delta an event causes
+  whichever view made the change ({§acp-status-descendants}). A delta an event causes
   reaches the Run before any later event, its terminal included
-  ({§acp-state-patches}).
+  ({§acp-status-descendants}).
 
 ### Patch Changes
 
@@ -234,7 +234,7 @@
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
   reported ({§notifications}, {§methods-workspace-create}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
-  a reattached observer agree ({§acp-state-patches}).
+  a reattached observer agree ({§acp-status-descendants}).
 - e52015a: A worker name lost to a concurrent claim is refused as `name-conflict` (409),
   like any taken name, instead of escaping as an internal error.
 - Updated dependencies [cfa2be9]

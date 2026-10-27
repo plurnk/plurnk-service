@@ -15,10 +15,10 @@ const CODE_TTL_MS = 60_000;
 const MAX_BODY_BYTES = 65_536;
 const MAX_REGISTERED_CLIENTS = 1_000;
 
-// {§auth-oauth-login} — the one local operator, the subject of every grant made for them whatever password
+// {§auth-oauth-clients} — the one local operator, the subject of every grant made for them whatever password
 // signed them in. Their built-in client shares the spelling; a client id is not a subject.
 const OPERATOR_SUBJECT = "operator";
-// {§auth-oauth-session} — the browser session's cookie, scoped to the authorization server's paths.
+// {§auth-oauth-clients} — the browser session's cookie, scoped to the authorization server's paths.
 const SESSION_COOKIE = "plurnk_session";
 const BROWSER = "browser";
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/u;
@@ -34,7 +34,7 @@ interface Client {
     readonly kind: "public" | "declared" | "module";
     /** The secret of a `declared` client; null for the other two kinds. */
     readonly secret: string | null;
-    /** {§auth-oauth-documents} A `module` client's registered stylesheet path; null for every other client. */
+    /** {§auth-oauth-clients} A `module` client's registered stylesheet path; null for every other client. */
     readonly stylesheet: string | null;
     readonly scopes: readonly string[];
     readonly redirectUris: readonly string[];
@@ -123,7 +123,7 @@ export default class OAuthServer {
     readonly #issuer: (req: Pick<IncomingMessage, "headers">) => string;
     readonly #clients = new Map<string, Client>();
     readonly #codes = new Map<string, Code>();
-    // {§auth-oauth-login} — current clock for authorization code expiry and registration timestamps.
+    // {§auth-oauth-clients} — current clock for authorization code expiry and registration timestamps.
     readonly #now: () => number;
     #registered = 0;
 
@@ -146,7 +146,7 @@ export default class OAuthServer {
             if (credentials.client(id) !== null) throw new Error(`PLURNK_AUTH_CLIENT_${id}: '${id}' is the id of a module's own client; declare another id.`);
             this.#clients.set(id, { id, kind: "declared", secret: declared.secret, stylesheet: null, scopes: declared.scopes, redirectUris: [], name: null });
         }
-        // {§auth-oauth-session} — a code not yet exchanged ends with the family it would issue into, so
+        // {§auth-oauth-clients} — a code not yet exchanged ends with the family it would issue into, so
         // a sign-in ended between authorization and exchange stays ended.
         credentials.onRevoked((family) => {
             for (const [code, pending] of this.#codes) if (pending.family === family) this.#codes.delete(code);
@@ -159,7 +159,7 @@ export default class OAuthServer {
         return [issuer, ...SCOPES.map((scope) => `${issuer}/${scope}`)];
     }
 
-    /** {§auth-oauth-endpoints} RFC 8414 */
+    /** {§auth-oauth} RFC 8414 */
     metadata(req: Pick<IncomingMessage, "headers">): Record<string, unknown> {
         const issuer = this.#issuer(req);
         return {
@@ -178,7 +178,7 @@ export default class OAuthServer {
         };
     }
 
-    /** {§auth-oauth-endpoints} RFC 9728 */
+    /** {§auth-oauth} RFC 9728 */
     resourceMetadata(req: Pick<IncomingMessage, "headers">): Record<string, unknown> {
         const issuer = this.#issuer(req);
         return {
@@ -220,7 +220,7 @@ export default class OAuthServer {
 
     // ── session ───────────────────────────────────────────────────────────
 
-    // {§auth-oauth-session} — the browser's session is a credential of the authority, presented as a cookie.
+    // {§auth-oauth-clients} — the browser's session is a credential of the authority, presented as a cookie.
     #session(req: IncomingMessage): CredentialClaims | null {
         const token = cookieValue(req, SESSION_COOKIE);
         if (token === null) return null;
@@ -254,7 +254,7 @@ export default class OAuthServer {
         return { id, kind: "module", secret: null, stylesheet: registered.stylesheetPath ?? null, scopes: registered.scopes, redirectUris: registered.redirectPaths.map((path) => `${issuer}${path}`), name: null };
     }
 
-    // {§auth-oauth-endpoints} — a module's client is answered only at its path on the issuer; any other
+    // {§auth-oauth} — a module's client is answered only at its path on the issuer; any other
     // client at a registered address, a loopback one on any port (RFC 8252 §7.3).
     static #redirects(client: Client, presented: string): boolean {
         return client.kind === "module"
@@ -278,7 +278,7 @@ export default class OAuthServer {
             : AuthorizationDocuments.signedIn(stylesheet === null ? {} : { client_id: clientId! }), stylesheet);
     }
 
-    // {§auth-oauth-documents} — a stylesheet is a module client's registration, which the request can
+    // {§auth-oauth-clients} — a stylesheet is a module client's registration, which the request can
     // only name, never supply.
     #stylesheet(clientId: string | null): string | null {
         return clientId === null ? null : this.#credentials.client(clientId)?.stylesheetPath ?? null;
@@ -343,7 +343,7 @@ export default class OAuthServer {
             return;
         }
 
-        // {§auth-oauth-session} — a module's own client is authorized by the browser's sign-in and by
+        // {§auth-oauth-clients} — a module's own client is authorized by the browser's sign-in and by
         // nothing else, so its grant joins that sign-in's family: ending either ends both. Any other
         // client's grant is a standing of its own, in a fresh family.
         const issue = (session: CredentialClaims): void => {
@@ -364,7 +364,7 @@ export default class OAuthServer {
                 .filter((name) => params.has(name)).map((name) => [name, params.get(name)!])),
         };
 
-        // {§auth-oauth-session} — a browser is the operator only once it has signed in. A consent
+        // {§auth-oauth-clients} — a browser is the operator only once it has signed in. A consent
         // decision counts only with the session the request carries, which a cross-site POST cannot.
         const session = this.#session(req);
         if (session !== null) {
@@ -377,7 +377,7 @@ export default class OAuthServer {
             return;
         }
 
-        // {§auth-oauth-login} — the operator signs in here. Without a password no browser can: the page
+        // {§auth-oauth-clients} — the operator signs in here. Without a password no browser can: the page
         // says the password is empty and where to set it, and issues nothing.
         if (this.#opts.password.length === 0) {
             this.#html(res, 503, AuthorizationDocuments.noPassword(), client.stylesheet);
@@ -517,7 +517,7 @@ export default class OAuthServer {
         this.#json(res, 200, body);
     }
 
-    // ── revocation (RFC 7009, {§auth-oauth-revocation}) ─────────────────────────────────────────
+    // ── revocation (RFC 7009, {§auth-oauth-tokens}) ─────────────────────────────────────────
 
     async #revoke(req: IncomingMessage, res: ServerResponse): Promise<void> {
         const form = await this.#form(req);

@@ -1,6 +1,6 @@
 // Test-only JSON-RPC-shaped adapter over ApplicationPort. It is harness plumbing, not a
 // product protocol or ACP projection; client parsing remains ACP-owned.
-// {§methods} {§acp-op-parse}
+// {§methods} {§acp-action-binding}
 // It holds the attached envelope, lazy model-session binding, and workspace-filtered
 // notification fan-in that integration tests need. Its operations are one person's client
 // operations ({§connection-lifecycle}): they journal in the workspace's runtime session,
@@ -21,7 +21,7 @@ export default class SeamSocket {
     #modelSessionId: number | null = null;
     #closed = false;
     static readonly owner = "test://primary";
-    // A client names the session its runs address ({§acp-thread-binding}). A run that names no session
+    // A client names the session its runs address ({§acp-daemon-client}). A run that names no session
     // addresses this one, so every connection to a workspace shares it.
     static readonly session = "main";
 

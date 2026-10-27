@@ -710,7 +710,7 @@ const createHarness = async (options?: { authMode?: "none" | "oauth"; env?: Reco
     };
 };
 
-test("{§acp-daemon-client} {§acp-client-types} {§acp-configuration} {§acp-listener-admission} {§acp-shutdown}: module lifecycle, configuration validation, and runtime-neutral client types", async () => {
+test("{§acp-daemon-client} {§acp-daemon-client} {§acp-http-authorization} {§acp-daemon-client} {§acp-session-owner}: module lifecycle, configuration validation, and runtime-neutral client types", async () => {
     // Verify client types compile and represent state and action outcomes
     const sampleOutcome: ActionOutcome<string> = { ok: true, result: "ok" };
     assert.equal(sampleOutcome.ok, true);
@@ -719,7 +719,7 @@ test("{§acp-daemon-client} {§acp-client-types} {§acp-configuration} {§acp-li
     };
     assert.equal(sampleState.budget?.curationWeight, 10);
 
-    // Invalid configuration fails module creation ({§acp-configuration})
+    // Invalid configuration fails module creation ({§acp-http-authorization})
     assert.throws(
         () => Module.create({ env: { PLURNK_ACP_HEARTBEAT_MS: "invalid" } }),
         /PLURNK_ACP_HEARTBEAT_MS must be a safe integer/,
@@ -728,7 +728,7 @@ test("{§acp-daemon-client} {§acp-client-types} {§acp-configuration} {§acp-li
     const h = await createHarness();
     try {
         h.acpModule.stop();
-        // After stop, HTTP requests receive 503 service-stopping ({§acp-listener-admission}, {§acp-shutdown})
+        // After stop, HTTP requests receive 503 service-stopping ({§acp-daemon-client}, {§acp-session-owner})
         const res = await fetch(h.baseUrl, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -742,15 +742,15 @@ test("{§acp-daemon-client} {§acp-client-types} {§acp-configuration} {§acp-li
     }
 });
 
-test("{§acp-run-endpoint} {§acp-run-authority} {§acp-cors} {§acp-http-authorization} {§acp-http-failure} {§acp-oauth-revocation} {§problems-acp}: Streamable HTTP, WebSocket, CORS, OAuth perimeter, and revocation", async () => {
+test("{§acp-http-authorization} {§acp-daemon-client} {§acp-http-authorization} {§acp-http-authorization} {§acp-http-authorization} {§acp-http-authorization} {§acp-http-authorization}: Streamable HTTP, WebSocket, CORS, OAuth perimeter, and revocation", async () => {
     const h = await createHarness({ authMode: "oauth" });
     try {
-        // CORS preflight answers 204 before authorization ({§acp-cors})
+        // CORS preflight answers 204 before authorization ({§acp-http-authorization})
         const preflight = await fetch(h.baseUrl, { method: "OPTIONS" });
         assert.equal(preflight.status, 204);
         assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
 
-        // Unauthenticated POST returns 401 bearer-token-required ({§acp-http-authorization}, {§acp-http-failure}, {§problems-acp})
+        // Unauthenticated POST returns 401 bearer-token-required ({§acp-http-authorization}, {§acp-http-authorization}, {§acp-http-authorization})
         const unauth = await fetch(h.baseUrl, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -772,7 +772,7 @@ test("{§acp-run-endpoint} {§acp-run-authority} {§acp-cors} {§acp-http-author
         });
         assert.equal(badScope.status, 403);
 
-        // Authenticated Streamable HTTP client connects via createHttpStream ({§acp-run-endpoint}, {§acp-run-authority})
+        // Authenticated Streamable HTTP client connects via createHttpStream ({§acp-http-authorization}, {§acp-daemon-client})
         const httpStream = createHttpStream(h.baseUrl, {
             headers: { authorization: "Bearer valid-token" },
         });
@@ -785,7 +785,7 @@ test("{§acp-run-endpoint} {§acp-run-authority} {§acp-cors} {§acp-http-author
             assert.ok(init.response.capabilities?.session);
         });
 
-        // Authenticated WebSocket client connects and closes on OAuth revocation ({§acp-oauth-revocation})
+        // Authenticated WebSocket client connects and closes on OAuth revocation ({§acp-http-authorization})
         const wsStream = createWebSocketStream(h.wsUrl, {
             WebSocket: WsConstructor,
             headers: { authorization: "Bearer valid-token" },
@@ -800,13 +800,13 @@ test("{§acp-run-endpoint} {§acp-run-authority} {§acp-cors} {§acp-http-author
     }
 });
 
-test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§acp-run-start} {§acp-session-owner} {§acp-owner-activation} {§acp-place-hiding}: session/new, session/resume, session/fork, session/list, session/delete, session/close, and qualified addresses", async () => {
+test("{§acp-daemon-client} {§acp-daemon-client} {§acp-action-binding} {§acp-plurnk-metadata} {§acp-session-owner} {§acp-session-owner} {§acp-action-binding}: session/new, session/resume, session/fork, session/list, session/delete, session/close, and qualified addresses", async () => {
     const h = await createHarness();
     try {
         const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
         const app = createAcpClient();
         await app.connectWith(stream, async (ctx) => {
-            // session/new creates a session in the workspace for cwd and returns configOptions, availableCommands, and _meta.plurnk ({§acp-run-start})
+            // session/new creates a session in the workspace for cwd and returns configOptions, availableCommands, and _meta.plurnk ({§acp-plurnk-metadata})
             const created = await ctx.request(methods.agent.session.new, {
                 cwd: "/workspace/alpha",
                 _meta: { plurnk: { name: "alice" } },
@@ -818,7 +818,7 @@ test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§ac
             assert.ok(Array.isArray(created.availableCommands));
             assert.ok(created.availableCommands?.some((cmd) => cmd.name === "mcp"));
 
-            // Invalid qualified address fails with 400 session-address-invalid ({§acp-thread-address})
+            // Invalid qualified address fails with 400 session-address-invalid ({§acp-daemon-client})
             await assert.rejects(
                 () =>
                     ctx.request(methods.agent.session.resume, {
@@ -838,14 +838,14 @@ test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§ac
                 /session-not-found|session-not-found/,
             );
 
-            // session/fork forks the session ({§acp-thread-binding})
+            // session/fork forks the session ({§acp-daemon-client})
             const forked = await ctx.request(methods.agent.session.fork, {
                 sessionId: "1#alice",
                 cwd: "/workspace/alpha",
             });
             assert.match(forked.sessionId, /^1#/);
 
-            // session/list lists visible sessions; session/delete hides a session ({§acp-place-hiding})
+            // session/list lists visible sessions; session/delete hides a session ({§acp-action-binding})
             const listedBefore = await ctx.request(methods.agent.session.list, {
                 cwd: "/workspace/alpha",
             });
@@ -859,7 +859,7 @@ test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§ac
             });
             assert.ok(!listedAfter.sessions.some((s) => s.sessionId === forked.sessionId));
 
-            // session/close detaches observation without deleting the session ({§acp-run-disconnect})
+            // session/close detaches observation without deleting the session ({§acp-session-owner})
             await ctx.request(methods.agent.session.close, {
                 sessionId: "1#alice",
             });
@@ -873,7 +873,7 @@ test("{§acp-thread-binding} {§acp-thread-address} {§acp-action-binding} {§ac
     }
 });
 
-test("{§acp-session-model-actions} {§acp-session-effort-actions} {§acp-provider-routes} {§acp-status-model} {§acp-state-patches} {§acp-workspace-state}: session/set_config_option, config_option_update, and providers/list", async () => {
+test("{§acp-action-binding} {§acp-action-binding} {§acp-status-descendants} {§acp-status-descendants} {§acp-status-descendants} {§acp-status-descendants}: session/set_config_option, config_option_update, and providers/list", async () => {
     const h = await createHarness();
     try {
         const updates: SessionUpdate[] = [];
@@ -893,11 +893,11 @@ test("{§acp-session-model-actions} {§acp-session-effort-actions} {§acp-provid
             assert.equal(plurnkMeta?.workspace?.name, "alpha");
             assert.equal(plurnkMeta?.providers?.[0]?.alias, "fast");
 
-            // providers/list returns configured provider aliases and models ({§acp-provider-routes})
+            // providers/list returns configured provider aliases and models ({§acp-status-descendants})
             const providers = await ctx.request(methods.agent.providers.list, {});
             assert.ok(providers.providers.length > 0);
 
-            // session/set_config_option updates model and effort ({§acp-session-model-actions}, {§acp-session-effort-actions})
+            // session/set_config_option updates model and effort ({§acp-action-binding}, {§acp-action-binding})
             const updatedModel = await ctx.request(methods.agent.session.setConfigOption, {
                 sessionId: session.sessionId,
                 configId: "model",
@@ -956,14 +956,14 @@ test("{§acp-session-model-actions} {§acp-session-effort-actions} {§acp-provid
     }
 });
 
-test("{§acp-run-input} {§acp-message-acceptance} {§acp-run-source} {§acp-run-outcome} {§acp-cost-evidence} {§acp-numbers-passthrough} {§acp-status-spend} {§acp-status-timing} {§acp-status-loop-number} {§acp-status-wait} {§acp-run-disconnect} {§acp-owner-connection}: session/prompt, idempotency, usage_update, and state_update", async () => {
+test("{§acp-http-authorization} {§acp-http-authorization} {§acp-http-authorization} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-status-descendants} {§acp-status-descendants} {§acp-status-descendants} {§acp-status-descendants} {§acp-status-descendants} {§acp-session-owner} {§acp-session-owner}: session/prompt, idempotency, usage_update, and state_update", async () => {
     const h = await createHarness();
     try {
         const stream = createWebSocketStream(h.wsUrl, { WebSocket: WsConstructor });
         const app = createAcpClient();
         await app.connectWith(stream, async (ctx) => {
             await ctx.buildSession("/workspace/alpha").withSession(async (session) => {
-                // Empty prompt is rejected with 400 user-message-text-required ({§acp-run-input})
+                // Empty prompt is rejected with 400 user-message-text-required ({§acp-http-authorization})
                 await assert.rejects(
                     () =>
                         ctx.request(methods.agent.session.prompt, {
@@ -973,7 +973,7 @@ test("{§acp-run-input} {§acp-message-acceptance} {§acp-run-source} {§acp-run
                     /user-message-text-required/,
                 );
 
-                // Prompt submits message with messageId idempotency and streams reply + usage_update + idle state_update ({§acp-run-outcome})
+                // Prompt submits message with messageId idempotency and streams reply + usage_update + idle state_update ({§acp-plurnk-metadata})
                 const promptRes = await ctx.request(methods.agent.session.prompt, {
                     sessionId: session.sessionId,
                     prompt: [{ type: "text", text: "Hello ACP v2" }],
@@ -984,7 +984,7 @@ test("{§acp-run-input} {§acp-message-acceptance} {§acp-run-source} {§acp-run
                 const replyText = await session.readTextUntilIdle();
                 assert.match(replyText, /Echo: Hello ACP v2/);
 
-                // Reusing messageId with different text fails with 422 message-address-reused ({§acp-run-input})
+                // Reusing messageId with different text fails with 422 message-address-reused ({§acp-http-authorization})
                 await assert.rejects(
                     () =>
                         ctx.request(methods.agent.session.prompt, {
@@ -1001,7 +1001,7 @@ test("{§acp-run-input} {§acp-message-acceptance} {§acp-run-source} {§acp-run
     }
 });
 
-test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§acp-progress-reply} {§acp-outside-text} {§acp-ambient} {§acp-plurnk-metadata} {§acp-readable-reasoning} {§acp-reasoning-link} {§acp-encrypted-reasoning} {§acp-body-reference} {§acp-entry-route} {§acp-status-streams} {§acp-stream-producer} {§acp-status-descendants} {§acp-topology-scope} {§acp-delegation-observation} {§acp-subagents}: event projection for thoughts, tool calls, diffs, terminals, subagents, outside text, notices, and entry route", async () => {
+test("{§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-plurnk-metadata} {§acp-body-reference} {§acp-body-reference} {§acp-status-descendants} {§acp-action-binding} {§acp-status-descendants} {§acp-topology-scope} {§acp-topology-scope} {§acp-topology-scope}: event projection for thoughts, tool calls, diffs, terminals, subagents, outside text, notices, and entry route", async () => {
     const h = await createHarness();
     try {
         const updates: SessionUpdate[] = [];
@@ -1016,7 +1016,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
             });
             assert.ok(session.configOptions);
 
-            // 1. Readable reasoning delta ({§acp-readable-reasoning})
+            // 1. Readable reasoning delta ({§acp-plurnk-metadata})
             h.port.emitEvent({
                 type: "reasoning/event",
                 workspaceId: 1,
@@ -1026,7 +1026,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 delta: "Thinking step 1...",
             });
 
-            // 2. Outside text ({§acp-outside-text})
+            // 2. Outside text ({§acp-plurnk-metadata})
             h.port.emitEvent({
                 type: "outside/event",
                 workspaceId: 1,
@@ -1063,7 +1063,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 },
             });
 
-            // 4. Obligation-opening sh:// stream + terminal_update + terminal_output_chunk + obligation discharge ({§acp-call-result}, {§acp-status-streams}, {§acp-stream-producer})
+            // 4. Obligation-opening sh:// stream + terminal_update + terminal_output_chunk + obligation discharge ({§acp-plurnk-metadata}, {§acp-status-descendants}, {§acp-action-binding})
             h.port.emitEvent({
                 type: "log/entry",
                 workspaceId: 1,
@@ -1126,7 +1126,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 },
             });
 
-            // 5. Parse refusal ({§acp-parse-refusal}) and ambient row ({§acp-ambient})
+            // 5. Parse refusal ({§acp-plurnk-metadata}) and ambient row ({§acp-plurnk-metadata})
             h.port.emitEvent({
                 type: "log/entry",
                 workspaceId: 1,
@@ -1155,7 +1155,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 notice: { level: "warn", code: "test-notice", message: "Watch out" },
             });
 
-            // 6. Delegated child session, subagent_update, session_message, and child cancel ({§acp-status-descendants}, {§acp-delegation-observation}, {§acp-subagents})
+            // 6. Delegated child session, subagent_update, session_message, and child cancel ({§acp-status-descendants}, {§acp-topology-scope}, {§acp-topology-scope})
             h.port.sessions.push({
                 id: 2,
                 workspaceId: 1,
@@ -1263,7 +1263,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
                 }),
             );
 
-            // Entry route serves body by reference ({§acp-entry-route})
+            // Entry route serves body by reference ({§acp-body-reference})
             const entryUrl = `${h.baseUrl}/1/1/entry?target=${encodeURIComponent("log:///1/1/2/EDIT")}`;
             const entryRes = await fetch(entryUrl);
             assert.equal(entryRes.status, 200);
@@ -1277,7 +1277,7 @@ test("{§acp-lifecycle-projection} {§acp-call-result} {§acp-parse-refusal} {§
     }
 });
 
-test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate} {§acp-resume-before-gate} {§acp-proposal-disposition} {§acp-held-interrupts}: session/request_permission, elicitation/create, elicitation/complete, and multi-peer $/cancel_request", async () => {
+test("{§acp-proposal-resolve} {§acp-proposal-resolve} {§acp-proposal-resolve} {§acp-proposal-resolve} {§acp-proposal-resolve} {§acp-session-owner}: session/request_permission, elicitation/create, elicitation/complete, and multi-peer $/cancel_request", async () => {
     const h = await createHarness();
     try {
         const permissionRequests1: RequestPermissionRequest[] = [];
@@ -1327,7 +1327,7 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                     cwd: "/workspace/alpha",
                 });
 
-                // Emit a command proposal ({§acp-proposal-resolve}, {§acp-proposal-disposition})
+                // Emit a command proposal ({§acp-proposal-resolve}, {§acp-proposal-resolve})
                 const proposal = {
                     logEntryId: 501,
                     workspaceId: 1,
@@ -1391,7 +1391,7 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
                     ],
                 );
                 assert.equal(h.port.proposals.length, 0, "proposal resolved in port");
-                assert.equal(peer2Cancelled, true, "second peer received $/cancel_request ({§acp-gate-deferral})");
+                assert.equal(peer2Cancelled, true, "second peer received $/cancel_request ({§acp-proposal-resolve})");
 
                 assert.equal(elicitations1.length, 1);
                 assert.equal(elicitations1[0]?.mode, "form");
@@ -1404,7 +1404,7 @@ test("{§acp-proposal-resolve} {§acp-gate-deferral} {§acp-message-before-gate}
     }
 });
 
-test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp-history-page} {§acp-loop-page} {§acp-history-advance} {§acp-words-by-reference}: session/resume replay window and HTTP history pagination", async () => {
+test("{§acp-history-window} {§acp-history-window} {§acp-history-window} {§acp-history-window} {§acp-history-window} {§acp-history-window} {§acp-history-window} {§acp-history-window}: session/resume replay window and HTTP history pagination", async () => {
     const h = await createHarness({
         env: {
             PLURNK_ACP_HISTORY_LOOPS: "1",
@@ -1495,7 +1495,7 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
                 cwd: "/workspace/alpha",
                 replayFrom: { type: "start" },
             });
-            // Replay emits newest loop (Loop 2) and links older history ({§acp-history-window}, {§acp-history-advance})
+            // Replay emits newest loop (Loop 2) and links older history ({§acp-history-window}, {§acp-history-window})
             const historyMeta = (
                 resumed._meta as { plurnk?: { history?: { older?: string } } } | undefined
             )?.plurnk?.history;
@@ -1503,13 +1503,13 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
             assert.ok(replayed.some((u) => u.sessionUpdate === "user_message_chunk"));
             assert.ok(replayed.some((u) => u.sessionUpdate === "agent_message_chunk"));
 
-            // Fetch older history page via HTTP GET ({§acp-history-page})
+            // Fetch older history page via HTTP GET ({§acp-history-window})
             const pageRes = await fetch(historyMeta.older);
             assert.equal(pageRes.status, 200);
             const page = (await pageRes.json()) as Record<string, unknown>;
             assert.ok(Array.isArray(page.updates));
 
-            // Fetch loop page by sequence number ({§acp-loop-page})
+            // Fetch loop page by sequence number ({§acp-history-window})
             const loopRes = await fetch(`${h.baseUrl}/1/1/messages?session=${encodeURIComponent("1#user")}&loop=1`);
             assert.equal(loopRes.status, 200);
             const loopPage = (await loopRes.json()) as Record<string, unknown>;
@@ -1520,7 +1520,7 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
     }
 });
 
-test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overview-updates} {§acp-management-plane} {§acp-session-loops} {§acp-client-operation} {§acp-op-parse} {§acp-module-action-scope} {§acp-module-actions} {§discovery} {§contract-representations} {§acp-broadcast-fan} {§pinned-wording-acp}: session/list directory, slash commands, _plurnk/action, op.parse, and discovery contract", async () => {
+test("{§acp-overview} {§acp-overview} {§acp-overview} {§acp-overview} {§acp-action-binding} {§acp-action-binding} {§acp-action-binding} {§acp-action-binding} {§acp-action-binding} {§acp-action-binding} {§acp-action-binding} {§contract-representations} {§acp-http-authorization} {§acp-action-binding}: session/list directory, slash commands, _plurnk/action, op.parse, and discovery contract", async () => {
     const h = await createHarness();
     try {
         const updates: SessionUpdate[] = [];
@@ -1529,7 +1529,7 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
             updates.push(params.update);
         });
         await app.connectWith(stream, async (ctx) => {
-            // 1. session/list returns structured overview state ({§acp-overview}, {§acp-overview-run}, {§acp-overview-state})
+            // 1. session/list returns structured overview state ({§acp-overview}, {§acp-overview}, {§acp-overview})
             const listed = await ctx.request(methods.agent.session.list, {});
             assert.ok(listed.sessions.length >= 1);
             const firstMeta = listed.sessions[0]?._meta as
@@ -1537,7 +1537,7 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
                 | undefined;
             assert.ok(firstMeta?.plurnk?.reply?.body?.url);
 
-            // 2. discover action returns valid AcpDiscovery manifest ({§discovery}, {§contract-representations})
+            // 2. discover action returns valid AcpDiscovery manifest ({§acp-action-binding}, {§contract-representations})
             const discovered = await ctx.request<AcpDiscovery>("_plurnk/action", {
                 kind: "discover",
                 params: {},
@@ -1563,7 +1563,7 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
                 }),
             );
 
-            // 3. session.loops returns loop projections ({§acp-session-loops})
+            // 3. session.loops returns loop projections ({§acp-action-binding})
             const loops = await ctx.request<{ items?: unknown[] } | unknown[]>("_plurnk/action", {
                 kind: "session.loops",
                 workspace: "alpha",
@@ -1571,7 +1571,7 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
             });
             assert.ok(Array.isArray(Array.isArray(loops) ? loops : loops.items));
 
-            // 4. op.parse dispatches valid statements and reports parse errors ({§acp-client-operation}, {§acp-op-parse})
+            // 4. op.parse dispatches valid statements and reports parse errors ({§acp-action-binding}, {§acp-action-binding})
             const parsedOk = await ctx.request<{ results: Array<{ status: number }> }>("_plurnk/action", {
                 kind: "op.parse",
                 workspace: "alpha",
@@ -1588,7 +1588,7 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
             assert.ok(Array.isArray(parsedBad.results));
             assert.equal(parsedBad.results[0]?.status, 400);
 
-            // 5. Module action invocation via _plurnk/action ({§acp-module-action-scope}, {§acp-module-actions})
+            // 5. Module action invocation via _plurnk/action ({§acp-action-binding}, {§acp-action-binding})
             const mcpList = await ctx.request<Record<string, unknown>>("_plurnk/action", {
                 kind: "workspace.mcp.list",
                 workspace: "alpha",
@@ -1596,7 +1596,7 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
             });
             assert.deepEqual(mcpList, { items: [] });
 
-            // 6. Pinned wording on unknown action and invalid schema ({§pinned-wording-acp})
+            // 6. Pinned wording on unknown action and invalid schema ({§acp-action-binding})
             await assert.rejects(
                 () => ctx.request("_plurnk/action", { kind: "no.such.action", params: {} }),
                 /Action 'no\.such\.action' is not registered\. Recovery: Use an action advertised by discover\./,

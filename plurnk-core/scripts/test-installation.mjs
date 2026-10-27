@@ -664,7 +664,7 @@ const dormantBoot = await bootStart(dormantMcpEnv, async (address) => {
 \`\`\`\``,
         },
     });
-    // {§acp-client-operation}: a person's explicit operation is their decision, not an approval request.
+    // {§acp-action-binding}: a person's explicit operation is their decision, not an approval request.
     const terminal = executed.events.find((event) => event.result !== undefined || event.error !== undefined);
     const completed = terminal?.result;
     if (!executed.response.ok || terminal?.error !== undefined || completed === undefined

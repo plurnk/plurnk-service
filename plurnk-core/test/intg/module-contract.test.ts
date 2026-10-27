@@ -1553,7 +1553,7 @@ test("{§module-http-mounts} a daemon with a listener needs no root owner", asyn
     assert.equal((await get("/missing")).status, 404);
 });
 
-test("{§acp-run-endpoint} ACP serves /acp without occupying the root", async (t) => {
+test("{§acp-http-authorization} ACP serves /acp without occupying the root", async (t) => {
     const client = AcpModule.create();
     assert.deepEqual(client.mounts, ["/acp"]);
     const { daemon, get, port } = await fixture(t, client);
@@ -1595,7 +1595,7 @@ test("{§acp-run-endpoint} ACP serves /acp without occupying the root", async (t
     assert.equal((await get("/")).status, 404);
 });
 
-test("{§auth-oauth-endpoints} an authenticating AuthModule claims its authorization server's paths beside /acp, never the root", async (t) => {
+test("{§auth-oauth} an authenticating AuthModule claims its authorization server's paths beside /acp, never the root", async (t) => {
     const auth = AuthModule.create({ auth: true });
     assert.deepEqual(auth.mounts, ["/oauth", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"]);
     const client = AcpModule.create();

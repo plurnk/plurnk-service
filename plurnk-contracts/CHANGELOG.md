@@ -27,7 +27,7 @@
 - cfa2be9: An address at the daemon has one HTTP form:
   `GET /agui/<workspace>/<worker>/entry?target=<address>` answers the channel
   the address selects, read from that worker's perspective through
-  `ApplicationPort.readEntryChannel` ({§acp-entry-route},
+  `ApplicationPort.readEntryChannel` ({§acp-body-reference},
   {§methods}). A result's body, a turn's reasoning and a
   message's words travel by reference at it. A log row names its worker,
   `worker_name` beside `worker_id` ({§methods-invocation}).
@@ -44,7 +44,7 @@
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
   `worker/hidden`. AG-UI: `workspace.hidden.set`, `worker.hidden.set`;
   `workspace.list` and `workspace.workers` take `includeHidden`
-  ({§acp-place-hiding}). Migration 33.
+  ({§acp-action-binding}). Migration 33.
 - 878d630: The package root exports the value guards `isRecord`, `isSafeInteger` and
   `errnoCode`
   ({§text-region}); `Validator`'s asserts take `unknown` and return the wire
@@ -54,7 +54,7 @@
   the loop's number among its worker's loops, beside `loopId`
   ({§notifications}, {§notifications},
   {§operation-results}). The AG-UI status gauge carries it as `status.loopSeq`,
-  replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
+  replaced in every delta that replaces `loopId` ({§acp-status-descendants}); the
   conformance kit's gauge carries it.
 - 50fbe81: An interactive `McpOAuth` definition may name the `issuer` its sign-in binds
   to, where discovery starts, and `authorizationParams` added to the
@@ -72,20 +72,20 @@
   `forwardedProps.plurnk.reasoning: "link"`: each reasoning message holds no
   text and names its turn's `reasoning://<worker>/L/T` address in its HTTP form,
   the live text arrives as `CUSTOM plurnk.reasoning`, and a snapshot holds each
-  turn's link ({§acp-reasoning-link}). Every other Run receives reasoning as
+  turn's link ({§acp-plurnk-metadata}). Every other Run receives reasoning as
   AG-UI defines it. No row repeats reasoning its message holds.
 - de9ce8f: `status.streams` lists the streams the bound Worker holds open, each with its
   identity, lifetime, the row that opened it, and every channel's state, written
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
-  ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
+  ({§acp-status-descendants}). `ApplicationPort.readStreams` reads it
   ({§methods}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
   reported ({§notifications}, {§methods-workspace-create}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
-  a reattached observer agree ({§acp-state-patches}).
+  a reattached observer agree ({§acp-status-descendants}).
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
   finished first and bounded ({§methods-workspace-create}, {§message-completion},
@@ -94,8 +94,8 @@
   ({§notifications}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
-  `/agui/connect` ({§acp-overview-run}, {§acp-overview-state},
-  {§acp-overview-updates}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
+  `/agui/connect` ({§acp-overview}, {§acp-overview},
+  {§acp-overview}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
   `PLURNK_AGUI_EXCERPT_CHARS` caps every list excerpt.
 
 ### Patch Changes

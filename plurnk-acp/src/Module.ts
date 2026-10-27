@@ -1,3 +1,4 @@
+// {§acp-session-owner} {§acp-body-reference} {§acp-proposal-resolve} {§acp-topology-scope}
 // Pure ACP v2 server module on `/acp`.
 // Exposes Streamable HTTP (`http://<host>:<port>/acp`) and WebSocket (`ws://<host>:<port>/acp`)
 // backed by `@agentclientprotocol/sdk`, translating between standard ACP v2 methods/notifications

@@ -6,7 +6,7 @@ OAuth 2.1 authorization server module for the PLURNK daemon.
 
 When `PLURNK_AUTH=1`, this module publishes the issuing face on the daemon's
 `CredentialAuthority` ({§credential-authority}) and mounts the OAuth 2.1
-authorization server on the daemon's listener ({§auth-oauth-endpoints}):
+authorization server on the daemon's listener ({§auth-oauth}):
 
 - `GET /.well-known/oauth-authorization-server` (RFC 8414)
 - `GET /.well-known/oauth-protected-resource` (RFC 9728)
