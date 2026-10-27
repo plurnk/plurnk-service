@@ -11,36 +11,6 @@ Deterministic helpers for reading and reshaping large classes. They were written
 | `strip-unused-imports.mjs <file.ts>...` | the files | removes import specifiers no code outside the import block and comments uses |
 | `spec-tag-inventory.mjs` | every `SPEC.md` and source file under the working directory | declared tags, where they are cited from, and the per-SPEC list of tags nothing cites |
 | `harness-usage.mjs [--suites]` | `plurnk-core/test/intg` | which exports of the integration harness each suite uses, so a helper change is read against the suites it can redden (#887) |
-| `clamp-audit.mjs <cmd>` | `plurnk-service`, `../plurnk`, `../plurnk-bench`, and `clamp-ledger.json` | drives and mechanically gates the 19-unit Specification & Coverage Review (`init`, `status`, `show`, `decide-tag`, `decide-test`, `verify`) |
-
-## Specification and coverage clamp review (`clamp-audit.mjs`)
-
-`scripts/anatomy/clamp-audit.mjs` and its checked-in ledger `scripts/anatomy/clamp-ledger.json` partition all 38 `SPEC.md` files (1,625 `§` tags) and all 972 `.test.*` files across `plurnk-service`, `../plurnk`, and `../plurnk-bench` into 19 bounded work units with hard numerical and structural budgets.
-
-### Commands
-
-1. `node scripts/anatomy/clamp-audit.mjs status [--unit <unit-id>]` — print the scoreboard across all 19 work units (live vs. budget ceilings for heading tags, non-heading tags, `SPEC.md` LOC, unit files, integration files, pending dispositions, and verification status).
-2. `node scripts/anatomy/clamp-audit.mjs show <unit-id> [--pending]` — print the work unit's budgets, every `§` tag (declaration shape, line, code/test citation counts, disposition), every `.test.*` file (tier, LOC, `test()` count, untagged `test()` count, `openMigrated`/`launch` usage, disposition), and current verification blockers.
-3. `node scripts/anatomy/clamp-audit.mjs decide-tag <unit-id> <tag> <disposition> [--target <heading-tag-or-doc>] --reason "<text>"` — record a tag disposition:
-   - `keep-heading`: tag survives as a `## §tag` or `### §tag` heading in `SPEC.md`.
-   - `fold-into` (`--target <heading-tag>`): prose is folded into the parent heading section; the micro-tag is removed from `SPEC.md` and `{§tag}` citations are re-pointed to `{§<heading-tag>}`.
-   - `move-to-doc` (`--target <doc-path>`): architectural/process prose moved to `ARCHITECTURE.md` or `AGENTS.md`; tag removed from `SPEC.md` and code/tests.
-   - `purge:<tombstone|pinned-wording|problem-table|internal-diary|duplicate|retired-shim>`: deleted from `SPEC.md`, `src/`, and `test/`.
-4. `node scripts/anatomy/clamp-audit.mjs decide-test <unit-id> <file> <disposition> [--target <suite-path>] --reason "<text>"` — record a test file disposition:
-   - `keep-suite`: approved canonical unit or integration suite.
-   - `merge-into` (`--target <suite-path>`): unique assertions merged into the canonical domain suite and the fragmented file deleted via `git rm`.
-   - `demote-to-unit` (`--target <unit-suite-path>`): in-memory/contract assertions moved out of `test/intg/` into `src/*.test.ts` and the `test/intg/` file deleted via `git rm`.
-   - `purge:<tombstone|pinned-wording|duplicate|retired-shim|ceremony>`: deleted via `git rm`.
-5. `node scripts/anatomy/clamp-audit.mjs verify [<unit-id> | --all]` — fail nonzero unless all 10 invariants hold for the unit:
-   - Zero `"pending"` tags or test files remain, and every disposition has a specific `--reason` (≥ 15 chars, at most 3 identical reasons per unit).
-   - 100% of surviving `§` tags in the unit's `SPEC.md` scope are declared on Markdown headings (`## §tag` or `### §tag`); zero paragraph, list, or table-row tag declarations remain.
-   - Zero `<!-- map -->` tables remain in the unit's `SPEC.md` scope.
-   - Zero `§pinned-wording-*` or `§problems-*` tags remain.
-   - Every surviving heading `§` tag has both an implementation/panel citation (`src/` or `.env.defaults`) and a test citation (`*.test.*`).
-   - Every tag marked `fold-into`, `move-to-doc`, or `purge:*` is absent from `SPEC.md` and absent from `{§tag}` citations across the repository.
-   - Every test file marked `merge-into`, `demote-to-unit`, or `purge:*` has been removed from disk, and any `--target` suite exists.
-   - Every `test(...)` block in surviving deterministic suites cites at least one `{§tag}`.
-   - Live counts satisfy `minHeadingTags <= tags <= maxHeadingTags`, `specLines <= maxSpecLines`, `unitFiles <= maxUnitFiles`, and `intgFiles <= maxIntgFiles`.
 
 ## Extracting a class
 
