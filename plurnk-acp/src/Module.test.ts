@@ -27,6 +27,16 @@ import {
     makeTerminatedEvent,
 } from "../test/harness.ts";
 
+const waitFor = async (predicate: () => boolean, timeoutMs = 5_000): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+    while (!predicate()) {
+        if (Date.now() >= deadline) {
+            throw new Error(`Timed out waiting for condition after ${timeoutMs}ms`);
+        }
+        await new Promise((r) => setTimeout(r, 10));
+    }
+};
+
 describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () => {
     test("{§acp-daemon-client} {§acp-http-authorization} {§acp-session-owner}: module lifecycle, configuration validation, and runtime-neutral client types", async () => {
         const sampleOutcome: ActionOutcome<string> = { ok: true, result: "ok" };
@@ -459,7 +469,16 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     sessionId: "1#helper",
                 });
 
-                await new Promise((r) => setTimeout(r, 50));
+                await waitFor(
+                    () =>
+                        updates.some((u) => u.sessionUpdate === "usage_update") &&
+                        updates.some(
+                            (u) =>
+                                u.sessionUpdate === "subagent_update" &&
+                                u.sessionId === "1#helper" &&
+                                (u.state as { state?: string } | undefined)?.state === "idle",
+                        ),
+                );
 
                 assert.ok(updates.some((u) => u.sessionUpdate === "agent_thought_chunk"));
                 assert.ok(updates.some((u) => u.sessionUpdate === "agent_message_chunk"));
@@ -612,7 +631,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     h.port.interactions.push(interaction);
                     h.port.emitEvent(1, "loop/interaction", interaction);
 
-                    await new Promise((r) => setTimeout(r, 80));
+                    await waitFor(
+                        () =>
+                            h.port.proposals.length === 0 &&
+                            peer2Cancelled &&
+                            h.port.interactions.length === 0 &&
+                            completedElicitations.length > 0,
+                    );
 
                     assert.equal(permissionRequests1.length, 1);
                     assert.equal(permissionRequests1[0]?.subject?.type, "command");
@@ -828,7 +853,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     sessionId: "1#user",
                     prompt: [{ type: "text", text: "/update" }],
                 });
-                await new Promise((r) => setTimeout(r, 30));
+                await waitFor(() => updates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"));
                 assert.ok(updates.some((u) => u.sessionUpdate === "state_update" && u.state === "idle"));
             });
         } finally {
