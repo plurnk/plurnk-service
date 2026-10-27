@@ -26,9 +26,9 @@ import type {
 // the matched name, which flows through to `ProcessResult.mimetype`.
 //
 // Conflicts (two packages claiming the same mimetype name or extension):
-// last-loaded wins, and `@plurnk` is scanned LAST so a first-party (floor)
-// handler wins a collision — a third party can ADD a new mimetype but cannot
-// silently shadow a floor handler by claiming its name.
+// last-loaded wins, and `@plurnk` is scanned FIRST as the default floor so an
+// operator-trusted third-party package overrides the floor handler on collision,
+// while untrusted third-party packages are blocked by the trust predicate.
 export async function discover(options: DiscoverOptions = {}): Promise<Discovery> {
     const dirs = options.packageDirs ?? await defaultPackageDirs(options.cwd ?? process.cwd());
     const env = options.env ?? process.env;
@@ -121,17 +121,18 @@ function survivingPackageAttributions(
 
 // Enumerate every installed package directory under `<cwd>/node_modules` —
 // unscoped (`name`) and scoped (`@scope/name`) alike. `@plurnk` packages are
-// returned LAST so first-party handlers win last-loaded collisions (see the
-// conflict note on discover()). Non-package entries (`.bin`, `.cache`,
-// dotfiles) are skipped. Failures (no node_modules) yield [].
+// returned FIRST as the default floor so operator-trusted third-party handlers
+// win last-loaded collisions (see the conflict note on discover()). Non-package
+// entries (`.bin`, `.cache`, dotfiles) are skipped. Failures (no node_modules)
+// yield [].
 async function defaultPackageDirs(cwd: string): Promise<string[]> {
     const nm = Meta.nearestNodeModules(cwd) ?? path.join(path.resolve(cwd), "node_modules");
     const candidates = await Meta.packageDirs(nm);
-    // ORDERING POLICY (ours, not the primitives'): @plurnk packages LAST so first-party
-    // handlers win last-loaded collisions — see the conflict note on discover().
-    const thirdParty = candidates.filter((c) => !c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
+    // ORDERING POLICY (ours, not the primitives'): @plurnk packages FIRST as the
+    // floor so operator-trusted third-party handlers override them on collision.
     const plurnk = candidates.filter((c) => c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
-    return [...thirdParty, ...plurnk];
+    const thirdParty = candidates.filter((c) => !c.name.startsWith("@plurnk/")).map((c) => c.dir).toSorted();
+    return [...plurnk, ...thirdParty];
 }
 
 interface MimetypeManifest {

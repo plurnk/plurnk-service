@@ -546,24 +546,51 @@ describe("{§mimetype-discovery} scope-agnostic scan", () => {
         }
     });
 
-    it("{§mimetype-discovery} @plurnk wins a mimetype collision (a third party can't silently shadow the floor)", async () => {
+    it("{§mimetype-discovery} operator-trusted third-party mimetype package overrides @plurnk floor handler while untrusted third-party is blocked", async () => {
         const root = await fs.mkdtemp(path.join(os.tmpdir(), "plurnk-prec-"));
         try {
             const nm = path.join(root, "node_modules");
             await makePackage(nm, "@acme/acme-mime-html", {
                 name: "@acme/acme-mime-html",
-                plurnk: { kind: "mimetype", handlers: [{ name: "text/html", extensions: [".html"] }] },
+                plurnk: {
+                    kind: "mimetype",
+                    attribution: "acme-html",
+                    handlers: [{ name: "text/html", extensions: [".html"] }],
+                },
             });
             await makePackage(nm, "@plurnk/plurnk-mimetypes-text-html", {
                 name: "@plurnk/plurnk-mimetypes-text-html",
-                plurnk: { kind: "mimetype", handlers: [{ name: "text/html", extensions: [".html"] }] },
+                plurnk: {
+                    kind: "mimetype",
+                    attribution: "plurnk-html",
+                    handlers: [{ name: "text/html", extensions: [".html"] }],
+                },
             });
-            const result = await discover({ cwd: root, includeTreeSitter: false });
+            const defaultResult = await discover({
+                cwd: root,
+                includeTreeSitter: false,
+                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "1" },
+            });
             assert.equal(
-                result.handlers.get("text/html")?.packageName,
+                defaultResult.handlers.get("text/html")?.packageName,
                 "@plurnk/plurnk-mimetypes-text-html",
-                "first-party floor handler wins the collision",
+                "untrusted third-party is skipped; first-party floor handler remains active",
             );
+            assert.deepEqual(defaultResult.skipped, ["@acme/acme-mime-html"]);
+
+            const trustedResult = await discover({
+                cwd: root,
+                includeTreeSitter: false,
+                env: { PLURNK_EXTENSIONS_TRUSTED_ONLY: "@acme/acme-mime-html" },
+            });
+            assert.equal(
+                trustedResult.handlers.get("text/html")?.packageName,
+                "@acme/acme-mime-html",
+                "trusted third-party handler overrides the @plurnk floor handler",
+            );
+            assert.equal(trustedResult.registry.byExtension.get(".html"), "text/html");
+            assert.equal(trustedResult.packageAttributions.has("@plurnk/plurnk-mimetypes-text-html"), false);
+            assert.deepEqual(trustedResult.packageAttributions.get("@acme/acme-mime-html"), ["acme-html"]);
         } finally {
             await fs.rm(root, { recursive: true, force: true });
         }
