@@ -2,18 +2,16 @@ import Discover from "./discover.ts";
 
 // Framework surface
 export { default as BaseExecutor } from "./BaseExecutor.ts";
-export { default as SubprocessExecutor } from "./SubprocessExecutor.ts";
+export { default as SubprocessExecutor, ErrorDetail, ERROR_DETAIL_LIMIT } from "./SubprocessExecutor.ts";
 export { default as InvocationMetadata } from "./InvocationMetadata.ts";
-export { default as ErrorDetail, ERROR_DETAIL_LIMIT } from "./ErrorDetail.ts";
 export { default as SpawnAccounts, SPAWN_USER } from "./SpawnAccount.ts";
 export { default as Shell } from "./Shell.ts";
 export type { ShellChoice } from "./Shell.ts";
 export type { SpawnAccount } from "./SpawnAccount.ts";
 export { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
 export { default as RuntimeTag } from "./RuntimeTag.ts";
-export { default as RuntimeInvocation } from "./RuntimeInvocation.ts";
+export { default as RuntimeInvocation, RuntimeSummary } from "./RuntimeInvocation.ts";
 export { default as RuntimeDeclaration } from "./RuntimeDeclaration.ts";
-export { default as RuntimeSummary } from "./RuntimeSummary.ts";
 export { default as ToolInputSchema } from "./ToolInputSchema.ts";
 export { default as DocFile } from "./DocFile.ts";
 
@@ -60,12 +58,14 @@ export type {
     Discovery,
     DiscoverOptions,
     SpawnArgs,
+    Executor,
+    RuntimeRegistration,
+    Notice,
+    NoticeLevel,
+    ContentOffset,
+    LogCoordinate,
 } from "./types.ts";
 
-export type { Executor, RuntimeRegistration } from "./module-slice.ts";
-
-// Transient observation contract, re-exported for executor authors.
-export type { Notice, NoticeLevel, ContentOffset, LogCoordinate } from "./Notice.ts";
 export type {
     ExtensionAttributionContext,
     ExtensionAttributionDeclaration,

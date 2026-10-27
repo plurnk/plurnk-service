@@ -28,10 +28,9 @@ import type {
 import type { ExtensionAttributionSource } from "@plurnk/plurnk-meta";
 import type { EntryAddress, ProposalApplyRequest, ProposalApplyResult, SchemeAddressCtx, SchemeCtx } from "./ctx.ts";
 import type { WebMaterializer } from "./WebMaterialization.ts";
-import type { EditBatchResult } from "./edit-receipt.ts";
+import type { EditBatchResult, ResolvedEditStatement } from "./edit-receipt.ts";
 import type { RepresentationPreparationResult, SchemeResult } from "./Results.ts";
 import type { SchemeManifest, EntryCoordinate } from "./types.ts";
-import type { ResolvedEditStatement } from "./edit-statement.ts";
 import type { ByteSource } from "./ByteSource.ts";
 
 export interface RepresentationPreparationRequest {
@@ -91,4 +90,55 @@ export interface SchemeHandler extends ExtensionAttributionSource {
     send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     exec?(statement: ExecStatement, ctx: SchemeCtx): Promise<SchemeResult>;
     kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+}
+
+// {§resource-tree-scheme} — what a daemon module contributes to the scheme kind: a scheme handler,
+// or a scheme facet over a runtime's own resources. The base module contract is
+// `@plurnk/plurnk-modules` ({§module-seam-slices}).
+//
+// A module-owned runtime may expose protocol resources under the same scheme name as its output
+// streams. The facet claims only its own path subtree, and there it is the scheme's whole live
+// half: every operation it implements is its own. Unclaimed coordinates retain the standard
+// executor-output behavior.
+export interface RuntimeSchemeFacet {
+    claims(pathname: string): boolean;
+    // The representation of the claimed resources where it is not the executor's own output
+    // contract: whether the URI authority names the resource, their channels, the one a
+    // fragmentless address reads and a subscription publishes, and who may write them. `claims`
+    // always sees the authority folded into the pathname.
+    readonly manifest?: Partial<Pick<SchemeManifest, "authority" | "channels" | "defaultChannel" | "writableBy">>;
+    prepareRepresentation?(
+        request: RepresentationPreparationRequest,
+        ctx: SchemeCtx,
+    ): Promise<RepresentationPreparationResult>;
+    prepareFind?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    find?(statement: FindStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    editBatch?(statements: readonly ResolvedEditStatement[], ctx: SchemeCtx): Promise<EditBatchResult>;
+    send?(statement: SendStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    kill?(statement: KillStatement, ctx: SchemeCtx): Promise<SchemeResult>;
+    // An operation the facet proposed is also the facet's to apply ({§http-manifest}),
+    // routed by the proposal's own `target`.
+    applyResolution?(request: ProposalApplyRequest, ctx: SchemeCtx): Promise<SchemeResult>;
+}
+
+// The setup slice a module uses to add one process-wide addressable scheme.
+export interface SchemeRegistrationSeam {
+    registerScheme(name: string, handler: SchemeHandler): Promise<void>;
+}
+
+// {§resource-tree-scheme} — source truth, without a storage or selection API.
+export interface ResourceTree {
+    list(): Promise<readonly string[]>;
+    resource(relativePath: string): ByteSource;
+}
+
+export interface ResourceTreeSource {
+    trees(workspaceId: number): ReadonlyMap<string, ResourceTree>;
+    // Translate only recognized source failures. null leaves normal missing-file
+    // handling or the original unexpected exception with the host.
+    refusal?(cause: unknown, address: EntryCoordinate): RepresentationPreparationResult | null;
+}
+
+export interface ResourceTreeRegistrationSeam {
+    registerResourceTreeScheme(name: string, source: ResourceTreeSource): Promise<void>;
 }

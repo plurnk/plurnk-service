@@ -5,10 +5,19 @@
 //
 // The framework surface is `BaseExecutor.run()` + `discover()`.
 
-import type { ChannelProducerResult, SchemeResult } from "@plurnk/plurnk-schemes";
-import type { ClientInteractionRequest, ClientInteractionResolution, JsonSchema } from "@plurnk/plurnk-contracts";
+import type { ChannelProducerResult, RuntimeSchemeFacet, SchemeManifest, SchemeResult } from "@plurnk/plurnk-schemes";
+import type {
+    ClientInteractionRequest,
+    ClientInteractionResolution,
+    ContentOffset,
+    JsonSchema,
+    LogCoordinate,
+    Notice,
+} from "@plurnk/plurnk-contracts";
 import type { PackageAttributions } from "@plurnk/plurnk-meta";
-import type { Notice } from "./Notice.ts";
+
+export type { ContentOffset, LogCoordinate, Notice };
+export type NoticeLevel = Notice["level"];
 
 // Channel lifecycle state. Mirrors plurnk-service's per-channel state machine:
 // `active` while producing, then a terminal `closed` (clean) or `errored`.
@@ -261,4 +270,34 @@ export interface SpawnArgs {
      * When set, written to the child's stdin which is then closed. Omitted = stdin left at its default.
      */
     stdin?: string;
+}
+
+// {§executor-role} — what a daemon module contributes to the exec kind: runtimes, each
+// an executor with its declaration, availability and optional scheme facet. The base module
+// contract is `@plurnk/plurnk-modules` ({§module-seam-slices}).
+export interface Executor {
+    readonly runtime: string;
+    readonly glyph: string;
+    get manifest(): SchemeManifest;
+    get defaultChannel(): string;
+    get channels(): Readonly<Record<string, ChannelDecl>>;
+    readonly publishedChannel?: string | null;
+    prepare?(input: ExecInput): Promise<ExecPreparation>;
+    run(args: ExecArgs): Promise<ExecResult>;
+    // The host aborts on resolve or timeout so probe work is reaped immediately
+    // ({§executor-results}). Optional and ignore-safe.
+    probe(signal?: AbortSignal): Promise<RuntimeAvailability>;
+    // One pure classification of the consumer-canonical logical target
+    // ({§executor-results}); authored body text is never an admission input.
+    effect(target: string | null): Effect;
+    toolRegistry?(workspaceId?: number): RuntimeToolRegistry;
+}
+
+// One runtime a module contributes, published under its namespace owner ({§core-extension-composition}).
+export interface RuntimeRegistration {
+    readonly namespaceOwner: string;
+    readonly decl: RuntimeDecl;
+    readonly executor: Executor;
+    readonly availability: RuntimeAvailability;
+    readonly scheme?: RuntimeSchemeFacet;
 }

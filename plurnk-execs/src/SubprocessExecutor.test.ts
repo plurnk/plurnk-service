@@ -3,16 +3,12 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { join, isAbsolute } from "node:path";
-import { tmpdir, userInfo } from "node:os";
-import Policy from "./policy.ts";
-import Runtime from "./runtime.ts";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import Shell from "./Shell.ts";
-import SpawnAccounts, { SPAWN_USER } from "./SpawnAccount.ts";
-import SubprocessExecutor from "./SubprocessExecutor.ts";
+import SubprocessExecutor, { Runtime } from "./SubprocessExecutor.ts";
 import { tokenizeArgv } from "./tokenizeArgv.ts";
-import type { ExecArgs, ExecResult } from "./types.ts";
-import type { Notice } from "./Notice.ts";
+import type { ExecArgs, ExecResult, Notice } from "./types.ts";
 
 // A condition the test waits on, polled until it holds; the bound only keeps a hang from outliving the test.
 const until = async (what: string, predicate: () => boolean): Promise<void> => {
@@ -351,121 +347,4 @@ test("{§executor-subprocess} Runtime.resolve maps sh, js, python3, and script t
             assert.doesNotThrow(() => Runtime.resolve(runtime, command));
         }
     }
-});
-
-const shellFixture = async (t: test.TestContext): Promise<{ dir: string; shell: (name: string, script: string, mode?: number) => Promise<string> }> => {
-    const dir = await mkdtemp(join(tmpdir(), "execs-shell-"));
-    t.after(() => rm(dir, { recursive: true, force: true }));
-    return {
-        dir,
-        shell: async (name, script, mode = 0o755) => {
-            const file = join(dir, name);
-            await writeFile(file, `#!/bin/sh\n${script}\n`, { mode });
-            return file;
-        },
-    };
-};
-
-test("{§executor-subprocess}: an executable $SHELL is the shell, named with the version it reports", async (t) => {
-    const { shell } = await shellFixture(t);
-    const declared = await shell("fakesh", 'printf "fakesh, version 4.2.1(1)-release (x86_64)\\n"');
-    const choice = Shell.resolve({ SHELL: declared });
-    assert.deepEqual(choice, { path: declared, program: "fakesh", version: "4.2.1" });
-    assert.equal(Shell.summary(choice), `Run shell commands and scripts with fakesh 4.2.1 (${declared}).`);
-});
-
-test("{§executor-subprocess}: a shell that reports no version is named without one", async (t) => {
-    const { shell } = await shellFixture(t);
-    const declared = await shell("quietsh", "exit 2");
-    const choice = Shell.resolve({ SHELL: declared });
-    assert.deepEqual(choice, { path: declared, program: "quietsh", version: null });
-    assert.equal(Shell.summary(choice), `Run shell commands and scripts with quietsh (${declared}).`);
-});
-
-test("{§executor-subprocess}: a $SHELL that names no executable file leaves the system shell", async (t) => {
-    const { dir, shell } = await shellFixture(t);
-    const cases: Array<[string, NodeJS.ProcessEnv]> = [
-        ["unset", {}],
-        ["empty", { SHELL: "" }],
-        ["relative", { SHELL: "bash" }],
-        ["missing", { SHELL: join(dir, "absent") }],
-        ["a directory", { SHELL: dir }],
-        ["not executable", { SHELL: await shell("plainsh", "exit 0", 0o644) }],
-    ];
-    for (const [label, env] of cases) {
-        assert.equal(Shell.resolve(env).path, Shell.SYSTEM, `${label} $SHELL runs ${Shell.SYSTEM}`);
-    }
-    assert.equal(Shell.current(), Shell.current());
-    assert.ok(isAbsolute(Shell.current().path), "the shell is spawned by its path");
-});
-
-const me = userInfo();
-const answered = (stdout: string) => () => ({ status: 0, stdout });
-
-test("{§executor-policy}: unset, bare uid[:gid], and named account resolution", () => {
-    const emptyEnv = { [SPAWN_USER]: "" };
-    assert.equal(SpawnAccounts.configured(emptyEnv), null);
-    assert.deepEqual(SpawnAccounts.options(emptyEnv), {});
-    assert.deepEqual(SpawnAccounts.environment({ HOME: "/h", USER: "u" }, emptyEnv), { HOME: "/h", USER: "u" });
-
-    assert.deepEqual(SpawnAccounts.configured({ [SPAWN_USER]: "60007" }), { name: null, uid: 60007, gid: 60007, home: null });
-    assert.deepEqual(SpawnAccounts.options({ [SPAWN_USER]: "60007:60008" }), { uid: 60007, gid: 60008 });
-    assert.deepEqual(SpawnAccounts.environment({ HOME: "/h" }, { [SPAWN_USER]: "60007" }), { HOME: "/h" });
-
-    const env = { [SPAWN_USER]: me.username };
-    const account = SpawnAccounts.configured(env);
-    assert.ok(account !== null);
-    assert.equal(account.name, me.username);
-    assert.equal(account.uid, me.uid);
-    assert.equal(account.gid, me.gid);
-    assert.deepEqual(SpawnAccounts.options(env), { uid: me.uid, gid: me.gid });
-    const composed = SpawnAccounts.environment({ HOME: "/elsewhere", PATH: "/bin" }, env);
-    assert.equal(composed.USER, me.username);
-    assert.equal(composed.LOGNAME, me.username);
-    assert.equal(composed.HOME, account.home ?? "/elsewhere");
-    assert.equal(composed.PATH, "/bin");
-
-    assert.throws(() => SpawnAccounts.configured({ [SPAWN_USER]: "no-such-account-9c1f" }), new RegExp(`${SPAWN_USER}='no-such-account-9c1f' names no account`, "u"));
-    assert.equal(Policy.isKey(SPAWN_USER), false);
-});
-
-test("{§executor-policy}: getent lookup error vs absent account vs valid record", () => {
-    const missing = Object.assign(new Error("spawnSync getent ENOENT"), { code: "ENOENT" });
-    const thrown = (() => { try { SpawnAccounts.resolve("alice", () => ({ error: missing, status: null, stdout: "" })); } catch (cause) { return cause as Error; } return null; })();
-    assert.ok(thrown !== null);
-    assert.equal(thrown.message, `${SPAWN_USER}='alice' was not resolved: the host's account lookup, \`getent passwd\`, did not run (spawnSync getent ENOENT); write uid[:gid] to name the account without a lookup.`);
-    assert.equal(thrown.cause, missing);
-    const failures: ReadonlyArray<readonly [string, ReturnType<Parameters<typeof SpawnAccounts.resolve>[1] & {}>, RegExp]> = [
-        ["exited otherwise", { status: 1, stdout: "" }, /was not resolved: .* exited 1;/u],
-        ["ended by a signal", { status: null, signal: "SIGKILL", stdout: "" }, /was not resolved: .* was ended by SIGKILL;/u],
-        ["empty answer", { status: 0, stdout: "" }, /answered a record that is not this account's/u],
-        ["another account's record", { status: 0, stdout: "bob:x:1001:1001::/home/bob:/bin/sh\n" }, /answered a record that is not this account's/u],
-        ["a record without numeric ids", { status: 0, stdout: "alice:x:uid:gid::/home/alice:/bin/sh\n" }, /answered a record that is not this account's/u],
-        ["a short record", { status: 0, stdout: "alice:x:1001\n" }, /answered a record that is not this account's/u],
-    ];
-    for (const [label, answer, expected] of failures) {
-        assert.throws(() => SpawnAccounts.resolve("alice", () => answer), (error: unknown) =>
-            error instanceof Error && expected.test(error.message) && !/names no account/u.test(error.message), label);
-    }
-    assert.throws(() => SpawnAccounts.resolve("alice", () => ({ status: 2, stdout: "" })),
-        new RegExp(`^Error: ${SPAWN_USER}='alice' names no account on this host; write an account name or uid\\[:gid\\]\\.$`, "u"));
-    assert.deepEqual(SpawnAccounts.resolve("alice", answered("alice:x:1001:1002:Alice A:/home/alice:/bin/sh\n")), { name: "alice", uid: 1001, gid: 1002, home: "/home/alice" });
-    assert.deepEqual(SpawnAccounts.resolve("svc", answered("svc:*:498:498:::/usr/sbin/nologin\n")), { name: "svc", uid: 498, gid: 498, home: null });
-    const never = (): never => { throw new Error("a bare id was looked up"); };
-    assert.deepEqual(SpawnAccounts.resolve("60007:60008", never), { name: null, uid: 60007, gid: 60008, home: null });
-});
-
-test("{§executor-contract} splits words, preserves quotes/escapes, and rejects unterminated quoting", () => {
-    assert.deepEqual(tokenizeArgv("status --short"), ["status", "--short"]);
-    assert.deepEqual(tokenizeArgv("  log   -n  5 "), ["log", "-n", "5"]);
-    assert.deepEqual(tokenizeArgv('commit -m "fix: the bug"'), ["commit", "-m", "fix: the bug"]);
-    assert.deepEqual(tokenizeArgv("commit -m 'single quoted msg'"), ["commit", "-m", "single quoted msg"]);
-    assert.deepEqual(tokenizeArgv('commit -m "costs $5 and `cmd`"'), ["commit", "-m", "costs $5 and `cmd`"]);
-    assert.deepEqual(tokenizeArgv("status; rm -rf /"), ["status;", "rm", "-rf", "/"]);
-    assert.deepEqual(tokenizeArgv("a\\ b"), ["a b"]);
-    assert.deepEqual(tokenizeArgv('--title "a \\"quoted\\" title"'), ["--title", 'a "quoted" title']);
-    assert.deepEqual(tokenizeArgv('commit --cleanup=""'), ["commit", "--cleanup="]);
-    assert.throws(() => tokenizeArgv('commit -m "unterminated'), /unterminated double quote/);
-    assert.throws(() => tokenizeArgv("commit -m 'unterminated"), /unterminated single quote/);
-    assert.throws(() => tokenizeArgv("status\\"), /trailing backslash/);
 });

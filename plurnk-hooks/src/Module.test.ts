@@ -4,14 +4,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { configuredModule, withEnvironment } from "../test/environment.ts";
+import { configuredModule } from "../test/environment.ts";
 import { commandFixture } from "../test/command.ts";
-import { UNKNOWN_POSITION, type ApplicationOperationEvent, type ProposalProjection } from "@plurnk/plurnk-contracts";
-import EventProjection from "./EventProjection.ts";
-import { hookConfig } from "./config.ts";
 
-// ─── Module.test.ts ───
-{
 interface SeamFixture {
     readonly seam: {
         subscribeToEvents(handler: (workspaceId: number | null, method: string, params: unknown) => void): () => void;
@@ -298,115 +293,4 @@ test("{§hooks-module} serialization and reporter failures preserve both causes 
     assert.match(aggregate.errors[0].message, /circular/i);
     assert.equal(aggregate.errors[1], reporterFailure);
 });
-}
 
-// ─── EventProjection.test.ts ───
-{
-const started: ApplicationOperationEvent = {
-    sessionId: 7, loopId: 9, turnId: 11, sequence: 2, origin: "model", projectRoot: "/project", phase: "started",
-    statement: { op: "READ", target: { kind: "local", raw: "README.md" },
-        aside: null, metadata: null, lineMarker: null, matcher: null, body: null, position: UNKNOWN_POSITION },
-};
-
-test("{§hooks-event-projection} operation phase/status select hooks without treating system observations as tools", () => {
-    for (const origin of ["model", "client", "_plurnk"] as const) {
-        for (const status of [200, 202, 400, 499]) {
-            const result = { status, detail: "Exact fixture result" };
-            const params = { ...started, origin, phase: "settled" as const, result };
-            const event = EventProjection.project(42, "operation/event", params);
-            if (origin === "_plurnk") {
-                assert.equal(event, null);
-                continue;
-            }
-            assert.deepEqual(event, {
-                hook_event_name: status >= 400 ? "PostToolUseFailure" : "PostToolUse",
-                session_id: "7", cwd: "/project", tool_use_id: "11/2", tool_name: "READ",
-                tool_input: started.statement, tool_response: result,
-                plurnk: { workspaceId: 42, method: "operation/event", params },
-            });
-        }
-    }
-    const headless = EventProjection.project(42, "operation/event", { ...started, projectRoot: null });
-    assert.equal(headless?.hook_event_name, "PreToolUse");
-    assert.equal(Object.hasOwn(headless, "cwd"), false);
-    assert.equal(Object.hasOwn(headless, "tool_response"), false);
-    assert.equal(EventProjection.project(42, "log/entry", { entry: { op: "READ" } }), null);
-    assert.equal(EventProjection.project(42, "stream/concluded", { result: { status: 200 } }), null);
-});
-
-test("{§hooks-event-projection} only client-owned proposals request permission", () => {
-    const proposal: ProposalProjection = { logEntryId: 12, sessionId: 7, session: "client", loopId: 9, turnId: 11, coordinate: "1/1/12", op: "sh",
-        target: { scheme: "exec", authority: "sh", pathname: "" }, body: "echo 42", attrs: {},
-        owner: "acp://operator/threads/client", disposition: { decision: "review" } };
-    const event = EventProjection.project(42, "loop/proposal", proposal);
-    assert.equal(event?.hook_event_name, "PermissionRequest");
-    assert.equal(event?.tool_name, "sh");
-    assert.deepEqual(event?.tool_input, { target: proposal.target, body: proposal.body, attrs: proposal.attrs });
-    for (const decision of ["accept", "reject"] as const) {
-        assert.equal(EventProjection.project(42, "loop/proposal", { ...proposal, disposition: { decision } }), null);
-    }
-});
-}
-
-// ─── config.test.ts ───
-{
-const read = (env: NodeJS.ProcessEnv = {}) => withEnvironment(env, hookConfig);
-const selected = { PLURNK_HOOKS_COMMAND: "node", PLURNK_HOOKS_EVENTS: "Stop" };
-
-test("{§hooks-module} hook configuration is absent until an exact command and event selection are declared", () => {
-    assert.equal(read(), null);
-    assert.throws(
-        () => read({ PLURNK_HOOKS_COMMAND: "notify-send" }),
-        { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /PLURNK_HOOKS_EVENTS must select at least one event/ },
-    );
-    for (const companion of [{ PLURNK_HOOKS_EVENTS: "Stop" }, { PLURNK_HOOKS_ARGS: "[]" }]) {
-        assert.throws(() => read(companion), { name: "ConfigurationError", key: "PLURNK_HOOKS_COMMAND", message: /has companions but no PLURNK_HOOKS_COMMAND/ });
-    }
-});
-
-test("{§hooks-module} production configuration preserves executable paths with spaces and exact JSON argv", () => {
-    assert.deepEqual(read({
-        PLURNK_HOOKS_COMMAND: "/opt/local tools/hook",
-        PLURNK_HOOKS_ARGS: '["/opt/hooks/notify.mjs","literal;not-shell"]',
-        PLURNK_HOOKS_EVENTS: "Stop, Notification",
-        PLURNK_HOOKS_TIMEOUT_MS: "1200",
-        PLURNK_HOOKS_CONCURRENCY: "2",
-        PLURNK_HOOKS_QUEUE_LIMIT: "0",
-    }), {
-        command: "/opt/local tools/hook",
-        args: ["/opt/hooks/notify.mjs", "literal;not-shell"],
-        events: new Set(["Stop", "Notification"]),
-        timeoutMs: 1200,
-        concurrency: 2,
-        queueLimit: 0,
-    });
-    assert.deepEqual(read(selected)?.args, []);
-});
-
-test("{§hooks-event-projection} selection uses exact supported hook names and diagnoses any other name", () => {
-    const names = ["PreToolUse", "PostToolUse", "PostToolUseFailure", "Stop", "Notification", "PermissionRequest"];
-    assert.deepEqual(read({ ...selected, PLURNK_HOOKS_EVENTS: names.join(",") })?.events, new Set(names));
-    for (const events of ["Notice*", "notice", "Stop,", "Pre ToolUse", "Notification,Notification", "SessionStart", "UserPromptSubmit", "constructor", "__proto__"]) {
-        assert.throws(() => read({ ...selected, PLURNK_HOOKS_EVENTS: events }), { name: "ConfigurationError", key: "PLURNK_HOOKS_EVENTS", message: /requires an exact hook name|more than once/ });
-    }
-});
-
-test("{§hooks-module} malformed argv and invalid delivery bounds fail configuration", () => {
-    for (const args of ["--quiet", "{}", "[42]", "null"]) {
-        assert.throws(() => read({ ...selected, PLURNK_HOOKS_ARGS: args }), { name: "ConfigurationError", key: "PLURNK_HOOKS_ARGS", message: /PLURNK_HOOKS_ARGS must be a JSON array of strings/ });
-    }
-    for (const [name, invalid] of [
-        ["PLURNK_HOOKS_TIMEOUT_MS", ["0", "-1", "", "1.5", "never"]],
-        ["PLURNK_HOOKS_CONCURRENCY", ["0", "-1", "", "1.5"]],
-        ["PLURNK_HOOKS_QUEUE_LIMIT", ["-1", "", "1.5"]],
-    ] as const) {
-        for (const value of invalid) {
-            assert.throws(() => read({ ...selected, [name]: value }), { name: "ConfigurationError", key: name, message: new RegExp(`${name} must be a safe integer`) });
-        }
-        withEnvironment(selected, () => {
-            delete process.env[name];
-            assert.throws(hookConfig, new RegExp(`${name} is missing from the assembled environment floor`));
-        });
-    }
-});
-}

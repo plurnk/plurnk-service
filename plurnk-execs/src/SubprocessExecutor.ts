@@ -1,14 +1,39 @@
 import { errnoCode, isRecord } from "@plurnk/plurnk-contracts";
+import { ErrorDetail as BoundErrorDetail } from "@plurnk/plurnk-meta";
 import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { Results } from "@plurnk/plurnk-schemes";
 import BaseExecutor from "./BaseExecutor.ts";
-import ErrorDetail from "./ErrorDetail.ts";
-import Runtime from "./runtime.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
+import Shell from "./Shell.ts";
 import SpawnAccounts from "./SpawnAccount.ts";
-import { CommandSyntaxError } from "./tokenizeArgv.ts";
+import { CommandSyntaxError, tokenizeArgv } from "./tokenizeArgv.ts";
 import type { ChannelDecl, Effect, ExecArgs, ExecResult, RuntimeAvailability, SpawnArgs } from "./types.ts";
+
+export const ERROR_DETAIL_LIMIT = "PLURNK_EXECS_ERROR_DETAIL_LIMIT";
+
+// {§env-knob} — this package's bound, shared by the executors built on it.
+export const ErrorDetail = new BoundErrorDetail(ERROR_DETAIL_LIMIT);
+
+// Spawn-argument recipes used internally by SubprocessExecutor.
+export class Runtime {
+    static resolve(runtime: string, command: string, target: string | null = null): SpawnArgs {
+        // {§executor-subprocess} `sh` runs the environment's shell.
+        const shell = runtime === "" || runtime === "sh";
+        const cmd = shell ? Shell.current().path : runtime === "js" ? "node" : runtime;
+        // With a target the program IS the target and the body is its arguments,
+        // tokenized by shell quoting ({§executor-subprocess}, {§executor-contract}).
+        // Every interpreter reads one script file; neither shell command parsing nor an executable bit is required.
+        if (target !== null) {
+            return { cmd, args: [target, ...tokenizeArgv(command)], useShell: false };
+        }
+        if (shell) return { cmd, args: ["-c", command], useShell: false };
+        if (runtime === "js") return { cmd: "node", args: ["-e", command], useShell: false };
+        if (runtime === "python3") return { cmd: "python3", args: ["-c", command], useShell: false };
+        // Subclasses normally override spawnArgs for additional runtimes.
+        return { cmd: runtime, args: ["-c", command], useShell: false };
+    }
+}
 
 // KILL signal: an abort reason carrying `{ signal }` (a Unix signal name or
 // number) delivers exactly that signal, once, fire-and-forget — no escalation;

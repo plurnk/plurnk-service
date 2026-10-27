@@ -1,5 +1,17 @@
 import { isRecord } from "@plurnk/plurnk-contracts";
-import type { PacketSectionDraft } from "./packet.ts";
+
+// {§network-address} — public authoring surface for trusted packet
+// transforms. Measurement remains core-owned.
+export interface PacketSectionDraft {
+    readonly name: string;
+    readonly slot: "system" | "user" | "assistant";
+    readonly header: string | null;
+    readonly content: string;
+}
+
+export interface PacketSectionTransformer {
+    transformSections(sections: PacketSectionDraft[]): PacketSectionDraft[] | Promise<PacketSectionDraft[]>;
+}
 
 const FIELDS = ["name", "slot", "header", "content"] as const;
 const FIELD_NAMES = new Set<string>(FIELDS);

@@ -14,9 +14,8 @@ import type {
     MessageResource,
     MessageResourceReceipt,TextRegion
 } from "@plurnk/plurnk-contracts";
-import type { ResolvedEditStatement } from "./edit-statement.ts";
 import type { ChannelProducerResult, MatchEvidence, SchemeResult } from "./Results.ts";
-import type { EditBatchReceipt, EditBatchResult } from "./edit-receipt.ts";
+import type { EditBatchReceipt, EditBatchResult, ResolvedEditStatement } from "./edit-receipt.ts";
 // Channel streaming-lifecycle state. Metadata, not an engine gate
 // (service SPEC {§channels}).
 export type TerminalChannelState = "closed" | "errored";

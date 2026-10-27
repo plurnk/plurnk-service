@@ -3,8 +3,7 @@ import { strict as assert } from "node:assert";
 import BaseExecutor from "./BaseExecutor.ts";
 import InvocationMetadata from "./InvocationMetadata.ts";
 import SubprocessExecutor from "./SubprocessExecutor.ts";
-import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecResult } from "./types.ts";
-import type { Notice } from "./Notice.ts";
+import type { ChannelDecl, Effect, ExecArgs, ExecInput, ExecResult, Notice } from "./types.ts";
 
 // Minimal concrete executor exercising the contract: declares a single
 // `results` channel, echoes the command into it, and reports the matched tag.

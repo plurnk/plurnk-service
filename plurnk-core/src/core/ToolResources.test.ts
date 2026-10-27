@@ -6,7 +6,6 @@ import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Lexer } from "marked";
 import { plurnkRuntimeDecl } from "../server/FunctionalityManager.ts";
 import { isExecution, Validator, type JsonSchema } from "@plurnk/plurnk-contracts";
-import { ToolInputSchema } from "@plurnk/plurnk-execs";
 
 describe("ToolResources", () => {
 test("{§tools-resource-materialization} renders a general runtime as one self-describing resource", () => {
@@ -399,44 +398,6 @@ test("{§executor-discovery} includes original repository-owned referenced schem
     assert.equal((JSON.parse(extDetail.content) as Record<string, unknown>).$ref, external.$ref);
 });
 
-test("{§executor-discovery} a required closed set of strings previews its first value and lists bounded choices in the aside (#762, #1228)", () => {
-    const issueRead = {
-        type: "object",
-        required: ["method", "owner", "issue_number"],
-        properties: {
-            method: { type: "string", enum: ["get", "get_comments", "get_labels"] },
-            owner: { type: "string" },
-            issue_number: { type: "number" },
-        },
-    };
-    assert.equal(ToolInputSchema.preview(issueRead), '{"method": "get", "owner": "", "issue_number": 0}');
-    assert.equal(ToolInputSchema.asideNote(issueRead), '(method: "get"|"get_comments"|"get_labels")');
-
-    const oversizedOrMixed = {
-        type: "object", required: ["a", "b", "c", "d"],
-        properties: {
-            a: { type: "string", enum: Array.from({ length: 13 }, (_, i) => `v${i}`) },
-            b: { type: "string", enum: ["x", 1] },
-            c: { type: "boolean" },
-            d: { type: "array" },
-        },
-    };
-    assert.equal(ToolInputSchema.preview(oversizedOrMixed), '{"a": "v0", "b": "x", "c": false, "d": []}');
-    assert.equal(ToolInputSchema.asideNote(oversizedOrMixed), undefined);
-});
-
-test("{§executor-discovery} a schema that requires one of several inputs previews its first branch", () => {
-    const oneOf = {
-        type: "object", additionalProperties: false,
-        properties: { source: { type: "string" }, configuration: { type: "object" } },
-        anyOf: [{ required: ["source"] }, { required: ["configuration"] }],
-    };
-    assert.equal(ToolInputSchema.preview(oneOf), '{"source": ""}');
-    assert.deepEqual(ToolInputSchema.requiredFields(oneOf), ["source"]);
-    assert.equal(ToolInputSchema.asideNote(oneOf), "(configuration?: object)");
-    assert.deepEqual(ToolInputSchema.requiredFields({ type: "object", required: ["a"], anyOf: [{ required: ["a", "b"] }] }), ["a", "b"]);
-});
-
 test("{§executor-discovery} surfaces optional properties, nested object/array shapes, and bounded tails before the schema pointer (#1228)", () => {
     const withOptions = ToolResources.render({
         runtime: "gitea", resourcesPath: "/tools", summary: { from: "tools" }, details: "",
@@ -482,33 +443,12 @@ test("{§executor-discovery} surfaces optional properties, nested object/array s
         },
     };
     assert.equal(
-        ToolInputSchema.asideNote(fillForm),
-        '(fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[])',
-    );
-    assert.equal(
         ToolResources.fence("browser", {
             body: { role: "JSON arguments", required: true },
             target: { role: "MCP tool", required: true, kind: "literal" },
             inputSchema: fillForm,
         }, "browser_fill_form"),
         '```browser (browser_fill_form) <!-- (fields: {target: string, name: string, type: "textbox"|"checkbox"|"radio"|"combobox"|"slider", value: string, element?: string}[]) -->\n{"fields": []}\n```',
-    );
-
-    const manyOptionalProps = Object.fromEntries(Array.from({ length: 14 }, (_, i) => [`opt${i}`, { type: "string" }]));
-    const capped = ToolInputSchema.asideNote({ type: "object", properties: manyOptionalProps });
-    assert.ok(capped?.endsWith(", … +2 opt)"), `expected bounded optional tail, got ${capped}`);
-
-    assert.equal(
-        ToolInputSchema.asideNote({
-            type: "object",
-            required: ["verb"],
-            properties: {
-                verb: { type: "string", enum: ["list", "add"] },
-                alias: { type: "string" },
-                definition: { $ref: "https://schemas.plurnk.xyz/v0/McpServerDefinition.json" },
-            },
-        }),
-        '(verb: "list"|"add"; alias?: string, definition?: {name: string, type: "stdio", command: string, args?: string[], env?: object, cwd?: string}|{name: string, type: "streamable-http", url: string, headers?: object, authorization?: object})',
     );
 
     const noOptions = ToolResources.render({

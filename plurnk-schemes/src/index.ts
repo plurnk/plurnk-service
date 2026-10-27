@@ -1,9 +1,4 @@
 // Public API barrel for @plurnk/plurnk-schemes.
-//
-// Behavior ships as `export default class` (one class per file, static
-// methods) per the ecosystem class paradigm. Type-only modules (types.ts,
-// ctx.ts), and this barrel are
-// the only non-class files.
 
 // ── Manifest types ────────────────────────────────────────────────────────
 export type {
@@ -17,7 +12,7 @@ export type {
 export { default as Manifest } from "./Manifest.ts";
 export { default as NetworkAddress } from "./NetworkAddress.ts";
 export { default as EntryCoordinates } from "./EntryCoordinates.ts";
-export { default as MimetypeClassifier, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
+export { default as MimetypeClassifier, PathMimetype, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 export { default as Slicer } from "./Slicer.ts";
 export type {
     BatchEdit,
@@ -26,8 +21,8 @@ export type {
     RangeUnit,
     SliceResult,
     TextReplacement,
+    WindowResult,
 } from "./Slicer.ts";
-export { default as PathMimetype } from "./PathMimetype.ts";
 export { default as Matcher } from "./Matcher.ts";
 export type { MatchResult } from "./Matcher.ts";
 export { default as SchemeDiscovery } from "./SchemeDiscovery.ts";
@@ -37,13 +32,13 @@ export type { OrientIndex } from "./Summarize.ts";
 export { default as OutputScheme } from "./OutputScheme.ts";
 export { default as ResourceNames } from "./ResourceNames.ts";
 export type { RuntimeDecl } from "./OutputScheme.ts";
-export { default as Results } from "./Results.ts";
+export { default as Results, InvalidOperationResultError } from "./Results.ts";
 export { default as MetadataOptions } from "./MetadataOptions.ts";
 export { default as MessageAttachments } from "./MessageAttachments.ts";
 export { default as MessageScheme } from "./MessageScheme.ts";
 export type { MetadataOptionsParsed } from "./MetadataOptions.ts";
 export { default as PacketSections } from "./PacketSections.ts";
-export { InvalidOperationResultError } from "./Results.ts";
+export type { PacketSectionDraft, PacketSectionTransformer } from "./PacketSections.ts";
 export { PathSyntax } from "@plurnk/plurnk-contracts";
 export { MimetypeInputLimitError as ProjectionInputLimitError } from "@plurnk/plurnk-mimetypes";
 export type {
@@ -55,6 +50,7 @@ export type {
     EditReceipt,
     EditReceiptUnit,
     ParseIssueTransition,
+    ResolvedEditStatement,
     ReviewerReplacementEditBatchReceipt,
     SupersededEditReceipt,
 } from "./edit-receipt.ts";
@@ -115,11 +111,15 @@ export type {
 // statement + path types are re-exported from grammar here so a sibling depends
 // on and exact-pins ONLY this package; grammar is the framework's transitive pin
 // (this repo already peers it). The engine speaks one grammar — keep it single.
-export type { ResolvedEditStatement } from "./edit-statement.ts";
-export type { RepresentationPreparationRequest, SchemeHandler } from "./handler.ts";
-export type { RuntimeSchemeFacet, SchemeRegistrationSeam } from "./module-slice.ts";
-export type { PacketSectionDraft, PacketSectionTransformer } from "./packet.ts";
-export type { ResourceTree, ResourceTreeSource, ResourceTreeRegistrationSeam } from "./resource-tree.ts";
+export type {
+    RepresentationPreparationRequest,
+    ResourceTree,
+    ResourceTreeRegistrationSeam,
+    ResourceTreeSource,
+    RuntimeSchemeFacet,
+    SchemeHandler,
+    SchemeRegistrationSeam,
+} from "./handler.ts";
 export type {
     ExtensionAttributionContext,
     ExtensionAttributionDeclaration,
@@ -141,8 +141,7 @@ export type {
     LocalPath,
     UrlPath,
 } from "@plurnk/plurnk-contracts";
-export type { WindowResult } from "./Slicer.ts";
-export type { ByteSource } from "./ByteSource.ts";
+export { FileByteSource, GeneratedByteSource, type ByteSource } from "./ByteSource.ts";
 export { WebMaterializationError } from "./WebMaterialization.ts";
 export type {
     WebChannelFailure,
@@ -153,5 +152,3 @@ export type {
     WebMaterializer,
     WebResponseBody,
 } from "./WebMaterialization.ts";
-export { default as FileByteSource } from "./FileByteSource.ts";
-export { default as GeneratedByteSource } from "./GeneratedByteSource.ts";

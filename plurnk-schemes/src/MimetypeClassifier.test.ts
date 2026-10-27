@@ -1,8 +1,7 @@
 import test from "node:test";
 import { strict as assert } from "node:assert";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import MimetypeClassifier, { TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
-import PathMimetype from "./PathMimetype.ts";
+import MimetypeClassifier, { PathMimetype, TEXT_PRIMITIVE_MIMETYPE } from "./MimetypeClassifier.ts";
 
 test("{§network-address} text/* is text", () => {
     assert.equal(MimetypeClassifier.isBinary("text/plain"), false);

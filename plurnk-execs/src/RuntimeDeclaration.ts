@@ -1,5 +1,4 @@
-import RuntimeInvocation from "./RuntimeInvocation.ts";
-import RuntimeSummary from "./RuntimeSummary.ts";
+import RuntimeInvocation, { RuntimeSummary } from "./RuntimeInvocation.ts";
 import RuntimeTag from "./RuntimeTag.ts";
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type { RuntimeDecl } from "./types.ts";
