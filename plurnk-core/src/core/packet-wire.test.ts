@@ -54,6 +54,15 @@ test("{§emission-history}: an empty stored section emits no heading, placeholde
         { role: "user", content: "## Log\n\nretained log\n\n## Open Messages\n[]" },
     ]);
 });
+
+test("{§packet}: structured section content directly follows its heading; Git is a NOTE", () => {
+    for (const header of ["Errors", "Context", "Open Messages"]) {
+        assert.equal(PacketWire.renderSection({ header, content: "[]" }), `## ${header}\n[]`);
+    }
+    const git = PacketWire.renderGit({ branch: "main", ahead: 0, behind: 0, staged: 0, unstaged: 0, untracked: 0 });
+    assert.equal(git, "> [!NOTE]\n> branch `main` — 0 staged, 0 unstaged, 0 untracked");
+    assert.equal(PacketWire.renderSection({ header: "Git Status", content: git }), `## Git Status\n\n${git}`);
+});
 });
 
 describe("packet-inject", () => {

@@ -354,3 +354,19 @@ test("{§extension-discovery} docs(): absent manifest documentation is optional;
     assert.equal(docs.find((doc) => doc.name === "undocumented"), undefined, "an absent optional manifest document contributes nothing");
     assert.equal(docs.find((doc) => doc.name === "documented")?.content, "# documented\nExternal depth.", "an external manifest document materializes when meta owns no same-name source");
 });
+
+test("{§tools-resource-materialization}: scheme references preserve documentation without redundant entries", async () => {
+    const registry = new SchemeRegistry();
+    registry.register("docstub", {
+        manifest: {
+            ...manifest("docstub"),
+            documentation: "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.",
+        },
+    });
+
+    const docs = await registry.docs();
+    const stub = docs.find((d) => d.name === "docstub");
+    assert.equal(stub?.content, "# docstub\n\n## Summary\n\nRead docstub resources.\n\nFuller reference content.", "docs() carries the content the scheme reference materializes");
+    assert.equal(docs.some(({ name }) => name === "log"), false, "the self-evident log resource adds no redundant pull doc");
+    assert.equal(docs.some(({ name }) => name === "skill"), false, "an unregistered scheme contributes no reference");
+});

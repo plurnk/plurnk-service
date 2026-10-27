@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import BudgetReadout from "./BudgetReadout.ts";
 import TokenCalibration from "./TokenCalibration.ts";
 import { contentWeight } from "./content-weight.ts";
+import { contentHash } from "./content-hash.ts";
 
 describe("BudgetReadout", () => {
 interface Gauge { tokens: number; budget?: number; percent?: number; largest?: Array<{ path: string; tokens: number }> }
@@ -219,5 +220,12 @@ test("{§tokenomics} invalid conversion inputs fail at the unit boundary", () =>
     }
     assert.throws(() => TokenCalibration.capacity(Number.MAX_SAFE_INTEGER, 1), /curation capacity must be a non-negative safe integer/u);
     assert.throws(() => TokenCalibration.estimatedTokens(Number.MAX_SAFE_INTEGER, -1), /estimated tokens must be a non-negative safe integer/u);
+});
+
+test("{§tokenomics} content_hash is a stable per-content identity — identical content, identical hash; no per-model keying", () => {
+    const h = contentHash("same bytes");
+    assert.equal(h, contentHash("same bytes"), "deterministic: identical content → identical hash");
+    assert.notEqual(h, contentHash("other bytes"), "distinct content → distinct hash");
+    assert.match(h, /^[0-9a-f]{64}$/, "a sha256 hex identity");
 });
 });

@@ -1,0 +1,1092 @@
+import test, { describe } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
+import Results from "../../src/core/results.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
+import DrainSupervisor from "../../src/server/DrainSupervisor.ts";
+import ChannelWrite from "../../src/core/ChannelWrite.ts";
+import Engine from "../../src/core/Engine.ts";
+import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
+import type Exec from "../../src/schemes/Exec.ts";
+import NoticeChannel from "../../src/core/NoticeChannel.ts";
+import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.ts";
+import { serverProposals, TEST_OWNER } from "./_approval.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import { makeMockResponse, fixtureExecutors, makeRawMockResponse } from "./_mock.ts";
+import { waitForDb, withDaemon, rpcCall, rpcProblem, subscribeNotifications, connect, waitFor, runLoopToTerminal } from "./_rpc.ts";
+import { namedModelSession } from "./_sessions.ts";
+import { PlurnkParser } from "@plurnk/plurnk-parser";
+import { viableWindow } from "./_provider.ts";
+import { type Executor } from "@plurnk/plurnk-execs";
+import { completeStmt, execStmt, dispositionStmt, sendStmt, killStmt, urlPath } from "./_dsl.ts";
+import { DEFAULT_MIMETYPES } from "./_scheme.ts";
+import { testExecutors } from "./_execs.ts";
+
+describe("Daemon.exec-wake", () => {
+// {§session-causal-admission}, {§notifications}.
+// These fixtures exercise the lifecycle after a stream genuinely becomes
+// monitored. Optimistic settlement has its own matrix; disable it here so the
+// park/wake decision remains the controlled variable.
+process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+
+const execDsl = (command: string, disposition: "WAIT" | "NOTE" = "WAIT"): string =>
+    `\`\`\`\`sh
+${command}
+\`\`\`\`
+
+\`\`\`\`${disposition}
+Observe the command.
+\`\`\`\``;
+
+const mockResponse = (dsl: string) => {
+    return {
+        assistant: {
+            content: dsl,
+            reasoning: null,
+            usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 },
+        },
+        assistantRaw: null,
+    };
+};
+
+test("{§session-causal-admission}: a person's operation can cancel a workspace stream and wake its initiating waiting session", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({ contextWindow: 65536, responses: [
+        mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command's outcome.\n````"),
+        mockResponse("````SEND [200]\nThe command was cancelled.\n````"),
+    ] });
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        const entries = subscribeNotifications(ws, "log/entry");
+        const terminated = subscribeNotifications(ws, "loop/terminated");
+        const { workspaceId } = await daemon.createWorkspace({ name: "cancel-stream-not-session" });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const lifecycle = new LoopLifecycle(db);
+        try {
+            await rpcCall(ws, 1, "workspace.attach", { workspaceId });
+            const accepted = await daemon.runLoop({
+                workspaceId, sessionId, prompt: "Observe a command's outcome.",
+            });
+            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
+            const subscriptions = await db.find_open_subscriptions_for_session.all<{ id: number }>({ session_id: sessionId });
+            assert.equal(subscriptions.length, 1);
+            const subscription = await db.test_get_subscription.get<{ entry_id: number }>({ id: subscriptions[0].id });
+            const resource = await db.test_get_entry_by_id.get<{ pathname: string; scheme: string }>({ id: subscription!.entry_id });
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null), { executors: fixtureExecutors(PlurnkParser.frame(`KILL (${resource!.scheme}://${resource!.pathname})`, null)) }).items[0];
+            if (parsed?.kind !== "statement") throw new Error("Expected KILL");
+            const [killed] = await daemon.dispatchClientAction({ workspaceId, actor: TEST_OWNER, statements: [parsed.statement] });
+            assert.equal(killed.status, 200, JSON.stringify(killed));
+            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 200);
+            assert.equal(mock.received.length, 2, "a 499 stream result is a completion, not a cancelled session scope");
+            // {§notifications} The loop's rows reach the log channel before its terminal is announced.
+            await waitFor(() => terminated() as Array<{ loopId: number }>, (events) => events.some(({ loopId }) => loopId === accepted.loopId));
+            const reads = (entries() as Array<{ entry: { loop_id: number; op: string; scheme: string; origin: string; status_rx: number } }>)
+                .map(({ entry }) => entry)
+                .filter((entry) => entry.loop_id === accepted.loopId && entry.op === "READ" && entry.scheme === "sh");
+            assert.deepEqual(reads.map(({ origin, status_rx }) => ({ origin, status_rx })), [{ origin: "_plurnk", status_rx: 499 }],
+                "the terminal stream READ reaches the live log channel once, before the loop concludes");
+        } finally {
+            ws.close();
+            await daemon.cancelSession({ workspaceId, sessionId });
+        }
+    });
+});
+
+test("{§notifications}: a pending completion wake is not reported as an executed resume", async (t) => {
+    serverProposals(t, "accept");
+    const parked = Promise.withResolvers<void>();
+    const ensureDrain = DrainSupervisor.prototype.ensureDrain;
+    t.mock.method(DrainSupervisor.prototype, "ensureDrain", async function (
+        this: DrainSupervisor, ...args: Parameters<typeof ensureDrain>
+    ) {
+        const started = await ensureDrain.apply(this, args);
+        void started?.drainPromise.then(() => parked.resolve(), parked.reject);
+        return started;
+    });
+    const release = Promise.withResolvers<void>();
+    const settled = Promise.withResolvers<void>();
+    const settle = DrainSupervisor.prototype.settleCompletionWake;
+    t.mock.method(DrainSupervisor.prototype, "settleCompletionWake", async function (
+        this: DrainSupervisor, ...args: Parameters<typeof settle>
+    ) {
+        await release.promise;
+        try { await settle.apply(this, args); }
+        finally { settled.resolve(); }
+    });
+    const provider = new Mock({ contextWindow: 65536, responses: [
+        mockResponse("````sh\nsleep 30\n````\n````WAIT\nWait for the command.\n````"),
+        mockResponse("````SEND [200]\nA cancelled task must not reach this turn.\n````"),
+    ] });
+    await withDaemon(provider, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        const conclusions = subscribeNotifications(ws, "stream/concluded");
+        const { workspaceId } = await daemon.createWorkspace({ name: "pending-wake-publication" });
+        const sessionId = await namedModelSession(daemon, workspaceId, "main");
+        const lifecycle = new LoopLifecycle(db);
+        try {
+            const attached = await rpcCall(ws, 1, "workspace.attach", { workspaceId });
+            assert.equal((attached.result as { id: number }).id, workspaceId);
+            const accepted = await daemon.runLoop({ workspaceId, sessionId, prompt: "Await the command." });
+            await waitForDb(() => lifecycle.status(accepted.loopId), (status) => status === 202);
+            // The database transition precedes drain teardown. Exercise a settled
+            // park, not a completion racing the still-active drain.
+            await parked.promise;
+            const subscriptions = await db.find_open_subscriptions_for_session.all<{ id: number }>({ session_id: sessionId });
+            assert.equal(subscriptions.length, 1);
+            await daemon.engine.cancelSubscription(subscriptions[0].id);
+            const events = await waitFor(() => conclusions() as Array<{ wakeAction: string }>, (values) => values.length > 0);
+            assert.equal(events[0]?.wakeAction, "wake-pending", "stream completion is published before wake eligibility settles");
+            assert.deepEqual(Object.keys(events[0]).toSorted(), ["entryId", "loop_seq", "result", "scheme", "sequence", "sessionId", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workspaceId"], "the conclusion names its stream and coordinates, never a future recipient");
+            assert.equal(await lifecycle.status(accepted.loopId), 202, "publication cannot claim execution while the task is parked");
+            await daemon.cancelSession({ workspaceId, sessionId });
+            release.resolve();
+            await settled.promise;
+            assert.equal(await lifecycle.status(accepted.loopId), 499, "cancellation won before settlement");
+            assert.equal(provider.received.length, 1, "the pending event never resurrects cancelled work");
+        } finally {
+            await daemon.cancelSession({ workspaceId, sessionId });
+            release.resolve();
+            ws.close();
+        }
+    });
+});
+
+test("{§session-model-selection}: an async wake resumes with the loop's durable provider", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-provider-"));
+    const releasePath = join(releaseDir, "release");
+    const boot = new Mock({
+        contextWindow: 16384,
+        responses: [mockResponse("````SEND [200]\nboot provider must never run this loop\n````")],
+    });
+    const selected = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
+            mockResponse("````SEND [200]\nresumed on selected provider\n````"),
+        ],
+    });
+    const selectedSpec = { alias: "wakeb", provider: "openai", model: "wake-provider-b" } as const;
+    const prior = process.env.PLURNK_MODEL_wakeb;
+    process.env.PLURNK_MODEL_wakeb = "openai/wake-provider-b";
+    ProviderInstantiate.registerInstance(selected, selectedSpec);
+
+    try {
+        await withDaemon(boot, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-provider-identity" });
+                const terminated = subscribeNotifications(ws, "loop/terminated");
+                const started = await rpcCall(ws, 2, "loop.run", {
+                    prompt: "run on B, park, then resume on B",
+                    selector: "wakeb",
+                });
+                const loopId = (started.result as { loopId: number }).loopId;
+
+                await waitForDb(
+                    async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                    (status) => status === 202,
+                );
+
+                // A repeated client call naming a DIFFERENT provider must not mutate a
+                // parked loop. Mid-loop hot-swap is not an implicit side effect of prompt
+                // injection; the caller must conclude/cancel and open a new loop.
+                const before = await db.test_sessions_with_model.all({});
+                const conflict = await rpcCall(ws, 3, "loop.run", {
+                    prompt: "silently change this parked loop to the boot model",
+                    selector: "mocktest",
+                });
+                const problem = rpcProblem(conflict);
+                assert.equal(problem.type, "https://problems.plurnk.xyz/daemon/session/session-loop-active");
+                assert.equal(problem.selectedAlias, "wakeb");
+                assert.equal(problem.requestedAlias, "mocktest");
+                assert.match(problem.recovery ?? "", /Conclude or cancel/);
+                assert.deepEqual(await db.test_sessions_with_model.all({}), before, "a rejected prompt selector cannot rewrite session settings");
+
+                await writeFile(releasePath, "");
+                await waitFor(
+                    () => terminated() as Array<{ loopId: number; result: { status: number } }>,
+                    (events) => events.some((event) => event.loopId === loopId && event.result.status === 200),
+                    { timeoutMs: 6000 },
+                );
+                assert.equal(selected.remaining, 0, "provider B generated both the initial and resumed turns");
+                assert.equal(boot.remaining, 1, "boot-default provider A was never called");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_MODEL_wakeb;
+        else process.env.PLURNK_MODEL_wakeb = prior;
+        await rm(releaseDir, { recursive: true });
+    }
+});
+
+test("{§session-model-selection}: a selector-less continuation resumes the loop's durable provider, never the boot default", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-wake-default-"));
+    const releasePath = join(releaseDir, "release");
+    const boot = new Mock({
+        contextWindow: 16384,
+        responses: [mockResponse("````SEND [200]\nboot provider must never run this loop\n````")],
+    });
+    const selected = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl(`while [ ! -f '${releasePath}' ]; do sleep 0.05; done; echo selected`)),
+            mockResponse("````NOTE\nawaiting the exec before concluding\n````"),
+            mockResponse("````SEND [200]\nresumed on selected provider\n````"),
+        ],
+    });
+    const selectedSpec = { alias: "wakedefault", provider: "openai", model: "wake-provider-b" } as const;
+    const prior = process.env.PLURNK_MODEL_wakedefault;
+    process.env.PLURNK_MODEL_wakedefault = "openai/wake-provider-b";
+    ProviderInstantiate.registerInstance(selected, selectedSpec);
+
+    try {
+        await withDaemon(boot, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-default-identity" });
+                const started = await rpcCall(ws, 2, "loop.run", {
+                    prompt: "run on B, park, then resume on B without a selector",
+                    selector: "wakedefault",
+                });
+                const loopId = (started.result as { loopId: number }).loopId;
+
+                await waitForDb(
+                    async () => (await db.test_get_loop_status.get<{ status: number }>({ id: loopId }))?.status,
+                    (status) => status === 202,
+                );
+
+                // THE DEFECT: a selector-less continuation re-resolves to the boot default and
+                // collides with the loop's durable provider (a false 409). It must resume on B.
+                const resumed = await rpcCall(ws, 3, "loop.run", {
+                    prompt: "resume the parked loop without naming a model",
+                });
+                const resumedResult = resumed.result as { problem?: { type?: string }; action?: string } | undefined;
+                assert.equal(resumedResult?.problem, undefined, "selector-less continuation must not conflict");
+                assert.equal(resumedResult?.action, "injected_next_turn", "the parked loop resumes in place");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_MODEL_wakedefault;
+        else process.env.PLURNK_MODEL_wakedefault = prior;
+        await rm(releaseDir, { recursive: true });
+    }
+});
+
+test("{§session-model-selection}: a parked loop retains its provider across daemon restart", async (t) => {
+    serverProposals(t, "accept");
+    const boot = new Mock({
+        contextWindow: 16384,
+        responses: [mockResponse("````SEND [200]\nboot provider must remain unused\n````")],
+    });
+    const selected = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl("sleep 30")),
+            mockResponse("````SEND [200]\nresumed after restart on selected provider\n````"),
+        ],
+    });
+    const selectedSpec = { alias: "restartb", provider: "openai", model: "restart-provider-b" } as const;
+    const prior = process.env.PLURNK_MODEL_restartb;
+    process.env.PLURNK_MODEL_restartb = "openai/restart-provider-b";
+    ProviderInstantiate.registerInstance(selected, selectedSpec);
+
+    const db = await openMigrated();
+    const parked = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const schedule = DrainSupervisor.prototype.scheduleWakes;
+    let stopping: Promise<void> | undefined;
+    let held = false;
+    t.mock.method(DrainSupervisor.prototype, "scheduleWakes", async function (
+        this: DrainSupervisor, ...args: Parameters<typeof schedule>
+    ) {
+        if (!held && (await new LoopLifecycle(db).parked(args[1])).length > 0) {
+            held = true;
+            parked.resolve();
+            await release.promise;
+        }
+        return schedule.apply(this, args);
+    });
+    let first: Daemon | undefined;
+    let second: Daemon | undefined;
+    try {
+        first = new Daemon({ db, provider: boot });
+        await first.start();
+        const envelope = await first.createWorkspace({ name: "exec-wake-provider-restart", projectRoot: null });
+        const sessionId = await namedModelSession(first, envelope.workspaceId, "main");
+        const started = await first.runLoop({
+            workspaceId: envelope.workspaceId,
+            sessionId,
+            prompt: "park on B before restart",
+            selector: "restartb",
+        });
+        await parked.promise;
+        stopping = first.stop();
+        await waitForDb(
+            () => db.test_latest_subscription_for_session.get<{ close_status: number }>({ session_id: sessionId }),
+            (subscription) => subscription?.close_status === 499,
+        );
+        release.resolve();
+        await stopping;
+        first = undefined;
+        assert.equal(
+            (await db.test_get_loop_status.get<{ status: number }>({ id: started.loopId }))?.status,
+            202,
+            "graceful daemon shutdown preserves parked work for recovery instead of cancelling it",
+        );
+
+        second = new Daemon({ db, provider: boot });
+        const terminated: Array<{ loopId: number; result: { status: number } }> = [];
+        second.subscribeToEvents((_workspaceId, method, params) => {
+            if (method === "loop/terminated") terminated.push(params as { loopId: number; result: { status: number } });
+        });
+        await second.start();
+        await waitFor(
+            () => terminated,
+            (events) => events.some((event) => event.loopId === started.loopId && event.result.status === 200),
+            { timeoutMs: 6000 },
+        );
+        const loops = await db.test_loop_queue_by_session.all<{ id: number; prompt: string }>({ session_id: sessionId });
+        assert.deepEqual(
+            loops.filter(({ prompt }) => prompt !== "").map(({ id }) => id),
+            [started.loopId],
+            "boot resumes the same durable loop without minting a prompt or loop",
+        );
+        assert.equal(selected.remaining, 0, "B generated before and after daemon restart");
+        assert.equal(boot.remaining, 1, "restart never substituted boot-default A");
+    } finally {
+        release.resolve();
+        await stopping;
+        if (first !== undefined) await first.stop();
+        if (second !== undefined) await second.stop();
+        await db.close();
+        if (prior === undefined) delete process.env.PLURNK_MODEL_restartb;
+        else process.env.PLURNK_MODEL_restartb = prior;
+    }
+});
+
+test("{§session-wait-timing} wake-on-completion: a slept (202) loop resumes IN PLACE — no new loop, no summary-as-prompt", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    // First loop: execution echo + WAIT — the loop SLEEPS while the
+    // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
+    // {§actor-boundary}), the daemon AWAKENS that same loop in place —
+    // never a fresh loop with a synthetic summary prompt. The resumed loop reads
+    // the concluded stream's own state and finishes on its own.
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl("sleep 0.05; echo hi")),
+            mockResponse("````SEND [200]\nsaw the wake\n````"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-dormant" });
+            const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+            const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
+
+            // loop.run ACCEPTS and returns immediately (100 + loopId) — it never blocks on
+            // the loop's lifecycle. A parked loop awaits an external event (here the spawn's
+            // conclusion; in general a user reply), so loop.run cannot resolve on it without
+            // deadlocking the very client that must send that event. Park, resume, and the
+            // true terminal all arrive via events. {§session-causal-admission}.
+            const firstSession = await rpcCall(ws, 2, "loop.run", { prompt: "kick off exec then park" });
+            const parkedLoop = (firstSession.result as { loopId: number }).loopId;
+            assert.equal((firstSession.result as { status: number }).status, 100, "loop.run returns immediately (100 accepted) — never a fake 200/202 standing in for the loop's real outcome");
+
+            // echo hi is fast; the conclusion fires after the loop sleeps; the daemon
+            // RESUMES the same loop; that resumed turn terminates it. Event-driven —
+            // wait for the resume to land AND the loop to terminate. Hard-fails on a
+            // timeout if the slept loop is ever stranded (the lost-loop hang), instead
+            // of a fixed sleep that hides it under load.
+            await waitFor(
+                () => terminatedEvents() as Array<{ loopId: number; result: { status: number } }>,
+                (ts) => {
+                    const wake = (concludedEvents() as Array<{ scheme: string }>).find((c) => c.scheme === "sh");
+                    return wake !== undefined && ts.some((t) => t.loopId === parkedLoop && t.result.status === 200);
+                },
+                { timeoutMs: 6000 },
+            );
+
+            const concluded = concludedEvents() as Array<{
+                scheme: string; target: string; result: { status: number; problem?: { type: string } }; summary: string;
+                wakeAction: string;
+                loop_seq?: number; turn_seq?: number; sequence?: number;
+            }>;
+            assert.ok(concluded.length >= 1, `expected >=1 stream/concluded event, got ${concluded.length}`);
+            const wake = concluded.find((c) => c.scheme === "sh");
+            assert.ok(wake, "exec stream concluded");
+            assert.equal(wake.result.status, 200);
+            assert.match(wake.target, /^sh:\/\/\//, "stream/concluded carries the canonical target URI");
+            assert.match(wake.summary, /^sh:\/\/\/[a-f0-9]{8} completed \(exit 0\)/,
+                "summary references the workspace-stable stream address");
+            assert.equal(wake.wakeAction, "wake-pending", "the conclusion reports scheduling, not execution");
+            assert.deepEqual(Object.keys(wake).toSorted(), ["entryId", "loop_seq", "result", "scheme", "sequence", "sessionId", "subscriptionId", "summary", "target", "turn_seq", "wakeAction", "workspaceId"]);
+
+            assert.deepEqual([wake.loop_seq, wake.turn_seq, wake.sequence], [1, 2, 3],
+                "stream/concluded carries causal coordinates independently of its output URI");
+
+            // The loop's TRUE outcome arrives via loop/terminated — the resumed loop ends 200,
+            // never through loop.session's (already-returned) result.
+            const terminated = terminatedEvents() as Array<{ loopId: number; result: { status: number } }>;
+            assert.ok(terminated.some((t) => t.loopId === parkedLoop && t.result.status === 200),
+                "the resumed loop's 200 terminal arrives via events, not loop.session's return");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§session-wait-timing} wake-on-completion preserves the durable loop's cumulative maxTurns ceiling", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl("sleep 0.05; echo ceiling")),
+            mockResponse("````SEND [200]\nmust not receive a second model turn\n````"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-max-turns" });
+            const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
+            const accepted = await rpcCall(ws, 2, "loop.run", {
+                prompt: "run once, park, and exhaust the durable loop ceiling",
+                maxTurns: 1,
+            });
+            const loopId = (accepted.result as { loopId: number }).loopId;
+
+            const seen = await waitFor(
+                () => terminatedEvents() as Array<{
+                    loopId: number; result: { status: number }; hitMaxTurns: boolean; turnIds: number[];
+                }>,
+                (events) => events.some((event) => event.loopId === loopId),
+                { timeoutMs: 6000 },
+            );
+            const terminal = seen.find((event) => event.loopId === loopId);
+            assert.equal(terminal?.result.status, 429);
+            assert.equal(terminal?.hitMaxTurns, true);
+            assert.equal(terminal?.turnIds.length, 2, "initialization and the pre-park model turn remain in the durable chronology");
+            assert.equal(mock.remaining, 1, "resume terminates before asking the provider for a second turn");
+        } finally {
+            ws.close();
+        }
+    });
+});
+
+test("{§session-causal-admission} wake-on-completion: active loop → daemon does NOT open a new loop (no-op-active-loop)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    // Loop emits exec + an NOTE per turn — the loop
+    // stays active across multiple turns. The exec finishes mid-loop;
+    // wake should see active loop and skip.
+    const continueResponse = mockResponse("````NOTE\nthinking\n````");
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse(execDsl("echo soon", "NOTE")),
+            continueResponse,
+            continueResponse,
+            continueResponse,
+            mockResponse("````SEND [200]\ndone\n````"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-active" });
+            const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+
+            await runLoopToTerminal(ws, 2, { prompt: "stay active during exec" });
+            // Event-driven: wait for the exec to conclude (it finishes while the loop is
+            // still emitting in-progress inventories), not a fixed sleep racing the spawn.
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string }>,
+                (cs) => cs.some((c) => c.scheme === "sh"),
+                { timeoutMs: 5000 },
+            );
+
+            const concluded = concludedEvents() as Array<{ scheme: string; wakeAction: string }>;
+            const wake = concluded.find((c) => c.scheme === "sh");
+            assert.ok(wake, "exec stream concluded");
+            assert.equal(wake.wakeAction, "no-op-active-loop",
+                "wake declined to open a new loop because the original was still active");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§session-causal-admission} wake-on-completion: streaming spawn outlives loop — wake summary reports the FULL final byte count, not what was buffered at loop-end", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    // A countdown emits 5 lines over ~2.5s. The model waits — the loop SLEEPS
+    // while the countdown runs on. When the countdown concludes, the loop RESUMES in
+    // place, and the conclusion's summary reflects the COMPLETE stdout (10 bytes for
+    // "5\n4\n3\n2\n1\n") — proving the streaming continued past the sleep and the
+    // conclusion is the final state, not a partial snapshot buffered at sleep-time.
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse("````sh\nfor i in 5 4 3 2 1; do echo $i; sleep 0.4; done\n````\n\n````WAIT\nfire and forget\n````"),
+            // Wake-opened loop just terminates so the test completes:
+            mockResponse("````SEND [200]\nsaw the wake\n````"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-streaming" });
+            const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+            const terminatedEvents = subscribeNotifications(ws, "loop/terminated");
+
+            const startedAt = Date.now();
+            const firstResp = await rpcCall(ws, 2, "loop.run", { prompt: "stream while I leave" });
+            const firstResult = firstResp.result as { loopId: number; status: number };
+            const parkedLoop = firstResult.loopId;
+            const firstElapsed = Date.now() - startedAt;
+            assert.equal(firstResult.status, 100, "loop.run returns immediately (100 accepted); the spawn's late conclusion resumes the loop");
+            // loop.run accepts immediately — it returns well before the spawn's ~2.5s.
+            // The resume path handles the spawn's late conclusion, not a blocking loop.run.
+            assert.ok(firstElapsed < 1500,
+                `loop.run returns before the spawn finishes (~2.5s); got ${firstElapsed}ms`);
+
+            // Event-driven: wait for the ~2.5s countdown spawn to conclude (200) and its
+            // wake to fire, not a fixed sleep that races a slower spawn under load.
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string; result: { status: number } }>,
+                (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 200),
+                { timeoutMs: 8000 },
+            );
+
+            const concluded = concludedEvents() as Array<{
+                scheme: string; result: { status: number }; summary: string; wakeAction: string;
+            }>;
+            const wake = concluded.find((c) => c.scheme === "sh" && c.result.status === 200);
+            assert.ok(wake, "exec stream concluded");
+            // The KEY assertion: summary has the FULL byte count, not
+            // whatever happened to be in the channel when loop ended.
+            assert.match(wake.summary, /stdout=10 bytes/,
+                `summary should report the full final stdout=10 bytes ("5\\n4\\n3\\n2\\n1\\n"); got ${wake.summary}`);
+            assert.equal(wake.wakeAction, "wake-pending");
+            const terminated = await waitFor(
+                () => terminatedEvents() as Array<{ loopId: number; result: { status: number } }>,
+                (events) => events.some(({ loopId }) => loopId === parkedLoop),
+            );
+            assert.equal(terminated.find(({ loopId }) => loopId === parkedLoop)?.result.status, 200,
+                "the original task's terminal event, not the stream's prediction, proves same-loop resumption");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§session-loop-lifecycle} wake-on-completion: loop.cancel mid-spawn → daemon skips wake (skipped-aborted)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    // Slow exec; loop.cancel RPC fires the drain controller; spawn aborts
+    // with result.status=499; daemon's handler skips opening a wake loop.
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
+            mockResponse("````SEND [200]\nnever\n````"),
+        ],
+    });
+
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "exec-wake-cancelled" });
+            const workspaceId = (created.result as { id: number }).id;
+            const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel mid-stream" });
+            // Cancel must land on a LIVE exec (sleep 30 mid-run) — wait for its subscription
+            // to open, not a fixed sleep racing the spawn.
+            await waitForDb(
+                async () => (await db.test_count_open_subs_by_scheme.get<{ n: number }>({ workspace_id: workspaceId, scheme: "sh" }))?.n ?? 0,
+                (n) => n > 0,
+            );
+
+            await rpcCall(ws, 3, "loop.cancel", {});
+            try { await loopPromise; } catch { /* cancelled */ }
+
+            // Event-driven: wait for the exec's 499 conclusion to broadcast.
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string }>,
+                (cs) => cs.some((c) => c.scheme === "sh"),
+                { timeoutMs: 5000 },
+            );
+
+            const concluded = concludedEvents() as Array<{ scheme: string; result: { status: number; problem?: { type: string } }; wakeAction: string }>;
+            const wake = concluded.find((c) => c.scheme === "sh");
+            assert.ok(wake, "exec stream concluded");
+            assert.equal(wake.result.status, 499);
+            assert.equal(wake.result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/cancelled");
+            assert.equal(wake.wakeAction, "skipped-aborted",
+                "deliberate cancellations don't resurrect into a wake loop");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§executor-subprocess} loop.cancel preserves partial stdout on the 499 conclusion (chunk-capture)", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    // printf lands "a\nb\n" (4 bytes) immediately, then `sleep 30` runs; at
+    // cancel time those bytes are already in the channel. Under
+    // {§executor-subprocess}, loop.cancel process-group-kills the job; the 499
+    // conclusion must STILL report those 4 bytes — partial output captured
+    // + retained through an abort, not discarded.
+    const mock = new Mock({
+        contextWindow: 16384,
+        responses: [
+            mockResponse("````sh\nprintf 'a\\nb\\n'; sleep 30\n````\n\n````NOTE\nrunning\n````"),
+            mockResponse("````SEND [200]\nnever\n````"),
+        ],
+    });
+
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "exec-cancel-partial" });
+            const streamEvents = subscribeNotifications(ws, "stream/event");
+            const concludedEvents = subscribeNotifications(ws, "stream/concluded");
+
+            const loopPromise = rpcCall(ws, 2, "loop.run", { prompt: "cancel after partial output" });
+
+            // Deterministic: cancel only AFTER the 4 bytes have actually
+            // landed in the stdout channel — no fixed sleep racing printf.
+            await waitFor(
+                () => streamEvents() as Array<{ channel: string; contentLength: number }>,
+                (evs) => evs.some((e) => e.channel === "stdout" && e.contentLength >= 4),
+                { timeoutMs: 4000 },
+            );
+
+            await rpcCall(ws, 3, "loop.cancel", {});
+            try { await loopPromise; } catch { /* cancelled */ }
+
+            await waitFor(
+                () => concludedEvents() as Array<{ scheme: string }>,
+                (cs) => cs.some((c) => c.scheme === "sh"),
+                { timeoutMs: 4000 },
+            );
+
+            const concluded = concludedEvents() as Array<{ scheme: string; result: { status: number; problem?: { type: string } }; summary: string }>;
+            const wake = concluded.find((c) => c.scheme === "sh");
+            assert.ok(wake, "exec stream concluded");
+            assert.equal(wake.result.status, 499, "deliberate cancel concludes at 499");
+            assert.equal(wake.result.problem?.type, "https://problems.plurnk.xyz/executor/subprocess/cancelled");
+            assert.match(wake.summary, /stdout=4 bytes/,
+                `partial stdout ("a\\nb\\n" = 4 bytes) survives the abort; got ${wake.summary}`);
+        } finally { ws.close(); }
+    });
+});
+});
+
+describe("exec-kill-reap", () => {
+// The teardown-reap half of the KILL wire onto @plurnk/plurnk-execs ({§session-causal-admission}).
+// A background exec that IGNORES the polite signals (HUP/TERM) is endable ONLY by the bounded
+// housekeeping SIGKILL — so this is the positive proof that the service hands the executor
+// `{ housekeeping, graceMs }` on teardown, not a bare abort the executor can't escalate past SIGHUP.
+// The reap fixture requires an already-monitored stream; settlement behavior
+// is covered independently.
+process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+
+const mockTurn = (dsl: string) => ({
+    assistant: { content: dsl, reasoning: null, usage: { prompt: 0, completion: 0, reasoning: 0, cached: 0, total: 0 } },
+    assistantRaw: null,
+});
+
+// A host exec that arms itself against the polite signals, then sleeps. Only the housekeeping
+// SIGKILL (delivered to the whole process group) can end it — a bare HUP/TERM is trapped away.
+const stubbornSpawn = "````sh\ntrap '' HUP TERM; sleep 30\n````\n\n````WAIT\nparked with a stubborn spawn\n````";
+
+test("{§session-causal-admission} teardown hard-kills a SIGHUP/SIGTERM-ignoring background spawn — the bounded housekeeping reap", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const prior = process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+    process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = "50";  // a fast SIGKILL grace — deterministic, far under the waitFor budget
+    try {
+        const mock = new Mock({ contextWindow: viableWindow(), responses: [mockTurn(stubbornSpawn)] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "exec-stubborn-reap" });
+                const concluded = subscribeNotifications(ws, "stream/concluded");
+                const run = await rpcCall(ws, 2, "loop.run", { prompt: "spawn a stubborn exec then park" });
+                const loopId = (run.result as { loopId: number }).loopId;
+
+                // The loop parks (202) only AFTER its execution has spawned, so a 202 status is the
+                // deterministic "the stubborn spawn is live" gate — never a fixed-sleep race.
+                await waitForDb(
+                    () => db.engine_loop_status.get<{ status: number }>({ loop_id: loopId }),
+                    (r) => r?.status === 202,
+                    { timeoutMs: 5000 },
+                );
+
+                // Cancel fires the session-level total reap. The spawn traps HUP+TERM, so the polite
+                // signal can't end it; only the housekeeping SIGKILL (after the 50ms grace) does.
+                // Its 499 conclusion is the positive proof the service sent { housekeeping, graceMs }.
+                const cancel = await rpcCall(ws, 3, "loop.cancel", {});
+                assert.equal((cancel.result as { cancelled: boolean }).cancelled, true, "cancel saw the live spawn as work");
+
+                await waitFor(
+                    () => concluded() as Array<{ scheme: string; result: { status: number } }>,
+                    (cs) => cs.some((c) => c.scheme === "sh" && c.result.status === 499),
+                    { timeoutMs: 5000 },
+                );
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (prior === undefined) delete process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS;
+        else process.env.PLURNK_SERVICE_EXEC_KILL_GRACE_MS = prior;
+    }
+});
+});
+
+describe("exec-wait", () => {
+// {§session-causal-admission} — an execution receives one turn-scoped opportunity
+// to settle before the terminal SEND judges whether the stream needs monitoring.
+
+let runtimeSequence = 0;
+
+const response = (tag: string, disposition: "WAIT" | "SEND") => ({
+    assistant: {
+        content: "",
+        reasoning: null,
+        ops: [execStmt(tag, "go"), disposition === "WAIT" ? dispositionStmt("WAIT") : sendStmt(null, "The execution failed.")],
+    },
+});
+
+const wire = async (run: Executor["run"]) => {
+    const db = await openMigrated();
+    const schemes = new SchemeRegistry();
+    const engine = new Engine({ db, schemes, mimetypes: DEFAULT_MIMETYPES });
+    const executors = await testExecutors();
+    engine.setExecutors(executors);
+    schemes.registerRuntimeSchemes(executors);
+    const tag = `settle${++runtimeSequence}`;
+    engine.registerRuntime(tag, {
+        executor: {
+            runtime: tag,
+            glyph: "~",
+            get manifest() {
+                return {
+                    name: tag,
+                    channels: { results: "text/stream" },
+                    defaultChannel: "results",
+                    category: "data",
+                    writableBy: [],
+                    volatile: true,
+                    modelVisible: true,
+                } as never;
+            },
+            get defaultChannel() { return "results"; },
+            get channels() { return { results: { mimetype: "text/stream", defaultState: "active" as const } }; },
+            effect: () => "pure" as const,
+            probe: async () => ({ available: true as const, detail: undefined }),
+            run,
+        },
+        namespaceOwner: { kind: "module", name: `${tag} fixture` },
+        glyph: "~",
+        summary: "Settlement fixture.",
+        invocation: { body: { role: "fixture input", required: true }, example: { body: "fixture" } },
+        details: "",
+        available: true,
+        detail: undefined,
+    } as never);
+    const workspaceId = await insertWorkspace(db, `settlement-${crypto.randomUUID()}`);
+    const sessionId = await insertSession(db, workspaceId);
+    const loopId = await insertLoop(db, sessionId, 1, "settle the stream");
+    return { db, engine, schemes, tag, workspaceId, sessionId, loopId };
+};
+
+const idle = async (schemes: SchemeRegistry): Promise<void> => {
+    await (schemes.get("exec") as Exec).idle();
+};
+
+test("{§subscriptions} a failed executor close retains a callable owner for its durable obligation", { timeout: 10000 }, async (t) => {
+    const completion = Promise.withResolvers<{ status: number }>();
+    const fixture = await wire(() => completion.promise);
+    const failure = new Error("fixture durable closure failure");
+    const close = t.mock.method(ChannelWrite, "closeSubscription", async () => { throw failure; }, { times: 1 });
+    try {
+        const result = await fixture.engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
+            workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId, messages: [],
+        });
+        assert.equal(result.status, 202);
+        const settling = idle(fixture.schemes);
+        completion.resolve({ status: 200 });
+        await settling;
+        assert.equal(close.mock.callCount(), 1);
+        const open = await fixture.db.find_open_subscriptions_for_session.all<{ id: number }>({ session_id: fixture.sessionId });
+        assert.equal(open.length, 1, "failed persistence cannot pretend the obligation has settled");
+        const subscription = await fixture.db.test_get_subscription.get<{ entry_id: number }>({ id: open[0].id });
+        const entry = await fixture.db.test_get_entry_by_id.get<{ pathname: string }>({ id: subscription!.entry_id });
+        const logs = await fixture.db.test_log_entries_by_turn.all<{ sequence: number }>({ turn_id: result.turnId });
+        const killed = await fixture.engine.dispatch({
+            statement: killStmt(urlPath(fixture.tag, entry!.pathname)),
+            workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId,
+            turnId: result.turnId, sequence: Math.max(...logs.map(({ sequence }) => sequence)) + 1, origin: "model",
+        });
+        assert.equal(killed.status, 200, "KILL can settle the durable obligation through its retained owner");
+        assert.equal((await fixture.db.find_open_subscriptions_for_session.all({ session_id: fixture.sessionId })).length, 0);
+        const closed = await fixture.db.test_get_subscription.get<{ close_status: number }>({ id: open[0].id });
+        assert.equal(closed?.close_status, 200, "settlement retains the producer's actual result, not a fabricated cancellation");
+    } finally {
+        completion.resolve({ status: 200 });
+        await idle(fixture.schemes);
+        await fixture.db.close();
+    }
+});
+
+test("{§op-shapes} a decorated WAIT parks on its actual live stream; the decoration is a label, never a join", async () => {
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1";
+    const completion = Promise.withResolvers<{ status: number }>();
+    const fixture = await wire(() => completion.promise);
+    try {
+        const content = [
+            PlurnkParser.frame(fixture.tag, "go"),
+            PlurnkParser.frame("WAIT (session://absent) <0,0> [{\"timeout\":0}]", "Await results."),
+        ].join("\n\n");
+        const result = await fixture.engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [{ assistant: { content, reasoning: null } }] }),
+            workspaceId: fixture.workspaceId, sessionId: fixture.sessionId, loopId: fixture.loopId, messages: [],
+        });
+        assert.equal(result.status, 202);
+        assert.deepEqual(result.outcomes, [
+            { op: fixture.tag, status: 200, problemType: null },
+            { op: "WAIT", status: 202, problemType: null },
+        ]);
+        const attempts = await fixture.db.test_turn_attempts.all<{ accepted: number; parse_errors: string }>({ turn_id: result.turnId });
+        assert.deepEqual(attempts.map(({ accepted, parse_errors }) => [accepted, JSON.parse(parse_errors)]), [[1, []]]);
+    } finally {
+        completion.resolve({ status: 200 });
+        await idle(fixture.schemes);
+        await fixture.db.close();
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+    }
+});
+
+test("{§session-loop-lifecycle} fast current-turn streams settle before waiting and do not become monitored work", async () => {
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    // The cap is a minute, past the runner's bound, so the elapsed bound below separates "ended when the stream
+    // settled" from "waited for the cap" by far more than any loaded host's turn costs.
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "60000";
+    let startedAt = 0;
+    const fixture = await wire(async () => {
+        startedAt = Date.now();
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return { status: 200 };
+    });
+    try {
+        const result = await fixture.engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
+            workspaceId: fixture.workspaceId,
+            sessionId: fixture.sessionId,
+            loopId: fixture.loopId,
+            messages: [],
+        });
+        assert.equal(result.status, 102, "a concluded-but-unobserved stream continues to its observation turn");
+        assert.deepEqual(result.outcomes, [
+            { op: fixture.tag, status: 200, problemType: null },
+            { op: "WAIT", status: 102, problemType: null },
+        ]);
+        assert.ok(Date.now() - startedAt < 20_000, "settlement ends when the stream settles, not at the full minute cap");
+    } finally {
+        await idle(fixture.schemes);
+        await fixture.db.close();
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+    }
+});
+
+test("{§session-loop-lifecycle} a current-turn stream still active at the settlement cap follows the ordinary monitored path", async () => {
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "40";
+    let release!: () => void;
+    let startedAt = 0;
+    const fixture = await wire(() => new Promise((resolve) => {
+        startedAt = Date.now();
+        release = () => resolve({ status: 200 });
+    }));
+    try {
+        const result = await fixture.engine.runTurn({
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "WAIT")] }),
+            workspaceId: fixture.workspaceId,
+            sessionId: fixture.sessionId,
+            loopId: fixture.loopId,
+            messages: [],
+        });
+        assert.equal(result.status, 202, "the still-live stream remains a genuine monitored obligation");
+        assert.deepEqual(result.outcomes, [
+            { op: fixture.tag, status: 200, problemType: null },
+            { op: "WAIT", status: 202, problemType: null },
+        ]);
+        assert.ok(Date.now() - startedAt >= 30, "SEND adjudication follows the configured settlement opportunity");
+        release();
+    } finally {
+        release?.();
+        await idle(fixture.schemes);
+        await fixture.db.close();
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+    }
+});
+
+// {§loop-completion}: a fast failure must settle before strike exhaustion reaps work.
+test("{§session-causal-admission} a fast failed stream settles naturally and its observed failure does not itself strike out the loop", async () => {
+    const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
+    const fixture = await wire(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return Results.failure("executor:settle", "spawn-failed", 500, "The fast stream failed.");
+    });
+    try {
+        const result = await fixture.engine.runLoop({
+            provider: new Mock({ contextWindow: 100000, responses: [response(fixture.tag, "SEND"), {
+                assistant: { content: "", reasoning: null, ops: [completeStmt("")] },
+            }] }),
+            workspaceId: fixture.workspaceId,
+            sessionId: fixture.sessionId,
+            loopId: fixture.loopId,
+            maxStrikes: 1,
+            messages: [],
+        });
+        assert.equal(result.result.status, 200, "a handled executor failure does not manufacture a loop failure");
+        assert.equal(result.turnIds.length, 3, "initialization, execution, and observation");
+        await idle(fixture.schemes);
+        const subscription = await fixture.db.test_latest_subscription_for_session.get<{ close_status: number | null }>({
+            session_id: fixture.sessionId,
+        });
+        assert.equal(subscription?.close_status, 500, "the stream retains its own failure, never a cancellation");
+    } finally {
+        await idle(fixture.schemes);
+        await fixture.db.close();
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = previous;
+    }
+});
+});
+
+describe("wait-duration", () => {
+// {§session-wait-timing} Real subprocesses exercise wait expiry independently of their lifetime.
+// Observation begins only after optimistic settlement declines to keep waiting.
+// This suite isolates the parked observation itself.
+const disableOptimisticWait = (t: test.TestContext) => {
+    const prev = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+    process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "0";
+    t.after(() => {
+        if (prev === undefined) delete process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
+        else process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = prev;
+    });
+};
+
+test("{§operation-results} cancelling a parked loop releases its undelivered feedback", async (t) => {
+    disableOptimisticWait(t);
+    serverProposals(t, "accept");
+    const pushed = t.mock.method(NoticeChannel.prototype, "push");
+    const deleted = t.mock.method(NoticeChannel.prototype, "delete");
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeRawMockResponse("````sh\nsleep 30\n````\n\n````WAIT 15\n````", 10),
+    ] });
+    await withDaemon(mock, async (_db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "cancel-wait-feedback" });
+            const notices = subscribeNotifications(ws, "notice/event");
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const response = await rpcCall(ws, 2, "loop.run", { prompt: "go" });
+            const { loopId } = response.result as { loopId: number };
+            await waitFor(() => notices() as Array<{ loopId: number; notice: { kind: string; status?: number } }>,
+                (items) => items.some((item) => item.loopId === loopId && item.notice.kind === "loop_status" && item.notice.status === 202));
+            const warning = pushed.mock.calls.find(({ arguments: args }) => args[2] === loopId && args[3].kind === "parse_advisory");
+            assert.ok(warning, "the real parser generated feedback for the parked loop");
+            const channel = warning.this as NoticeChannel;
+            assert.equal(deleted.mock.calls.some((call) => call.this === channel && call.arguments[0] === loopId), false,
+                "parking is not terminal cleanup");
+            await rpcCall(ws, 3, "loop.cancel", {});
+            await waitFor(() => terminated() as Array<{ loopId: number; result: { status: number } }>,
+                (items) => items.some((item) => item.loopId === loopId && item.result.status === 499));
+            assert.deepEqual(channel.drain(loopId), [], "cancellation releases feedback without another model call");
+            assert.equal(mock.received.length, 1);
+        } finally { ws.close(); }
+    });
+});
+
+for (const header of ["WAIT", "WAIT [0]"]) {
+    test(`{§session-loop-lifecycle} ${header} resumes a loop without closing its open stream`, async (t) => {
+        disableOptimisticWait(t);
+        serverProposals(t, "accept");
+        const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
+        process.env.PLURNK_SERVICE_WAIT_SEC = "1";
+        const mock = new Mock({ contextWindow: 16384, responses: [
+            makeMockResponse(`\`\`\`\`sh [{"lifetime": "30m"}]\nsleep 30\n\`\`\`\`\n\n\`\`\`\`${header}\nawait the result\n\`\`\`\``, 10),
+            makeMockResponse("````SEND\nobserved the still-open stream\n````\n````KILL (session://root)\n````", 10),
+        ] });
+        try {
+            await withDaemon(mock, async (db, daemon, addr) => {
+                const ws = await connect(addr);
+                const notices = subscribeNotifications(ws, "notice/event");
+                try {
+                    const workspace = await rpcCall(ws, 1, "workspace.create", { name: "wait-duration" });
+                    const { sessionId } = await daemon.createSession({ workspaceId: (workspace.result as { id: number }).id, name: "root" });
+                    const generate = mock.generate.bind(mock);
+                    let observedLiveStream = false;
+                    t.mock.method(mock, "generate", async (args: Parameters<typeof mock.generate>[0]) => {
+                        if (mock.received.length === 1) {
+                            assert.equal((await db.session_live_obligations.get({ session_id: sessionId }))?.streams, 1,
+                                "continuation preserves the still-running subprocess");
+                            const loops = await daemon.listSessionLoops({ workspaceId: (workspace.result as { id: number }).id, sessionId });
+                            assert.equal(loops.at(-1)?.waitUntil, null, "the resumed application projection clears the deadline");
+                            observedLiveStream = true;
+                        }
+                        return generate(args);
+                    });
+                    const { finalStatus } = await runLoopToTerminal(ws, 2, { prompt: "go", sessionId });
+                    assert.equal(finalStatus, 499);
+                    assert.equal(mock.remaining, 0);
+                    assert.equal(observedLiveStream, true, "the wait expired before the 30-second stream concluded");
+                    const parks = (notices() as Array<{ notice: { kind: string; status?: number } }>)
+                        .filter(({ notice }) => notice.kind === "loop_status" && notice.status === 202);
+                    assert.equal(parks.length, header === "WAIT" ? 1 : 0, "zero bypasses parking rather than creating an immediate timer");
+                } finally { ws.close(); }
+            });
+        } finally {
+            if (previous === undefined) delete process.env.PLURNK_SERVICE_WAIT_SEC;
+            else process.env.PLURNK_SERVICE_WAIT_SEC = previous;
+        }
+    });
+}
+
+test("{§session-loop-lifecycle} closure wakes the parked loop exactly once before its wait expires", async (approvalContext) => {
+    disableOptimisticWait(approvalContext);
+    serverProposals(approvalContext, "accept");
+    const previous = process.env.PLURNK_SERVICE_WAIT_SEC;
+    // The duration is far longer than the spawn: the only wake that can arrive is closure.
+    process.env.PLURNK_SERVICE_WAIT_SEC = "600";
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("````sh\nsleep 3; echo closed\n````\n\n````WAIT\nwaiting for closure\n````", 10),
+        makeMockResponse("````SEND [200]\nobserved terminal closure\n````", 10),
+    ] });
+    try {
+        await withDaemon(mock, async (_db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "wait-closure" });
+                const { finalStatus, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "go" });
+                assert.equal(finalStatus, 200);
+                assert.equal(turnIds?.length, 3, "initialization plus two model turns; no pre-closure wake consumed the terminal response");
+                assert.equal(mock.remaining, 0, "closure produced the only continuation");
+            } finally { ws.close(); }
+        });
+    } finally {
+        if (previous === undefined) delete process.env.PLURNK_SERVICE_WAIT_SEC;
+        else process.env.PLURNK_SERVICE_WAIT_SEC = previous;
+    }
+});
+});
