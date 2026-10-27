@@ -30855,9 +30855,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-invocation (#1281)."
                 },
                 "cli-runtime-floor": {
                     "spec": "SPEC.md",
@@ -30867,9 +30867,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-invocation",
+                    "reason": "Folded client sub-tag §cli-runtime-floor into heading tag §cli-invocation (#1281)."
                 },
                 "cli-family-arguments": {
                     "spec": "SPEC.md",
@@ -30879,9 +30879,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-invocation",
+                    "reason": "Folded client sub-tag §cli-family-arguments into heading tag §cli-invocation (#1281)."
                 },
                 "cli-env-defaults": {
                     "spec": "SPEC.md",
@@ -30891,9 +30891,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-invocation",
+                    "reason": "Folded client sub-tag §cli-env-defaults into heading tag §cli-invocation (#1281)."
                 },
                 "cli-daemon-autostart": {
                     "spec": "SPEC.md",
@@ -30903,9 +30903,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-invocation",
+                    "reason": "Folded client sub-tag §cli-daemon-autostart into heading tag §cli-invocation (#1281)."
                 },
                 "cli-workspaces-and-sessions": {
                     "spec": "SPEC.md",
@@ -30915,9 +30915,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-workspaces-and-sessions (#1281)."
                 },
                 "cli-history-lost": {
                     "spec": "SPEC.md",
@@ -30927,9 +30927,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-workspaces-and-sessions",
+                    "reason": "Folded client sub-tag §cli-history-lost into heading tag §cli-workspaces-and-sessions (#1281)."
                 },
                 "cli-model-selection": {
                     "spec": "SPEC.md",
@@ -30939,9 +30939,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-model-selection (#1281)."
                 },
                 "cli-session-status": {
                     "spec": "SPEC.md",
@@ -30951,9 +30951,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-wait": {
                     "spec": "SPEC.md",
@@ -30963,9 +30963,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-wait into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-preparation": {
                     "spec": "SPEC.md",
@@ -30975,9 +30975,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-preparation into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-disconnected": {
                     "spec": "SPEC.md",
@@ -30987,9 +30987,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-disconnected into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-project-root": {
                     "spec": "SPEC.md",
@@ -30999,9 +30999,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-project-root into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-children": {
                     "spec": "SPEC.md",
@@ -31011,9 +31011,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-children into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-gated": {
                     "spec": "SPEC.md",
@@ -31023,9 +31023,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-gated into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-inbox": {
                     "spec": "SPEC.md",
@@ -31035,9 +31035,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-inbox into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-streams": {
                     "spec": "SPEC.md",
@@ -31047,9 +31047,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-streams into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-clock": {
                     "spec": "SPEC.md",
@@ -31059,9 +31059,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-clock into heading tag §cli-session-status (#1281)."
                 },
                 "cli-status-spend": {
                     "spec": "SPEC.md",
@@ -31071,9 +31071,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-session-status",
+                    "reason": "Folded client sub-tag §cli-status-spend into heading tag §cli-session-status (#1281)."
                 },
                 "cli-child-provider-selection": {
                     "spec": "SPEC.md",
@@ -31083,9 +31083,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-model-selection",
+                    "reason": "Folded client sub-tag §cli-child-provider-selection into heading tag §cli-model-selection (#1281)."
                 },
                 "cli-effort": {
                     "spec": "SPEC.md",
@@ -31095,9 +31095,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-model-selection",
+                    "reason": "Folded client sub-tag §cli-effort into heading tag §cli-model-selection (#1281)."
                 },
                 "cli-identity-effort": {
                     "spec": "SPEC.md",
@@ -31107,9 +31107,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-model-selection",
+                    "reason": "Folded client sub-tag §cli-identity-effort into heading tag §cli-model-selection (#1281)."
                 },
                 "cli-project-root": {
                     "spec": "SPEC.md",
@@ -31119,9 +31119,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-workspaces-and-sessions",
+                    "reason": "Folded client sub-tag §cli-project-root into heading tag §cli-workspaces-and-sessions (#1281)."
                 },
                 "cli-workspace-open-settings": {
                     "spec": "SPEC.md",
@@ -31131,9 +31131,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-workspaces-and-sessions",
+                    "reason": "Folded client sub-tag §cli-workspace-open-settings into heading tag §cli-workspaces-and-sessions (#1281)."
                 },
                 "cli-one-shot-mode": {
                     "spec": "SPEC.md",
@@ -31143,9 +31143,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-one-shot-mode into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-prompt-prefixes": {
                     "spec": "SPEC.md",
@@ -31155,9 +31155,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-prompt-prefixes into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-prompt-open-paths": {
                     "spec": "SPEC.md",
@@ -31167,9 +31167,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-prompt-open-paths into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-output-channels": {
                     "spec": "SPEC.md",
@@ -31179,9 +31179,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-output-channels (#1281)."
                 },
                 "cli-partial-record": {
                     "spec": "SPEC.md",
@@ -31191,9 +31191,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-partial-record into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-interrupted-record": {
                     "spec": "SPEC.md",
@@ -31203,9 +31203,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-interrupted-record into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-one-shot-flow": {
                     "spec": "SPEC.md",
@@ -31215,9 +31215,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-one-shot-flow into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-what-one-shot-mode-does-not-do": {
                     "spec": "SPEC.md",
@@ -31227,9 +31227,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-what-one-shot-mode-does-not-do into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-repl-mode": {
                     "spec": "SPEC.md",
@@ -31239,9 +31239,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-repl-mode (#1281)."
                 },
                 "cli-tui-mode": {
                     "spec": "SPEC.md",
@@ -31251,9 +31251,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-repl-mode",
+                    "reason": "Folded client sub-tag §cli-tui-mode into heading tag §cli-repl-mode (#1281)."
                 },
                 "cli-tui-flow": {
                     "spec": "SPEC.md",
@@ -31263,9 +31263,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 3,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-repl-mode",
+                    "reason": "Folded client sub-tag §cli-tui-flow into heading tag §cli-repl-mode (#1281)."
                 },
                 "cli-interactive-command-discovery": {
                     "spec": "SPEC.md",
@@ -31275,9 +31275,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-interactive-command-discovery (#1281)."
                 },
                 "cli-posix-artifacts": {
                     "spec": "SPEC.md",
@@ -31287,9 +31287,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-interactive-command-discovery",
+                    "reason": "Folded client sub-tag §cli-posix-artifacts into heading tag §cli-interactive-command-discovery (#1281)."
                 },
                 "cli-path-completion": {
                     "spec": "SPEC.md",
@@ -31299,9 +31299,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-interactive-command-discovery",
+                    "reason": "Folded client sub-tag §cli-path-completion into heading tag §cli-interactive-command-discovery (#1281)."
                 },
                 "cli-sessions-topology": {
                     "spec": "SPEC.md",
@@ -31311,9 +31311,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-sessions-topology (#1281)."
                 },
                 "cli-loops": {
                     "spec": "SPEC.md",
@@ -31323,9 +31323,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-sessions-topology",
+                    "reason": "Folded client sub-tag §cli-loops into heading tag §cli-sessions-topology (#1281)."
                 },
                 "cli-session-history": {
                     "spec": "SPEC.md",
@@ -31335,9 +31335,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-sessions-topology",
+                    "reason": "Folded client sub-tag §cli-session-history into heading tag §cli-sessions-topology (#1281)."
                 },
                 "cli-active-command-admission": {
                     "spec": "SPEC.md",
@@ -31347,9 +31347,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-sessions-topology",
+                    "reason": "Folded client sub-tag §cli-active-command-admission into heading tag §cli-sessions-topology (#1281)."
                 },
                 "cli-cancellation": {
                     "spec": "SPEC.md",
@@ -31359,9 +31359,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-repl-mode",
+                    "reason": "Folded client sub-tag §cli-cancellation into heading tag §cli-repl-mode (#1281)."
                 },
                 "cli-import-and-bracketed-paste": {
                     "spec": "SPEC.md",
@@ -31371,9 +31371,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-repl-mode",
+                    "reason": "Folded client sub-tag §cli-import-and-bracketed-paste into heading tag §cli-repl-mode (#1281)."
                 },
                 "cli-workspace-mcp-controls": {
                     "spec": "SPEC.md",
@@ -31383,9 +31383,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-configuration-source",
+                    "reason": "Folded client sub-tag §cli-workspace-mcp-controls into heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-functionality-replacement": {
                     "spec": "SPEC.md",
@@ -31395,9 +31395,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-configuration-source",
+                    "reason": "Folded client sub-tag §cli-functionality-replacement into heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-configuration-source": {
                     "spec": "SPEC.md",
@@ -31407,9 +31407,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-mcp-oauth-callback": {
                     "spec": "SPEC.md",
@@ -31419,9 +31419,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-configuration-source",
+                    "reason": "Folded client sub-tag §cli-mcp-oauth-callback into heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-universal-agent-skills": {
                     "spec": "SPEC.md",
@@ -31431,9 +31431,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-configuration-source",
+                    "reason": "Folded client sub-tag §cli-universal-agent-skills into heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-file-members": {
                     "spec": "SPEC.md",
@@ -31443,9 +31443,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-configuration-source",
+                    "reason": "Folded client sub-tag §cli-file-members into heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-environment": {
                     "spec": "SPEC.md",
@@ -31455,9 +31455,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-configuration-source",
+                    "reason": "Folded client sub-tag §cli-environment into heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-schedule": {
                     "spec": "SPEC.md",
@@ -31467,9 +31467,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-configuration-source",
+                    "reason": "Folded client sub-tag §cli-schedule into heading tag §cli-configuration-source (#1281)."
                 },
                 "cli-exit-codes": {
                     "spec": "SPEC.md",
@@ -31479,9 +31479,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-output-channels",
+                    "reason": "Folded client sub-tag §cli-exit-codes into heading tag §cli-output-channels (#1281)."
                 },
                 "cli-rendering": {
                     "spec": "SPEC.md",
@@ -31491,9 +31491,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-rendering (#1281)."
                 },
                 "cli-presentation-loading": {
                     "spec": "SPEC.md",
@@ -31503,9 +31503,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-presentation-loading into heading tag §cli-rendering (#1281)."
                 },
                 "cli-row-sources": {
                     "spec": "SPEC.md",
@@ -31515,9 +31515,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-row-sources into heading tag §cli-rendering (#1281)."
                 },
                 "cli-log-entry-line-format": {
                     "spec": "SPEC.md",
@@ -31527,9 +31527,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-log-entry-line-format into heading tag §cli-rendering (#1281)."
                 },
                 "cli-curation-notice": {
                     "spec": "SPEC.md",
@@ -31539,9 +31539,9 @@
                     "liveShape": "list",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-curation-notice into heading tag §cli-rendering (#1281)."
                 },
                 "cli-note-rendering": {
                     "spec": "SPEC.md",
@@ -31551,9 +31551,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-note-rendering into heading tag §cli-rendering (#1281)."
                 },
                 "cli-operation-glyphs": {
                     "spec": "SPEC.md",
@@ -31563,9 +31563,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-operation-glyphs into heading tag §cli-rendering (#1281)."
                 },
                 "cli-markdown-projection": {
                     "spec": "SPEC.md",
@@ -31575,9 +31575,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-markdown-adapter": {
                     "spec": "SPEC.md",
@@ -31587,9 +31587,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-markdown-projection",
+                    "reason": "Folded client sub-tag §cli-markdown-adapter into heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-hyperlinks": {
                     "spec": "SPEC.md",
@@ -31599,9 +31599,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-markdown-projection",
+                    "reason": "Folded client sub-tag §cli-hyperlinks into heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-render-filter": {
                     "spec": "SPEC.md",
@@ -31611,9 +31611,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-markdown-projection",
+                    "reason": "Folded client sub-tag §cli-render-filter into heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-provider-reasoning": {
                     "spec": "SPEC.md",
@@ -31623,9 +31623,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-markdown-projection",
+                    "reason": "Folded client sub-tag §cli-provider-reasoning into heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-response-order": {
                     "spec": "SPEC.md",
@@ -31635,9 +31635,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-markdown-projection",
+                    "reason": "Folded client sub-tag §cli-response-order into heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-outside-text": {
                     "spec": "SPEC.md",
@@ -31647,9 +31647,9 @@
                     "liveShape": "table",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-markdown-projection",
+                    "reason": "Folded client sub-tag §cli-outside-text into heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-summary-line-per-loop": {
                     "spec": "SPEC.md",
@@ -31659,9 +31659,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-summary-line-per-loop into heading tag §cli-rendering (#1281)."
                 },
                 "cli-what-is-not-rendered": {
                     "spec": "SPEC.md",
@@ -31671,9 +31671,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-rendering",
+                    "reason": "Folded client sub-tag §cli-what-is-not-rendered into heading tag §cli-rendering (#1281)."
                 },
                 "cli-broadcast-send-rendering": {
                     "spec": "SPEC.md",
@@ -31683,9 +31683,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-markdown-projection",
+                    "reason": "Folded client sub-tag §cli-broadcast-send-rendering into heading tag §cli-markdown-projection (#1281)."
                 },
                 "cli-palette": {
                     "spec": "SPEC.md",
@@ -31695,9 +31695,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-color-policy",
+                    "reason": "Folded client sub-tag §cli-palette into heading tag §cli-color-policy (#1281)."
                 },
                 "cli-color-policy": {
                     "spec": "SPEC.md",
@@ -31707,9 +31707,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-color-policy (#1281)."
                 },
                 "cli-color-scheme": {
                     "spec": "SPEC.md",
@@ -31719,9 +31719,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-color-policy",
+                    "reason": "Folded client sub-tag §cli-color-scheme into heading tag §cli-color-policy (#1281)."
                 },
                 "cli-terminal-conveniences": {
                     "spec": "SPEC.md",
@@ -31731,9 +31731,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-color-policy",
+                    "reason": "Folded client sub-tag §cli-terminal-conveniences into heading tag §cli-color-policy (#1281)."
                 },
                 "cli-terminal-title": {
                     "spec": "SPEC.md",
@@ -31743,9 +31743,9 @@
                     "liveShape": "list",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-color-policy",
+                    "reason": "Folded client sub-tag §cli-terminal-title into heading tag §cli-color-policy (#1281)."
                 },
                 "cli-attention": {
                     "spec": "SPEC.md",
@@ -31755,9 +31755,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-color-policy",
+                    "reason": "Folded client sub-tag §cli-attention into heading tag §cli-color-policy (#1281)."
                 },
                 "cli-proposal-review": {
                     "spec": "SPEC.md",
@@ -31767,9 +31767,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-proposal-review into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-resume-observation": {
                     "spec": "SPEC.md",
@@ -31779,9 +31779,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-resume-observation into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-session-ownership": {
                     "spec": "SPEC.md",
@@ -31791,9 +31791,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-session-ownership into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-gate-answer-lifetime": {
                     "spec": "SPEC.md",
@@ -31803,9 +31803,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-gate-answer-lifetime into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-notification-shape": {
                     "spec": "SPEC.md",
@@ -31815,9 +31815,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-notification-shape into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-review-attribution": {
                     "spec": "SPEC.md",
@@ -31827,9 +31827,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-review-attribution into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-review-menu-interactive": {
                     "spec": "SPEC.md",
@@ -31839,9 +31839,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-review-menu-interactive into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-inline-review": {
                     "spec": "SPEC.md",
@@ -31851,9 +31851,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-inline-review (#1281)."
                 },
                 "cli-yolo-plurnkyolo": {
                     "spec": "SPEC.md",
@@ -31863,9 +31863,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-yolo-plurnkyolo into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-tool-acceptance": {
                     "spec": "SPEC.md",
@@ -31875,9 +31875,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-tool-acceptance into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-fail-closed-no-review-channel": {
                     "spec": "SPEC.md",
@@ -31887,9 +31887,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-fail-closed-no-review-channel into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-question-forms": {
                     "spec": "SPEC.md",
@@ -31899,9 +31899,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-question-forms into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-proposal-review-boundaries": {
                     "spec": "SPEC.md",
@@ -31911,9 +31911,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-inline-review",
+                    "reason": "Folded client sub-tag §cli-proposal-review-boundaries into heading tag §cli-inline-review (#1281)."
                 },
                 "cli-subcommands": {
                     "spec": "SPEC.md",
@@ -31923,9 +31923,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-subcommands (#1281)."
                 },
                 "cli-plurnk-models": {
                     "spec": "SPEC.md",
@@ -31935,9 +31935,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-plurnk-models into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-models-efforts": {
                     "spec": "SPEC.md",
@@ -31947,9 +31947,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-models-efforts into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-plurnk-update": {
                     "spec": "SPEC.md",
@@ -31959,9 +31959,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-plurnk-update into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-plurnk-workspace-list": {
                     "spec": "SPEC.md",
@@ -31971,9 +31971,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-plurnk-workspace-list into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-plurnk-workspace-sessions-name": {
                     "spec": "SPEC.md",
@@ -31983,9 +31983,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-plurnk-workspace-sessions-name into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-plurnk-log-read": {
                     "spec": "SPEC.md",
@@ -31995,9 +31995,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-plurnk-log-read into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-plurnk-effort": {
                     "spec": "SPEC.md",
@@ -32007,9 +32007,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-plurnk-effort into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-script-binding": {
                     "spec": "SPEC.md",
@@ -32019,9 +32019,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-subcommands",
+                    "reason": "Folded client sub-tag §cli-script-binding into heading tag §cli-subcommands (#1281)."
                 },
                 "cli-problems-and-notices": {
                     "spec": "SPEC.md",
@@ -32031,9 +32031,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 2,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-problem-control-flow": {
                     "spec": "SPEC.md",
@@ -32043,9 +32043,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-problems-and-notices",
+                    "reason": "Folded client sub-tag §cli-problem-control-flow into heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-connection-onboarding": {
                     "spec": "SPEC.md",
@@ -32055,9 +32055,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-problems-and-notices",
+                    "reason": "Folded client sub-tag §cli-connection-onboarding into heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-credential": {
                     "spec": "SPEC.md",
@@ -32067,9 +32067,9 @@
                     "liveShape": "heading",
                     "codeCitations": 2,
                     "testCitations": 0,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-problems-and-notices",
+                    "reason": "Folded client sub-tag §cli-credential into heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-sign-in": {
                     "spec": "SPEC.md",
@@ -32079,9 +32079,9 @@
                     "liveShape": "heading",
                     "codeCitations": 1,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-problems-and-notices",
+                    "reason": "Folded client sub-tag §cli-sign-in into heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-notice-rendering": {
                     "spec": "SPEC.md",
@@ -32091,9 +32091,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-problems-and-notices",
+                    "reason": "Folded client sub-tag §cli-notice-rendering into heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-channel-posture": {
                     "spec": "SPEC.md",
@@ -32103,9 +32103,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-problems-and-notices",
+                    "reason": "Folded client sub-tag §cli-channel-posture into heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-stream-event-and-stream-concluded": {
                     "spec": "SPEC.md",
@@ -32115,9 +32115,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 2,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-problems-and-notices",
+                    "reason": "Folded client sub-tag §cli-stream-event-and-stream-concluded into heading tag §cli-problems-and-notices (#1281)."
                 },
                 "cli-conformance": {
                     "spec": "SPEC.md",
@@ -32127,9 +32127,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
+                    "disposition": "keep-heading",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client section heading tag §cli-conformance (#1281)."
                 },
                 "cli-acp-conformance": {
                     "spec": "SPEC.md",
@@ -32139,9 +32139,9 @@
                     "liveShape": "paragraph",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-conformance",
+                    "reason": "Folded client sub-tag §cli-acp-conformance into heading tag §cli-conformance (#1281)."
                 },
                 "cli-test-daemon-lifecycle": {
                     "spec": "SPEC.md",
@@ -32151,9 +32151,9 @@
                     "liveShape": "heading",
                     "codeCitations": 0,
                     "testCitations": 1,
-                    "disposition": "pending",
-                    "target": null,
-                    "reason": null
+                    "disposition": "fold-into",
+                    "target": "cli-conformance",
+                    "reason": "Folded client sub-tag §cli-test-daemon-lifecycle into heading tag §cli-conformance (#1281)."
                 }
             },
             "tests": {
@@ -32166,9 +32166,9 @@
                     "usesOpenMigrated": false,
                     "usesLaunch": false,
                     "citedTags": [],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite scripts/audit-gate.test.mjs (#1281)."
                 },
                 "scripts/env-surface.test.mjs": {
                     "tier": "root",
@@ -32181,9 +32181,9 @@
                     "citedTags": [
                         "cli-env-defaults"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite scripts/env-surface.test.mjs (#1281)."
                 },
                 "scripts/posix.test.mjs": {
                     "tier": "root",
@@ -32196,9 +32196,9 @@
                     "citedTags": [
                         "cli-posix-artifacts"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite scripts/posix.test.mjs (#1281)."
                 },
                 "scripts/pre-push.test.mjs": {
                     "tier": "root",
@@ -32209,9 +32209,9 @@
                     "usesOpenMigrated": false,
                     "usesLaunch": false,
                     "citedTags": [],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite scripts/pre-push.test.mjs (#1281)."
                 },
                 "scripts/test-concurrency.test.mjs": {
                     "tier": "root",
@@ -32222,9 +32222,9 @@
                     "usesOpenMigrated": false,
                     "usesLaunch": false,
                     "citedTags": [],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite scripts/test-concurrency.test.mjs (#1281)."
                 },
                 "src/cli.test.ts": {
                     "tier": "unit",
@@ -32285,9 +32285,9 @@
                         "cli-tui-mode",
                         "cli-what-is-not-rendered"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite src/cli.test.ts (#1281)."
                 },
                 "src/render-filter.test.ts": {
                     "tier": "unit",
@@ -32298,9 +32298,9 @@
                     "usesOpenMigrated": false,
                     "usesLaunch": false,
                     "citedTags": [],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite src/render-filter.test.ts (#1281)."
                 },
                 "test/intg/cli.test.ts": {
                     "tier": "intg",
@@ -32378,9 +32378,9 @@
                         "cli-workspaces-and-sessions",
                         "cli-yolo-plurnkyolo"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite test/intg/cli.test.ts (#1281)."
                 },
                 "test/tui/live.test.ts": {
                     "tier": "live",
@@ -32393,9 +32393,9 @@
                     "citedTags": [
                         "cli-tui-flow"
                     ],
-                    "disposition": "pending",
+                    "disposition": "keep-suite",
                     "target": null,
-                    "reason": null
+                    "reason": "Retained client test suite test/tui/live.test.ts (#1281)."
                 }
             }
         },
