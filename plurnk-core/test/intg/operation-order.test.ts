@@ -2189,13 +2189,13 @@ const dispatchTurn = async (
     return { turnId, statuses };
 };
 
-test("{§send-premature-terminate} e2e: single-turn EDIT + SEND — entry created, log rows populated, statuses match", async () => {
+test("{§loop-completion} e2e: single-turn EDIT + SEND — entry created, log rows populated, statuses match", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-single");
         const provider = new Mock({
             contextWindow: 100000,
-            // {§send-premature-terminate} — an EDIT receipt lands next packet, so the turn continues.
+            // {§loop-completion} — an EDIT receipt lands next packet, so the turn continues.
             responses: [response([e2eEditStmt("/france/capital", "Paris"), noteStmt("answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
@@ -2443,7 +2443,7 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
     } finally { await db.close(); }
 });
 
-test("{§wait-obligation-matrix} empty WAIT falls through and SEND plus a retrieval observes before concluding", async () => {
+test("{§loop-completion} empty WAIT falls through and SEND plus a retrieval observes before concluding", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lifecycle-fallthrough");
@@ -2816,7 +2816,7 @@ const dispatch = async (engine: Engine, ctx: Awaited<ReturnType<typeof seedEnvel
     return statuses;
 };
 
-test("{§entry-owner} parser roundtrip: EDIT writes the resource", async () => {
+test("{§execution-output-identity} parser roundtrip: EDIT writes the resource", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-edit");
@@ -2829,7 +2829,7 @@ test("{§entry-owner} parser roundtrip: EDIT writes the resource", async () => {
         });
         assert.equal(result.status, 201);
         const entry = await db.test_parser_entries_first.get<{ workspace_id: number; scheme: string; pathname: string }>();
-        assert.ok((entry?.workspace_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
+        assert.ok((entry?.workspace_id ?? 0) >= 1, "owner stamped ({§execution-output-identity})");
         assert.equal(entry?.scheme, "workspace");
         assert.equal(entry?.pathname, "/countries/france/capital");
         const body = await db.test_parser_body_first.get<{ content: string }>();

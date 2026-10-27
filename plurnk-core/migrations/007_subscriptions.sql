@@ -8,7 +8,7 @@
 -- the session holds and routes cancellation to a separate process-local callable;
 -- it never serializes that callable. Closed rows persist for forensics; partial
 -- unique index enforces one active subscription per entry. Causal session and
--- resource owner may differ within the same workspace ({§runtime-resource-binding}).
+-- resource owner may differ within the same workspace ({§execution-output-identity}).
 CREATE TABLE IF NOT EXISTS subscriptions (
     id                INTEGER NOT NULL PRIMARY KEY,
     version           INTEGER NOT NULL DEFAULT 0 CHECK (version >= 0),
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     -- `[{"lifetime":"turn"}]`: the stream is reaped at the session's next pre-turn so it never survives
     -- into the subsequent turn; its terminal output surfaces initially visible like any conclusion. {§exec-lifetime}
     turn_scoped       INTEGER NOT NULL DEFAULT 0 CHECK (turn_scoped IN (0, 1)),
-    -- {§session-obligations}: a `[{"lifetime":"detached"}]` spawn outlives its loop and is nobody's obligation.
+    -- {§loop-completion}: a `[{"lifetime":"detached"}]` spawn outlives its loop and is nobody's obligation.
     detached          INTEGER NOT NULL DEFAULT 0 CHECK (detached IN (0, 1)),
     closed_at         TEXT,
     close_status      INTEGER          CHECK (close_status IS NULL OR (close_status BETWEEN 100 AND 599)),
@@ -154,7 +154,7 @@ BEGIN
     SELECT RAISE(ABORT, 'subscription channel result violates the channel producer contract');
 END;
 
--- {§session-obligations}: a session is held on its open streams, live children, and unanswered
+-- {§loop-completion}: a session is held on its open streams, live children, and unanswered
 -- messages sent to live recipient loops.
 CREATE VIEW IF NOT EXISTS session_obligations AS
 SELECT w.id AS session_id,

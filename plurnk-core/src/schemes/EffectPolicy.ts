@@ -7,13 +7,13 @@ export type ExecPolicy = "propose" | "auto";
 // lifecycle. The executor declares the FACT (does this invocation mutate the
 // host?); the service decides the POLICY (does it need a human gate?).
 //
-// {§exec-host-proposes} `host` runs code / mutates the host; `read` observes
-// external state and `pure` has no observable effect ({§exec-readpure-ungated}).
+// {§exec-lifetime} `host` runs code / mutates the host; `read` observes
+// external state and `pure` has no observable effect ({§exec-lifetime}).
 // Conservative by construction — an undeclared/unknown effect classifies as
 // `host` upstream (BaseExecutor.effect), so it lands here as whatever the
 // panel says of `host`.
 //
-// {§effect-policy-tunable} — one knob per effect, and the panel is the whole
+// {§exec-lifetime} — one knob per effect, and the panel is the whole
 // map: no entry is held in code, so an effect's admission is always a value an
 // operator can read. An invalid value refuses admission, never invents a policy.
 const POLICIES: readonly ExecPolicy[] = ["propose", "auto"];

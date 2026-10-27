@@ -11,9 +11,9 @@ import { seedEntryWithChannel } from "./_db.ts";
 import { namedModelSession } from "./_sessions.ts";
 import type { LoopUsage } from "../../src/core/Engine.ts";
 
-test("{§send-premature-terminate} loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
+test("{§loop-completion} loop.run accepts immediately (100); the loop's outcome arrives via loop/terminated", async () => {
     const dsl = "````EDIT (workspace:///france/capital)\nParis\n````\n\n````SEND\nParis is the capital.\n````";
-    // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
+    // {§loop-completion} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 142), makeMockResponse("````SEND [200]\nParis is the capital.\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {
@@ -199,7 +199,7 @@ test("{§turn-source-resources} loop.run streams log/entry notifications during 
                 const entry = (event as { entry: { op: string | null; origin: string } }).entry;
                 return (entry.op === "SEND" && entry.origin === "_plurnk") || entry.origin === "model";
             });
-            // {§send-premature-terminate} — the EDIT receipt forces a second turn.
+            // {§loop-completion} — the EDIT receipt forces a second turn.
             assert.deepEqual(authored.map((event) => (event as { entry: { op: string } }).entry.op), ["SEND", "EDIT", "SEND", "SEND"], "each authored message and operation streams independently of initialization");
             const prompt = authored[0] as { entry: { op: string; origin: string } };
             assert.equal(prompt.entry.op, "SEND");

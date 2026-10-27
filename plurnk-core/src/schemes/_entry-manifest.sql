@@ -1,7 +1,7 @@
 -- EntryManifest: the catalog listing a turn 0 FIND presents.
 
 -- PREP: engine_list_catalog_entries
--- {§entry-owner}: canonical entries in one workspace.
+-- {§execution-output-identity}: canonical entries in one workspace.
 -- the commons, a session's own space, or a named space — exactly one owner's rows, its perspective.
 SELECT e.id AS entry_id, e.scheme, e.authority, e.pathname, e.default_channel, ec.name AS channel, ec.lines, ec.mimetype, ec.weight AS weight, ec.deep_hash,
     json_extract(e.attributes, '$.sourceProjection.mimetype') AS source_mimetype,

@@ -9,7 +9,7 @@ export default class Fork {
     static async fork(db: Db, parentSessionId: number, name: string | undefined): Promise<number> {
         const parent = await db.session_get.get<{ workspace_id: number }>({ id: parentSessionId });
         if (parent === undefined) throw new Error(`fork: session ${parentSessionId} not found`);
-        // {§session-auto-name} The same allocator serves addressless WORK and FORK.
+        // {§execution-output-identity} The same allocator serves addressless WORK and FORK.
         const options = { workspaceId: parent.workspace_id, parentSessionId, forkSnapshot: true } as const;
         const branch = name === undefined
             ? await SessionName.claimAuto(db, options)

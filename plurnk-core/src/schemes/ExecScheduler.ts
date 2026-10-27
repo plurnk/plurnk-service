@@ -32,7 +32,7 @@ export const readExecConcurrency = (env: NodeJS.ProcessEnv = process.env): numbe
     );
 };
 
-// {§exec-concurrency} One FIFO per workspace. A reservation is synchronous so
+// {§exec-lifetime} One FIFO per workspace. A reservation is synchronous so
 // its operation receipt can state whether it started or queued; execution waits
 // only on `ready`, while the durable stream/subscription already exists.
 export default class ExecScheduler {

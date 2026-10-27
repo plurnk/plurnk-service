@@ -158,7 +158,7 @@ export default class MessageDelivery {
                 childProviderSpec,
                 systemPrompt });
         });
-        // {§session-obligations} — the message's durable address, as Open Work names it.
+        // {§loop-completion} — the message's durable address, as Open Work names it.
         const message = await this.#db.drain_message_path.get<{ path: string }>({ id: messageId });
         if (message === undefined) throw new Error(`injectSession: message ${messageId} has no address`);
         return { action, loopId, message: message.path };

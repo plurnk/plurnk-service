@@ -671,7 +671,7 @@ are not guessed.
 recovery, the first remaining native-call block in outside text receives one
 warning naming its markup and the fenced form. It does not invalidate real OPs
 beside it, become an operation, or independently earn a strike. A turn with no
-operation follows {§empty-turn}. Quoted examples and operation bodies are not
+operation follows {§outside-text}. Quoted examples and operation bodies are not
 attempted calls. Outside text remains unchanged evidence under {§outside-text}.
 
 §empty-section Both the compact bodyless form and an empty multiline block
@@ -909,7 +909,7 @@ scheduling, and its optional target is the label the row keeps, never a join;
 the AST retains the normalized metadata duration as `seconds`, separate from text coordinates.
 A turn admits any number of WAITs, all deferred until its other operations
 settle and together one park. End-of-program adjudication owns continuation, joining and completion
-under {§wait-obligation-matrix}. SEND carries optional message-completion metadata
+under {§loop-completion}. SEND carries optional message-completion metadata
 under {§message-completion}. KILL requires a target; NOTE retains memory.
 
 §send-wait-scope WAIT's optional `[seconds]` metadata is a non-negative finite scalar bounding
@@ -1320,8 +1320,8 @@ rule protects code examples in SEND, WORK, FORK, BARE and every other body.
 <!-- /map -->
 
 The runtime adjudicates each admitted turn against actual message resolutions,
-results and live obligations ({§wait-obligation-matrix}). A response with no
-operation resolves no message and creates no new observation obligation ({§empty-turn}).
+results and live obligations ({§loop-completion}). A response with no
+operation resolves no message and creates no new observation obligation ({§outside-text}).
 
 | Intent | Nominal status | Meaning |
 |---|---|---|
@@ -1424,7 +1424,7 @@ Operation bodies, asides, malformed operation regions and unfenced operation lin
 ({§unfenced-operation}) are not response text;
 nothing at or beyond a lost boundary is recovered as text. The statement and client
 tiers ignore outside text. Core alone owns storing it as the turn's outside source ({§outside-text})
-and no-operation strikes ({§empty-turn}); parsing never infers delivery or completion
+and no-operation strikes ({§outside-text}); parsing never infers delivery or completion
 intent.
 
 §unfenced-operation **The parser identifies ignored unfenced fragments.** An outside-text line
@@ -1465,7 +1465,7 @@ express. Consumers never receive ANTLR parse-tree or token types.
 §turn-shape `PlurnkParser.parse` accepts one model turn. A turn without any
 authored operation is reported by one hard diagnostic
 (`No valid Operation Syntax OPs detected.`), alongside any response text
-({§response-text}). Core admits this as a recoverable turn under {§empty-turn},
+({§response-text}). Core admits this as a recoverable turn under {§outside-text},
 silently: the diagnostic is the parser's report to its host, never a notice the
 model is shown.
 An explicit disposition may sit anywhere in it
@@ -1825,7 +1825,7 @@ in `@plurnk/plurnk-contracts` is that projection's one owner.
 blanks (spaces, tabs and line ends), cut to at most N characters, a character never cut in two, with blanks trimmed from
 its end; `continued` says whether anything but blanks follows. `excerptOf` in `@plurnk/plurnk-contracts` is that rule's one
 owner, for a loop's opening in a session's loop list ({§acp-session-loops}) and a session's latest finished reply
-({§session-finished-reply}).
+({§message-completion}).
 
 §application-session-overview **The session overview is the places in a scope with what waits there.** A place is a
 model-origin session; bookkeeping sessions are not places. The scope is the daemon or one workspace; hidden places are out
@@ -1837,14 +1837,14 @@ of it ({§machine-processes}).
 | A reply | `{ id, coordinate, completion, at, excerpt, continued }`: its durable log row, `L/T/S` in its session's log, the completion its receipt records, when it was recorded (Unix milliseconds) and its excerpt ({§list-excerpt}) |
 | Order | most recently finished first, by reply row (the log's commit order, so two replies never tie), then the places with no reply, newest first |
 | Bound | every place waiting on a gate, then the first `limit` in that order; `omitted` counts the places in scope it leaves out, so no place is left out silently |
-| Workspaces | `{ id, name, projectRoot, projectLabel }` for each workspace a held place belongs to ({§workspace-label}) |
+| Workspaces | `{ id, name, projectRoot, projectLabel }` for each workspace a held place belongs to ({§execution-output-identity}) |
 
 §application-loop-observation Loop observation exposes the durable scheduler
 state of work loops (excluding maintenance-only administrative loops), nullable
 `waitUntil` (the durable observation deadline in Unix milliseconds), the times a loop first
 ran (`claimedAt`, {§session-wait-timing}) and concluded (`terminatedAt`), ISO 8601 UTC and null
 until they happen, exact terminal `OperationResult`, the operation that opened the loop
-(`invocation`: its Session and log address, {§session-obligations}; null when no Session's operation did),
+(`invocation`: its Session and log address, {§loop-completion}; null when no Session's operation did),
 and exact count of packet-bearing
 Turns for one owned Session. Packetless producer Turns and physical provider
 retries do not contribute to `packetCount`. Exterior

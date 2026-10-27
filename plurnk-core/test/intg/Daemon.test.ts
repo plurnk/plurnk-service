@@ -773,19 +773,19 @@ test("{§methods-workspace-create} workspace.create returns id+name, mints no se
     });
 });
 
-test("{§workspace-auto-name} workspace.create with no name auto-generates a unique name", async () => {
+test("{§execution-output-identity} workspace.create with no name auto-generates a unique name", async () => {
     await withDaemon(null, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
         try {
             const response = await rpcCall(ws, 1, "workspace.create");
             const result = response.result as { id: number; name: string };
-            assert.match(result.name, /^[0-9A-Za-z]{5}$/, "{§workspace-auto-name}: five anchor-alphabet characters, no prefix");
-            assert.match(result.name, /[A-Za-z]/u, "{§workspace-name}: a generated name is not a decimal ID");
+            assert.match(result.name, /^[0-9A-Za-z]{5}$/, "{§execution-output-identity}: five anchor-alphabet characters, no prefix");
+            assert.match(result.name, /[A-Za-z]/u, "{§execution-output-identity}: a generated name is not a decimal ID");
         } finally { ws.close(); }
     });
 });
 
-test("{§workspace-name} workspace.create with a project root and no name is named after the root and selects that workspace next time", async () => {
+test("{§execution-output-identity} workspace.create with a project root and no name is named after the root and selects that workspace next time", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const home = new HostPaths().home;
         const inside = await mkdtemp(join(home, "project-"));
@@ -871,7 +871,7 @@ test("{§methods-workspace-attach} selection rejects ambiguous, empty and invali
     });
 });
 
-test("{§workspace-label} every envelope, row and created notice carries the folder's label beside it: a default name equals it, any other name leaves it be", async () => {
+test("{§execution-output-identity} every envelope, row and created notice carries the folder's label beside it: a default name equals it, any other name leaves it be", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const home = new HostPaths().home;
         const inside = await mkdtemp(join(home, "label ü √ "));
@@ -906,7 +906,7 @@ test("{§workspace-label} every envelope, row and created notice carries the fol
     });
 });
 
-test("{§workspace-name} {§notifications-workspace-renamed} a folderless workspace is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
+test("{§execution-output-identity} {§notifications-workspace-renamed} a folderless workspace is created, listed, renamed and attached with its folder null throughout; a rename collision changes nothing", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const renames: Array<[number | null, unknown]> = [];
         const unsubscribe = daemon.subscribeToEvents((workspaceId, method, params) => { if (method === "workspace/renamed") renames.push([workspaceId, params]); });
@@ -930,7 +930,7 @@ test("{§workspace-name} {§notifications-workspace-renamed} a folderless worksp
     });
 });
 
-// {§workspace-name} — the admission matrix: every refused spelling at creation and at rename, every
+// {§execution-output-identity} — the admission matrix: every refused spelling at creation and at rename, every
 // retained spelling by exact identity, the default derivation, and a workspace that predates the rule.
 const REFUSED_SEGMENTS: ReadonlyArray<readonly [name: string, segment: string]> = [
     [".", "."], ["..", ".."], ["a/../b", ".."], ["a/./b", "."], ["../x", ".."], ["x/..", ".."], ["./x", "."], ["x/.", "."],
@@ -946,7 +946,7 @@ const nameInvalid = (detail: RegExp) => (error: unknown): boolean =>
     error instanceof OperationFailureError && error.result.status === 400
     && (error.result.problem?.type ?? "").endsWith("/daemon/input/name-invalid") && detail.test(error.result.problem?.detail ?? "");
 
-test("{§workspace-name} decimal ID spellings are refused at creation and rename without changing state", async () => {
+test("{§execution-output-identity} decimal ID spellings are refused at creation and rename without changing state", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const standing = await daemon.createWorkspace({ name: "standing" });
         for (const name of ["0", "1", "42", "00", "0042", "9007199254740993", "9".repeat(100)]) {
@@ -960,7 +960,7 @@ test("{§workspace-name} decimal ID spellings are refused at creation and rename
     });
 });
 
-test("{§workspace-name} a numeric folder basename produces a path name, retaining folder-default selection", async () => {
+test("{§execution-output-identity} a numeric folder basename produces a path name, retaining folder-default selection", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const root = await mkdtemp(join(tmpdir(), "plurnk-numeric-folder-"));
         try {
@@ -973,7 +973,7 @@ test("{§workspace-name} a numeric folder basename produces a path name, retaini
     });
 });
 
-test("{§workspace-name} an existing numeric name remains listed, attachable and renameable without changing identity", async () => {
+test("{§execution-output-identity} an existing numeric name remains listed, attachable and renameable without changing identity", async () => {
     await withDaemon(null, async (db, daemon) => {
         const workspaceId = await insertWorkspace(db, "42");
         const { sessionId } = await daemon.createSession({ workspaceId, name: "alice" });
@@ -989,7 +989,7 @@ test("{§workspace-name} an existing numeric name remains listed, attachable and
     });
 });
 
-test("{§workspace-name} creation and rename refuse a '.' or '..' segment and ill-formed Unicode as name-invalid; a refusal creates and renames nothing", async () => {
+test("{§execution-output-identity} creation and rename refuse a '.' or '..' segment and ill-formed Unicode as name-invalid; a refusal creates and renames nothing", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const standing = await daemon.createWorkspace({ name: "standing" });
         for (const [name, segment] of REFUSED_SEGMENTS) {
@@ -1012,7 +1012,7 @@ test("{§workspace-name} creation and rename refuse a '.' or '..' segment and il
     });
 });
 
-test("{§workspace-name} every other spelling is admitted as written at creation and at rename: no repair, no decoding, no collapse", async () => {
+test("{§execution-output-identity} every other spelling is admitted as written at creation and at rename: no repair, no decoding, no collapse", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const created = new Map<number, string>();
         for (const name of RETAINED) {
@@ -1032,7 +1032,7 @@ test("{§workspace-name} every other spelling is admitted as written at creation
     });
 });
 
-test("{§workspace-name} a root spelled with '.' or '..' derives the name of the folder it reaches; an ill-formed root is project-root-invalid", async () => {
+test("{§execution-output-identity} a root spelled with '.' or '..' derives the name of the folder it reaches; an ill-formed root is project-root-invalid", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const home = new HostPaths().home;
         const inside = await mkdtemp(join(home, "dotted-"));
@@ -1053,7 +1053,7 @@ test("{§workspace-name} a root spelled with '.' or '..' derives the name of the
     });
 });
 
-test("{§workspace-name} a workspace already carrying a refused spelling stays listed and attachable and is renamed like any other, keeping its id, folder and sessions", async () => {
+test("{§execution-output-identity} a workspace already carrying a refused spelling stays listed and attachable and is renamed like any other, keeping its id, folder and sessions", async () => {
     await withDaemon(null, async (db, daemon) => {
         const legacyId = await insertWorkspace(db, "old/../name");
         const { sessionId } = await daemon.createSession({ workspaceId: legacyId, name: "kept" });
@@ -1710,7 +1710,7 @@ test("{§live-updates-stream-event-fires-on-chunk} the client-interface seam —
     });
 });
 
-test("{§exec-conclusion-summary} an execution's summary is its address, how its settled result ended, and the size of each channel its executor declares", async (t) => {
+test("{§exec-stream} an execution's summary is its address, how its settled result ended, and the size of each channel its executor declares", async (t) => {
     t.mock.method(console, "error", () => {}); // the invalid report is diagnosed on stderr; the summaries are the witness
     type RunArgs = { write: (channel: string, chunk: string, mimetype: string) => void; setState: (channel: string, state: string) => void };
     const fixture = (name: string, channels: readonly string[], report: (args: RunArgs) => unknown): Executor => ({

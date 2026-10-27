@@ -218,7 +218,7 @@ test("{§machine-processes} {§methods-session-list} listings filter by the mark
     });
 });
 
-test("{§methods-workspace-hide} {§methods-session-hide} {§notifications-workspace-hidden} {§notifications-session-hidden} {§workspace-name} each change is announced once in its workspace; creating by the folder selects and shows a hidden workspace; an explicit name it holds conflicts", async () => {
+test("{§methods-workspace-hide} {§methods-session-hide} {§notifications-workspace-hidden} {§notifications-session-hidden} {§execution-output-identity} each change is announced once in its workspace; creating by the folder selects and shows a hidden workspace; an explicit name it holds conflicts", async () => {
     const folder = await mkdtemp(join(tmpdir(), "plurnk-hidden-"));
     try {
         await withDaemon(null, async (_db, daemon) => {

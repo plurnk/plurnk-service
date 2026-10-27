@@ -133,7 +133,7 @@ export default class DigestRender {
         return typeof stream === "string" ? stream : null;
     }
 
-    // {§exec-env-scoped} — the environment a spawn received, as recorded on its row: host names by
+    // {§execution-output-identity} — the environment a spawn received, as recorded on its row: host names by
     // name, the Session's own values, inherited values by their source, masked names. Host values
     // stay in digest.json. Part of the rendered line, so spawns under different environments never
     // collapse into one group.

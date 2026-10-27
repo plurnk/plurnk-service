@@ -1,4 +1,4 @@
-// {§methods-invocation} {§session-obligations} — a row that discharges an obligation names the operation that opened it,
+// {§methods-invocation} {§loop-completion} — a row that discharges an obligation names the operation that opened it,
 // so a client pairs the answer with its call without matching addresses.
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
@@ -89,7 +89,7 @@ test("{§methods-invocation} a stream's observation names its execution, and a F
     });
 });
 
-test("{§methods-invocation} {§session-obligations} a delegation is answered by its child's conclusion, and a message by its completion reply", async (t) => {
+test("{§methods-invocation} {§loop-completion} a delegation is answered by its child's conclusion, and a message by its completion reply", async (t) => {
     await run(t, [
         "````WORK (session://helper)\nSay hello.\n````\n````WAIT\n````",
         "````SEND [200]\nhello from the helper\n````",

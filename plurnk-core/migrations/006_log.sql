@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS message_completions (
 
 CREATE INDEX IF NOT EXISTS message_completions_response_id ON message_completions (response_id);
 
--- {§loop-response-messages}: delivered messages remain executed evidence;
+-- {§message-completion}: delivered messages remain executed evidence;
 -- curation and loop termination cannot retract or replace them.
 CREATE VIEW IF NOT EXISTS log_responses AS
 SELECT le.id, le.loop_id, le.turn_id, le.session_id, le.sequence, le.source, le.origin,

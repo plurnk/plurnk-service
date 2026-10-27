@@ -97,7 +97,7 @@ export default class TurnMaterialization {
                     kind: "loop_termination",
                     ...(r.terminated_by === null ? {} : { terminatedBy: r.terminated_by }),
                 });
-                // {§loop-answer} the row IS what the child said, at the child's own loop address.
+                // {§message-completion} the row IS what the child said, at the child's own loop address.
                 const sequence = Number(r.pathname?.slice(1) ?? "0");
                 const outcome = r.hostname === null || !Number.isSafeInteger(sequence)
                     ? null
@@ -202,7 +202,7 @@ export default class TurnMaterialization {
         // {§context-fit} — the rows this pass lands, known before the first one is measured.
         const landing = channels.filter((ch) => (ch.state === "closed" || ch.state === "errored")
             && ch.producer_result !== null && !skipped.has(ch.publication_id));
-        // {§exec-stream-page} — a failed execution is one failure: its status and Problem ride its
+        // {§exec-stream} — a failed execution is one failure: its status and Problem ride its
         // default channel's row when that landed, else its first; its other rows are plain reads.
         const failureRow = new Map<number, number>();
         for (const ch of landing) {
@@ -221,10 +221,10 @@ export default class TurnMaterialization {
             // {§exec-stream} — nothing publishes while a stream is active: the Open Work streams
             // list reports its size and growth ({§child-orientation}); the model READs any
             // range it wants. At close, ONE foisted READ that is exactly a markerless READ — the first
-            // page ({§markerless-first-page}, {§exec-stream-page}), whole when it fits the budget and
+            // page ({§markerless-first-page}, {§exec-stream}), whole when it fits the budget and
             // otherwise its size ({§context-fit}) — with the extent, the terminal status and Problem,
             // initially visible.
-            // {§stream-observation-result} — the terminal result lands in a separate write after
+            // {§exec-stream} — the terminal result lands in a separate write after
             // the executor closes the channel (#818); `landing` holds only channels that have one.
             // {§validation-topology}: a stored result is chapter 5's; it is parsed, not re-asserted.
             const produced = Results.fromRow(ch.producer_result!);

@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS ambient_events (
         (kind = 'loop_termination'
             AND op = 'READ'
             -- {§env-delta-child-termination}: the exact concluded loop is a resource, not a message;
-            -- {§loop-answer} names it at the child's own loop address.
+            -- {§message-completion} names it at the child's own loop address.
             AND scheme = 'ops'
             AND hostname IS NOT NULL
             AND pathname IS NOT NULL

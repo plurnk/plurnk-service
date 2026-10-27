@@ -41,7 +41,7 @@
   `authorization-required` sign-in, and conclude loops when a turn pairs a reply
   `SEND` with `WAIT` and no live work remains ({§executor-input-schema-preview},
   {§executor-blank-invocation}, {§problems-mcp}, {§functionality-model-mutation},
-  {§oauth-continuation}, {§wait-obligation-matrix}) (#1228).
+  {§oauth-continuation}, {§loop-completion}) (#1228).
 - b28031f: `@opencode-ai/models` moves to `^0.0.113` ({§model-catalog-build}).
   `effort-unsupported` and `effort-invalid` name the route's supported or valid
   efforts in `recovery`, and `provider-unavailable` includes the provider's
@@ -151,7 +151,7 @@
   code points.
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-session-overview}, {§session-finished-reply},
+  finished first and bounded ({§methods-session-overview}, {§message-completion},
   {§application-session-overview}); `excerptOf` is the one list excerpt rule
   ({§list-excerpt}). `workspace/renamed` announces a rename
   ({§notifications-workspace-renamed}). AG-UI: a Run carrying
@@ -183,7 +183,7 @@
 - 519e7a1: An execution's `stream/concluded` summary sizes only the channels its executor
   declares and reads how it ended from the settled result: `completed`, with any
   exit code, for a success, and the Problem's title in lowercase for a failure
-  ({§exec-conclusion-summary}).
+  ({§exec-stream}).
 - 65028a4: `plurnk-service` refuses a Node.js below its `engines.node` floor with one
   line naming both versions, exit 1, before any other module loads
   ({§startup-admission}). `daemon/provider/not-configured` recovers with
@@ -220,7 +220,7 @@
   `SPEC.md`; READMEs reduced to usage; new tags for the aliases cascade, the
   result-shape guards, the card read per wake and the llama-server effort posture.
 - 1e6019e: A channel deleted before its terminal publication settles every publication of
-  it ({§stream-channel-deletion}). An HTTP response without a readable projection
+  it ({§exec-stream}). An HTTP response without a readable projection
   drops the `readable` channel its request seeded; the loop that sent it no longer
   runs to its turn ceiling after its final reply.
 - 808f1b6: A loop's `loop/terminated` is announced once. A gate its running turn holds

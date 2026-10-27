@@ -58,7 +58,7 @@ interface ExecAttrs {
 }
 
 // Executors are discovered + probed at boot into ExecutorRegistry and reach
-// the scheme through ctx.executors ({§exec-registry-resolves}). Each runtime tag
+// the scheme through ctx.executors ({§exec-target-routing}). Each runtime tag
 // resolves to its sibling executor; the scheme itself stays runtime-agnostic.
 
 // Extract the local arm of {§exec-target-routing}; non-file schemes are
@@ -117,7 +117,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         documentation: "The opening fence names a registered executor or MCP service; its target, body, metadata, and timing follow that tool's invocation contract. Output streams into the workspace's `<executor>:///<id>` entry on that tool's own channels. A host-effecting invocation proposes for review before it runs; a read-only or pure one runs ungated. While it runs, the packet's `## Open Work` streams list reports channel size and growth and READ can inspect any range; when it finishes, one terminal READ becomes visible automatically.",
     };
 
-    // The web-fetch the entry sink calls on content:null ({§exec-entry-sink}); default = the
+    // The web-fetch the entry sink calls on content:null ({§execution-output-identity}); default = the
     // registry's web materializer, injectable for tests. Materialization always goes through
     // the registry ({§web-materialization-contract}): core names no extension package.
     readonly #fetchWeb: WebFetch;
@@ -195,14 +195,14 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         ]);
     }
 
-    // {§exec-hold-until-concluded} — match active spawns against the
+    // {§exec-lifetime} — match active spawns against the
     // operator's runtime or runtime:effect hold selectors.
     hasActiveHoldSpawns(sessionId: number, holdSet: ReadonlySet<string>): boolean {
         for (const { sessionId: r, runtime, effect } of this.#activeAborts.values()) if (r === sessionId && (holdSet.has(runtime) || holdSet.has(`${runtime}:${effect}`))) return true;
         return false;
     }
 
-    // {§exec-near-miss} — an execution id written under another runtime (`sh:///5e8ea474` for
+    // {§exec-target-routing} — an execution id written under another runtime (`sh:///5e8ea474` for
     // `python3:///5e8ea474`) names the address it holds (#1005).
     static async #nearMiss(core: { readonly db: Parameters<typeof ChannelWrite.execAddressesAt>[0]; readonly workspaceId: number }, pathname: string): Promise<string | undefined> {
         const addresses = await ChannelWrite.execAddressesAt(core.db, { workspaceId: core.workspaceId, authority: "", pathname });
@@ -326,7 +326,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         };
         const previewInput = body !== "" ? body : execTarget?.raw ?? "";
         const preview = runtime !== "" ? `[${runtime}] ${previewInput}` : `$ ${previewInput}`;
-        return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-host-proposes}
+        return { status: 202, body: preview, attrs };  // host runtime proposes with 202 — {§exec-lifetime}
     }
 
     // {§problems-exec} A refusal of the fence as written: 400, the runtime named, and the working form when there is one.
@@ -349,7 +349,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     // The executor the fence names, or the refusal: unregistered, unavailable, or unconfigured.
     static #admitRuntime(executors: ExecutorRegistry, workspaceId: number, runtime: string): RegistryEntry | ExecResult {
-        // {§exec-registry-resolves} — a non-empty tag selects exactly one registered executable
+        // {§exec-target-routing} — a non-empty tag selects exactly one registered executable
         // tool. Unknown tags are not reinterpreted as shell command words: that would make the
         // executed command differ from the authored body.
         const resolved = executors.entry(runtime, workspaceId);
@@ -500,7 +500,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             }
         }
 
-        // {§exec-target-near-miss} — a target in this executor's own scheme whose path can never be a
+        // {§exec-target-routing} — a target in this executor's own scheme whose path can never be a
         // stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's name for the run,
         // not a program: with a body present, the body runs as if targetless. Never taught.
         if (resourceSource !== null && hasBody && execTarget?.kind === "url" && execTarget.scheme === runtime
@@ -508,7 +508,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             resourceSource = null;
         }
 
-        // {§exec-target-documentation} — the generated reference under workspace:///_plurnk/ describes a
+        // {§exec-target-routing} — the generated reference under workspace:///_plurnk/ describes a
         // runtime; it is never a program. Realizing it as a temporary script fails where the runtime
         // cannot see the host's temporary directory, and runs markdown where it can.
         if (resourceSource !== null && execTarget?.kind === "url" && execTarget.scheme === "workspace"
@@ -522,7 +522,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             );
         }
 
-        // {§exec-scratch-directory} — a standalone source is realized under the scratch directory,
+        // {§exec-target-routing} — a standalone source is realized under the scratch directory,
         // where its executor must be able to read it; a directory the daemon cannot create or
         // write refuses here, never mid-run.
         if (resourceSource !== null && execTarget !== null) {
@@ -669,7 +669,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             throw new InvalidOperationResultError(`The accepted execution proposal names runtime '${runtime}', which is not a runtime tag.`);
         }
 
-        // {§exec-source-temporary} Admission precedes source realization. Native
+        // {§exec-target-routing} Admission precedes source realization. Native
         // files retain their environment; only standalone sources need a copy.
         let tempPath: string | null = null;
         if (attrs.resourceSource !== undefined) {
@@ -728,9 +728,9 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             : { status: 200, outcome: "started" };
     }
 
-    // {§exec-source-temporary} A standalone source read through its own scheme and realized where the executor can
+    // {§exec-target-routing} A standalone source read through its own scheme and realized where the executor can
     // run it: a native file is its own path; anything else is written once under the scratch directory
-    // ({§exec-scratch-directory}). A failed read stays the owning READ's failure.
+    // ({§exec-target-routing}). A failed read stays the owning READ's failure.
     async #realizeSource(resourceSource: string, runtime: string, core: PlurnkSchemeContext): Promise<{ target: string; tempPath: string | null } | ApplyOutcome> {
         const sourceTarget = parsePath(resourceSource);
         if (sourceTarget?.kind !== "url" || sourceTarget.scheme === null || sourceTarget.scheme === "file") {
@@ -773,7 +773,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             );
         }
         if (source.nativePath !== null) return { target: source.nativePath, tempPath: null };
-        const tempPath = this.#sourceScratch(core.hostPaths).path(extname(sourceTarget.pathname)); // {§exec-scratch-directory}
+        const tempPath = this.#sourceScratch(core.hostPaths).path(extname(sourceTarget.pathname)); // {§exec-target-routing}
         await writeFile(tempPath, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
         return { target: tempPath, tempPath };
     }
@@ -789,7 +789,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         if (resolved === undefined || !resolved.available) {
             throw new InvalidOperationResultError(`The '${runtime}' executor disappeared after its proposal.`);
         }
-        // {§executor-effect}, {§exec-hold-until-concluded}, #107: the admitted
+        // {§executor-effect}, {§exec-lifetime}, #107: the admitted
         // effect fact rides the hold predicate unchanged through application.
         const seedChannels: EntryData["channels"] = {};
         for (const [name, decl] of Object.entries(resolved.executor.channels)) {
@@ -836,7 +836,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             sessionId: core.sessionId, entryId, scheme: runtime,
             handle: runtime !== "" ? `${runtime}: ${body !== "" ? body : target ?? ""}` : body,
             turnScoped: attrs.turnScoped === true, // {§exec-lifetime} — "turn" is reaped at the next pre-turn
-            detached: attrs.detached === true, // {§session-obligations} — "detached" is nobody's obligation
+            detached: attrs.detached === true, // {§loop-completion} — "detached" is nobody's obligation
             publishedChannel: resolved.executor.publishedChannel,
             source: attrs.coordinate === undefined ? undefined
                 : `log:///${attrs.coordinate.loop_seq}/${attrs.coordinate.turn_seq}/${attrs.coordinate.sequence}/${runtime}`,
@@ -892,7 +892,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
     // a setState("closed") that races a prior write() can flip the
     // notify's reported state to "closed" before the chunk event fires
     // as "active." Chain through a single promise queue to serialize.
-    // {§exec-tool-fall-through} — a bare shell command whose program is really the name of a tool
+    // {§exec-target-routing} — a bare shell command whose program is really the name of a tool
     // of an enabled runtime (`brave_web_search {…}` under the default shell) ends with the shell's
     // exit 127. The receipt states that fact at the failure site, with the tool's own document,
     // so the model recovers in one turn instead of by rereading docs.
@@ -966,7 +966,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             },
         );
         let channelSizes: ReadonlyArray<readonly [string, number]> = [];
-        // {§exec-entry-sink} — the executor's entry() sink and the narration turn it owns live in their own owner;
+        // {§execution-output-identity} — the executor's entry() sink and the narration turn it owns live in their own owner;
         // this spawn's tail settles them.
         const sink = new ExecEntrySink({
             ctx, runtime, pathname, signal, executor,
@@ -1009,7 +1009,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
                         return ctx.requestInteraction(request, interactionSignal === undefined ? signal
                             : AbortSignal.any([signal, interactionSignal]));
                     },
-                    env: composed.env,  // SPEC {§exec} {§exec-env-scoped}
+                    env: composed.env,  // SPEC {§exec} {§execution-output-identity}
                     write: (channel, chunk, mimetype) => enqueue(() => ChannelWrite.appendToChannel(db, {
                         producerSessionId: ctx.sessionId,
                         entryId, channel, chunk, mimetype, notify: ctx.streamEventNotify, coordinate,
@@ -1062,7 +1062,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             }
 
             result = this.#settleExecutionResult({ result, timedOut, timeoutSec, signal, target, runtime, body, ctx });
-            // {§exec-conclusion-summary} — the summary sizes the channels this executor declares, in its order.
+            // {§exec-stream} — the summary sizes the channels this executor declares, in its order.
             channelSizes = await Promise.all(Object.keys(executor.channels).map(async (channel) => [
                 channel,
                 (await db.channel_meta.get<{ contentLength: number }>({ entry_id: entryId, channel }))?.contentLength ?? 0,
@@ -1071,10 +1071,10 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
             executionFailures.push(cause);
         }
         {
-            // {§exec-entry-sink} — the spawn tail settles the entry chain and its narration turn before anything else.
+            // {§execution-output-identity} — the spawn tail settles the entry chain and its narration turn before anything else.
             const finalizationErrors = [...executionFailures, ...await sink.settle()];
             if (timeoutTimer !== null) clearTimeout(timeoutTimer); // a finished spawn leaves no pending timer
-            // {§exec-source-temporary} — cleanup cannot rewrite the settled
+            // {§exec-target-routing} — cleanup cannot rewrite the settled
             // executor result, but an exceptional failure remains observable.
             if (tempPath !== null) {
                 await unlink(tempPath).catch((cause: unknown) => {
@@ -1094,7 +1094,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
 
     // One valid truth for the settled execution: a timeout outranks the executor's report, the service's own abort
     // knowledge outranks a driver's claim, and a shell's 127 on a tool's name is that tool's refusal
-    // ({§exec-tool-fall-through}).
+    // ({§exec-target-routing}).
     #settleExecutionResult(args: {
         result: SchemeResult; timedOut: boolean; timeoutSec: number | null; signal: AbortSignal;
         target: string | null; runtime: string; body: string; ctx: PlurnkSchemeContext;
@@ -1137,7 +1137,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         return result;
     }
 
-    // {§exec-conclusion-summary} — the stream's address, how its settled result ended, and each declared channel's size.
+    // {§exec-stream} — the stream's address, how its settled result ended, and each declared channel's size.
     static #closeSummary(address: string, result: SchemeResult, channels: ReadonlyArray<readonly [string, number]>): string {
         const ended = Results.isFailed(result) ? result.problem.title.toLowerCase()
             : typeof result.exitCode === "number" ? `completed (exit ${result.exitCode})` : "completed";

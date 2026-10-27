@@ -1,5 +1,5 @@
 -- PREP: engine_unconcluded_emission
--- {§terminal-evidence}: only an authored operation has a source position. Check the last turn,
+-- {§outside-text}: only an authored operation has a source position. Check the last turn,
 -- not the last matching turn, so an earlier no-operation turn cannot replace later evidence.
 SELECT CASE WHEN NOT EXISTS (
            SELECT 1 FROM json_each(t.packet, '$.assistant.ops') op

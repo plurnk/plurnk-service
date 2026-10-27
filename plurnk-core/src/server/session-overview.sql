@@ -2,7 +2,7 @@
 
 -- PREP: overview_places
 -- {§application-session-overview}: the places in scope, each with its loops' observations for its lifecycle
--- ({§application-session-observation}) and its latest finished reply ({§session-finished-reply}), without the reply's words.
+-- ({§application-session-observation}) and its latest finished reply ({§message-completion}), without the reply's words.
 -- {§machine-processes} A hidden session is out of scope, and in the daemon's scope so is every session of a hidden workspace.
 SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_session_id AS parentSessionId,
        CASE WHEN w.fork_event_boundary IS NOT NULL THEN 'fork'

@@ -71,7 +71,7 @@ BEGIN
     )
     SELECT w.workspace_id, NEW.session_id, w.parent_session_id,
            0, 'loop_termination', NEW.id, NULL,
-           -- {§loop-answer} the child's conclusion reaches its parent at the child's own loop
+           -- {§message-completion} the child's conclusion reaches its parent at the child's own loop
            -- address, where its answer lives; materialization renders that answer as this row.
            'READ', 'ops', w.name, '/' || NEW.sequence, NULL,
            '', 'text/plain', NEW.terminal_result, 'application/json',

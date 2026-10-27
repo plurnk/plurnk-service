@@ -177,7 +177,7 @@ export default class PlurnkParser {
 
     // {§turn-shape} — no source operation is reported as its own fact, beside every diagnostic
     // that explains it: a host admits a turn whose only diagnostic is this one as an empty turn
-    // ({§empty-turn}) and rejects one that also carries a malformed heading.
+    // ({§outside-text}) and rejects one that also carries a malformed heading.
     static #requireSourceOperation(items: ParseItem[]): void {
         if (items.some((item) => item.kind === "statement")) return;
         // The grammar's end-of-input complaint only restates the absence; specific diagnostics

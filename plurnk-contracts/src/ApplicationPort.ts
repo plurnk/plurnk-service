@@ -169,7 +169,7 @@ export interface ApplicationPort extends HttpHost {
         readonly id: number;
         readonly name: string;
         readonly project_root: string | null;
-        /** {§workspace-label} */
+        /** {§execution-output-identity} */
         readonly project_label: string | null;
         readonly created_at: string;
         /** {§machine-processes} When the workspace was hidden, or null while it is shown. */

@@ -70,7 +70,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         };
     }
 
-    // {§loop-answer} ops://<session>/<loop> is what the loop said: the latest reply to the message
+    // {§message-completion} ops://<session>/<loop> is what the loop said: the latest reply to the message
     // that started it. Still running without one is 425; ended without one is the loop's outcome.
     async #answer(target: UrlPath & { hostname: string }, loopSeq: number, db: Db, workspaceId: number): Promise<CoreRepresentationResolution> {
         if (!Number.isSafeInteger(loopSeq) || loopSeq < 1) {
@@ -79,7 +79,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         const outcome = await loopOutcome(db, workspaceId, target.hostname, loopSeq);
         if (outcome === null) return { result: this.#failure(404, "entry-not-found", `No loop exists at ${target.raw}.`) };
         // A running loop refuses; every settled outcome — an answer or a failure — is a representation,
-        // so the reader sees what the loop said or how it broke, with its own status ({§loop-answer}).
+        // so the reader sees what the loop said or how it broke, with its own status ({§message-completion}).
         if (outcome.result.status === 425) return { result: outcome.result };
         return {
             identity: outcome.resource,
@@ -104,7 +104,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
         }));
         const matcher = statement.matcher;
         const relation = matcher !== null && (matcher.dialect === "fts" || matcher.dialect === "graph") ? matcher : null;
-        // {§loop-answer}: a loop's answer is a projection of rows the index already covers, not a
+        // {§message-completion}: a loop's answer is a projection of rows the index already covers, not a
         // derived source of its own, so relation matchers read the turns beneath it.
         const loadMatchable = async () => (await load()).filter((row) => relation === null || !/^\/\d+$/.test(row.pathname));
         let all = await loadMatchable();
@@ -112,7 +112,7 @@ export default class TurnSource extends CoreSchemeAdapterBase implements CoreRep
             await core.settleDerivations();
             all = await loadMatchable();
         }
-        // {§loop-answer}: `ops://<session>/<loop>` is both a folder of that loop's emissions and the
+        // {§message-completion}: `ops://<session>/<loop>` is both a folder of that loop's emissions and the
         // loop's own answer, so a loop coordinate selects the turns beneath it and the answer itself.
         const loopItself = this.#kind === "ops" && /^\/\d+$/.test(pathname) ? pathname : null;
         const selected = all.filter((row) => pathScopeMatches(scope, row.pathname) || row.pathname === loopItself);

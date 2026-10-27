@@ -58,7 +58,7 @@ export interface RuntimeRegistryRegistration {
 // host actually has, instead of stamping all of them with the first tag's
 // probe. Probes are cheap + local (command -v / env read / `gh auth status`),
 // so per-tag costs nothing. A probe that rejects or exceeds its timeout
-// degrades that tag to unavailable — it never crashes boot. {§exec-registry-resolves}
+// degrades that tag to unavailable — it never crashes boot. {§exec-target-routing}
 export default class ExecutorRegistry {
     readonly #byTag: Map<string, ExecutorEntry>;   // own copy — runtime registration mutates it in place
     readonly #workspaceByOwner = new Map<number, Map<string, Map<string, RegistryEntry>>>();

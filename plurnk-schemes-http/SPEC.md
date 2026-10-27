@@ -59,7 +59,7 @@ Exact-versus-pattern FIND preparation uses the shared
 `PathSyntax.hasGlob` classifier {§path-glob}; HTTP owns no reduced
 path-pattern grammar.
 
-§http-outbound-proposes **A request that changes a remote resource proposes.** POST, PUT, the remote DELETE, and a WebSocket frame (EDIT or SEND on an open `ws(s)://` socket) declare `effect: "host"` and return `202` under {§proposal}; the panel's `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or runs unattended, exactly as it does for a subprocess ({§exec-host-proposes}). This is the same reason a local `EDIT` proposes: Plurnk does not claim containment, so consent — not a boundary — is what stands between the model and the world.
+§http-outbound-proposes **A request that changes a remote resource proposes.** POST, PUT, the remote DELETE, and a WebSocket frame (EDIT or SEND on an open `ws(s)://` socket) declare `effect: "host"` and return `202` under {§proposal}; the panel's `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or runs unattended, exactly as it does for a subprocess ({§exec-lifetime}). This is the same reason a local `EDIT` proposes: Plurnk does not claim containment, so consent — not a boundary — is what stands between the model and the world.
 
 | Fact | Rule |
 | --- | --- |
@@ -609,7 +609,7 @@ opening READ in the same turn, after acquisition establishes the live owner.
 The in-instance registry is keyed by workspace and complete canonical network
 URL, matching the commons entry. Sessions share the connection and may SEND or
 KILL it; acquisition attribution and settlement remain with its initiating
-operation ({§runtime-resource-binding}). The claim remains registered through terminal
+operation ({§execution-output-identity}). The claim remains registered through terminal
 cleanup, so a new READ cannot overlap an owner's subscription settlement. Every
 terminal path drains retained owner work, closes the transport when necessary,
 closes the durable subscription, then releases the claim. A persistence failure

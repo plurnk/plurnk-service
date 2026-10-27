@@ -335,7 +335,7 @@ without changing durable state.
 §mcp-unavailable-runtime **An enabled server that cannot run keeps its alias.** Preparation registers
 every enabled server: an active one with its tools and resources, any other as a runtime out of
 service whose availability states what keeps it from running, so a call to the alias is refused with
-that state ({§exec-registry-resolves}) and never as a name nothing registered.
+that state ({§exec-target-routing}) and never as a name nothing registered.
 
 | State | The refusal names |
 | --- | --- |
@@ -425,8 +425,8 @@ server receives these layers in order; it never receives the invoking session's 
 
 | Layer | Environment |
 |---|---|
-| Ambient base | The operator's environment excluding `PLURNK_*` and provider credential names ({§exec-env-scoped}). The model-command inherit/exclude selectors do not apply. |
-| Workspace | Shared `env` values and masks ({§workspace-env}); a withheld name cannot be restored by the transport's own defaults. |
+| Ambient base | The operator's environment excluding `PLURNK_*` and provider credential names ({§execution-output-identity}). The model-command inherit/exclude selectors do not apply. |
+| Workspace | Shared `env` values and masks ({§execution-output-identity}); a withheld name cannot be restored by the transport's own defaults. |
 | Definition | Explicit `env` values. Native `${NAME}` references resolve once against the operator environment with workspace values and masks applied, including names excluded from ambient inheritance. Missing references fail preparation before launch. |
 
 An explicit credential binding belongs to the server's complete definition and its existing
@@ -914,7 +914,7 @@ it as a skill. The design review is tracked in #654.
 | Prompts | `<server>:///prompts` and encoded prompt-name descendants |
 
 Qualified `<server>://<session>/…` resources, prompts, and catalogs follow
-{§runtime-resource-binding}: the qualifier selects the stored projection, not
+{§execution-output-identity}: the qualifier selects the stored projection, not
 a private attachment. Acquisition uses the workspace attachment; the requesting
 operation retains its policy and client interactions.
 Returned Plurnk resource links retain that qualifier; MCP protocol URIs remain

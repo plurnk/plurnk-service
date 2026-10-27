@@ -36,7 +36,7 @@ export default class EntrySend {
             `SEND does not deliver messages to ${scheme} entries.`,
             {},
             {
-                // {§send-target-recipient}
+                // {§send}
                 recovery: "To reply, SEND to an Open Message address or omit the target. SEND (session://<name>) sends a new message.",
                 retryable: false,
             },

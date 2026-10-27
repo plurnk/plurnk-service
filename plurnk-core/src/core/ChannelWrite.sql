@@ -123,7 +123,7 @@ LIMIT 1;
 
 -- PREP: find_exec_runtimes_at_pathname
 -- The runtimes holding an execution at one coordinate pathname: what a KILL or input of the same
--- id under another runtime names ({§exec-near-miss}).
+-- id under another runtime names ({§exec-target-routing}).
 SELECT DISTINCT e.scheme
 FROM entries e
 JOIN subscriptions s ON s.entry_id = e.id
@@ -215,7 +215,7 @@ BEGIN
 END;
 
 -- INIT: entry_channel_rows_settle_publications
--- {§stream-channel-deletion}: a channel deleted before its terminal publication has nothing left
+-- {§exec-stream}: a channel deleted before its terminal publication has nothing left
 -- to publish; every publication of it settles, as an empty sibling's does.
 DROP TRIGGER IF EXISTS entry_channel_rows_settle_publications;
 CREATE TRIGGER entry_channel_rows_settle_publications

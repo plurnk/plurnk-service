@@ -36,7 +36,7 @@ export interface ClientEnvelope {
     readonly workspaceId: number;
     readonly workspaceName: string;
     readonly projectRoot: string | null;
-    /** {§workspace-label} The folder as the daemon spells it for display; null without a folder. */
+    /** {§execution-output-identity} The folder as the daemon spells it for display; null without a folder. */
     readonly projectLabel: string | null;
 }
 
@@ -60,7 +60,7 @@ export interface ApplicationSessionProjection {
     readonly hidden_at: string | null;
 }
 
-/** {§application-session-overview} A session's latest finished reply ({§session-finished-reply}). */
+/** {§application-session-overview} A session's latest finished reply ({§message-completion}). */
 export interface ApplicationSessionReply {
     /** The reply's durable log row. */
     readonly id: number;
@@ -93,7 +93,7 @@ export interface ApplicationOverviewWorkspace {
     readonly id: number;
     readonly name: string;
     readonly projectRoot: string | null;
-    /** {§workspace-label} */
+    /** {§execution-output-identity} */
     readonly projectLabel: string | null;
 }
 
@@ -158,7 +158,7 @@ export interface ApplicationLoopProjection {
     /** Durable observation deadline, Unix milliseconds; null outside bounded parks. */
     readonly waitUntil: number | null;
     /**
-     * {§session-obligations} The operation that opened the loop, by sending its first message: its session and its log
+     * {§loop-completion} The operation that opened the loop, by sending its first message: its session and its log
      * address in that session's log. Null when no session's operation did, or none was recorded.
      */
     readonly invocation: { readonly sessionId: number; readonly address: string } | null;

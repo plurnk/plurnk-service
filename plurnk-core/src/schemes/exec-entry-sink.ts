@@ -1,6 +1,6 @@
-// {§exec-entry-sink} {§env-delta-entry-materialization} — the executor's `entry()` sink. Each materialization is one
+// {§execution-output-identity} {§env-delta-entry-materialization} — the executor's `entry()` sink. Each materialization is one
 // durable entry write, serialized behind the previous, narrated as one `_plurnk` EDIT row through the one
-// reserved-session turn this spawn owns; the spawn's tail settles the chain and closes that turn ({§exec-entry-sink}).
+// reserved-session turn this spawn owns; the spawn's tail settles the chain and closes that turn ({§execution-output-identity}).
 
 import { parsePath } from "@plurnk/plurnk-parser";
 import { PathSyntax, type ParsedPath } from "@plurnk/plurnk-contracts";
@@ -28,7 +28,7 @@ import LoopLifecycle from "../core/LoopLifecycle.ts";
 import LogEntryProjection from "../core/LogEntryProjection.ts";
 import LogBody from "../core/LogBody.ts";
 
-// {§exec-entry-sink}: the web-fetch the sink calls when the executor hands content:null —
+// {§execution-output-identity}: the web-fetch the sink calls when the executor hands content:null —
 // the registry's web materializer ({§web-materialization-contract}: checked byte acquisition,
 // dead-as-null; caller cancellation rejects per {§prefetch}).
 // Injectable because automatic acquisition refuses localhost.
@@ -108,7 +108,7 @@ export default class ExecEntrySink {
         const binding = requestedPath === null
             ? Promise.resolve({ address: { scheme: runtime, authority: "", pathname: parsed.pathname }, result: null })
             : this.#deps.bindEntryAddress(parsed, ctx);
-        // {§exec-entry-sink}/{§membership} — start content:null
+        // {§execution-output-identity}/{§membership} — start content:null
         // acquisition before the write chain so fetches run in parallel;
         // only durable entry writes serialize. A null result rejects the sink.
         let materialized: Promise<WebFetchResult | null> | undefined;
@@ -255,7 +255,7 @@ export default class ExecEntrySink {
         return run;
     };
 
-    // {§exec-entry-sink} — the spawn tail owns every serialized entry/narration write: join the chain, then close the
+    // {§execution-output-identity} — the spawn tail owns every serialized entry/narration write: join the chain, then close the
     // narration turn and its loop with the result the entries settled on. Returns the failures the tail must report.
     async settle(): Promise<unknown[]> {
         const failures: unknown[] = [];

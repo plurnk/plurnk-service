@@ -1862,7 +1862,7 @@ test("{§log-history-projection} ordinary operation evidence redacts credential 
 });
 
 describe("executor-receipt-recovery", () => {
-// {§exec-stream-page} {§log-kill-scope}: the executor is the fixture;
+// {§exec-stream} {§log-kill-scope}: the executor is the fixture;
 // parsing, dispatch, source storage, automatic observations and packet assembly are real.
 for (const body of [null, '{"query":"fixture"}']) for (const mimetype of ["text/stream", "application/json"]) {
     test(`{§read} execution output stays reachable from the stream address a ${body === null ? "bodyless" : "one-line"} ${mimetype} invocation's receipt carries`, async () => {

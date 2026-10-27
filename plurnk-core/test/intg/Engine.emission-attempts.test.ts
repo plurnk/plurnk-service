@@ -234,7 +234,7 @@ test("{§provider-connectivity}: one model call durably settles a transient requ
     }
 });
 
-test("{§empty-turn} separator-free provider preamble does not reject a complete model turn", async () => {
+test("{§outside-text} separator-free provider preamble does not reject a complete model turn", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const content = "harmless status.````SEND\ndone\n````";
@@ -253,7 +253,7 @@ test("{§empty-turn} separator-free provider preamble does not reject a complete
 
         // The glued preamble keeps the SEND off its own line, so nothing parses. The turn is still
         // ADMITTED on its only attempt — never rejected, never resampled — and the loop continues
-        // ({§empty-turn}) so the model can emit again, rather than a provider artifact ending the run.
+        // ({§outside-text}) so the model can emit again, rather than a provider artifact ending the run.
         assert.equal(result.status, 102);
         assert.equal(result.emissionAttempts, 1);
         assert.equal(result.emissionExhausted, false);
@@ -877,7 +877,7 @@ test("{§matcher-refusal} a bounded malformed operation defers same-turn complet
         );
         assert.ok(
             result.outcomes.some(({ op, status }) => op === "SEND" && status === 200),
-            "delivery is independent of the unseen failure ({§completion-defers-to-results})",
+            "delivery is independent of the unseen failure ({§loop-completion})",
         );
         const rows = await db.test_log_entries_by_turn.all<{
             sequence: number;
@@ -1895,7 +1895,7 @@ test("{§output-allowance-notice} a length finish surfaces the output allowance 
     } finally { await db.close(); }
 });
 
-test("{§empty-turn} (#478) a cut too deep to parse names the truncation, never the parser", async () => {
+test("{§outside-text} (#478) a cut too deep to parse names the truncation, never the parser", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const cut = { assistant: { content: "I will now write the module cache implementa", reasoning: null, finishReason: "length" as const } };
@@ -1909,7 +1909,7 @@ test("{§empty-turn} (#478) a cut too deep to parse names the truncation, never 
             messages: [{ role: "user", content: "do the task" }],
         });
         assert.equal(result.result.status, 200);
-        // {§empty-turn} — the cut response is an admitted empty turn, never a private resample;
+        // {§outside-text} — the cut response is an admitted empty turn, never a private resample;
         // packets[1] is the next request and carries the engine's own reading of the cut.
         assert.equal(provider.packets.length, 3);
         assert.match(
@@ -2502,7 +2502,7 @@ test("{§engine-rails}: an isolated call that drops once is re-issued; the recei
     }
 }));
 
-// {§op-methods-op-dispatch} {§send-premature-terminate}
+// {§op-methods-op-dispatch} {§loop-completion}
 test("{§op-methods-op-dispatch} a same-turn BARE response is unseen retrieval work and defers completion", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {

@@ -19,7 +19,7 @@ import SchemeCtxImpl from "../core/caps/SchemeCtxImpl.ts";
 import { EntryCoordinates } from "@plurnk/plurnk-schemes";
 import { entryCoordinateOf } from "../core/plurnk-uri.ts";
 
-// {§runtime-resource-binding} Stored output and live runtime facets use one entry face.
+// {§execution-output-identity} Stored output and live runtime facets use one entry face.
 export default class ExecOutputScheme extends CoreSchemeAdapterBase implements Pick<SchemeHandler, "kill" | "editBatch"> {
     #manifest: SchemeManifest;
     #exec: Exec;
@@ -36,7 +36,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         return { ...this.#manifest, metadataModifier: true };
     }
 
-    // {§runtime-resource-binding} A claimed coordinate is governed by its facet's representation.
+    // {§execution-output-identity} A claimed coordinate is governed by its facet's representation.
     manifestAt(target: ParsedPath | null): SchemeManifest {
         if (target === null || !this.claimsLiveResource(target)) return this.manifest;
         return { ...this.manifest, ...this.#facet?.manifest };
@@ -98,7 +98,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
         return EntryFind.findWorkspaceEntries(statement, core, this.manifestAt(statement.target), {});
     }
 
-    // {§runtime-resource-binding} A claimed resource's EDIT is its facet's; stored output has none.
+    // {§execution-output-identity} A claimed resource's EDIT is its facet's; stored output has none.
     async editBatch(statements: readonly ResolvedEditStatement[], ctx: CoreSchemeCallContext): Promise<EditBatchResult> {
         const facet = this.#facet;
         const target = statements[0]?.target ?? null;
@@ -110,7 +110,7 @@ export default class ExecOutputScheme extends CoreSchemeAdapterBase implements P
             { scheme: this.#manifest.name, operation: "EDIT", retryable: false });
     }
 
-    // {§runtime-resource-binding} A claimed resource's SEND is its facet's; stored output has none.
+    // {§execution-output-identity} A claimed resource's SEND is its facet's; stored output has none.
     async send(statement: SendStatement, ctx: CoreSchemeCallContext): Promise<SchemeResultBase> {
         const facet = this.#facet;
         if (facet?.send !== undefined && statement.target !== null && this.claimsLiveResource(statement.target)) {

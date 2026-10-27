@@ -1,4 +1,4 @@
-// {§loop-answer} — one resolution for a loop's address. `ops://<session>/<loop>` is what the loop
+// {§message-completion} — one resolution for a loop's address. `ops://<session>/<loop>` is what the loop
 // said: the latest SEND reply to the message that started it. A loop that has
 // not answered yet is 425; one that ended without answering is how it ended, its terminal problem
 // or an empty success. The same resolution serves the model's READ, the `session://` pull, and the

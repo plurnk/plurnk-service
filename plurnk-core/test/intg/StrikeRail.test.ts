@@ -44,7 +44,7 @@ test.afterEach(async () => { await db.close(); });
 const base = { waitRevision: 0, fingerprint: "READ(x)", progressed: false, cut: false, minCycles: 3, maxCyclePeriod: 4, maxStrikes: 3 };
 const outcome = (op: StrikeOutcome["op"], status: number): StrikeOutcome => ({ op, status });
 
-test("{§engine-rails} a 409 status alone is soft; no completion claim strikes ({§completion-joins-live-work}, {§completion-defers-to-results})", async () => {
+test("{§engine-rails} a 409 status alone is soft; no completion claim strikes ({§loop-completion}, {§loop-completion})", async () => {
     const rail = new StrikeRail(db);
     const verdict = await rail.assess(loopId, { ...base, outcomes: [outcome("SEND", 409)] });
     assert.equal(verdict.thresholdCrossed, false);
@@ -451,7 +451,7 @@ test("{§engine-rails} repeated misses cycle despite unique Problem occurrence a
 });
 
 describe("Engine.idle-parks-on-obligation", () => {
-// {§send-idle-turn} {§session-causal-admission}
+// {§send} {§session-causal-admission}
 
 
 
@@ -460,7 +460,7 @@ describe("Engine.idle-parks-on-obligation", () => {
 
 
 
-test("{§send-idle-turn} NOTE-only turns continue with or without a stream; only waiting parks", async (approvalContext) => {
+test("{§send} NOTE-only turns continue with or without a stream; only waiting parks", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const releaseDir = await mkdtemp(join(tmpdir(), "plurnk-idle-park-"));
     const releasePath = join(releaseDir, "release");
@@ -628,7 +628,7 @@ test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual 
             const parent = await daemon.runLoop({ workspaceId, sessionId: parentId, prompt: "Collect the child's answer." });
             await waitForDb(() => lifecycle.status(parent.loopId), (status) => status === 202);
             await lifecycle.finish(held, TerminalResult.success("The held dependency completed."));
-            // {§session-obligations} main's own operation sends the follow-up, so the reply to it is main's.
+            // {§loop-completion} main's own operation sends the follow-up, so the reply to it is main's.
             const resumed = await daemon.inject({
                 workspaceId, sessionId: childId, prompt: "Answer now.", source: `session://${parentSession.name}`,
                 providerSpec: { alias: "mocktest", provider: "openai", model: "mocktest" }, effort: "adaptive", systemPrompt: "test system",
@@ -642,7 +642,7 @@ test("{§session-loop-lifecycle} the daemon wakes a collecting parent on actual 
             const parentRail = await db.test_strike_streak.get<{ strike_streak: number }>({ loop_id: parent.loopId });
             assert.equal(parentRail?.strike_streak, 0, "neither the join nor its wake consumes recovery allowance");
             const delivered = await db.test_log_entries_by_loop.all<{ tx: string; attrs: string; initial_folded: string; folded: string }>({ loop_id: parent.loopId });
-            // {§loop-answer}: the child's answer to its parent's own task arrives as the conclusion.
+            // {§message-completion}: the child's answer to its parent's own task arrives as the conclusion.
             const conclusion = delivered.find(({ attrs }) => JSON.parse(attrs).kind === "loop_termination");
             assert.ok(conclusion);
             assert.equal(conclusion.initial_folded, "[]", JSON.stringify(conclusion));
@@ -820,7 +820,7 @@ test(`{§session-wait-timing}: ${kind} completion ${phase} is acknowledged only 
 });
 }
 
-test("{§send-premature-terminate} Engine.runLoop: three edits are observed before answered work concludes", async () => {
+test("{§loop-completion} Engine.runLoop: three edits are observed before answered work concludes", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -829,7 +829,7 @@ test("{§send-premature-terminate} Engine.runLoop: three edits are observed befo
                 response([editStmt("/a", "1"), noteStmt("continuing")]),
                 response([editStmt("/b", "2"), noteStmt("still going")]),
                 response([editStmt("/c", "3"), sendStmt(null, "done")]),
-                // {§send-premature-terminate} — the third edit needs observation before conclusion.
+                // {§loop-completion} — the third edit needs observation before conclusion.
                 response([completeStmt("done")]),
             ],
         });
@@ -915,7 +915,7 @@ test("{§engine-rails} Engine.runLoop: repeated identical NOTE-only turns remain
     } finally { await db.close(); }
 });
 
-test("{§completion-joins-live-work} Engine.runLoop: a completion over a live stream joins it — the loop parks, never a false 200", async () => {
+test("{§loop-completion} Engine.runLoop: a completion over a live stream joins it — the loop parks, never a false 200", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Seed a live stream the session holds: an open subscription (closed_at NULL) against a real entry.
@@ -1374,7 +1374,7 @@ test("{§engine-rails} a spent recovery budget parks the loop as 202; the next p
 
 describe("send-200-failed-ops", () => {
 for (const cancel of [false, true]) {
-    test(`{§completion-defers-to-results}: a failed operation is observed before ${cancel ? "scope cancellation" : "explicit completion"}`, async (approvalContext) => {
+    test(`{§loop-completion}: a failed operation is observed before ${cancel ? "scope cancellation" : "explicit completion"}`, async (approvalContext) => {
     serverProposals(approvalContext, "accept");
         const mock = new Mock({ contextWindow: 16384, responses: [
             makeMockResponse("\n````KILL (workspace:///no-such-entry)\n````\n````SEND\nThe requested entry does not exist.\n````"),

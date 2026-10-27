@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import Envelope from "./envelope.ts";
 
-test("{§workspace-auto-name} redraws a digit-only candidate and samples each character uniformly", (t) => {
+test("{§execution-output-identity} redraws a digit-only candidate and samples each character uniformly", (t) => {
     const draws = [0, 1, 2, 3, 4, 9, 10, 61, 0, 9];
     const random = t.mock.method(crypto, "randomInt", (max: number): number => {
         assert.equal(max, 62);

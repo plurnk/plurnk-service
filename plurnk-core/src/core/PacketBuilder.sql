@@ -1,7 +1,7 @@
 -- PacketBuilder: the request packet's sections, read from the durable log and session tree.
 
 -- PREP: engine_sent_messages_open
--- {§child-orientation} {§session-obligations}: the messages this session sent to other sessions that await
+-- {§child-orientation} {§loop-completion}: the messages this session sent to other sessions that await
 -- completion, as `{status, path}` pointers beside its live children: the recipient loop's status, 100 queued,
 -- 102 processing, 202 parked. A completed message, or one whose recipient loop ended, is no longer held.
 SELECT m.path, l.status

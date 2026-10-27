@@ -201,7 +201,7 @@ SELECT COALESCE(SUM(CASE WHEN state = 'complete' THEN 1 ELSE 0 END), 0) AS compl
 FROM derivations;
 
 -- PREP: digest_execution_environments
--- {§exec-env-scoped} — each output's recorded environment, keyed the way the log row's
+-- {§execution-output-identity} — each output's recorded environment, keyed the way the log row's
 -- `attrs.stream` names it (scheme://pathname), so the waterfall renders it beside the operation.
 SELECT e.workspace_id, (e.scheme || '://' || e.pathname) AS stream, json_extract(e.attributes, '$.env') AS env
 FROM entries e

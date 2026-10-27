@@ -63,7 +63,7 @@ test("{§message-source-scheme} restart retains source text and answered state a
     }
 });
 
-test("{§send-response-receipt} failed exact delivery does not acknowledge the loop's assignment", async (t) => {
+test("{§message-completion} failed exact delivery does not acknowledge the loop's assignment", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "reply-failure");
@@ -133,7 +133,7 @@ for (const delegated of [false, true]) for (const addressed of [false, true]) {
                 provider: new Mock({ contextWindow: 100000, responses: [makeRawMockResponse(frame("NOTE", "Observed."))] }),
             });
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: observed.turnId }))!.packet);
-            // {§loop-answer}: the parent hears the answer once, as the child's conclusion, never as a
+            // {§message-completion}: the parent hears the answer once, as the child's conclusion, never as a
             // second reply row.
             const delivered = logEntries(packet).filter(({ body }) => String(body).includes("Recovered answer."));
             assert.equal(delivered.length, 1, "the reply reaches the parent exactly once");
@@ -290,7 +290,7 @@ for (const child of [false, true]) test(`{§message-reply-delivery} ${child ? "c
         const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: completed.turnId }))!.packet);
         const replies = logEntries(packet).filter(({ body }) => String(body).includes("Distinct answer from Bob."));
         if (child) {
-            // {§loop-answer}: a child's answer to its parent's own task arrives once, as its conclusion.
+            // {§message-completion}: a child's answer to its parent's own task arrives once, as its conclusion.
             assert.equal(replies.length, 1, "once, not twice");
             assert.equal(replies[0].path, "ops://bob/1");
             assert.equal(replies[0].answers, undefined, "the conclusion is not another answer");

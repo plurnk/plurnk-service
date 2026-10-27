@@ -3,7 +3,7 @@ import test from "node:test";
 import ExecScheduler, { readExecConcurrency } from "./ExecScheduler.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 
-test("{§exec-concurrency}: configuration accepts only a positive bound or -1", () => {
+test("{§exec-lifetime}: configuration accepts only a positive bound or -1", () => {
     for (const [raw, expected] of [["1", 1], ["12", 12], [" 32 ", 32], ["-1", -1]] as const) {
         assert.equal(readExecConcurrency({ PLURNK_SERVICE_EXEC_CONCURRENCY: raw }), expected);
     }
@@ -16,7 +16,7 @@ test("{§exec-concurrency}: configuration accepts only a positive bound or -1", 
     assert.throws(() => readExecConcurrency({}), /missing from the assembled environment floor/u);
 });
 
-test("{§exec-concurrency}: an aborted waiter never takes a FIFO slot", async () => {
+test("{§exec-lifetime}: an aborted waiter never takes a FIFO slot", async () => {
     const scheduler = new ExecScheduler(1);
     const running = scheduler.admit(1, new AbortController().signal);
     const cancelledController = new AbortController();

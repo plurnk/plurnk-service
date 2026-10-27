@@ -177,7 +177,7 @@ SELECT 'ops://' || w.name || '/' || l.sequence AS resource
 FROM loops l JOIN sessions w ON w.id = l.session_id WHERE l.id = $loop_id;
 
 -- PREP: loop_live_obligations
--- {§session-obligations}: the live work a loop is held on — its session's open streams, live children, and the
+-- {§loop-completion}: the live work a loop is held on — its session's open streams, live children, and the
 -- messages it sent to other sessions that await completion.
 SELECT streams, sessions, messages FROM loop_obligations WHERE loop_id = $loop_id;
 

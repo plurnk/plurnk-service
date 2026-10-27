@@ -17,18 +17,18 @@ const insertEntry = async (db: Db, scheme: string, pathname: string): Promise<nu
     return insertWorkspaceEntry(db, workspaceId, scheme, pathname);
 };
 
-test("{§entry-owner} entries: owner derives its workspace", async () => {
+test("{§execution-output-identity} entries: owner derives its workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-workspace");
         await insertWorkspaceEntry(db, workspaceId, "session", "foo");
         const row = await db.test_entries_get_first_identity.get<{ workspace_id: number }>();
         assert.equal(row?.workspace_id, workspaceId);
-        assert.ok((row?.workspace_id ?? 0) >= 1, "the commons owner is stamped ({§entry-owner})");
+        assert.ok((row?.workspace_id ?? 0) >= 1, "the commons owner is stamped ({§execution-output-identity})");
     } finally { await db.close(); }
 });
 
-test("{§entry-owner} entries: owner is required", async () => {
+test("{§execution-output-identity} entries: owner is required", async () => {
     const db = await openMigrated();
     try {
         await insertWorkspace(db, `ws-${crypto.randomUUID()}`); // a commons owner exists → the constraint under test is the one that fires
@@ -80,7 +80,7 @@ test("{§entry-identity-no-null} entries: cross-workspace same (scheme, authorit
     } finally { await db.close(); }
 });
 
-test("{§entry-owner} entries: workspace FK rejects a non-existent workspace", async () => {
+test("{§execution-output-identity} entries: workspace FK rejects a non-existent workspace", async () => {
     const db = await openMigrated();
     try {
         await assert.rejects(
@@ -90,7 +90,7 @@ test("{§entry-owner} entries: workspace FK rejects a non-existent workspace", a
     } finally { await db.close(); }
 });
 
-test("{§entry-owner} entries: ON DELETE CASCADE via workspace", async () => {
+test("{§execution-output-identity} entries: ON DELETE CASCADE via workspace", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-entries-cascade");
@@ -312,7 +312,7 @@ test("{§validation-topology} entry_channels: ON DELETE CASCADE via entry", asyn
     } finally { await db.close(); }
 });
 
-test("{§entry-owner} entry_channels: CASCADE chain workspace→entries→entry_channels", async () => {
+test("{§execution-output-identity} entry_channels: CASCADE chain workspace→entries→entry_channels", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "ws-channels-chain");

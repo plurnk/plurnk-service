@@ -119,7 +119,7 @@ export default class SchemeCtxImpl implements SchemeCtx {
         return ctx instanceof SchemeCtxImpl ? ctx.#client : "db" in ctx ? ctx.client : undefined;
     }
 
-    // {§session-obligations} The dispatching operation's sequence, which with the turn names the row it writes.
+    // {§loop-completion} The dispatching operation's sequence, which with the turn names the row it writes.
     static sequenceOf(ctx: SchemeAddressCtx | SchemeCtx | PlurnkSchemeContext): number | undefined {
         return ctx instanceof SchemeCtxImpl ? ctx.#sequence : "db" in ctx ? ctx.sequence : undefined;
     }

@@ -631,7 +631,7 @@ export default class Ws implements SchemeHandler {
         }
     }
 
-    // {§runtime-resource-binding}: all workspace callers address the same live connection.
+    // {§execution-output-identity}: all workspace callers address the same live connection.
     static #key(workspaceId: number, address: NetworkAddress): string {
         return `${workspaceId}:${address.url}`;
     }

@@ -145,7 +145,7 @@ export interface EditCensus {
     // Every EditForm's count, keyed by its name: built from EDIT_FORMS, so each form is present.
     forms: Record<string, number>;
 }
-// {§exec-env-scoped} — one output's recorded environment; `stream` is the log row's stream address.
+// {§execution-output-identity} — one output's recorded environment; `stream` is the log row's stream address.
 export interface ExecutionEnvironmentRow { workspace_id: number; stream: string; env: string }
 export interface LogCurationEffectRow {
     operation_log_entry_id: number;
@@ -214,7 +214,7 @@ export interface DigestModel {
     reasoningRows: ReasoningRow[];
     editRows: EditRow[];
     editRowsBySession: Map<number, EditRow[]>;
-    // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§exec-env-scoped})
+    // keyed `${workspace_id}:${stream}`; a spawn's environment as recorded on its output ({§execution-output-identity})
     environments: Map<string, Record<string, unknown>>;
     loopsById: Map<number, LoopRow>;
     sessionsById: Map<number, SessionRow>;

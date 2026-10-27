@@ -195,7 +195,7 @@ their own failures.
 length equals the page size the call asked for, or the tool schema's default for one
 (`per_page`, `page_size`, `pageSize`, `limit`, first match), the result carries
 `page: {size, returned}`, and the packet's terminal observation preserves it
-({§stream-observation-result}), so a page that may be partial is visible as one. A shorter
+({§exec-stream}), so a page that may be partial is visible as one. A shorter
 array, a non-array, or a call with no page size carries nothing. The receipt states only what
 the executor knows and adds no prose.
 
@@ -243,8 +243,8 @@ reclassifies the materialized path.
 The classification controls admission policy and may be reused as operational
 metadata; it never changes within the invocation. After acceptance, an external execution
 uses the same background stream path: output is not returned in the dispatching
-turn. Core owns that composed behavior in {§exec-host-proposes},
-{§exec-readpure-ungated}, and {§exec-stream}; its ordered subsystem commands use
+turn. Core owns that composed behavior in {§exec-lifetime},
+{§exec-lifetime}, and {§exec-stream}; its ordered subsystem commands use
 {§functionality-model-mutation}.
 
 ### §executor-probe Availability is per runtime tag
@@ -426,7 +426,7 @@ details; the generated tool document owns the one model-facing H1.
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `literal`   | Preserve the complete authored target string. It is an executor identifier, never a scheme read or filesystem classification. |
 | `path`      | Accept only a local or `file://` path and pass that path directly.                                                             |
-| `resource`  | Pass a local/file path directly. After acceptance, resolve a non-file data-scheme address through one exact READ; use its owner-supplied native file or a standalone representation under the scratch directory ({§exec-source-temporary}, {§exec-scratch-directory}). |
+| `resource`  | Pass a local/file path directly. After acceptance, resolve a non-file data-scheme address through one exact READ; use its owner-supplied native file or a standalone representation under the scratch directory ({§exec-target-routing}, {§exec-target-routing}). |
 | `script`    | As `resource`, and the local path must be an existing file, or an existing directory when an inline body is supplied: a directory with no body or an absent path is refused before anything spawns ({§exec-executor-slot}, {§exec-target-routing}). |
 
 Every execution must supply at least a body or target even when neither field is

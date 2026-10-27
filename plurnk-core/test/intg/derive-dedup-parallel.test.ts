@@ -136,7 +136,7 @@ test("{§derivation-dedup-parallel} a completed representative releases its dupl
 });
 
 describe("exec-entry-sink", () => {
-// {§exec-entry-sink} — a stub runtime drives the real consumer-owned materialization
+// {§execution-output-identity} — a stub runtime drives the real consumer-owned materialization
 // and ambience path; nothing below the executor is mocked.
 
 
@@ -288,7 +288,7 @@ const wire = async (opts?: {
     return { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag };
 };
 
-test("{§exec-entry-sink} named and unnamed resources retain bytes, do not overwrite, and remain workspace-shared", async () => {
+test("{§execution-output-identity} named and unnamed resources retain bytes, do not overwrite, and remain workspace-shared", async () => {
     const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire({ resources: true, tag: "resourcepublisher" });
     try {
         const result = await engine.dispatch({ statement: execStmt("resourcepublisher", "publish"), workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
@@ -419,7 +419,7 @@ test("{§env-delta-entry-materialization} entry() materializes an https resource
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its durable narration row", async (t) => {
+test("{§execution-output-identity} entry() preserves an exact failed write Problem on its durable narration row", async (t) => {
     const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         tag: "stubsearch-entry-failure",
         entryFailure: true,
@@ -512,7 +512,7 @@ test("{§exec-entry-sink} entry() preserves an exact failed write Problem on its
     }
 });
 
-test("{§exec-entry-sink} search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
+test("{§execution-output-identity} search-prefetched https content is matcher-queryable in place — no origin refetch, host identity preserved", async () => {
     const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ tag: "stubsearch-query" });
     try {
         const search = await engine.dispatch({
@@ -585,7 +585,7 @@ test("{§http-binary-source} executor acquisition preserves binary source and na
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§exec-entry-sink} search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
+test("{§execution-output-identity} search-prefetched encoded parentheses resolve through later scoped HTTPS READs", async () => {
     const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({
         tag: "stubsearch-encoded-path",
         encodedPath: true,
@@ -617,7 +617,7 @@ test("{§exec-entry-sink} search-prefetched encoded parentheses resolve through 
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§exec-entry-sink} an exact HTTPS full-text FIND cannot leak or retarget a match from another authority", async () => {
+test("{§execution-output-identity} an exact HTTPS full-text FIND cannot leak or retarget a match from another authority", async () => {
     const { db, engine, schemes, workspaceId, sessionId, loopId, turnId, tag } = await wire({ tag: "stubsearch-fulltext-scope" });
     try {
         await engine.dispatch({
@@ -639,7 +639,7 @@ test("{§exec-entry-sink} an exact HTTPS full-text FIND cannot leak or retarget 
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§exec-entry-sink} an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
+test("{§execution-output-identity} an absolute web URL ending in slash is one fetchable resource, not a folder FIND", async () => {
     const { db, engine, schemes, workspaceId, sessionId, loopId, turnId } = await wire({ tag: "stubsearch-web-root" });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => new Response("publisher home", {
@@ -669,7 +669,7 @@ test("{§exec-entry-sink} an absolute web URL ending in slash is one fetchable r
     }
 });
 
-test("{§exec-entry-sink}: content:null materializes a live page and prunes an unavailable one", async () => {
+test("{§execution-output-identity}: content:null materializes a live page and prunes an unavailable one", async () => {
     // The sink's WebFetch is faked: automatic acquisition blocks localhost, so no live server can stand in for
     // the fetch. A /dead URL resolves null; anything else returns useful server XHTML.
     const fetchWeb: WebFetch = async (url) =>
@@ -718,7 +718,7 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
             "the shared materializer appends authoritative installed-reader identity after origin metadata",
         );
 
-        // {§exec-entry-sink} {§membership}: the sink rejects an unavailable URL,
+        // {§execution-output-identity} {§membership}: the sink rejects an unavailable URL,
         // creates no HTTP entry, and lets the executor prune that candidate.
         const dead = await db.test_get_entry_by_coordinate.get<{ id: number }>({
             scheme: "https",
@@ -729,7 +729,7 @@ test("{§exec-entry-sink}: content:null materializes a live page and prunes an u
     } finally { await quiesceExecs(schemes); await schemes.close(); await db.close(); }
 });
 
-test("{§exec-entry-sink} entry(content:null) preserves caller cancellation through the real WebFetcher", async () => {
+test("{§execution-output-identity} entry(content:null) preserves caller cancellation through the real WebFetcher", async () => {
     const started = Promise.withResolvers<void>();
     const webFetcher = new WebFetcher();
     let preserved = false;
@@ -777,7 +777,7 @@ test("{§exec-entry-sink} entry(content:null) preserves caller cancellation thro
     }
 });
 
-test("{§exec-entry-sink} entry(content:null) admits only HTTP acquisition targets", async () => {
+test("{§execution-output-identity} entry(content:null) admits only HTTP acquisition targets", async () => {
     let fetches = 0;
     const fetchWeb: WebFetch = async (url) => {
         fetches += 1;

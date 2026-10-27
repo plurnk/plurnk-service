@@ -1,4 +1,4 @@
-// {§message-abandonment} — a loop that ends with another session's message unanswered answers it 499 by the
+// {§loop-completion} — a loop that ends with another session's message unanswered answers it 499 by the
 // daemon's hand: one SEND to each message's address, in a maintenance turn of the loop that ended, so the
 // sender wakes and reads the decline instead of waiting on a loop that is gone. No loop is opened: a cancelled
 // scope stays cancelled ({§session-causal-admission}); the turn belongs to the ended loop.

@@ -72,12 +72,12 @@ const setup = async (reasoningEventNotify?: ReasoningEventNotify) => {
     return { db, engine, workspaceId, sessionId, loopId };
 };
 
-test("{§send-premature-terminate} Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with status from SEND", async () => {
+test("{§loop-completion} Engine.runTurn: EDIT + SEND turn writes entry, log rows, turn row with status from SEND", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
             contextWindow: 100000,
-            // {§send-premature-terminate} — an EDIT's receipt lands next packet, so the turn continues.
+            // {§loop-completion} — an EDIT's receipt lands next packet, so the turn continues.
             responses: [response([editStmt("/x", "y"), noteStmt("continuing")], "content", 42)],
         });
         const result = await engine.runTurn({
@@ -340,7 +340,7 @@ test("{§edit} Engine.runTurn: admitted response does not change packet request-
     } finally { await db.close(); }
 });
 
-test("{§send-premature-terminate} Engine.runTurn: multi-op turn - the arrival row precedes model ops", async () => {
+test("{§loop-completion} Engine.runTurn: multi-op turn - the arrival row precedes model ops", async () => {
     // The packetless initialization is durable turn 1. The first model turn is
     // turn 2 and starts its own operation sequence with the arrival row.
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
@@ -349,7 +349,7 @@ test("{§send-premature-terminate} Engine.runTurn: multi-op turn - the arrival r
             contextWindow: 100000,
             responses: [response([
                 editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
-                noteStmt("continuing"), // {§send-premature-terminate} — edit receipts land next packet
+                noteStmt("continuing"), // {§loop-completion} — edit receipts land next packet
             ])],
         });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [] });
@@ -549,7 +549,7 @@ test("{§edit} Engine.runLoop: three consecutive hard failures abandon at 500 wi
     } finally { await db.close(); }
 });
 
-test("{§send-premature-terminate} Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () => {
+test("{§loop-completion} Engine.runLoop: soft failures (404) do NOT accumulate strikes", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // READ a missing workspace:/// path → 404 (soft). With maxStrikes=2 and
@@ -569,7 +569,7 @@ test("{§send-premature-terminate} Engine.runLoop: soft failures (404) do NOT ac
                 response([readMissing("c"), noteStmt("3")]),
                 response([readMissing("d"), noteStmt("4")]),
                 // Complete on a clean turn; a READ plus same-turn completion requires observation.
-                // ({§send-premature-terminate}), which would confound this 404-soft-failure assertion.
+                // ({§loop-completion}), which would confound this 404-soft-failure assertion.
                 response([completeStmt("done")]),
             ],
         });
@@ -676,7 +676,7 @@ test("{§engine-rails} creation differs from repeated period-1 no-op edits", asy
     } finally { await db.close(); }
 });
 
-test("{§send-premature-terminate} Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", async () => {
+test("{§loop-completion} Engine.runLoop: varied per-turn fingerprints don't trip cycle detection", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // Vary EDIT path each turn → distinct fingerprints → no cycle.
@@ -688,7 +688,7 @@ test("{§send-premature-terminate} Engine.runLoop: varied per-turn fingerprints 
                 response([editStmt("/c", "3"), noteStmt("3")]),
                 response([editStmt("/d", "4"), noteStmt("4")]),
                 response([editStmt("/e", "5"), sendStmt(null, "done")]),
-                response([completeStmt("done")]), // {§send-premature-terminate} — the last edit's observation turn
+                response([completeStmt("done")]), // {§loop-completion} — the last edit's observation turn
             ],
         });
         const result = await engine.runLoop({

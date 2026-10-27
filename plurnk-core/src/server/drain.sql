@@ -53,7 +53,7 @@ ORDER BY (status = 102) DESC, sequence ASC
 LIMIT 1;
 
 -- PREP: drain_abandoned_messages
--- {§message-abandonment}: the messages other sessions sent that this ended loop still holds without a completion.
+-- {§loop-completion}: the messages other sessions sent that this ended loop still holds without a completion.
 SELECT m.path
 FROM message_sources m
 WHERE m.loop_id = $loop_id
@@ -79,7 +79,7 @@ SELECT workspace_id FROM sessions WHERE id = $session_id;
 
 -- PREP: drain_enqueue_message
 -- {§message-arrival}: append one message to the loop's inbox in arrival order. Ordinal 1 is the
--- loop's initial message; a later arrival takes the next ordinal. {§session-obligations}: a session's own
+-- loop's initial message; a later arrival takes the next ordinal. {§loop-completion}: a session's own
 -- operation names itself as the message's opener, by the row it writes.
 INSERT INTO loop_messages (loop_id, ordinal, source, body, open_paths, evidence, address, opened_turn_id, opened_sequence)
 SELECT $loop_id, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE loop_id = $loop_id),
@@ -87,7 +87,7 @@ SELECT $loop_id, (SELECT COALESCE(MAX(ordinal), 0) + 1 FROM loop_messages WHERE 
 WHERE EXISTS (SELECT 1 FROM loops WHERE id = $loop_id AND status IN (100, 102, 202))
 RETURNING id, ordinal, message_key;
 -- PREP: drain_message_path
--- {§session-obligations}: an admitted message's durable address, the one Open Work names.
+-- {§loop-completion}: an admitted message's durable address, the one Open Work names.
 SELECT path FROM message_sources WHERE id = $id;
 
 -- PREP: drain_unpublished_messages_for_loop

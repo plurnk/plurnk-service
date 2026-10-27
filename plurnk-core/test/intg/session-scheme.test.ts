@@ -255,7 +255,7 @@ for (const origin of ["model", "client", "_plurnk"] as const) {
 }
 
 for (const op of ["WORK", "FORK"] as const) {
-    test(`{§session-auto-name}: addressless ${op} allocates and reports a distinct short child address`, async (t) => {
+    test(`{§execution-output-identity}: addressless ${op} allocates and reports a distinct short child address`, async (t) => {
         const db = await openMigrated();
         try {
             const { calls, injectSession } = recordingInjectSession();
@@ -957,7 +957,7 @@ for (const related of [true, false]) test(`{§session-scheme}: ${related ? "pare
         const turnId = await insertTurn(db, loopId, 1, 102);
         const readOf = (target: ParsedPath): ReadStatement => ({ metadata: null, op: "READ", aside: null, lineMarker: null, target, matcher: null, body: null, position: { line: 1, column: 1 } });
 
-        // {§entry-owner}: the authority is part of the workspace entry key.
+        // {§execution-output-identity}: the authority is part of the workspace entry key.
         const childLoop = await insertLoop(db, childId, 1, "go");
         const childTurn = await insertTurn(db, childLoop, 1, 102);
         const write = await engine.dispatch({ statement: editStmt(sessionEntry("author", "note.md"), "scratch"), workspaceId, sessionId: childId, loopId: childLoop, turnId: childTurn, sequence: 1, origin: "model" });
@@ -1116,7 +1116,7 @@ test("{§op-methods-op-dispatch} KILL(session) settles before same-turn completi
     } finally { await db.close(); }
 });
 
-test("{§wait-obligation-matrix} WAIT: a live obligation parks; an empty join continues without inventing completion", async () => {
+test("{§loop-completion} WAIT: a live obligation parks; an empty join continues without inventing completion", async () => {
     const db = await openMigrated();
     try {
         // 202 + J (a live child) → the loop BLOCKS at 202, to be reawakened when the child concludes.
@@ -1131,7 +1131,7 @@ test("{§wait-obligation-matrix} WAIT: a live obligation parks; an empty join co
         assert.equal(blocked.status, 202, "202 with a live child blocks on the join");
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: pLoop }))?.status, 202, "the loop is blocked at 202");
 
-        // {§wait-obligation-matrix}
+        // {§loop-completion}
         const s2 = await insertWorkspace(db, `wait-void-${crypto.randomUUID()}`);
         const session = await insertSession(db, s2);
         const loop = await insertLoop(db, session, 1, "solo");
@@ -1318,7 +1318,7 @@ reading
                         .filter((entry) => entry.source === "session://counter" && entry.origin === "_plurnk"));
                     const replies = observations.filter((entry) => entry.logPath.endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.answers));
                     const conclusions = observations.filter((entry) => entry.logPath.endsWith("/READ") && entry.path === "ops://counter/1");
-                    // {§loop-answer}: the child's answer to its parent's own task arrives once, as the
+                    // {§message-completion}: the child's answer to its parent's own task arrives once, as the
                     // conclusion at the child's loop address.
                     assert.equal(new Set(conclusions.map(({ logPath: path }) => path)).size, 1, "one terminal observation");
                     assert.deepEqual(replies, [], "the answer is not delivered a second time as a reply");
@@ -1616,7 +1616,7 @@ test("{§session-initialization-entry}: shared reference maintenance does not br
     assert.ok(entries.length > 0, "the actual reference tree was materialized");
 });
 
-test("{§entry-owner}: scratch survives its namesake actor and remains workspace-local", async () => {
+test("{§execution-output-identity}: scratch survives its namesake actor and remains workspace-local", async () => {
     await using db = await openMigrated();
     const engine = new Engine({ db, schemes: new SchemeRegistry() });
     const spaces = await Promise.all(["one", "two"].map(async (name) => {

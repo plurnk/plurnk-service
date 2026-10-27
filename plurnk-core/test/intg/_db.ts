@@ -106,7 +106,7 @@ export const insertLoop = async (db: Db, sessionId: number, sequence: number, pr
     return row.id;
 };
 
-// {§session-obligations}: a fixture-controlled child holds its parent without a
+// {§loop-completion}: a fixture-controlled child holds its parent without a
 // provider drain. Restart recovery settles the vanished child like any other owner.
 export const holdChild = async (db: Db, workspaceId: number, sessionId: number): Promise<number> => {
     const childId = await insertSession(db, workspaceId, sessionId);
@@ -154,7 +154,7 @@ export const insertTurn = async (db: Db, loopId: number, sequence: number, statu
     return row.id;
 };
 
-// {§session-obligations} The operation by which a session sends a message: a completed turn of the sender's loop, at its
+// {§loop-completion} The operation by which a session sends a message: a completed turn of the sender's loop, at its
 // next sequence, with the sending row first in it. Fixtures name it as the message's opener, as a SEND, WORK or FORK does.
 export const sendingOperation = async (db: Db, loopId: number): Promise<MessageOpener> => {
     const next = await db.drain_next_turn_seq_for_loop.get<{ next: number }>({ loop_id: loopId });

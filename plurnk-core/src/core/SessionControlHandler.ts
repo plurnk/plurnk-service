@@ -108,7 +108,7 @@ export default class SessionControlHandler {
         return { status: 200, body: session.name, attrs: { session: SessionControlAddress.render(session.name), ...(opener === undefined ? {} : { message }) } };
     }
 
-    // {§session-obligations} A session's own operation opens the obligation its message carries; a person's act opens none
+    // {§loop-completion} A session's own operation opens the obligation its message carries; a person's act opens none
     // of a session's, since the voice is the person's ({§actor-boundary-client-operations}).
     static opener(ctx: PlurnkSchemeContext): MessageOpener | undefined {
         return ctx.client === undefined && ctx.sequence !== undefined ? { turnId: ctx.turnId, sequence: ctx.sequence } : undefined;

@@ -56,7 +56,7 @@ class Notes {
 | `folderScopes?` | `true` declares that a trailing slash on FIND is a collection scope. Absent/false means `/` is ordinary resource syntax. |
 | `lineAnchors?` | `true` publishes and accepts shared line anchors for stable textual representations without declaring EDIT support. |
 | `textEditScopes?` | `true` declares the shared textual EDIT coordinate and collision contract. It implies published anchors only on resources authorized for model writes by {§entry-address-resolution}; handlers receive only numeric coordinates and route standard entry mutation through `ctx.entries.operations.editBatch`. |
-| §manifest-metadata-modifier `metadataModifier?` | `true` declares `[metadata]` on resource operations. Absent/false rejects it at dispatch; admitted turns first apply {§metadata-ignored}. SEND recipients own their message metadata independently; accepting SEND options does not enable resource-read options. |
+| §manifest-metadata-modifier `metadataModifier?` | `true` declares `[metadata]` on resource operations. Absent/false rejects it at dispatch; admitted turns first apply {§outside-text}. SEND recipients own their message metadata independently; accepting SEND options does not enable resource-read options. |
 | §manifest-capability-traits `traits?` | Unique lowercase capability facts (for example `web` or `interaction`). The scheme declares facts only; the consumer's general capability-policy cascade decides admission. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `workspace:///_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
 | §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
@@ -214,7 +214,7 @@ Per-channel producer status belongs durably on that channel as
 `producerResult`; no transient preparation result may carry content, channel
 selection, or channel outcomes. Neither preparation nor producer results supply
 the READ's `terminal` flag: core derives it from channel state under
-{§stream-observation-result}. After `200`, core alone selects the authored
+{§exec-stream}. After `200`, core alone selects the authored
 channel, applies tag/binary/text rules (including {§markerless-first-page}), and
 composes that channel's producer evidence. Cold and warm reads therefore have
 identical semantics.
@@ -610,7 +610,7 @@ its implementation.
 
 `SchemeCtx` carries per-dispatch identity (`workspaceId`/`sessionId`/`loopId`/`turnId`/`writer`/`signal`, and during proposal application `logEntryId`, the operation row being settled, so a scheme can keep what it did on that row, {§log-wire-format}) plus capability namespaces:
 
-§scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `sessionId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
+§scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `sessionId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§execution-output-identity}).
 
 - `entries` — direct storage over the scheme and authority already bound by core
   (`address`/`read`/`write`/`delete`) plus `operations`, the standard PLURNK
@@ -761,7 +761,7 @@ A scheme handler is discovered and registered with **zero first-party involvemen
 §message-source-scheme Protocol modules register `MessageScheme` or compose its hooks into
 their existing scheme. Core's `SchemeCtx.messages` materializes retained messages in that
 scheme for ordinary READ/FIND/COPY and delivers exact-address SEND replies under
-{§send-response-receipt}. The materialization is a derived representation, never the source
+{§message-completion}. The materialization is a derived representation, never the source
 of message body or reply state. The protocol module owns URI identity; Core owns durable
 admission and correlation. Message representations reject mutation while remaining SEND
 recipients. Scratch entries and protocol artifacts retain their own existing write contracts.

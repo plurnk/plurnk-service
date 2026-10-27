@@ -58,7 +58,7 @@ export interface WakeSessionPayload {
 
 export type WakeSessionNotify = (payload: WakeSessionPayload) => void;
 
-// {§session-obligations} The operation that sent a message, by the row it writes: its turn and its sequence there.
+// {§loop-completion} The operation that sent a message, by the row it writes: its turn and its sequence there.
 export interface MessageOpener {
     readonly turnId: number;
     readonly sequence: number;
@@ -82,7 +82,7 @@ export type InjectSessionNotify = (args: {
     // A model's WORK/FORK inherit the source loop's spawn model; every other delivery, a session a person
     // starts included, runs the recipient's own.
     spawn?: true;
-    // {§session-obligations} — the session's own operation that sends the message; absent when a person acts.
+    // {§loop-completion} — the session's own operation that sends the message; absent when a person acts.
     opener?: MessageOpener;
 }) => Promise<{ action: "injected_next_turn" | "enqueued_new_loop"; loopId: number; message: string }>;
 
@@ -243,7 +243,7 @@ export default class ChannelWrite {
         return row?.close_status ?? null;
     }
 
-    // {§exec-near-miss} — the addresses an execution id holds under any runtime.
+    // {§exec-target-routing} — the addresses an execution id holds under any runtime.
     static async execAddressesAt(
         db: Db,
         { workspaceId, authority, pathname }: { workspaceId: number; authority: string; pathname: string },

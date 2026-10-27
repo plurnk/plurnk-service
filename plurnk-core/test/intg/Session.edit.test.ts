@@ -67,7 +67,7 @@ const setupContext = async () => {
     return { db, workspaceId, sessionId };
 };
 
-test("{§entry-owner} Session.edit: new entry — inserts entries row and body channel", async () => {
+test("{§execution-output-identity} Session.edit: new entry — inserts entries row and body channel", async () => {
     const { db, workspaceId, sessionId } = await setupContext();
     try {
         const stmt = editStatement({
@@ -82,7 +82,7 @@ test("{§entry-owner} Session.edit: new entry — inserts entries row and body c
             scheme: string;
             pathname: string;
         }>({ id: result.entryId });
-        assert.ok((entry?.workspace_id ?? 0) >= 1, "owner stamped ({§entry-owner})");
+        assert.ok((entry?.workspace_id ?? 0) >= 1, "owner stamped ({§execution-output-identity})");
         assert.equal(entry?.workspace_id, workspaceId);
         assert.equal(entry?.scheme, "workspace");
         assert.equal(entry?.pathname, "/countries/france/capital");
@@ -755,7 +755,7 @@ for (const op of ["READ", "FIND"] as const) {
     });
 }
 
-test("{§completion-defers-to-results}: retiring a failed receipt does not make it observed", async () => {
+test("{§loop-completion}: retiring a failed receipt does not make it observed", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.injectIntoLoop(env.loopId, "Report the result.", [], undefined, {}, "message://request/result");
@@ -1876,7 +1876,7 @@ test("{§scheme-edit-proposal-receipt} {§edit-result-receipt-projection} {§op-
                 + "````EDIT (reviewed.md) <4>\nFOUR\n````\n"
                 + "````SEND\ndone\n````",
                 20,
-            ), makeMockResponse("````SEND [200]\ndone\n````", 10)], // {§send-premature-terminate} — the edit receipts force the second turn
+            ), makeMockResponse("````SEND [200]\ndone\n````", 10)], // {§loop-completion} — the edit receipts force the second turn
         });
         const reviewed = "reviewer\nreplacement\n";
         await withDaemon(mock, async (db, _daemon, addr) => {

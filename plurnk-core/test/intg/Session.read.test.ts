@@ -207,7 +207,7 @@ test("{§edit} Session.read: edited entry round-trips through read — content m
 
 
 
-test("{§entry-owner} Session.read: different workspaces see different entries at the same path", async () => {
+test("{§execution-output-identity} Session.read: different workspaces see different entries at the same path", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-readiso-a");
@@ -224,7 +224,7 @@ test("{§entry-owner} Session.read: different workspaces see different entries a
     } finally { db.close(); }
 });
 
-test("{§entry-owner} Session.read: read against workspace A doesn't surface workspace B's entry", async () => {
+test("{§execution-output-identity} Session.read: read against workspace A doesn't surface workspace B's entry", async () => {
     const db = await openMigrated();
     try {
         const workspaceA = await insertWorkspace(db, "ws-rd-a");

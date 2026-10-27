@@ -17,7 +17,7 @@ const representation: StoredEntryData = {
 const mimetypes = new Mimetypes();
 
 for (const mimetype of ["text/stream", "text/plain", "application/json"]) {
-    test(`{§stream-observation-result}: ${mimetype} READ liveness follows channel state`, async () => {
+    test(`{§exec-stream}: ${mimetype} READ liveness follows channel state`, async () => {
         for (const state of ["static", "active", "closed", "errored"] as const) {
             for (const content of ["", "[]"]) {
                 const result = await ReadProjector.project({

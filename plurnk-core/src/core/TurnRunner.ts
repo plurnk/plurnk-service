@@ -1674,7 +1674,7 @@ export default class TurnRunner {
             this.#notices.push(workspaceId, sessionId, loopId, notice);
         }
         const cut = outputCut(emission, provider);
-        // {§empty-turn} — a response cut at the output allowance with nothing admitted names the
+        // {§outside-text} — a response cut at the output allowance with nothing admitted names the
         // cut, so the model reads the ceiling, never a parser symptom (#478).
         if (split.emptyTurn && cut !== null) {
             this.#notices.push(workspaceId, sessionId, loopId, {
@@ -1928,7 +1928,7 @@ export default class TurnRunner {
         });
         // {§outside-text}: beside a fenced operation, the text between two operations is one NOTE at its
         // position, annotation the model wrote without its fence; a turn that fenced no operation keeps
-        // its text as its outside source and stays an empty turn ({§empty-turn}). Echoed emission
+        // its text as its outside source and stays an empty turn ({§outside-text}). Echoed emission
         // headings are announcements, not annotation, and are dropped ({§emission-admission}).
         const fenced = parsed.items.filter((item) => item.kind === "statement").length;
         let span: { body: string[]; position: PlurnkStatement["position"] } | null = null;

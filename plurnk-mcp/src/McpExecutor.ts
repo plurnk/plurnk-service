@@ -115,7 +115,7 @@ const pageReceipt = (
 };
 
 // {§mcp-unavailable-runtime} An enabled server that cannot run keeps its alias: core refuses a call to it with the
-// reason its availability states, before anything runs ({§exec-registry-resolves}), so this executor never runs.
+// reason its availability states, before anything runs ({§exec-target-routing}), so this executor never runs.
 export class UnavailableServerExecutor extends BaseExecutor {
     readonly #availability: RuntimeAvailability;
 

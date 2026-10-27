@@ -106,7 +106,7 @@ export const readPanels = (panels) => {
                 live.set(declared[1], name);
                 continue;
             }
-            // {§exec-env-scoped}: a commented declaration is an optional knob, a declaration in its own right.
+            // {§execution-output-identity}: a commented declaration is an optional knob, a declaration in its own right.
             const example = /^#\s*(PLURNK_[A-Z0-9_]+)=/u.exec(bare);
             if (example !== null && !optional.has(example[1])) optional.set(example[1], name);
         }

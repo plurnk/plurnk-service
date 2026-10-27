@@ -55,7 +55,7 @@ export default class SessionName {
     }
 
     // A generated name is not minted until this atomic claim creates its session.
-    // Competing allocators retry only after losing the claim. {§session-auto-name}
+    // Competing allocators retry only after losing the claim. {§execution-output-identity}
     static async claimAuto(db: Db, options: AutoSessionOptions): Promise<SessionNameClaim> {
         const {
             workspaceId,

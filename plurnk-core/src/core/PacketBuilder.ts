@@ -258,7 +258,7 @@ export default class PacketBuilder {
         }));
         const childSessions = (await this.#db.engine_child_sessions_live.all<{ name: string; status: number }>({ session_id: sessionId }))
             .map((r) => ({ status: r.status, path: `session://${r.name}` }));
-        // {§session-obligations} — the messages this session sent that await completion, the third thing it holds.
+        // {§loop-completion} — the messages this session sent that await completion, the third thing it holds.
         const sentMessages = (await this.#db.engine_sent_messages_open.all<{ path: string; status: number }>({ session_id: sessionId }))
             .map((r) => ({ status: r.status, path: r.path }));
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's

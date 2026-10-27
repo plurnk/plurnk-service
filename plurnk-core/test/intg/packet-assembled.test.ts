@@ -26,7 +26,7 @@ import LogEntryProjection from "../../src/core/LogEntryProjection.ts";
 const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: number): Promise<{ sections: Array<{ name: string; slot: string; header: string | null; content: string; weight: number }> }> =>
     JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnId }))!.packet);
 
-test("{§session-auto-name}: assembled receipts and child inventory identify anonymous WORK and FORK", async () => {
+test("{§execution-output-identity}: assembled receipts and child inventory identify anonymous WORK and FORK", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-anonymous-sessions-${crypto.randomUUID()}`);

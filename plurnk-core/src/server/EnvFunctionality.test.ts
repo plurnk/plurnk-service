@@ -47,7 +47,7 @@ test("{§env-functionality} admit refuses a name a shell could not export", asyn
     );
 });
 
-test("{§exec-env-scoped} reserved names are refused at family admission", async (t) => {
+test("{§execution-output-identity} reserved names are refused at family admission", async (t) => {
     const previous = process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV;
     process.env.PLURNK_PROVIDERS_PROVIDER_ENVFIXTURE_API_KEY_ENV = "CUSTOM_PROVIDER_TOKEN";
     t.after(() => {
@@ -142,8 +142,8 @@ test("{§env-functionality} prepare publishes no runtime and marks every enabled
     assert.deepEqual([...prepared.outcomes.values()], [{ state: "active" }, { state: "active" }]);
 });
 
-// {§exec-env-scoped} — one rule for the spawn and its record: what the command receives and why.
-test("{§exec-env-scoped} compose applies the Session's state over the ambient ceiling and records each name's provenance", () => {
+// {§execution-output-identity} — one rule for the spawn and its record: what the command receives and why.
+test("{§execution-output-identity} compose applies the Session's state over the ambient ceiling and records each name's provenance", () => {
     const { env, record } = EnvFunctionality.compose({ PATH: "/usr/bin", CI: "1", TERM: "xterm" }, { version: 1, definitions: {
         CARGO_TARGET_DIR: { origin: "session", enabled: true, definition: { value: "/tmp/shared" } },
         TOOLCHAIN: { origin: "session", enabled: true, definition: { value: "stable" }, inherited: "alice" },

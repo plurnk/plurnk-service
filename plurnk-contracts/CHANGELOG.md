@@ -88,7 +88,7 @@
   a reattached observer agree ({§acp-state-patches}).
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-session-overview}, {§session-finished-reply},
+  finished first and bounded ({§methods-session-overview}, {§message-completion},
   {§application-session-overview}); `excerptOf` is the one list excerpt rule
   ({§list-excerpt}). `workspace/renamed` announces a rename
   ({§notifications-workspace-renamed}). AG-UI: a Run carrying

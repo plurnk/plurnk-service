@@ -19,9 +19,9 @@ const arrivalBody = (row: { tx: string }): string => (JSON.parse(row.tx) as { bo
 
 const sendOnly = (dsl: string) => makeMockResponse(dsl);
 
-test("{§send-premature-terminate} loop.run: enqueues + drains + returns first loop's result", async () => {
+test("{§loop-completion} loop.run: enqueues + drains + returns first loop's result", async () => {
     const dsl = "````EDIT (workspace:///x)\nhello\n````\n\n````SEND\ndone\n````";
-    // {§send-premature-terminate} — observe the EDIT receipt before the final SEND.
+    // {§loop-completion} — observe the EDIT receipt before the final SEND.
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly(dsl), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
     await withDaemon(mock, async (_db, _daemon, addr) => {

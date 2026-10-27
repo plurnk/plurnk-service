@@ -17,7 +17,7 @@ test("{§share-packet-names}: readable requests retain roles, order and complete
     assert.match(rendered, /not a transport capture/u);
 });
 
-// {§exec-env-scoped} — a spawn's row carries the environment it received; the waterfall names every
+// {§execution-output-identity} — a spawn's row carries the environment it received; the waterfall names every
 // value's provenance so a run's commands can never be misread as having run under the host's shell.
 // {§provider-wire-emission} — an empty emission is read from what the wire carried.
 test("{§provider-wire-emission} the digest reads a blank emission from the wire record", () => {
@@ -35,7 +35,7 @@ test("{§provider-wire-emission} the digest reads a blank emission from the wire
         "  ↳ wire: 1 chunks, 1 unmapped frames retained", "unmapped native envelopes are not reported as empty");
 });
 
-test("{§exec-env-scoped} the digest names a spawn's environment with each value's provenance", () => {
+test("{§execution-output-identity} the digest names a spawn's environment with each value's provenance", () => {
     const line = DigestRender.envLine({
         PATH: { source: "host", value: "/usr/bin" },
         HOME: { source: "host", value: "/home/x" },

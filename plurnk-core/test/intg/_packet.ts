@@ -6,7 +6,7 @@ import type { Db } from "../../src/core/Db.ts";
 import PacketWire from "../../src/core/packet-wire.ts";
 import { parseLogRecords, type LogRecord } from "../LogRecords.ts";
 
-// {§loop-response-messages}: evaluate delivered text independently of execution outcome.
+// {§message-completion}: evaluate delivered text independently of execution outcome.
 export const lastReply = async (db: Db, loopId: number): Promise<string> =>
     (await db.test_last_loop_reply.get<{ content: string }>({ loop_id: loopId }))?.content ?? "";
 

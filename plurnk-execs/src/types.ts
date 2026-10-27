@@ -54,7 +54,7 @@ export interface ExecArgs {
     // Environment for runtimes that spawn a child process. When set, the child
     // gets EXACTLY this env — the consumer scopes out its own secrets (provider
     // keys, PLURNK_*) so a model-directed `printenv` can't read them
-    // ({§exec-env-scoped}). When omitted, the child inherits the host process env
+    // ({§execution-output-identity}). When omitted, the child inherits the host process env
     // (back-compat default). Ignored by in-process runtimes that don't spawn.
     env?: NodeJS.ProcessEnv;
     // Cancellation. Executors must abort in-flight work when this fires.

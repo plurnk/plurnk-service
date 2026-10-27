@@ -132,7 +132,7 @@ export default class AdmittedTurnExecutor {
             });
             if (id !== null) { onDispatch?.(id); await onSettled?.(id); }
         };
-        // {§empty-turn}: preserve evidence even when no operation was admitted.
+        // {§outside-text}: preserve evidence even when no operation was admitted.
         const recordEngineProblem = async (kind: EngineProblemKind, sequence: number, extensions: Record<string, unknown>): Promise<void> => {
             const problem = ENGINE_PROBLEMS[kind];
             await this.#problems.record({
@@ -231,7 +231,7 @@ export default class AdmittedTurnExecutor {
                 droppedCount++;
                 continue;
             }
-            // {§metadata-ignored} — an unsupported resource option is dropped,
+            // {§outside-text} — an unsupported resource option is dropped,
             // and the model gets one notice, never a refusal. SEND recipients and invocation owners
             // receive their own input whole ({§op-methods-op-dispatch}).
             let statement = scheduledStatement;

@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS loops (
     -- below when status crosses into terminal (every death-path, uniformly).
     terminated_at    TEXT,
     terminal_result  TEXT,
-    -- {§loop-terminal-authorship}: 'cancel' names an external loop.cancel;
+    -- {§loop-completion}: 'cancel' names an external loop.cancel;
     -- NULL covers model terminals and engine verdicts whose result carries the story.
     terminated_by    TEXT                      CHECK (terminated_by IS NULL OR terminated_by = 'cancel'),
     CONSTRAINT loops_generation_policy_contract CHECK (
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS loop_messages (
     open_paths      TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(open_paths)),
     -- The inbound SEND row this message became (log_entries, chapter 006); NULL until published.
     log_entry_id    INTEGER,
-    -- {§session-obligations}: a message a session's own operation sends records that operation by turn and sequence.
+    -- {§loop-completion}: a message a session's own operation sends records that operation by turn and sequence.
     opened_turn_id  INTEGER REFERENCES turns(id) ON DELETE SET NULL,
     opened_sequence INTEGER CHECK (opened_sequence IS NULL OR opened_sequence >= 1),
     UNIQUE (loop_id, ordinal)

@@ -217,7 +217,7 @@ export default class PacketWire {
     // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
     // turn, `[]` when empty ({§child-orientation}).
     static renderOpenWork(sessions: readonly OpenWorkPointer[], streams: readonly OpenWorkPointer[], messages: readonly OpenWorkPointer[] = []): string {
-        // {§session-obligations} — the messages it sent that await completion are the third list it is held on.
+        // {§loop-completion} — the messages it sent that await completion are the third list it is held on.
         return `{"sessions":${PacketWire.#pointers(sessions)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
     }
 
@@ -735,7 +735,7 @@ export default class PacketWire {
         const operands = paths.filter((candidate) => candidate !== null).map((candidate) => `(${candidate})`).join(" ");
         const description = op === "error" || op === "extension" || parts.length === 0 ? null
             : !paired ? parts.join(" ") : operands.length > 0 ? operands : null;
-        // {§session-auto-name} The created identity is an outcome, not an authored target.
+        // {§execution-output-identity} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && typeof attrs.session === "string") {
             meta.session = attrs.session;
             // {§session-scheme} — a WORK that reached a session the name already held says so.
@@ -845,7 +845,7 @@ export default class PacketWire {
         if (op === "READ" && rx !== null && typeof rx === "object" && rx.channels !== null && typeof rx.channels === "object") {
             meta.channels = rx.channels;
         }
-        // {§send-response-receipt} — a reply's row names the prompts it answered.
+        // {§message-completion} — a reply's row names the prompts it answered.
         if ((op === "SEND" || op === "KILL") && rx !== null && typeof rx === "object" && Array.isArray(rx.answers)) {
             meta.answers = rx.answers;
         }

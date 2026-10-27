@@ -22,7 +22,7 @@ export default class SessionReferences {
             const binding = await SessionReferences.read(db, { namespace, reference });
             if (binding !== null) return { binding, created: allocated !== undefined };
             if (allocated !== undefined) throw new Error("Allocated session reference is absent after commit.");
-            // A colliding automatic workspace name created nothing; redraw under {§workspace-auto-name}.
+            // A colliding automatic workspace name created nothing; redraw under {§execution-output-identity}.
         }
     }
 }

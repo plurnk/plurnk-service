@@ -74,7 +74,7 @@ test("{§methods-session-name-admission} {§methods-session-create}: fresh named
     });
 });
 
-test("{§session-auto-name}: concurrent unnamed fresh sessions claim distinct short names", async () => {
+test("{§execution-output-identity}: concurrent unnamed fresh sessions claim distinct short names", async () => {
     await withDaemon(null, async (_db, daemon, addr) => {
         const ws = await connect(addr);
         try {

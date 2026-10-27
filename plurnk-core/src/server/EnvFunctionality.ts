@@ -1,4 +1,4 @@
-// {§workspace-env} {§env-functionality} — workspace defaults and session overrides
+// {§execution-output-identity} {§env-functionality} — workspace defaults and session overrides
 // compose through one family; lifecycle verbs and persistence belong to the coordinator.
 import { isRecord } from "@plurnk/plurnk-contracts";
 import type {
@@ -32,7 +32,7 @@ const actionError = (code: string, status: number, detail: string, extensions: R
         Results.failure("env:functionality", code, status, detail, {}, { family: ENV_FAMILY, retryable: false, ...extensions }),
     );
 
-// {§exec-env-scoped} The family reserves Plurnk configuration and provider credentials.
+// {§execution-output-identity} The family reserves Plurnk configuration and provider credentials.
 const reservedNameError = (alias: string): OperationFailureError => actionError("name-reserved", 400,
     `'${alias}' is reserved in env entries.`, {
         alias,
@@ -140,7 +140,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
 
     // Nothing is launched, so nothing can fail to launch: every enabled definition is active and
     // there is no snapshot to tear down. The environment is read at the spawn that uses it
-    // ({§exec-env-scoped}), never held resident — which is why this family publishes no runtimes.
+    // ({§execution-output-identity}), never held resident — which is why this family publishes no runtimes.
     async prepare(preparation: FunctionalityPreparation<EnvDefinition, null>): Promise<FunctionalityPrepared<never, null>> {
         preparation.signal.throwIfAborted();
         const outcomes = new Map([...preparation.enabled.keys()].map((alias) => [alias, { state: "active" as const }]));
@@ -165,7 +165,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         )).files;
     }
 
-    // {§workspace-env} Apply one persisted layer and record the provenance beside its values.
+    // {§execution-output-identity} Apply one persisted layer and record the provenance beside its values.
     static compose(
         ambient: NodeJS.ProcessEnv,
         state: unknown,
@@ -200,7 +200,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
         return { env, record };
     }
 
-    // {§workspace-env} Both execution and capability startup read these same persisted layers.
+    // {§execution-output-identity} Both execution and capability startup read these same persisted layers.
     static async workspace(db: Db, workspaceId: number, hostPaths?: HostPaths): Promise<(ambient?: NodeJS.ProcessEnv) => { env: NodeJS.ProcessEnv; record: Record<string, EnvRecord> }> {
         const row = await db.workspace_module_state_get.get<{ state: string }>({ workspace_id: workspaceId, namespace_owner: ENV_OWNER });
         const state: unknown = row === undefined ? { version: 1, definitions: {} } : JSON.parse(row.state);
@@ -222,7 +222,7 @@ export default class EnvFunctionality implements FunctionalityAdapter<never, Run
     }
 }
 
-// One name's provenance in a spawn's environment ({§exec-env-scoped}): the host through the
+// One name's provenance in a spawn's environment ({§execution-output-identity}): the host through the
 // ceiling, this Session's own value (`from` names an ancestor when it was inherited), or a name
 // withheld — by this Session, by the ancestor named, or by the invariant.
 export interface EnvRecord {

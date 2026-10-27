@@ -594,7 +594,7 @@ test("{§exec-stream}: a terminal stream observation states completion truth wit
     assert.doesNotMatch(out, /completed|success/i, "the receipt exposes facts without adding presumptuous narration");
 });
 
-test("{§stream-observation-result}: malformed liveness facts fail at packet projection", () => {
+test("{§exec-stream}: malformed liveness facts fail at packet projection", () => {
     const row = { coordinate: "1/2/1", op: "READ", status: 200, target: { scheme: "sh", pathname: "/abcdef12" } };
     for (const terminal of [null, "false", 0, 1]) {
         assert.throws(() => PacketWire.renderLog([{ ...row, rx: { terminal } }], tok),
@@ -606,7 +606,7 @@ test("{§stream-observation-result}: malformed liveness facts fail at packet pro
     }
 });
 
-test("{§stream-observation-result}: a harness-authored READ is not implicitly a subscription publication", () => {
+test("{§exec-stream}: a harness-authored READ is not implicitly a subscription publication", () => {
     const [row] = parseLogRecords(PacketWire.renderLog([{
         coordinate: "1/1/1", origin: "_plurnk", op: "READ", status: 200,
         target: { scheme: "sh", pathname: "/abcdef12" },

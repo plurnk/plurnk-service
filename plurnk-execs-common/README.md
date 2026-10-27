@@ -61,7 +61,7 @@ without adding any PLURNK-specific knob or altering default behavior.
 | 2. Confine `js` children | `NODE_OPTIONS="--permission --allow-fs-read=<workspace> --allow-fs-write=<workspace>"` | Confines filesystem reads and writes to `<workspace>` and denies `child_process` spawning (`ERR_ACCESS_DENIED`). |
 | 3. Discover daemon envelope (optional) | `node --permission-audit ...` | Audits paths the daemon itself touches (run root, checkout, `node_modules`) before launching the daemon under `--permission`. |
 
-**Scope choices** ({§exec-env-scoped}):
+**Scope choices** ({§execution-output-identity}):
 
 - **Workspace scope** (`plurnk (env)` with `scope: "workspace"`): `NODE_OPTIONS` reaches both `js` execution children and Node-based MCP server subprocesses in the workspace.
 - **Session scope** (`plurnk (env)` with `scope: "session"`): `NODE_OPTIONS` reaches `js` execution children of that session only.

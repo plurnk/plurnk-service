@@ -58,7 +58,7 @@ flowchart LR
 
 | Term | Layer | Meaning |
 |---|---|---|
-| **agent** | PLURNK | The plurnk runtime acting in-workspace as the `_plurnk` session ({§actor-boundary}), never a privileged singleton owning entries ({§entry-owner}, {§machine-processes}). |
+| **agent** | PLURNK | The plurnk runtime acting in-workspace as the `_plurnk` session ({§actor-boundary}), never a privileged singleton owning entries ({§execution-output-identity}, {§machine-processes}). |
 | **workspace** | Core | Durable shared resources, configuration, and optional `project_root`. Identity: `workspaces.id`; mutable label: unique `workspaces.name`. |
 | **session** | Core | Durable actor and history over one workspace (`parent_session_id` optional, one process-local cancellation scope while active). |
 | **loop** | Core | Queued-to-terminal unit of work within a session (`100` pending · `102` running · `200` done · `202` waiting, {§send} · `413` input-capacity · `429` turn ceiling · `499` cancelled · `500` failed · `504` timeout, {§operator-config-loop-timeout} · `508` runaway). |
@@ -184,24 +184,24 @@ flowchart TB
 | Named scratch (`session://<name>/...`) | Workspace-owned under literal namespace `<name>`. When the `sessions` row with `parent_session_id` and `forked_from_turn_id` is inserted, `sessions_fork_copies_history` ({§db-process-triggers}) snapshots quiescent `session://<parent>/...` entries into `session://<child>/...` without rewriting body text. |
 | Log, loops, turns, curation, and accounting | Session-owned. Fork copies the parent's loops, turns, and `log_entries` up to `forked_from_turn_id` as settled terminal history (`100`/`102`/`202` clamped to `200`, open turns to `499`, pending proposals to `cancelled`, stream subscriptions omitted), preserving `weight`, `forget_The_Past`, and observation cursor while copying zero provider cost ({§tokenomics-turn-summary}). |
 | Session identity & origin | Each session carries `origin` (`model` or `_plurnk`; `WORK`/`FORK` create `model` sessions regardless of operation producer, {§actor-boundary-client-operations}) and an immutable unique 128-bit hex `provider_identity` (`sessions.provider_identity`, {§provider-cache-identity}). |
-| Place hiding (`hidden_at`) | Hiding a workspace marks the workspace alone; hiding a session marks it and its subtree (`hidden_by` naming the root of the hide group; `409 live-work` if any covered session holds a live loop, {§session-loop-lifecycle}, open stream, pending proposal, or pending question). Starting a live loop or selecting a workspace by its default folder name ({§workspace-name}) shows it; `listWorkspaces`, `listSessions`, and `overview` ({§methods-session-overview}) filter by `hidden_at` and emit `workspace/hidden` / `session/hidden`. |
+| Place hiding (`hidden_at`) | Hiding a workspace marks the workspace alone; hiding a session marks it and its subtree (`hidden_by` naming the root of the hide group; `409 live-work` if any covered session holds a live loop, {§session-loop-lifecycle}, open stream, pending proposal, or pending question). Starting a live loop or selecting a workspace by its default folder name ({§execution-output-identity}) shows it; `listWorkspaces`, `listSessions`, and `overview` ({§methods-session-overview}) filter by `hidden_at` and emit `workspace/hidden` / `session/hidden`. |
 
 ### §session-scheme Session scheme addressing, delegation, and collection
 
-- **Authority & scratch scope**: `session://<name>/<path>` keys workspace entries by literal `authority = <name>` (`workspace:///<path>` has `authority = ""`; `session:///<path>` is refused with `400 named-session-required` pointing to `workspace:///`). Any session in the workspace can `READ`, `FIND`, `EDIT`, `COPY`, `MOVE`, or `KILL` any `session://<name>/<path>` entry without ancestry checks ({§entry-owner}, {§scheme-address}), and entries outlive their namesake session. `workspace:///_plurnk/` is ordinary shared workspace scratch reconciled by `_plurnk` ({§tools-resource-materialization}, {§skills-resources}).
+- **Authority & scratch scope**: `session://<name>/<path>` keys workspace entries by literal `authority = <name>` (`workspace:///<path>` has `authority = ""`; `session:///<path>` is refused with `400 named-session-required` pointing to `workspace:///`). Any session in the workspace can `READ`, `FIND`, `EDIT`, `COPY`, `MOVE`, or `KILL` any `session://<name>/<path>` entry without ancestry checks ({§execution-output-identity}, {§scheme-address}), and entries outlive their namesake session. `workspace:///_plurnk/` is ordinary shared workspace scratch reconciled by `_plurnk` ({§tools-resource-materialization}, {§skills-resources}).
 - **Minting & control addressing**: Minted session names must match `SESSION_NAME` ({§session-name}, `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`, case-sensitive; `_plurnk` is unmintable, though readable by `readLog` / {§methods-session-read}). Session control addresses (`WORK`, `FORK`, `SEND`, `READ`, `KILL`) must be authority-only `session://<name>` with no userinfo, port, pathname, query, or fragment (`400 control-address-invalid`), `~` is never an alias, and `EDIT (session://<name>)` fails with `400 session-entity-not-editable`.
 - **Delegation (`WORK`, `FORK`) and messaging (`SEND`, `KILL`)**:
-  - `WORK (session://<name>)` spawns a fresh child if `<name>` is unused ({§actor-boundary-client-operations}), or delivers its non-empty body as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `(session://<name>)` auto-allocates an 8-hex-character name ({§session-auto-name}). Passing a non-`session://` resource path on `WORK (<path>)` reads that resource whole (`<1,-1>`) as the prompt (composed with any inline body, {§bare-prompt-composition}) and auto-names the child.
-  - `FORK (session://<name>)` (or addressless `FORK`) branches the calling session into a fresh name; if `<name>` already exists, `FORK` fails with `409 session-name-conflict` naming `WORK or SEND (session://<name>)`. Inherited loops are terminal so {§send-premature-terminate} sees only the branch's new loop. Both `WORK` and `FORK` enforce `PLURNK_SERVICE_WORKSPACE_SESSIONS_MAX_ACTIVE` (`508`) and require a non-empty prompt (`422 spawn-prompt-empty`).
+  - `WORK (session://<name>)` spawns a fresh child if `<name>` is unused ({§actor-boundary-client-operations}), or delivers its non-empty body as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `(session://<name>)` auto-allocates an 8-hex-character name ({§execution-output-identity}). Passing a non-`session://` resource path on `WORK (<path>)` reads that resource whole (`<1,-1>`) as the prompt (composed with any inline body, {§bare-prompt-composition}) and auto-names the child.
+  - `FORK (session://<name>)` (or addressless `FORK`) branches the calling session into a fresh name; if `<name>` already exists, `FORK` fails with `409 session-name-conflict` naming `WORK or SEND (session://<name>)`. Inherited loops are terminal so {§loop-completion} sees only the branch's new loop. Both `WORK` and `FORK` enforce `PLURNK_SERVICE_WORKSPACE_SESSIONS_MAX_ACTIVE` (`508`) and require a non-empty prompt (`422 spawn-prompt-empty`).
   - `SEND (session://<name>)` delivers a non-empty message or attachment ({§op-methods-op-dispatch}; `422 message-empty` when blank, `404` when absent) to `<name>`, folded into a running loop or queued as a new loop (`202` parked loops re-queue to `100` without firing terminal hooks). `KILL (session://<name>)` cancels the session's active tree (`404` when absent).
-- **Collection (`READ (session://<name>)` and `ops://<name>/<L>`)**: Each concluded child loop reaches its direct parent as an `_plurnk` `READ` of `ops://<name>/<L>` ({§loop-answer}, {§message-reply-delivery}, {§env-delta-child-termination}), and `READ (session://<name>)` (or `ops://<name>/<L>`) collects that same terminal result on demand without `lineAnchors` ({§session-loop-lifecycle}): `404` if absent, `425 loop-running` (`resource: "ops://<name>/<L>"`) while unresolved, `200` with answer content on completion, or the child's exact failure status and Problem on error.
+- **Collection (`READ (session://<name>)` and `ops://<name>/<L>`)**: Each concluded child loop reaches its direct parent as an `_plurnk` `READ` of `ops://<name>/<L>` ({§message-completion}, {§message-reply-delivery}, {§env-delta-child-termination}), and `READ (session://<name>)` (or `ops://<name>/<L>`) collects that same terminal result on demand without `lineAnchors` ({§session-loop-lifecycle}): `404` if absent, `425 loop-running` (`resource: "ops://<name>/<L>"`) while unresolved, `200` with answer content on completion, or the child's exact failure status and Problem on error.
 
 ### §child-orientation Open-work orientation and Session footer
 
 Every model packet includes two orienting blocks in the status clump below `## Log` ({§packet-cache-monotone}), carrying no date, time, or timezone anywhere:
 
 - **`## Session`**: Renders `{"path": "session://<name>", "parent": <"session://..." | null>, "loop": L, "turn": T, "owner": {"address": "<owner>", "interactive": <boolean>}}`, naming the actor, its parent, the `(L, T)` coordinate this packet's response will occupy (`reasoning://<session>/L/T`, `ops://<session>/L/T`, `log:///L/T/*`), and its owner's attendance ({§session-ownership}).
-- **`## Open Work`**: Always renders (even when all lists are `[]`, as the deliberate exception to empty-section omission) as `{"sessions": [...], "streams": [...], "messages": [...]}`, listing unconcluded child sessions, active stream subscriptions, and sent messages awaiting completion ({§session-obligations}, {§schedule-delivery}). Each active stream pointer carries `detail: "elapsed <E>s; output unchanged <U>s; <channel> <lines> lines (+<growth> bytes)"` (or `output timing unknown` when `output_changed_at` is null); `opened_at` is fixed at subscription open, while `output_changed_at` resets atomically only when a published channel's content actually changes ({§exec-stream}).
+- **`## Open Work`**: Always renders (even when all lists are `[]`, as the deliberate exception to empty-section omission) as `{"sessions": [...], "streams": [...], "messages": [...]}`, listing unconcluded child sessions, active stream subscriptions, and sent messages awaiting completion ({§loop-completion}, {§schedule-delivery}). Each active stream pointer carries `detail: "elapsed <E>s; output unchanged <U>s; <channel> <lines> lines (+<growth> bytes)"` (or `output timing unknown` when `output_changed_at` is null); `opened_at` is fixed at subscription open, while `output_changed_at` resets atomically only when a published channel's content actually changes ({§exec-stream}).
 
 ## §membership File membership and project roots
 
@@ -226,7 +226,7 @@ flowchart LR
 | Baseline and exceptions | To a workspace a project file is **invisible**, **added**, or **tracked by git**; ambient admission of untracked files is prohibited ({§fs-write-surface}). Exceptions enter only by exact creation records (`source: "create"`, origin `constraint` from accepted EDIT or COPY/MOVE destinations), standard instruction projection (`AGENTS.md` / `AGENTS.local.md` into `workspace:///_plurnk/…` unless ignored or excluded, {§session-initialization-entry}), or model `members` proposals under `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}) and `PLURNK_MEMBERS_AUTO_ADD` ({§membership-auto-add}). |
 | Native Git and hermetic execution | Core Git reads (`git ls-files`, `git status`, `git check-ignore -v`) execute the installed Git binary with ambient `GIT_*` and global/system config scrubbed, `core.fsmonitor=false`, `core.hooksPath=/dev/null`, and only the daemon user's `core.excludesFile` preserved. Repositories declaring `filter.<name>.clean` or `filter.<name>.process` are skipped with a `git_inspection_refused` notice. `PLURNK_SERVICE_GIT_ALLOWED` gates `PLURNK_SERVICE_GIT_AUTO` ({§operator-config-git-ceiling}). |
 | Ignore attribution and edit gate | An ignore refusal or `discover` verdict names its rule (`<file>:<line>`) from `git check-ignore -v`; negated patterns re-include paths. EDIT is bounded by membership: existing non-members refuse 403 before reading or writing bytes; accepted creations recursively create missing parent directories. |
-| Web discovery and retrieval | Web search is an ordinary MCP concern ({§mcp-tool-presentation}); executors prefetch discovered pages through the generic `content: null` `entry()` request ({§exec-entry-sink}) into `WebFetcher`, which materializes sanitized readable projections under canonical HTTP URLs ({§scheme-address}) and omits failed candidates. |
+| Web discovery and retrieval | Web search is an ordinary MCP concern ({§mcp-tool-presentation}); executors prefetch discovered pages through the generic `content: null` `entry()` request ({§execution-output-identity}) into `WebFetcher`, which materializes sanitized readable projections under canonical HTTP URLs ({§scheme-address}) and omits failed candidates. |
 
 ### §membership-auto-add Overlay, auto-add, and SQL reconciliation
 
@@ -277,7 +277,7 @@ stateDiagram-v2
 | Invariant | Contract |
 | --- | --- |
 | State machine and terminal result | Only `100 → 102`, `102 → 202`, `202 → 100`, and unresolved-to-terminal transitions are admitted; terminal rows are immutable and must carry `loops.terminal_result` (exact status and RFC 9457 Problem Details), while active rows have `terminal_result = NULL`. Completion and cancellation never borrow the last reply's body. |
-| Independent collection (`425`) | Reading an unfinished child (`READ (session://<running-child>)`) returns `425 Too Early` without a strike or scheduler side effect; `WAIT` joins live obligations (`{§wait-obligation-matrix}`). |
+| Independent collection (`425`) | Reading an unfinished child (`READ (session://<running-child>)`) returns `425 Too Early` without a strike or scheduler side effect; `WAIT` joins live obligations (`{§loop-completion}`). |
 | Stream and child wake matrices | Streams are durable session subscriptions (`[0].stream: { state, ... }`, {§subscriptions}). At `WAIT`, open streams or live children park the loop (`202`); closed streams or terminated children with undelivered results continue immediately (`102`) to observe the terminal delta; `[0]` or `[{"lifetime":"turn"}]` streams reap at the next pre-turn boundary. |
 
 ### §session-wait-timing Durable waits, wake identity, and execution allowance
@@ -316,7 +316,7 @@ After each admitted turn, the engine evaluates one inline rail verdict. Rail sta
 
 | Mechanism | Rule |
 | --- | --- |
-| Strike sources and progress immunity | A turn earns at most one strike from: (1) a hard non-execution operation or parse failure (`status >= 400`, excluding soft `404`, `409`, `416`, `425`, `501` and `{§matcher-refusal}`), (2) an exact operation+result cycle across `MIN_CYCLES × MAX_CYCLE_PERIOD`, or (3) an empty turn ({§empty-turn}). A turn where any task-acting operation succeeded (`status < 400`, excluding `NOTE`, `WAIT`, and targetless `SEND`) is immune to hard-result strikes and resets the streak. Crossing `PLURNK_SERVICE_MAX_STRIKES` terminates at `508` (cycle) or `500` (`output_allowance`, `repetition`, `no_operation`, or `operation`, citing `{§terminal-evidence}`). |
+| Strike sources and progress immunity | A turn earns at most one strike from: (1) a hard non-execution operation or parse failure (`status >= 400`, excluding soft `404`, `409`, `416`, `425`, `501` and `{§matcher-refusal}`), (2) an exact operation+result cycle across `MIN_CYCLES × MAX_CYCLE_PERIOD`, or (3) an empty turn ({§outside-text}). A turn where any task-acting operation succeeded (`status < 400`, excluding `NOTE`, `WAIT`, and targetless `SEND`) is immune to hard-result strikes and resets the streak. Crossing `PLURNK_SERVICE_MAX_STRIKES` terminates at `508` (cycle) or `500` (`output_allowance`, `repetition`, `no_operation`, or `operation`, citing `{§outside-text}`). |
 | Cycle identity | Hashes ordered executed operations and results (operands, scopes, bodies, metadata, and `NOTE`/response bodies; or raw text for empty turns), ignoring source positions, asides, Problem `instance` URIs, and `NOTE` storage coordinates. |
 | Provider recovery | Retryable provider failures ({§provider-retryable-truth}) record a `_plurnk` Problem row, emit `provider_unavailable`, back off (`PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF` up to `PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF_MAX`), and reissue against the frozen messages up to `PLURNK_SERVICE_PROVIDER_RECOVERY` without consuming emission attempts or scoring strikes (applicable to loop inference and `{§op-methods-op-dispatch}`). When recovery is exhausted, interactive sessions park at `202` ({§session-ownership}) while non-interactive sessions terminate with the provider's exact failure. |
 
@@ -337,7 +337,7 @@ An emission attempt parses `assistant.content` as the operational turn program a
 
 | Outcome | Rule |
 | --- | --- |
-| Admitted response | Admitted when (a) `assistant.content` contains no fabricated log heading (`### log:///` outside a fenced block) and (b) either `parseStatements(assistant.content)` has no unparsed tail boundary ({§unparsed-tail-boundary}), at least one closed statement precedes the lost boundary, or `finishReason === "length"` ({§empty-turn}). Admitted statements execute in source order; bounded parse errors record `400` log rows without resampling. |
+| Admitted response | Admitted when (a) `assistant.content` contains no fabricated log heading (`### log:///` outside a fenced block) and (b) either `parseStatements(assistant.content)` has no unparsed tail boundary ({§unparsed-tail-boundary}), at least one closed statement precedes the lost boundary, or `finishReason === "length"` ({§outside-text}). Admitted statements execute in source order; bounded parse errors record `400` log rows without resampling. |
 | Private retry (`PLURNK_SERVICE_EMISSION_ATTEMPTS`) | When the entire emission is rejected before any statement closes (or fabricates a `### log:///` heading), core records `accepted = 0` on `turn_attempts` and re-invokes `generate` with the exact same `messages` up to `PLURNK_SERVICE_EMISSION_ATTEMPTS` (default `3`), keeping prompt caches warm. |
 | Exhaustion & recovery turn | Exhausting private attempts completes the turn at `102` without fabricating an `error` log row, records a durable body-suppressed `_plurnk` `emissionAttempt` row, and scores one contract strike ({§session-loop-lifecycle}). If the strike rail does not terminate the loop, the next turn projects the latest rejected text and parser diagnostic once in `notices`. |
 | Attribution & client metadata | Each attempt queries `attributions(context)` across schemes, executors, mimetypes, and the provider ({§extension-attribution}), passing the deduplicated sorted tags on `generate` and persisting them on `turn_attempts`. Workspace `settings.client` (`1..128` printable ASCII chars) is stored on `workspaces.settings` and never sent to providers. |
@@ -599,625 +599,97 @@ FIND (<target>) [<scope>] [<pattern>] [<!-- aside -->]
 
 ## §send Messaging and turn disposition
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§message-completion} | Reply delivery and message completion are distinct. |
-| {§session-finished-reply} | A session's latest finished reply is its newest delivered completion. |
-| {§loop-completion} | The loop concludes from discharged obligations, not a terminating operation. |
-| {§session-obligations} | A session's obligations are the work it opened and still awaits. |
-| {§message-abandonment} | Message abandonment: an ended loop answers what it left open. |
-| {§wait-obligation-matrix} | The WAIT obligation matrix resolves the end of a program. |
-| {§loop-response-messages} | A response is a recorded delivery. |
-| {§loop-terminal-authorship} | Terminal authorship is explicit when external. |
-| {§send-target-recipient} | A SEND target is a recipient. |
-| {§send-response-receipt} | A response receipt records exactly which messages a reply answers. |
-| {§outside-text} | Text outside the operations is annotation beside them, and an empty turn without them. |
-| {§loop-answer} | A loop's address is what it said. |
-| {§empty-turn} | An empty turn, one with no operations, resolves no messages. |
-| {§terminal-evidence} | A terminal rules the loop over; it does not decide the model said nothing. |
-| {§metadata-ignored} | Metadata a scheme does not take is ignored, not refused. |
-| {§send-idle-turn} | An idle turn: NOTE is memory, not a yield. |
-| {§send-premature-terminate} | No premature termination: completion follows observation. |
-| {§completion-joins-live-work} | Resolved messages do not abandon held work. |
-| {§completion-defers-to-results} | Results keep the loop running until observed. |
-| {§send-administrative-terminal} | Administrative programs close their own transaction. |
-| {§send-undelivered-child-term} | An undelivered child terminal: completion is not delivery. |
-<!-- /map -->
-
 SEND AST: `{ op: "SEND", target: ParsedPath | null, body: SendBody | null, metadata, lineMarker }`.
 
-- **Message:** SEND delivers to an actor, endpoint or exact message address. Targetless SEND selects the oldest published Open Message. Only explicit completion metadata resolves a message ({§message-completion}).
-- **Workflow:** WAIT yields. The loop concludes from resolved messages, settled work and observed results ({§loop-completion}). NOTE retains memory; KILL names something to cancel or curate.
+- **Message:** SEND delivers to an actor (`session://<name>`), a scheme that implements SEND (`https://` POST), or an exact message address. Targetless SEND selects the oldest published Open Message. A SEND to a non-recipient scheme (e.g., `log://`) is refused `400 send-target-not-a-recipient`; a scheme without SEND returns `501`.
+- **Workflow:** WAIT yields. The loop concludes from resolved messages, settled work, and observed results ({§loop-completion}). NOTE retains memory without parking or creating an observation obligation; KILL names something to cancel or curate.
 
-§message-completion **Reply delivery and message completion are distinct.**
+### §message-completion Reply delivery and message completion
 
 | Reply metadata | Delivery | Message obligation |
-|---|---|---|
-| No completion code | Deliver the authored text and attachments | Remains open |
-| `[200]` | Deliver the final answer | Completed |
-| `[499]` | Deliver the cancellation explanation | Cancelled; no session or execution is cancelled implicitly |
-
-The numeric modifier belongs to SEND's reply metadata, not its text scope; it composes with attachment metadata. Completion applies only to replies: an exact message address selects that message. Replies and ambient observations do not become requests.
-
-| Fact | Rule |
-| --- | --- |
-| Targetless SEND | selects the oldest published Open Message in its loop at dispatch time; progress leaves it open, `[200]` or `[499]` resolves it, so the next targetless SEND selects the next Open Message |
-| With none open | a targetless SEND is speech to the loop's latest published message: delivered to that message's originating client and recorded in `answers`, and a completion code on it changes no outcome; only a loop with no published message refuses it; it never broadcasts, and a correction that changes an outcome names the message explicitly |
-| Empty replies | empty completion replies resolve their selected messages without inventing speech or erasing an earlier answer; an empty addressed progress reply adds no speech |
-| Outcome | failed delivery resolves nothing; the latest explicit completion reply determines each message's outcome, and ordinary progress replies never reopen a completed message; curation changes neither delivery nor completion |
-
-§session-finished-reply **A session's latest finished reply is its newest delivered completion.** It is the session's newest
-log row that is a model-authored SEND, resolved, delivered, not copied history ({§machine-processes}), whose receipt
-records a message completion: `completion` `200` or `499`. A progress reply, a failed delivery and speech that completed no
-message record none, and never count. The daemon's own `499` answers to abandoned messages ({§message-abandonment}) are not
-the model's, so a cancellation without a model `[499]` leaves the latest finished reply as it was. A child's reply is the
-child's; its parent's collect row is a READ. An empty completion reply is the latest finished reply, with no words.
-
-Completion replies execute in authored order, including alongside mutations and
-other replies. Their bodies are delivered immediately, never held as drafts to
-replay. Later results can require further work or a corrected answer without
-retracting an earlier delivery. The message outcome is distinct from the SEND
-operation's delivery status and from the loop's execution outcome.
-After all obligations settle, the loop succeeds if any message completed; it is
-cancelled only when every message was cancelled. This does not invoke session-tree
-cancellation. Engine failures retain their own outcomes.
-
-§loop-completion **The loop concludes from discharged obligations, not a terminating operation.**
-A model loop is eligible only when all its messages have explicit completion
-replies, every held child and non-detached stream has settled, and every required
-result has crossed a packet boundary. New arrivals guard the terminal transition
-atomically. An operation-free turn creates no additional observation obligation;
-it is neither a completion command nor a separate acknowledgement mode. NOTE and
-successful curation retain the observation exemptions in {§send-premature-terminate}.
-With unresolved messages, no-operation recovery still applies. Malformed emissions,
-known output truncation, omitted operations and provider failures cannot conclude
-the loop by absence of operations. Administrative programs close only their own
-transaction.
-
-When all messages are resolved but new results require another packet, the engine
-reports only: `All Open Messages resolved. Review new results; emit no OPs if finished.`
-The notice creates no state and does not demand another final reply.
-
-§session-obligations **A session's obligations are the work it opened and still awaits.** A session holds its unresolved children, its open non-detached streams, and the messages it sent to other sessions that await completion while the recipient's loop is live (`session_obligations`); `loop_obligations` names them per loop. A message holds, and its reply reaches, the session whose own operation sent it; a message a person, a client or the daemon sends opens no session's obligation.
-
-| Obligation | Opened by | The opening row names |
 | --- | --- | --- |
-| A stream | its execution ({§subscriptions-causal-resource}) | `attrs.stream` |
-| A message | the SEND, WORK or FORK that sent it, by the row that operation writes | `attrs.message` (its durable address) |
-| A child's loop | its first message's row | as a message |
+| No completion code | Deliver authored text and attachments | Remains open |
+| `[200]` | Deliver final answer | Completed |
+| `[499]` | Deliver cancellation explanation | Cancelled (no implicit session/execution cancellation) |
 
-The packet's Open Work list, WAIT, completion and drain wake settlement use that same durable liveness: a session that messaged another session parks on an authored WAIT until the completion arrives ({§message-completion}), and with no WAIT joins that work with the bounded park rather than concluding idle.
+| Aspect | Rule |
+| --- | --- |
+| Targetless SEND | Selects the oldest published Open Message at dispatch time; progress leaves it open, `[200]`/`[499]` resolves it. With none open, delivers speech to the loop's latest published message without changing outcomes (refused only when the loop has no published message). Never broadcasts or answers unpublished arrivals. |
+| Empty & sequential replies | Empty completion replies resolve selected messages without inventing speech or erasing an earlier answer. Replies execute and deliver in authored order; the latest explicit completion reply determines each message's outcome. |
+| Receipt & history | A successful reply records `answers` (immutable message addresses answered) and remains recoverable in `message_history`. Actor-addressed SEND, WAIT, NOTE, asides, and ambient observations are not replies. |
+| Latest finished reply | The session's newest model-authored delivered SEND (not copied history, {§machine-processes}) recording `completion` `200` or `499`; daemon abandonment `499` replies never count. |
+| Loop answer (`ops://<session>/<loop>`) | READ resolves to the latest nonempty reply body to the loop's starting message. A failed terminal takes precedence and retains its exact Problem. Running without a reply returns `425`; concluded without speech returns `200` empty body. |
 
-§message-abandonment **Message abandonment: an ended loop answers what it left open.** When a loop ends,
-every message another session sent it that has no completion is completed `499` by the
-daemon: one `_plurnk` SEND to the message's address in a maintenance turn of the
-recipient, "Loop *N* ended with status *S*; this message was not answered.",
-delivered to the sender like any reply ({§message-reply-delivery}). A message the
-ending loop had not yet published is re-homed first ({§message-loop-containment}) and
-is not abandoned. The sender's hold ends with the recipient's loop either way; the
-completion is what wakes it and tells it.
+### §loop-completion Loop completion, obligations, and WAIT disposition
 
-§wait-obligation-matrix **The WAIT obligation matrix resolves the end of a program.** Execute all admitted operations and settle optimistic work before applying this table. WAIT is an optional yield, not an end-of-program delimiter.
+A model loop concludes only when all messages have explicit completion replies, every held child and non-detached stream (`session_obligations` / `loop_obligations`) has settled, and every required result has crossed a packet boundary. Every fired operation except SEND, NOTE, WAIT, and successful KILL requires a subsequent packet before completion. When all messages are resolved but new results require another packet, the engine emits `All Open Messages resolved. Review new results; emit no OPs if finished.` When a loop ends, any message another session sent it without completion is answered `499` by `_plurnk` (`Loop N ended with status S; this message was not answered.`, {§message-reply-delivery}) after re-homing unpublished arrivals ({§message-loop-containment}).
 
 | Condition, in evaluation order | Outcome |
-|---|---|
-| Session or loop already cancelled/terminal | Preserve that result. |
-| Administrative program | Finish its transaction without adjudicating another model loop's work. |
-| New unpublished message | Continue; publish it in the next packet. |
-| Fresh operation/parser failure or incomplete emission, without an authored WAIT | Continue before any automatic parking. |
-| Authored WAIT and live work | Park the same loop; message arrival, child or stream settlement, or wait expiry wakes it ({§session-wait-timing}). |
-| Fresh failure or incomplete emission after an empty WAIT | Continue; the WAIT cannot conceal the failure. |
-| Authored WAIT with a delivered reply SEND in the turn, results observed, no live work | Complete remaining published Open Messages with the turn's latest reply SEND and conclude with the aggregate message outcome ({§message-completion}). |
-| Any unresolved message | Continue; an operation-free turn receives {§empty-turn} recovery. |
-| Unobserved operation results, failures, child results or stream conclusions | Continue; the next packet presents them. |
-| All messages resolved and results observed, live work remains | Join that work with the configured bounded park. Replies remain delivered. |
+| --- | --- |
+| Session/loop already terminal or administrative program | Preserve terminal result, or finish administrative transaction without adjudicating model obligations. |
+| New unpublished message | Continue; publish in the next packet. |
+| Fresh operation/parser failure or incomplete emission (no WAIT, or after empty WAIT) | Continue before any automatic parking. |
+| Authored WAIT and live work | Park the loop; message arrival, child/stream settlement, or wait expiry wakes it ({§session-wait-timing}). |
+| Authored WAIT with delivered reply SEND, results observed, no live work | Complete remaining published Open Messages with the turn's latest reply SEND and conclude ({§message-completion}). |
+| Any unresolved message, or unobserved results/failures/conclusions | Continue to the next packet (empty turns receive {§outside-text} recovery). |
+| All messages resolved and results observed, live work remains | Join live work via the bounded park; replies remain delivered. |
 | All messages resolved, results observed, no live work | Conclude with the aggregate message outcome ({§message-completion}). |
 
-An empty emission is handled by {§empty-turn}. Ordinary strikes, cycles and
-execution limits remain independent. Observation exemptions follow
-{§send-premature-terminate}; they never resolve a message implicitly.
+External cancellation records `terminated_by = 'cancel'` ({§methods-loop-cancel}) and prepends a cancellation marker in COLLECT and termination deltas; engine failure terminals (**500**, **508**, {§engine-rails}) and model terminals keep `terminated_by = NULL`.
 
-§loop-response-messages **A response is a recorded delivery.** A successful SEND reply records
-the exact message addresses it answers. All replies remain independently recoverable in
-message history, in execution order, regardless of producer. An actor-addressed SEND that
-does not answer a message, WAIT, NOTE, asides, inherited rows and ambient observations are
-not replies. Curation cannot retract delivery; cancellation or later failure retains it.
-Attachment-only replies retain their attachments without replacing earlier text. A child
-conclusion carries its execution outcome under {§send-undelivered-child-term}, not a second delivery.
+### §outside-text Outside text, empty turns, and terminal evidence
 
-§loop-terminal-authorship **Terminal authorship is explicit when external.**
-
-| `terminated_by` | Meaning | Presentation |
-|---|---|---|
-| `NULL` | The model's own terminal or an engine verdict whose exact result already carries the story. | No authorship marker. |
-| `cancel` | The structured scope was explicitly cancelled, through the client or session KILL ({§methods-loop-cancel}). | COLLECT and the termination delta prepend a cancellation marker to the exact Problem's presentation, so cancellation cannot masquerade as a deliverable. The model's prior log rows remain untouched. |
-
-The engine's failure terminals — **500** (strike threshold) and **508** (cycle), {§engine-rails} — are never the model's to pick; they are the engine ruling the loop failed. The model answers, waits or cancels its scope; the engine derives the lifecycle outcome from that state. The ruling never softens, and it never destroys the evidence: every terminal cites what the model last left unconcluded ({§terminal-evidence}).
-
-Disposition outcomes follow {§wait-obligation-matrix},
-{§completion-joins-live-work}, and {§completion-defers-to-results}. Strike
-accounting and model-visible failure evidence remain separately owned by
-{§engine-rails} and {§rail-accounting-private}.
-
-- §send-target-recipient **A SEND target is a recipient.** A model's directed SEND
-  addresses a session (```` ```SEND (session://<name>) ````)
-  or a scheme that implements SEND (an `https://` POST). A SEND to a scheme the model may not write (the
-  log) is refused 400 `send-target-not-a-recipient`, never the unrelated writer
-  rule. The detail states only that the addressed scheme is not a recipient;
-  recovery names valid recipients without guessing which was intended.
-  A scheme that does not implement SEND
-  answers its ordinary factual 501 without grafting a guessed recovery onto it.
-- §send-response-receipt **A response receipt records exactly which messages a reply answers.** A successful
-  reply carries `answers`, the immutable message addresses it answered, not recipient actors.
-  Targetless replies select the oldest published Open Message or, with none open, the
-  loop's latest published message as speech only ({§message-completion}); they never broadcast.
-  Empty completion replies still name their messages. SEND to an exact message
-  address answers only that message; SEND to an actor endpoint remains ordinary communication
-  and answers no assignment implicitly. An unpublished arrival cannot be answered by the
-  targetless shorthand. Failed delivery answers nothing. Reply accounting reads executed
-  delivery evidence, never log visibility or the mere existence of a later SEND.
-- §outside-text **Text outside the operations is annotation beside them, and an empty turn without them.** The spans {§response-text} supplies are read with the turn's fenced operations. It has no address: there is no `outside://` scheme, and exact emissions remain at `ops://`. This is evidence, not an alternate authoring format: the `plurnk.md` requirement to use only valid Plurnk OPs remains, and {§response-text} alone owns which bytes are operations, quotations or outside text. Clients receive an outside source once through `outside/event` ({§notifications-outside-event}, {§acp-outside-text}); FORK snapshots the source with the turn's others; the digest names its weight.
-
-  | Turn | The spans become |
-  | --- | --- |
-  | Beside at least one fenced content operation | one `NOTE` each, at its position: it joins the admitted program as the model's own NOTE, frozen in the emission ({§turn-source-resources}), lands as a NOTE row, replays with its turn ({§emission-history}) and draws no notice; the card's annotation register is where such text belongs |
-  | With no fenced operation | no operation is minted: the spans are stored verbatim as one immutable `outside` turn source per admitted emission, in source order joined by a blank line ({§turn-source-resources}), a repetitive or length-cut response stays one source, nothing filters what is stored, and the turn is an empty turn ({§empty-turn}) whose error row is the one thing the model hears of it; the text never enters a packet, is never delivered and never concludes |
-  | A log-entry heading in outside text | still rejects the attempt unless it echoes an emission row ({§emission-admission}) |
-  | An unfenced operation line | not response text ({§unfenced-operation}), so it reaches neither home |
-
-- §loop-answer **A loop's address is what it said.** READ `ops://<session>/<loop>` resolves to
-  the latest nonempty reply the loop gave to the message that started it: the body of a SEND
-  that answered that message. A failed terminal takes precedence over
-  an earlier reply and retains its exact Problem, including {§terminal-evidence}. A running loop
-  without a reply is 425; a concluded loop without one returns its terminal outcome, including
-  successful silence. Completion never fabricates an answer or a missing-resource failure.
-  `ops://<session>/<loop>/<turn>`
-  remains that turn's emission. A concluded child's `loop_termination` row to its parent
-  READs this same loop resource. Witness: `test/intg/loop-answer.test.ts`.
-- §empty-turn **An empty turn, one with no operations, resolves no messages.** Count parsed content operations and admitted reasoning operations ({§reasoning-operations}), a NOTE in either channel among them; outside text ({§outside-text}) never enters the count. Lost-boundary handling remains {§unparsed-tail-boundary}; no confirmation token or private retry is invented here.
-
-  | When none exist and | Rule |
-  | --- | --- |
-  | No boundary was lost, and messages remain unresolved or the emission is known incomplete | retain the turn and its raw sources and count one progress-contract strike, whether or not the turn carried text; the strike sends no notice of its own: the turn records one `_plurnk` error row, `422` `The turn performed no operation.`, which rides the next packet's errors like any failure ({§operation-result-uniform-error-channel}), and the threshold terminal still says why ({§engine-rails}) |
-  | Messages are resolved | an intact operation-free turn is adjudicated normally under {§loop-completion}; absence of operations is not a new lifecycle signal |
-  | The output allowance did not cut it | its exact text is the cycle fingerprint ({§engine-rails}); different empty programs are not a repeated cycle merely because neither contained operations |
-
-- §terminal-evidence **A terminal rules the loop over; it does not decide the model said nothing.** Every engine terminal — strike threshold (500), cycle (508), turn ceiling (429), loop timeout (504), provider unavailable ({§engine-rails}) — keeps its status and its authorship: the engine ruled, the model did not conclude, and no terminal is ever softened into a 200 the model never declared. What a terminal may not do is discard the last thing the model said. Attachment is owned by the one terminal seam.
-
-  | The loop's last inference turn | The terminal's Problem Details |
-  | --- | --- |
-  | Performed no authored operation in either response or reasoning and kept text | carries the extension member `unconcluded`, the `ops://<session>/<loop>/<turn>` address of that emission: a citation, never the bytes ({§log-history-projection}: the reader READs the source, and an emission of any length never rides wholesale into a parent's packet); named for what it is — an emission left unconcluded — and never `answer`, because the harness cannot warrant that text is complete or final when its obligations did not settle under {§loop-completion}; earlier deliveries remain delivered, and the citation neither sends them again nor destroys them |
-  | Performed authored operations | carries no `unconcluded`: an absent member is not an empty one |
-
-- §metadata-ignored **Metadata a scheme does not take is ignored, not refused.** A READ, FIND,
-  EDIT, KILL, WORK or FORK carrying `[metadata]` for a scheme whose manifest takes none runs without it,
-  and the packet carries one `metadata_ignored` notice naming the scheme (a warning,
-  never a refusal). SEND recipients and executions own their input and receive it whole ({§op-methods-op-dispatch}); a key they do not take is their own 400.
-- §send-idle-turn **An idle turn: NOTE is memory, not a yield.** NOTE does not imply parking.
-  A NOTE-only response does not resolve a message or create an observation obligation.
-  The ordinary obligation check still runs ({§loop-completion}).
-  Repetition remains subject to {§engine-rails}.
-- §send-premature-terminate **No premature termination: completion follows observation.** Every fired operation except
-  SEND, NOTE, WAIT and successful KILL requires a subsequent packet. This barrier uses durable
-  executed evidence, not curated rows. Fast completion, an empty result or curation cannot
-  erase it. New arrivals are protected by {§completion-defers-to-messages}; no terminal verb
-  or prose overrides this rule.
-- §completion-joins-live-work **Resolved messages do not abandon held work.** Once messages
-  and observation obligations are resolved, the loop joins live children and non-detached
-  streams through the existing bounded wait. Each wake presents newly settled state.
-  Neither completion nor message cancellation cancels that work.
-- §completion-defers-to-results **Results keep the loop running until observed.** Same-turn
-  operations and failures, plus undelivered child or stream conclusions, require the next
-  packet. This is ordinary continuation, not a strike. SEND replies remain delivered.
-  If observation warrants no further work or revision, no additional operation is needed.
-- §send-administrative-terminal **Administrative programs close their own transaction.**
-  Their caller closes the administrative loop after execution; no terminal operation is
-  manufactured. Initialization runs in the model loop without concluding it.
-
-- §send-undelivered-child-term **An undelivered child terminal: completion is not delivery.** A result becomes
-  observed only after crossing a packet boundary. WAIT parks only on
-  live obligations. If work has completed but is unobserved, it continues
-  directly to the next packet because the wake edge has already fired. A genuinely
-  empty wait creates no future wake; ordinary obligation adjudication still applies
-  under {§wait-obligation-matrix}.
+| Construct | Rule |
+| --- | --- |
+| Outside text beside fenced OPs | Each span from {§response-text} becomes one `NOTE` at its position, frozen in the emission ({§turn-source-resources}) and replayed in history ({§emission-history}) with no notice. |
+| Outside text with no fenced OP | Stored verbatim as one `outside` turn source ({§turn-source-resources}) and surfaced once via `outside/event` ({§notifications-outside-event}, {§acp-outside-text}); never enters a packet or delivers a reply. |
+| Empty turn (no content or reasoning OP) | When no boundary was lost ({§unparsed-tail-boundary}) and messages remain unresolved or emission is incomplete, counts one progress strike ({§engine-rails}) and records `422 The turn performed no operation.` ({§operation-result-uniform-error-channel}). |
+| Terminal evidence (`unconcluded`) | If a failed terminal's last inference turn performed no authored operation and kept text, Problem Details carries `unconcluded: "ops://<session>/<loop>/<turn>"` citing that emission without re-sending or softening the terminal. |
+| Ignored scheme metadata | READ, FIND, EDIT, KILL, WORK, or FORK carrying `[metadata]` for a scheme taking none runs without it and emits one `metadata_ignored` warning notice; SEND and executions validate their own metadata ({§op-methods-op-dispatch}). |
 
 ## §exec Executions
 
-<!-- map -->
-| Tag | Promise |
+AST: `{ runtime, target, body: string | null, lineMarker }`. Execution refuses a non-null scope (`400 scope-unsupported`, {§exec-lifetime}).
+
+### §exec-target-routing Target routing, scratch realization, and registry resolution
+
+The engine routes unconditionally to `exec`, resolves `runtime` from the workspace snapshot at dispatch (installed base plus {§module-workspace-capabilities} overlays; unknown tag `400`, unavailable probe `501`, configuration failure `503` {§configuration-repair-path}), validates {§executor-invocation} or {§executor-tool-registry} before effect admission, and prepares metadata under {§executor-metadata} using `project_root` (or daemon cwd when headless) as default `cwd`.
+
+| Target / Condition | Outcome |
 | --- | --- |
-| {§exec-target-routing} | Exec target routing: |
-| {§exec-target-near-miss} | A target in the executor's own scheme whose path can never be a stream (`sh:///daemon-env`; streams are eight… |
-| {§exec-target-documentation} | Documentation is never an execution target: generated reference is never a program. |
-| {§exec-tool-fall-through} | A tool run as a shell command is named at the failure site. |
-| {§exec-source-temporary} | Resource execution preserves source identity. |
-| {§exec-scratch-directory} | A realized source is readable by its executor for the execution's lifetime. |
-| {§exec-registry-resolves} | The execution's `runtime` resolves to an executor from the workspace snapshot at its dispatch point. |
-| {§exec-near-miss} | An execution id under the wrong runtime names its address. |
-| {§exec-lifetime} | An execution's lifetime is one metadata field on its fence. |
-| {§exec-host-proposes} | An executor's declared effect gates it: a host effect proposes. |
-| {§entry-owner} | Every entry belongs directly to one workspace. |
-| {§execution-output-identity} | Execution output belongs to the workspace. |
-| {§runtime-resource-binding} | Resource access binds the workspace resource, not the initiating Session or client. |
-| {§session-auto-name} | Automatic names are eight random lowercase hexadecimal characters |
-| {§workspace-name} | A workspace's name is an opaque handle; its identity is its id; its folder is a separate fact. |
-| {§workspace-label} | The workspace label: a folder's display spelling is the daemon's. |
-| {§workspace-auto-name} | A workspace with neither name nor project root gets five alphanumeric characters, at least one a letter. |
-| {§exec-readpure-ungated} | A read or pure runtime runs ungated. |
-| {§effect-policy-tunable} | Effect admission is one knob per effect. |
-| {§exec-stream} | Stream surfacing. |
-| {§stream-observation-result} | A stream observation's result carries one liveness fact. |
-| {§stream-channel-deletion} | A deleted channel owes no observation. |
-| {§exec-conclusion-summary} | An execution's conclusion summary is its address, how it ended and its channel sizes. |
-| {§exec-concurrency} | Execution concurrency is bounded per workspace (#389). |
-| {§exec-stream-page} | An unrequested delivery never exceeds the retrieval page. |
-| {§workspace-env} | Workspace environment. |
-| {§exec-env-scoped} | Command environment admission. |
-| {§exec-hold-until-concluded} | The turn-hold exception: an in-flight stream of a held runtime pauses the cycle. |
-| {§exec-entry-sink} | The entry() sink |
-<!-- /map -->
+| `script` target: file / directory + body / directory alone | Runs the file / uses directory as `cwd` for inline body / refused `400 target-not-a-program`. |
+| Absent path on `script` target | Refused `400 target-not-found` ({§diagnostic-observation}), naming another executor's tool (`toolRuntimes`), another executor (`` `python3` is its own executor. ``), or requiring an existing program resource. |
+| Bare shell command naming another runtime's tool | Exits 127 and records `404 program-is-a-tool` (`exitCode: 127`, `toolRuntimes`, `tool`); unknown programs keep `200` with `exitCode: 127`. |
+| `workspace:///_plurnk/*` target | Refused `400 target-is-documentation` before realization. |
+| Non-stream path in executor's own scheme (`sh:///daemon-env`) | With body, runs targetless; without body, refuses on source read. Wrong-runtime stream id on KILL/input names actual `<runtime>:///<id>` in recovery. |
+| `resource` target realization | Native file from {§scheme-source-bytes} runs in place; any other resource/channel materializes an exclusive `0600` file under `PLURNK_SERVICE_EXEC_SCRATCH` (`0700`, default `$XDG_RUNTIME_DIR/plurnk` or `tmpdir()`; relative value fails boot; uncreatable dir refuses `400 scratch-unavailable`) for the run's lifetime. |
 
-AST: `{ runtime (the fence name in its registered lowercase spelling; there is no operation keyword), target (optional runtime-specific target), body: string | null (runtime-specific input), lineMarker }`. Execution refuses a non-null scope under {§exec-lifetime}.
+### §exec-lifetime Execution lifetime, effect admission, and concurrency
 
-§exec-target-routing **Exec target routing:** the engine routes unconditionally to the `exec` scheme, resolves the runtime first, selects its static {§executor-invocation} or exact {§executor-tool-registry} entry, and enforces that declaration before effect admission. Core owns target realization: neither filesystem type nor body presence may invent a target role the selected runtime did not declare.
-
-- Core supplies the workspace's `project_root` as the default `cwd`, or the daemon's cwd in a headless workspace. The selected executor prepares its invocation metadata under {§executor-metadata}, for every target scheme, before effect admission or source acquisition; core validates the preparation result and retains its cwd, and neither parses option names nor redirects metadata to a source scheme. An executor without preparation accepts no metadata.
-- The `(target)` is a program or working directory for an interpreter, or a tool name for a tool runtime. The default shell is written as its own fence, ```` ```sh ````; no runtime-less form exists.
-- The started receipt names the working directory only when it is not the project root, and then in the project-relative form ({§fs-namespace}); the default directory is omitted rather than repeated in every receipt. Native file addresses resolve from that same project directory, while absolute input retains its filesystem meaning.
-
-A `script`-kind target ({§executor-invocation}) is the program or working directory, and core inspects it before anything spawns:
-
-| Target | Outcome |
+| Mechanism | Rule |
 | --- | --- |
-| a file | the script |
-| a directory with an inline body | the working directory (`cwd`) for the inline body |
-| a directory with no body | refused `400 target-not-a-program` |
-| an absent path | refused `400 target-not-found`, stating what exists and inferring nothing ({§diagnostic-observation}): a registered tool of another executor is named with that executor, another available executor as its own executor (`` `python3` is its own executor. ``), and anything else as a target that must name an existing program resource |
-| a non-file resource that cannot be read | the owning READ's failure identity (#163), its recovery stating the slot contract: the resource is the program and the body its arguments |
+| `lifetime` metadata ({§service-metadata-keys}) | Duration (`30s`, `30m`, `2h`): aborts at deadline (polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS`) with `504 execution-timeout`. `loop` (default): reaped on loop terminal except `202` ({§notifications-loop-terminated}), or on client operation cancel/shutdown ({§connection-lifecycle}). `turn`: reaped at next pre-turn. `detached`: outlives loop `200`, imposes no obligation, reaped on KILL, session reap, or daemon stop. |
+| Effect admission (`EffectPolicy`) | `PLURNK_SERVICE_EFFECT_HOST`, `_READ`, and `_PURE` map each declared effect to `propose` ({§proposal}, {§http-outbound-proposes}) or `auto`; invalid values fail boot. Initiating turns apply {§session-causal-admission} to their started streams. |
+| Workspace concurrency | Bounded by `PLURNK_SERVICE_EXEC_CONCURRENCY` (`-1` unbounded; FIFO per workspace). Admitted runs create entry, channels, and subscription immediately, returning `200 { outcome: "started" }` or `202 { outcome: "queued", executionsAhead, concurrency }`. Queue wait excludes timeout; queued KILL cancels via {§stream-control}. |
+| Turn-hold (`PLURNK_SERVICE_EXEC_HOLD`) | Holds cycle until stream conclusion up to `PLURNK_SERVICE_EXEC_HOLD_MS` (fail-open) for listed `<runtime>` or `<runtime>:<effect>` selectors. |
 
-§exec-target-near-miss A target in the executor's own scheme whose path can never
-be a stream (`sh:///daemon-env`; streams are eight hex digits) is the writer's
-name for the run (#758): with a body, the body runs as if targetless without a
-diagnostic; without one, the source read refuses as before. A real stream id is
-always the program source.
+### §exec-stream Stream surfacing and page bounds
 
-§exec-target-documentation **Documentation is never an execution target: generated reference is never a program.** A resource target under
-`workspace:///_plurnk/` — the executor and scheme documentation the harness generates — is refused
-at admission, 400 `target-is-documentation`, before any source is realized or run: `` `workspace:///_plurnk/plurnk/sh.md` is reference documentation the harness generated, not a program; sh cannot run it. `` It carries no recovery ({§diagnostic-observation}). Admitting it realized the markdown as a host temporary file that a sandboxed runtime could not open (`cannot open /tmp/plurnk-exec-….md`), and ran markdown where it could.
-
-§exec-tool-fall-through **A tool run as a shell command is named at the failure
-site.** A bare shell command whose program is the name of a tool published by
-another enabled runtime (`brave_web_search {…}` under the default shell) exits
-127; the stream's terminal receipt then says the program is a tool of that
-runtime, names the tool's own document, and carries `toolRuntimes` and `tool`;
-it builds no invocation ({§diagnostic-observation}). That receipt is core's `404 program-is-a-tool` with
-`exitCode: 127`: the named program did not run. Nothing is rerouted, and a program the
-registry does not know keeps the shell's own answer, a 200 receipt with `exitCode: 127`.
-
-| Declared target kind | Authored target                         | Canonical effect target | Executor realization                                      |
-| -------------------- | --------------------------------------- | ----------------------- | --------------------------------------------------------- |
-| Omitted              | Any present target                      | —                       | Refuse 400 before admission.                              |
-| `literal`            | Any target                              | Complete authored string | Preserve that exact string; perform no stat or scheme read. |
-| `path`               | Local or `file://` path                 | Local path              | Pass the path directly.                                   |
-| `path`               | Non-file address                        | —                       | Refuse 400 before admission.                              |
-| `resource`           | Local or `file://` path                 | Local path              | Pass the path directly.                                   |
-| `resource`           | Non-file data-scheme address            | Complete authored address | Resolve one exact READ after acceptance; use its native source file when supplied, otherwise a standalone temporary source. |
-
-Body and target requirements come from the same runtime declaration. A runtime
-with no target declaration refuses a target; required body or target fields are
-enforced independently; every execution requires at least one of them; and an
-`exclusive` declaration refuses an invocation containing both. A target retains
-its one declared role whether the body is empty or non-empty. Runtime selection,
-target validation, and body/target relation failures therefore occur before
-effect classification or proposal creation.
-
-A runtime with {§executor-tool-registry} admits only the snapshot's exact
-literal targets. An absent target is 400; a target outside that closed enabled
-set is 404; neither reaches effect classification or proposal creation. The
-selected entry's invocation—not the runtime's structural fallback—owns body
-requiredness and roles. The executor independently rejects an unregistered
-target at its run boundary.
-
-§exec-source-temporary **Resource execution preserves source identity.** After acceptance, Core reparses the complete authored address and resolves one exact `<1,-1>` READ through {§scheme-surface}; internal source consumption never borrows the model-facing preview ({§body-projection}). This neither bypasses admission nor changes the executor's working directory.
-
-| Source | The executor target |
+| State / Aspect | Rule |
 | --- | --- |
-| The default channel of a source owner supplying a native file through {§scheme-source-bytes} | the native file itself: its filename, extension, sibling imports, and source-relative assets remain intact; a disappeared native source fails and never runs a stale projection |
-| Any other resource or a derived channel | standalone source, not a filesystem: one file under the scratch directory ({§exec-scratch-directory}), preserving the source extension, with an exclusive, process- and database-coordinate-independent identity; no sibling tree is copied and no relative-resource filesystem is emulated; the file lives through the executor run and core removes it after the subscription's terminal result has settled, a removal failure reported to daemon diagnostics with its complete cause and never rewriting the execution result, stream state, or completion wake |
+| `active` stream | No Log row; `## Open Work` reports timing and channel growth ({§child-orientation}). Explicit READs carry `terminal: false`. |
+| `terminal` stream | One `origin=_plurnk` markerless READ per non-empty channel (or one bodyless row on the default channel if all channels are empty), carrying `terminal: true`, any `exitCode`, and empty sibling counts (`channels: {"#stderr": 0}`). |
+| Page bound & failures | Unrequested delivery is bounded by the first retrieval page ({§body-projection}, {§executor-page-receipt}) with an atomic per-subscription cursor. A failed execution attaches its Problem to the default (or first landed) channel row so Errors gets one pointer ({§operation-results}). Deleted channels owe no observation; KILL on a terminal stream returns `200` with `terminalStatus` ({§stream-control}). |
+| Conclusion summary | `stream/concluded` ({§notifications-stream-concluded}) formats `<addr> completed (exit N); <ch>=<B> bytes` or the lowercase Problem title for clients. |
 
-§exec-scratch-directory **A realized source is readable by its executor for the execution's lifetime.** The standalone file is written under the one scratch directory `PLURNK_SERVICE_EXEC_SCRATCH` names; an executor that runs in another filesystem namespace — a container that mounts only the repository — is given a directory both sides can see by pointing the knob at it. An execution never fails mid-run for this reason.
+### §execution-output-identity Workspace entries, auto-names, and command environment
 
-| Fact | Rule |
+| Surface | Rule |
 | --- | --- |
-| The knob | empty, the directory is `$XDG_RUNTIME_DIR/plurnk` when `XDG_RUNTIME_DIR` is set and the platform temporary directory otherwise; an explicit value is an absolute directory (`~` expands), and a relative one fails at boot by name |
-| Modes | the directory is created on first use with mode `0700`; each file is created exclusively with mode `0600` under a unique name |
-| Admission | ensures the directory: one the daemon cannot create or write refuses the execution, 400 `scratch-unavailable`, whose detail names the directory, the knob and the failure code, and whose recovery has the operator point the knob at a writable absolute directory the executor can also read and, meanwhile, has the writer target a program file the executor can reach or run the command beneath a targetless heading |
-
-Loop-flag authority follows the selected runtime's declaration:
-
-| Target realization                                      | Schemes that must be active            |
-| ------------------------------------------------------- | -------------------------------------- |
-| Absent, `literal`, local `path`, or local `resource`    | `exec`                                 |
-| Non-file `resource`                                     | `exec` and the addressed source scheme |
-
-Session and runtime-stream authorities, query, fragment, and every other
-component of a `resource` address retain their owning READ semantics. The execution's
-metadata is not part of that address: the internal READ has no metadata, and
-the selected executor receives the exact original blocks separately from its
-body. A failed source READ is preserved as the proposal-application
-failure. A successful READ with no string representation is refused 422; an
-empty string remains a present representation and is materialized faithfully.
-
-Core calls `effect()` once against the canonical target shown above, without
-body text, stores the resulting fact with the invocation, and reuses it
-unchanged for proposal policy, application, stream registration, and
-effect-qualified hold policy. The post-acceptance materialization path never
-triggers reclassification.
-
-§exec-registry-resolves **The execution's `runtime` resolves to an executor from the workspace snapshot at its dispatch point.** Explicit invocations parse without requiring registration ({§executor-heading}); a preceding accepted subsystem command may publish the name they invoke in that same program ({§functionality-model-mutation}). A failed or rejected command grants nothing; subsequent invocations resolve the unchanged snapshot, unless the producer requested fail-on-error and stopped the program. No executor, including `sh`, is required for daemon startup.
-
-| Fact | Rule |
-| --- | --- |
-| The base | installed siblings form the immutable base: discovered and probed at startup, availability cached |
-| Overlays | workspace Functionality providers may atomically overlay additional names under {§module-workspace-capabilities}; a name has one owner within a workspace, while independent workspaces may use the same name |
-| The fence name | selects exactly that registered executable tool; unknown tags are refused 400 with the advertised catalogue and are never reinterpreted as shell command words |
-| Unavailable after an ordinary probe | 501 with the probe `detail` |
-| Typed configuration failures | preserve the declaration, with no executor instance or output scheme; invocation returns the exact 503 configuration Problem ({§configuration-repair-path}); internal constructor defects remain failures, not unavailable configuration verdicts |
-
-For a family runtime, `ExecutorRegistry.toolRegistry(tag, workspaceId)`
-validates the one executor-owned snapshot used by packet presentation,
-dispatch admission, and pull-document materialization. Core performs no
-protocol discovery while building a packet and has no alternate tool
-catalogue.
-
-Per-tool programs such as `go`, `cargo`, `make`, and `npm` do not earn executor tags merely because they are executables; they are complete shell commands in a `sh` executable fence. Registered tags exist only for tools that own a distinct body, target, or output contract. {§exec-registry-resolves}
-
-§exec-near-miss **An execution id under the wrong runtime names its address.** A KILL or input
-addressed to `<runtime>:///<id>` when the id holds an execution only under another runtime refuses
-`stream-not-found` as before, and its recovery names every address the id holds:
-`` The execution at /5e8ea474 is `python3:///5e8ea474`. `` (#1005).
-
-§exec-lifetime **An execution's lifetime is one metadata field on its fence.**
-`[{"lifetime": …}]` takes a duration (`30s`, `30m`, `2h`), or one of three words;
-absent is `loop`. The key is one of the service's reserved metadata keys, withheld
-from every owner by the framework ({§service-metadata-keys}). An execution takes no scope: a scope on an
-execution is refused `scope-unsupported` (400).
-
-| `lifetime`   | The spawn |
-| ------------ | --------- |
-| a duration   | Aborted at the deadline — a bounded reap, polite signal then SIGKILL after `PLURNK_SERVICE_EXEC_KILL_GRACE_MS` — and the stream is stamped **504** `execution-timeout`, distinct from a deliberate kill (499) or a clean exit (200): `` Execution of '*runtime*' outlived its *lifetime* lifetime. `` |
-| `loop` (absent) | Loop-life bounded: reaped on every loop terminal except 202, whichever of the loop's segments spawned it, and concluded before that terminal is announced ({§notifications-loop-terminated}): the background-stream behavior. A person's client operation answers once its command starts, so its execution belongs to the operation instead: it outlives the operation loop's 200 and is reaped when that operation is cancelled or the daemon stops ({§connection-lifecycle}). |
-| `turn`       | Reaped at the session's next pre-turn via the registry abort, before the turn's own spawns, so it never survives into the subsequent turn; its terminal output surfaces born visible like any close ({§exec-stream}). |
-| `detached`   | Outlives its loop's terminal, 200 included. It never binds to the loop's teardown and is nobody's obligation — completion is not gated by it, WAIT does not park on it, optimistic settlement looks past it — and it ends only by KILL, the session's total reap, or daemon shutdown; its late conclusion surfaces without opening a loop. |
-
-Observation timing belongs to the bounded wait ({§session-wait-timing}), separately
-from execution lifetime. Wait expiry permits inspection of still-running work;
-closure remains an independent wake edge. Active loops already receive ambient
-stream deltas. Calendar recurrence remains a schedule ({§schedule-delivery}).
-
-§exec-host-proposes **An executor's declared effect gates it: a host effect proposes.** Each executor — and each scheme operation that mutates something outside this process — declares an `effect` (`pure` | `read` | `host`); the service maps it to policy (`EffectPolicy`). The declarer states the FACT, the panel decides the POLICY, and one rule covers every operation: nothing that changes the world runs on nobody's authority. A `host` runtime (subprocess; mutating tool) proposes under {§proposal}, and so does an outbound request that mutates a remote resource ({§http-outbound-proposes}). Once accepted, it spawns and writes channels at its workspace execution address ({§execution-output-identity}), returning `102 Processing`. Channel state transitions (`active` → `closed`/`errored`) drive subsequent observations ({§channels}).
-
-§entry-owner **Every entry belongs directly to one workspace.** Its immutable identity is `(workspace_id, scheme, authority, pathname)`. The workspace foreign key supplies lifetime; URI authority supplies the literal resource namespace. Core binds one canonical coordinate through {§entry-address-resolution} for every operation and consumer. Producer and subscriber Session ids describe causal activity, not ownership.
-
-§execution-output-identity **Execution output belongs to the workspace.**
-Each invocation claims a collision-checked eight-character lowercase hexadecimal
-path in its runtime scheme, e.g. `sh:///ab3d5678`. The claim and entry identity
-are one database write. Its log receipt records that address; session, loop,
-turn, and operation coordinates remain provenance, not resource identity.
-Output entries and published child resources use the workspace commons.
-Deleting a producer Session does not delete its retained output.
-
-§runtime-resource-binding Resource access binds the workspace resource, not
-the initiating Session or client. READ, FIND, COPY, BARE, and executable resource
-sources share the ordinary entry pipeline. Stored execution output retains its
-default channel and actual channel representations independently of the live
-executor. Reading it never activates a disabled or removed attachment. The stored default
-channel selects fragmentless READ/FIND; the stored `output` discriminator identifies
-retained invocation resources, including when the runtime is unregistered.
-A live resource acquisition uses the workspace's enabled attachment.
-
-| Responsibility | Owner |
-|---|---|
-| Resource identity, representations, retained output | Workspace |
-| Admission and observation restrictions | Service ceilings and workspace policy |
-| Input and cancellation by resource address | Workspace live execution; no creator-only grant |
-| Journal, client interaction, causal cancellation, polling, wake | Initiating operation and its Session |
-| Connection activation and cooling | Workspace Functionality residency |
-
-Input requires the original live receiver and current workspace admission.
-KILL cancels the addressed live stream; closed/missing streams retain their
-ordinary terminal/not-found outcomes. Cross-session control does not transfer
-causal ownership: conclusion still wakes the initiating Session, and its normal
-lifecycle teardown still reaps its work. No new delegation semantics follow.
-
-§session-auto-name **Automatic names are eight random lowercase hexadecimal
-characters**, e.g. `session://ab3d5678`; a colliding draw is retried. All unnamed
-sessions use this allocator, including WORK, FORK, clients, and model sessions.
-Names encode neither machine identity nor topology or role; those remain
-separate durable fields.
-Automatic names never reuse an existing literal. Name selection and session
-creation share one atomic claim: concurrent allocations receive distinct
-addresses. Generated addresses appear in ordinary operation receipts and child
-inventory; allocation never rewrites the submitted operation's target.
-
-§workspace-name **A workspace's name is an opaque handle; its identity is its id; its folder is a
-separate fact.** A name is a unique non-empty string compared by exact bytes, the same comparison for
-creation, rename and lookup; nothing in it is normalized or decoded, and it authorizes
-nothing: only `projectRoot` selects a folder, and a workspace may have none. Admission, at creation
-and rename, refuses these spellings as `name-invalid` (400):
-
-- ASCII decimal digits alone (`[0-9]+`, including zero and leading zeroes): reserved for workspace IDs.
-- Text that is not well-formed Unicode: an unpaired surrogate has no encoding.
-- A slash-delimited segment exactly `.` or `..`: a URL parser resolves it away, encoded or not.
-
-None is repaired or resolved. Every other spelling is admitted as written: spaces, Unicode, `~`, `@`, `%` and a literal `%2E%2E`, query and fragment punctuation, and a dot within a segment (`.config`, `file.txt`, `...`). A refused rename changes nothing.
-
-| Fact | Rule |
-| --- | --- |
-| Admission governs new names only | a workspace already carrying a refused spelling keeps it, its id, its folder and its sessions, stays listed and attachable, and is renamed like any other |
-| Rename and attach | rename ({§methods-workspace-rename}) changes the name alone; {§methods-workspace-attach} selects an existing workspace |
-| The default name | with a project root and no name, `workspace.create` names the workspace after the root, the root's path with the daemon's home abbreviated to `~` (`~` for the home itself, the absolute path outside it), and selects the workspace of that name when one exists instead of creating a second, so two default launches on the same project and daemon share one workspace and a concurrent pair resolves to one |
-| The root | resolved before it is named, so a root spelled with `.` or `..` components derives the name of the folder it reaches and no default is ever refused; a root that is not well-formed Unicode is `project-root-invalid` (400), since it names no folder |
-| A convention, not a mapping | a renamed workspace is not re-selected by its old default, and a workspace may carry any name over any folder; an explicit name that exists is `409 name-conflict`, never a selection |
-
-§workspace-label **The workspace label: a folder's display spelling is the daemon's.** Wherever the application port
-returns a workspace's folder it returns its label beside it: `projectLabel` on a client envelope and
-the `workspace/created` notice, `project_label` on a `listWorkspaces` row. The label is the folder as
-a default name spells it: the daemon's home is `~`, a path beneath it `~/<rest>`, and any other path,
-one that merely shares the home's prefix included, its absolute spelling. A workspace without a
-folder has a null label. It is derived from the folder on every read and never stored, and it never
-rewrites a name, so a client compares a workspace's name with its label by equality and derives
-neither from its own home.
-
-§workspace-auto-name **A workspace with neither name nor project root gets five alphanumeric characters, at least one a letter.** Such a `workspace.create` draws uniformly from the {§line-anchors} alphabet `0-9A-Za-z` using a cryptographic source, redrawing digit-only names and collisions. No prefix, timestamp, or origin marker: a name never encodes where a workspace came from.
-
-§exec-readpure-ungated **A read or pure runtime runs ungated.** A `read` runtime (observes external state, e.g. search) or `pure` runtime (no observable effect) is side-effect-free → **auto-run**: no proposal, no human gate, no notification. Core persists the prepared operation before applying it; that write-ahead staging has no resolution waiter and therefore cannot enter proposal discovery ({§proposal-list}). Admission does not determine settlement: external executions background and stream, while subsystem commands settle under {§functionality-model-mutation}. Both expose output through ordinary environment observation ({§exec-stream}), not a second inline body path.
-
-§effect-policy-tunable **Effect admission is one knob per effect.**
-`PLURNK_SERVICE_EFFECT_HOST`, `PLURNK_SERVICE_EFFECT_READ` and
-`PLURNK_SERVICE_EFFECT_PURE` each say `propose` or `auto`, and together they are
-the whole map: no effect's admission is held in code, so a deployment that
-proposes even reads says so in one place an operator can read. An invalid value
-fails daemon boot by the knob's name rather than degrading admission.
-
-After all non-WAIT operations dispatch, the initiating turn applies {§session-causal-admission} to only the execution streams it started, then resolves the whole program against the refreshed lifecycle state. An older stream receives no renewed opportunity merely because another turn began. This is a settlement barrier before completion, not sibling-operation serialization: dependent executions remain separate observed turns.
-
-§exec-stream **Stream surfacing.** An exec's output is *observed, not fetched*, in
-two states and no others:
-
-| state | what the model receives |
-|---|---|
-| active | nothing in the Log. The `## Open Work` stream pointer reports timing and channel activity ({§child-orientation}); the model READs any range it wants, and every READ of a stream channel carries `terminal: false` while it runs and `terminal: true` once it has concluded, so an empty page is never mistaken for a finished command that printed nothing. |
-| terminal | ONE `origin=_plurnk` READ at the execution's channel address, born visible, that is exactly a markerless READ of the channel — its bounded first page ({§read}, the whole channel when it fits, the channel's own mimetype), the `range` or `region`, terminal status and Problem, `terminal: true`, and any producer-supplied integer `exitCode`. The packet writes the read resource as its operand, exactly as an explicit READ does ({§log-wire-format}). |
-
-§stream-observation-result **A stream observation's result carries one liveness fact.** The durable READ result owns
-`terminal`, derived from its selected channel's state, for explicit and automatic
-observations alike, independently of mimetype: `active` gives false, `closed` or
-`errored` gives true, and `static` has no streaming liveness field. Packet
-projection preserves that Boolean, any included
-integer `exitCode`, and a producer's `page` receipt ({§executor-page-receipt}), even for an empty body. An automatic observation's atomic
-publication transition consumes the same result flag; private log attributes
-retain only the publication offset, not a second liveness value. A closed channel
-publishes only once subscription settlement has installed its terminal result;
-until then the stream is still in flight and publishes on the turn after it settles.
-
-§stream-channel-deletion **A deleted channel owes no observation.** A subscription publishes the
-channels its entry held when it opened. A channel deleted before its terminal publication, such as
-the `readable` sibling a response did not project ({§channel-selection}), has nothing left to
-publish: each of its publications settles as an empty sibling's does, so the stream's conclusion
-counts as delivered and the loop can conclude ({§loop-completion}). A channel the entry gains
-later belongs to the subscriptions opened after it.
-
-§exec-conclusion-summary **An execution's conclusion summary is its address, how it ended and its
-channel sizes.** The `summary` of an execution's `stream/concluded` ({§notifications-stream-concluded})
-is a display line for clients, such as `sh:///ab3d5678 completed (exit 0); stdout=12 bytes, stderr=0 bytes`;
-the model receives the terminal observation instead ({§exec-stream}). How it ended is read from the
-settled result: `completed`, with its exit code when it has one, for a success, and the Problem's title
-in lowercase for a failure. The sizes follow, one per channel the executor declares, in declared order
-({§executor-channels}).
-
-§exec-concurrency **Execution concurrency is bounded per workspace (#389).** At most `PLURNK_SERVICE_EXEC_CONCURRENCY` external executions run at once in one workspace (`-1` unbounded); the scope is the workspace, so neither delegation nor later turns bypass it and no other workspace can starve it. The scheduler is the exec scheme's; the knob is the service's ({§operator-config}), fail-hard on any other value. Ordered subsystem commands use {§functionality-model-mutation}, not this background-work queue.
-
-| Fact | Rule |
-| --- | --- |
-| Admission | every admitted execution still creates its entry, channels, and open subscription before its receipt returns, so queued work is cancellable, restart-reconcilable, completion-gated, and observed through the ordinary stream mechanics ({§exec-stream}); FIFO within the workspace |
-| An immediate slot | `200 { outcome: "started" }` |
-| Delayed work | `202 { outcome: "queued", executionsAhead, concurrency }`, and the channel stays `active` in the existing live sense: output growth and terminal settlement are the current truth; the receipt tells the truth once and never rewrites it |
-| Queue residence | does not consume the execution timeout; a KILL while queued never invokes the executor and concludes the stream as any KILL does ({§stream-control}) |
-
-§exec-stream-page **An unrequested delivery never exceeds the retrieval page.** The
-terminal observation is the same page a markerless READ returns, whatever the
-mimetype and however many turns the stream ran: the channel keeps every line for a
-scoped READ (```` ```READ (<runtime>:///<coord>#<channel>) <L,M> ````), and the extent
-tells the model the total. Only the active prompt and the generated project
-instructions are delivered without this bound; the model receives more than a page
-only by asking.
-
-The first page uses both shared preview bounds in {§body-projection}; long
-records stop at the last complete line that fits, or at an exact Unicode region
-when even the first line exceeds the character bound. Explicit READ scopes stay exact.
-
-| Fact | Rule |
-| --- | --- |
-| The cursor | the durable per-subscription, per-channel cursor records the size last reported to the model — by the Open Work stream pointer while active, by the terminal observation at close — so the pointer can state growth and no partial document or record ever reaches the model; the terminal observation and its cursor transition commit atomically |
-| Conclusion rows | a concluded stream lands one conclusion row per channel that holds content, and an empty sibling channel is a fact on that row (`channels: {"#stderr": 0}`), never a row of its own; only a stream that printed nothing on any channel lands one bodyless conclusion row, on its default channel, whose terminal fact, causal execution link, and available exit code make completion explicit without invented narration; the execution row separately records the authored invocation |
-| A failed execution | one failure: its terminal status and Problem ride its default channel's row when that row landed, else its first, and its other rows are 200 reads of their channels, so it puts one pointer in Errors ({§operation-results}) |
-| A skipped channel | its publication is still marked terminal, so the stream's termination is delivered and never left pending |
-| KILL | may curate that log row without rewinding the cursor or publishing the terminal result again; the exact terminal result and channel content remain READable at the stream address |
-| READ | every READ then obeys {§body-projection} and therefore renders its selected result complete |
-| A stream that closes before a same-turn wait | remains pending until every selected channel's terminal READ crosses the next packet boundary |
-
-```` ```KILL (<runtime>:///<eight-hex-id>) ```` cancels an active subprocess via
-the subscription registry's stored controller. A terminal stream is immutable,
-and KILL of one is satisfied rather than refused: it returns 200 carrying the
-recorded `terminalStatus` (499 when it was already killed); an unknown address
-returns 404 (#757).
-The runtime scheme participates in the durable lookup; a completed `sh:///`
-stream cannot fall through an internal `exec`-only query. {§stream-control}
-
-§workspace-env **Workspace environment.** The `env` family has workspace defaults and
-session overrides. Its management verbs accept `scope: "workspace" | "session"`; model calls
-default to `session`. Client actions bind the scope in `workspace.env.*` or
-`session.env.*`. An explicit scope must agree with that action's context.
-
-| Consumer | Composition, later layers win |
-|---|---|
-| Session command | Admitted ambient environment → workspace entries → session entries → invocation `env` |
-| Shared capability process | Admitted ambient environment → workspace entries → explicit capability launch options |
-
-Each layer uses the same value and masking rules. A session's list includes workspace
-defaults by reference with `origin: "workspace"`; session overrides and masks remain
-session-owned. Enabling an inherited entry clears this layer's mask, not a mask in a
-lower layer; an explicit local value can override that lower layer. A mask follows
-the name even when its lower-layer origin changes. Removing an override restores the
-lower entry and its enabledness ({§configuration-definition-resolution}). Forking copies only session state, not the workspace defaults. Workspace edits
-affect subsequent launches, not existing processes or other workspaces. A shared
-capability never acquires an invoking session's overrides or ownership.
-
-§exec-env-scoped **Command environment admission.** Core composes an ordinary executor's
-environment; the executor spawns with the environment it is handed ({§workspace-env}).
-
-| Input | Admission |
-|---|---|
-| Ambient host values | `PLURNK_SERVICE_EXEC_ENV_INHERIT` admits exact names or one trailing-`*` prefix glob; `_EXCLUDE` removes names with the same syntax. An empty inherit list admits nothing. Before filtering, the daemon projects its resolved `HOME` and XDG roots ({§host-path-layout}, {§state-root}) onto the ambient environment so admitted paths match the daemon's own layout. |
-| Reserved names | `PLURNK_*` and provider credential names from the model catalog or `PLURNK_PROVIDERS_PROVIDER_<ID>_API_KEY_ENV` are excluded from the ambient base regardless of those selectors. |
-| Workspace and session entries | Explicit non-reserved values and masks compose at spawn under {§env-functionality}. Reserved names are refused at admission. |
-
-Explicit values do not widen ambient inheritance. The allowlist is declared under
-{§operator-config-env-defaults}; it limits other host credentials too, not only provider keys.
-Each spawn records admitted values and their provenance (host, workspace, session, inherited
-session, or masked); the digest renders that record beside the operation.
-
-This is environment admission, not process containment or a prohibition on an approved
-program setting its own variables. Module-owned launches use the owning module's contract:
-the host supplies a filtered ambient base through {§module-seam-slices}, while explicit
-MCP bindings resolve under {§mcp-launch-environment}. The env family's reservation does not
-filter those explicit bindings or create a second approval path.
-
-- §exec-hold-until-concluded **The turn-hold exception: an in-flight stream of a held runtime pauses the cycle.** For runtimes in `PLURNK_SERVICE_EXEC_HOLD` (a decision-table env), the next packet does not assemble until the stream concludes, so the model never burns a turn asking "are we there yet" about a result the engine controls end-to-end. It extends selected runtimes beyond the ordinary {§session-causal-admission} cap before the next packet assembles, with zero grammar or teaching surface: the model emits an executor fence, optionally followed by WAIT, and the wake-shaped world simply arrives one packet sooner.
-
-  | Rule | What |
-  | --- | --- |
-  | Limited to | seconds-bounded runtimes whose final result the engine controls end-to-end |
-  | Bounded | by `PLURNK_SERVICE_EXEC_HOLD_MS`, and **fail-open**: at the cap the standard cycle resumes untouched (waits, wakes, polls) |
-  | A bare entry | holds ALL of a runtime's spawns |
-  | A `<runtime>:<effect>` suffix (`github:read`) | holds only that effect-class — an MCP server is one runtime whose tools split (a `read` `get_issue` is instant; a `host` `run_migration` is a slow mutation), so an operator opts the known-fast read-class in without parking on the mutation |
-  | Default | conservative: an arbitrary third-party server's latency never parks the engine unless a suffix opts a class in |
-
-- §exec-entry-sink **The entry() sink** implements {§executor-entry-sink} over ordinary scheme-owned entries. Core owns allocation, materialization, and persistence; executors receive only the returned resource address. Web acquisition and materialization are the `https` handler's {§web-materialization-contract}, reached through the scheme registry; core names no extension package.
-
-  | Input / effect | Consumer behavior |
-  | --- | --- |
-  | Absolute URL | Resolve its registered scheme and workspace coordinate. |
-  | Null path + supplied content | Publish beneath the invocation's `resources/` using {§resource-publication-names}, owned by the calling Session. |
-  | Supplied bytes | Retain the original bytes and declared mimetype in an ordinary channel ({§binary-parity}). |
-  | Supplied text | Preserve text resources; HTTP/HTML materialization retains source and derived channels under {§html-materialization}. |
-  | Null content | Acquire an HTTP(S) resource through the checked WebFetcher, using the same configured materializers as exact HTTP acquisition ({§http-materializer-extensions}). |
-  | Durable evidence | One typed EDIT event in the runtime actor, with the calling Session as causal source. Binary evidence describes the resource; its complete bytes live in the resource channel. |
-  | Model orientation | The executor includes returned addresses in its result. Publication does not independently wake inference or broadcast an observer row ({§env-delta-entry-materialization}). READ controls content acquisition and native delivery. |
-
-  A failed acquisition, projection, or write rejects the sink with its cause; it does not erase the upstream operation or imply no external effect. Parallel acquisition begins before the per-invocation serialized write chain. A rejected publication leaves that chain usable. Execution completion and shutdown await the whole chain; one lazily created runtime narration turn owns the invocation's publication evidence.
+| Workspace entries & output | Every entry belongs to one workspace `(workspace_id, scheme, authority, pathname)` ({§entry-address-resolution}). Each execution claims an 8-hex path (`sh:///ab3d5678`) in the workspace commons; deleting a producer session keeps its output. Stored output stays readable when an attachment is disabled or removed, while live control/input binds the workspace resource and wakes the initiating session. |
+| `entry()` sink ({§executor-entry-sink}) | Publishes textual, binary ({§binary-parity}), or HTTP-materialized ({§web-materialization-contract}, {§html-materialization}, {§http-materializer-extensions}) resources under `<invocation>/resources/` ({§resource-publication-names}) with one runtime `EDIT` row ({§env-delta-entry-materialization}). |
+| Session & workspace names | Unnamed sessions allocate 8 random lowercase hex chars (`session://ab3d5678`). Workspace names are unique non-empty strings refusing digit-only (`[0-9]+`), ill-formed Unicode, or `.`/`..` segments (`400 name-invalid`). Default workspace name abbreviates daemon home to `~` (matching `projectLabel` / `project_label`), reusing an existing workspace of that name ({§methods-workspace-rename}, {§methods-workspace-attach}); headless unnamed workspaces draw 5 alphanumeric chars with at least one letter from {§line-anchors}. |
+| Command environment | Layers: filtered ambient host (`PLURNK_SERVICE_EXEC_ENV_INHERIT` / `_EXCLUDE` over HostPaths-projected `HOME`/XDG {§host-path-layout}, {§state-root}, always excluding `PLURNK_*` and provider API key vars) → workspace `env` → session `env` ({§env-functionality}, {§configuration-definition-resolution}) → invocation `env`. Each spawn records provenance for the digest; MCP launches use {§module-seam-slices} and {§mcp-launch-environment}. |
 
 ## §proposal Proposals and client interactions
 
@@ -1446,7 +918,7 @@ Model sees lifecycle events in the `log` section per turn.
 ### §stream-control Stream control and writes
 
 - **Cancel:** ```` ```KILL (https://feed.example/x) ```` — the service invokes the handle registered by `subscriptions.open()` and aborts the composed subscription signal.
-- **Kill:** ```` ```KILL (sh:///ab3d5678) ```` — the model terminates the addressed workspace stream. This is stream control, not a write: the output scheme's `writableBy` never gates it. A stream that already ended, killed or not, answers 200 with its recorded `terminalStatus`: the process is not running, which is what KILL asks for (#757); a stream that never existed answers 404 ({§runtime-resource-binding}). A queued execution ({§exec-concurrency}) is cancelled the same way and never enters its executor.
+- **Kill:** ```` ```KILL (sh:///ab3d5678) ```` — the model terminates the addressed workspace stream. This is stream control, not a write: the output scheme's `writableBy` never gates it. A stream that already ended, killed or not, answers 200 with its recorded `terminalStatus`: the process is not running, which is what KILL asks for (#757); a stream that never existed answers 404 ({§execution-output-identity}). A queued execution ({§exec-lifetime}) is cancelled the same way and never enters its executor.
 - §stream-asked-stop **A stop that was asked for is no failure.** A stream stopped by a model KILL of either form from the session that holds it concludes 200, with its `exitCode` when its producer reported one: the producer's 499 cancellation is replaced before the subscription settles, so the KILL's 200 receipt is the record and the conclusion row brings nothing into Errors ({§operation-results}). A cancellation its holder did not ask for — a peer's or a client's KILL, loop end, session teardown, daemon stop — keeps its 499, and a lifetime keeps its 504.
 - **WebSocket write:** ```` ```EDIT (wss://feed/x) ```` or ```` ```SEND (wss://feed/x) ```` with a body sends one whole text frame through the active owner. Either write can follow the opening READ in the same turn under {§op-methods-op-dispatch}.
 - **Other stream write:** ```` ```SEND (…) ```` remains scheme-defined, including exec stdin.
@@ -1748,7 +1220,7 @@ On XDG-compatible hosts, artifact semantics select the default location. An
 unset or empty base variable uses the XDG default; a relative value is invalid
 and is ignored rather than resolved against the working directory. When the
 daemon projects an ambient environment for subprocess or module launches
-({§exec-env-scoped}, {§mcp-launch-environment}), its resolved `HOME` and XDG
+({§execution-output-identity}, {§mcp-launch-environment}), its resolved `HOME` and XDG
 base directories replace any ambient values they supersede, and an absent
 `XDG_RUNTIME_DIR` is omitted.
 
@@ -1789,7 +1261,7 @@ ordinary precedence; XDG variables themselves require absolute paths.
 |        6 | Derived service CLI flags          | Assigned last.                                            |
 
 A working directory's `.env` configures that directory's application, never plurnk (#926); a
-project's variables reach its commands through the workspace environment ({§workspace-env}).
+project's variables reach its commands through the workspace environment ({§execution-output-identity}).
 
 Node's pre-script env-file form and the executable's post-script form share the same later-file-wins ordering. `--env-file-if-exists` skips an absent file without changing the order of selected files.
 
@@ -1922,8 +1394,8 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD` | Max period length cycle detection examines ({§engine-rails}). |
 | `PLURNK_SERVICE_FILES_ITEMS` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§session-initialization-entry}). |
 | `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
-| `PLURNK_SERVICE_EXEC_CONCURRENCY` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
-| `PLURNK_SERVICE_EXEC_SCRATCH` | Directory a standalone execution source is written to for its run; empty derives `$XDG_RUNTIME_DIR/plurnk`, else the platform temporary directory ({§exec-scratch-directory}). |
+| `PLURNK_SERVICE_EXEC_CONCURRENCY` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-lifetime}). |
+| `PLURNK_SERVICE_EXEC_SCRATCH` | Directory a standalone execution source is written to for its run; empty derives `$XDG_RUNTIME_DIR/plurnk`, else the platform temporary directory ({§exec-target-routing}). |
 | `PLURNK_SERVICE_PROPOSAL_TIMEOUT_MS` | Finite positive milliseconds before cancellation with outcome `timeout`; empty waits, and every other explicit value fails ({§proposal-timeout-cancels}). |
 | §operator-config-session-warm `PLURNK_SERVICE_WORKSPACE_WARM_MS` | Milliseconds a lease-free workspace Functionality snapshot remains warm; `0` cools without grace and `-1` disables time-based cooling ({§module-workspace-residency}). |
 | `PLURNK_SERVICE_WORKSPACE_WARM_MAX` | Maximum lease-free workspace Functionality snapshots retained process-wide; `0` retains none and `-1` disables the idle-LRU bound ({§module-workspace-residency}). |
@@ -2527,7 +1999,7 @@ and `~/.agents` directories in precedence order with their scopes, omitting proj
 when no project is bound ({§module-workspace-paths}). Modules own their file formats;
 core owns discovery roots.
 
-An adapter may expose a `scheme` facet beneath its family's runtime namespace ({§runtime-resource-binding}). An adapter states the `traits` of its runtime — `web` for a family that reaches the network — so {§capability-admission} selects its manager and its resources alike.
+An adapter may expose a `scheme` facet beneath its family's runtime namespace ({§execution-output-identity}). An adapter states the `traits` of its runtime — `web` for a family that reaches the network — so {§capability-admission} selects its manager and its resources alike.
 
 | The facet | Rule |
 | --- | --- |
@@ -2536,8 +2008,8 @@ An adapter may expose a `scheme` facet beneath its family's runtime namespace ({
 | States | where its resources are not shaped like the executor's output, their representation — resource authority, channels, the default channel, who may write them — and that manifest governs every claimed coordinate: its address, its fragmentless READ, the channel a subscription publishes, the writer gate ({§scheme-surface}) an EDIT or a COPY into it passes |
 
 §env-functionality **Environment is a scoped family.** Ambient names admitted by the
-operator's ceiling ({§exec-env-scoped}, service origin) precede workspace defaults and
-session overrides ({§workspace-env}). `add` takes
+operator's ceiling ({§execution-output-identity}, service origin) precede workspace defaults and
+session overrides ({§execution-output-identity}). `add` takes
 the name as the alias and `{ "value": "…" }` as the definition, used verbatim with no
 interpolation. `disable` withholds a name in the selected scope while retaining it;
 `remove` forgets a locally-owned entry and restores any same-name inherited value
@@ -2558,14 +2030,14 @@ names) is refused at **admission**, not dropped at the spawn, so the model learn
 | Reserved names | the names the invariant reserves — plurnk's own configuration and provider credentials — are the operator's and never appear, so the catalog stays short enough to read whole |
 | `query` | matches a name or the comment that documents it, never a value |
 | Not a permissions list | a Session may set any name it lists or none of them; the catalog answers which names have a **consumer**, and it is how a Session learns the name of a value only the operator can supply |
-| Declarations, never the host environment | a credential the operator has filled in appears by name with its documentation and an empty value ({§exec-env-scoped}: referred to by name, never read) |
+| Declarations, never the host environment | a credential the operator has filled in appears by name with its documentation and an empty value ({§execution-output-identity}: referred to by name, never read) |
 | `source` | selects one declaring package; an unknown source is `source-unknown` (400), not an empty catalog; a known source with no matching settable declarations returns an empty candidate list; a request naming neither input is the whole catalog |
 | A client's own environment | no input: contributing candidates, it would be a second door past the ceiling |
 
 The family publishes no process runtimes. Its values are read at the spawn that uses them,
 not from a live process or a cached session environment.
 
-§env-scheme **The env scheme is the registry as an address space.** Every name in effect for a Session's commands — the ambient names the ceiling admits, workspace defaults and the Session's own entries, exactly what `list` projects — is a resource at `env:///NAME` whose body is the value, verbatim; a reserved or masked name is no resource. The family's manager exposes it as the facet of its own `env://` namespace ({§runtime-resource-binding}), read for the dispatching Session; the manager's own output streams, eight hexadecimal characters ({§execution-output-identity}), stay the executor's. Admission is the family's ({§env-functionality}) and its refusal is the operation's result.
+§env-scheme **The env scheme is the registry as an address space.** Every name in effect for a Session's commands — the ambient names the ceiling admits, workspace defaults and the Session's own entries, exactly what `list` projects — is a resource at `env:///NAME` whose body is the value, verbatim; a reserved or masked name is no resource. The family's manager exposes it as the facet of its own `env://` namespace ({§execution-output-identity}), read for the dispatching Session; the manager's own output streams, eight hexadecimal characters ({§execution-output-identity}), stay the executor's. Admission is the family's ({§env-functionality}) and its refusal is the operation's result.
 
 | Operation | On `env:///NAME` |
 | --- | --- |
@@ -2765,24 +2237,24 @@ Core's behavior behind them.
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the workspace and returns its client envelope, minting no session, and emits global `workspace/created`; with a project root and no name it names and selects the workspace under {§workspace-name}, showing a hidden one ({§machine-processes}), emitting `workspace/created` only for a workspace it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
-| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId } \| { name } \| { projectRoot })` | Exactly one selector returns an existing workspace's client envelope, minting and activating nothing. Names are literal lookups, including previously admitted names. An absolute project root selects its folder-derived default name ({§workspace-name}), not a workspace by its stored folder. An absent target is `404 workspace-not-found`; ambiguous or absent selectors are `400 identity-invalid`. It retains no caller or transport binding state. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the workspace and returns its client envelope, minting no session, and emits global `workspace/created`; with a project root and no name it names and selects the workspace under {§execution-output-identity}, showing a hidden one ({§machine-processes}), emitting `workspace/created` only for a workspace it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId } \| { name } \| { projectRoot })` | Exactly one selector returns an existing workspace's client envelope, minting and activating nothing. Names are literal lookups, including previously admitted names. An absolute project root selects its folder-derived default name ({§execution-output-identity}), not a workspace by its stored folder. An absent target is `404 workspace-not-found`; ambiguous or absent selectors are `400 identity-invalid`. It retains no caller or transport binding state. |
 | §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§acp-owner-activation}). |
 | §methods-session-create Workspace lifecycle  | `createSession({ workspaceId, name?, parentSessionId?, owner? })` | Creates a distinct model-origin session with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§session-ownership}). |
 | Session ownership | `registerSessionOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Session ownership | `claimSessionOwner({ workspaceId, sessionId, owner })` | Claims a model session and its model descendants under {§session-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeSession(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
 | Workspace lifecycle                               | `forkSession({ workspaceId, sessionId, name? })` | Creates a child session that branches the source session's history while sharing workspace state. The source is a model session, else `409 model-session-required` ({§machine-processes}). |
-| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the workspace's unique mutable name, under the admission of {§workspace-name}; sessions, log, and membership remain intact, and a refused name changes nothing. |
+| §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the workspace's unique mutable name, under the admission of {§execution-output-identity}; sessions, log, and membership remain intact, and a refused name changes nothing. |
 | §methods-workspace-hide Workspace metadata | `setWorkspaceHidden({ workspaceId, hidden })` | Hides or shows the workspace under {§machine-processes} and returns `{ id, hidden_at }`, the mark it now holds. An absent workspace is `404 workspace-not-found`, a hide over live work `409 live-work`, and a `hidden` that is not boolean `400 flag-invalid`. |
 | §methods-session-hide Session topology | `setSessionHidden({ workspaceId, sessionId, hidden })` | Hides or shows the session's group under {§machine-processes} and returns `{ id, hidden_at, sessionIds }`: the session's mark now and the sessions whose mark the call changed, none when nothing changed. A session outside the workspace is `404 session-not-found` and a hide over live work `409 live-work`. |
 | §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, sessionId, actor, to })` | Reverses `sessionId`'s settled file mutations after its coordinate `to` as one client operation of `actor` ({§log-wire-format}, {§connection-lifecycle}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, sessionId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model sessions, newest-first; `sessionId` narrows to one session. Authorship is the seed message's address ({§message-arrival}): a session-issued seed (WORK, FORK, SEND to a session) has none and is never history, whichever session it seeded; a client prompt at a forked model session is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
-| Workspace metadata                                | `listWorkspaces({ hidden? })`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder, its label ({§workspace-label}) and its `hidden_at` mark, filtered by the mark when `hidden` is present ({§machine-processes}), and derivation progress. |
+| Workspace metadata                                | `listWorkspaces({ hidden? })`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder, its label ({§execution-output-identity}) and its `hidden_at` mark, filtered by the mark when `hidden` is present ({§machine-processes}), and derivation progress. |
 | §methods-session-read Session topology              | `readSession({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Session projection or `null` under {§application-session-observation}. Supplying both identities or neither is invalid. Any non-empty name is looked up, the runtime session's `_plurnk` included: the lookup is no minting door ({§session-scheme}). |
 | §methods-session-list Session topology              | `listSessions(workspaceId, query?)` | Returns the workspace's durable Session projections under {§application-session-observation}. The origin filter is exact; an explicitly present `parentSessionId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position, and a present `hidden` filters by the mark each projection carries as `hidden_at` ({§machine-processes}). Each projection carries `kind` (`root` for a session with no parent, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound session's own status gauge shows; clients infer neither (#523). |
-| §methods-session-overview Session overview | `readSessionOverview({ workspaceId?, limit, excerptChars })` | Returns `{ sessions, workspaces, omitted }`, the places of the daemon or of one workspace with what waits there, under {§application-session-overview}: each place's lifecycle, the gates it waits on and its latest finished reply ({§session-finished-reply}) with its excerpt ({§list-excerpt}) of at most `excerptChars` characters, most recently finished first; every place waiting on a gate and the first `limit` in that order, `omitted` counting the rest. Hidden places are out of scope ({§machine-processes}). An unknown `workspaceId` is 404 `workspace-not-found`. |
-| §methods-session-loops Loop lifecycle              | `listSessionLoops({ workspaceId, sessionId })` | Ownership-checks the Session and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists, and each Loop's `invocation`: `{ sessionId, address }`, the Session and the log address ({§methods-invocation}) of the operation that sent the Loop's first message ({§session-obligations}), or null when a person, a client, a peer or the daemon sent it. It performs no scheduling or event replay. |
+| §methods-session-overview Session overview | `readSessionOverview({ workspaceId?, limit, excerptChars })` | Returns `{ sessions, workspaces, omitted }`, the places of the daemon or of one workspace with what waits there, under {§application-session-overview}: each place's lifecycle, the gates it waits on and its latest finished reply ({§message-completion}) with its excerpt ({§list-excerpt}) of at most `excerptChars` characters, most recently finished first; every place waiting on a gate and the first `limit` in that order, `omitted` counting the rest. Hidden places are out of scope ({§machine-processes}). An unknown `workspaceId` is 404 `workspace-not-found`. |
+| §methods-session-loops Loop lifecycle              | `listSessionLoops({ workspaceId, sessionId })` | Ownership-checks the Session and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists, and each Loop's `invocation`: `{ sessionId, address }`, the Session and the log address ({§methods-invocation}) of the operation that sent the Loop's first message ({§loop-completion}), or null when a person, a client, a peer or the daemon sent it. It performs no scheduling or event replay. |
 | §methods-session-accounting Session spend       | `sessionAccounting({ workspaceId, sessionId })` | Ownership-checks the Session and returns the {§provider-accounting} projection of every settled request on any loop the Session or a descendant of it (`parent_session_id`, to any depth) ran, since the Session began: its own spend and its delegations', the same tree the turn cap counts ({§turn-cap-counts-the-tree}). Nothing spent is explicit zero. One loop's own accounting stays {§notifications-loop-terminated}'s. Derived from the request ledger on every read ({§tokenomics-provider-usage}); no rollup, no second store. |
 | §methods-session-gauge Session gauge | `sessionGauge({ workspaceId, sessionId })` | Ownership-checks the Session and returns the four {§tokenomics-client-gauge} facts its latest packet reported in `loop/packet.gauge`, read from durable evidence: each `null` when unknown, all `null` before the Session's first packet. A client attaching later starts from the gauge a live one holds. |
 | Extension actions | `listModuleActions()`, `invokeModuleAction(name, params, context)` | Lists setup-registered `{ name, scope, inputSchema, outputSchema }` descriptors in sorted order. Invocation requires a context matching the registered scope; missing names, forged scope, and missing workspace identity fail before the owner runs. Handler values remain opaque to core. |
@@ -2994,14 +2466,14 @@ core does not copy readable reasoning into log attributes or bodies. A turn
 without readable reasoning omits the field.
 
 §methods-invocation **`invocation`: a row that discharges an obligation names the operation that opened it.** `readLog`
-and `log/entry` project `invocation`, the log address of that operation ({§session-obligations}), on every
+and `log/entry` project `invocation`, the log address of that operation ({§loop-completion}), on every
 row that discharges one, so a client pairs the answer with its call without matching addresses:
 
 | Discharging row | Its invocation |
 |---|---|
 | A stream observation ({§exec-stream}) | The execution, as its subscription recorded it ({§subscriptions-causal-resource}) |
 | A child's conclusion ({§env-delta-child-termination}) | The operation that sent the first message of the concluded loop |
-| A completion reply delivered to the sender ({§message-reply-delivery}), including {§message-abandonment} | The operation that sent the message it completed |
+| A completion reply delivered to the sender ({§message-reply-delivery}), including {§loop-completion} | The operation that sent the message it completed |
 
 Each is derived from what the row records: the publication it advanced, or the occurrence it materialized.
 A message names an invocation only to the session whose operation sent it; history a FORK inherited names the
@@ -3031,7 +2503,7 @@ answering a message in this session's inbox, omits the field, as does every othe
 | `workspace/preparation` | `{ workspaceId, preparation: FunctionalityPreparationActivity[] }` | Workspace capability preparation changes; snapshot and clearing semantics follow {§functionality-preparation-visibility}. |
 | §notifications-session-policy `session/policy` | `{ sessionId, model, spawnModel }`, the session's generation policy as `ApplicationPort.readSessionModel` reads it | A session's stored model, effort, effort source or spawn model changes, by whichever path: a client's set, a message's selector, or the seeding of a session's first model. A write that changes nothing, and a change refused while the session has unfinished tasks, fire nothing. |
 | §notifications-stream-event-on-channel-change `stream/event` | `{ entryId, sessionId, target, channel, state, contentLength, mimetype?, loop_seq?, turn_seq?, sequence? }` | Channel content grows or channel state transitions. `sessionId` is the initiating actor used for routing to the bound session, never entry ownership or access control. `target` is the canonical resource URI. Optional numeric coordinates identify the causal log item, independently of that URI. Core-managed channel writes include the current stored `mimetype`, which may change per call ({§channels}); the generic extension notification capability does not require it. It carries metadata, not content: `contentLength` counts the channel's whole stored content in Unicode code points, the unit of {§entry-read-result}'s `contentOffset` and `contentLength`, and consumers read the content by canonical workspace address. |
-| §notifications-stream-concluded `stream/concluded`           | `{ entryId, sessionId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `sessionId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `summary` is a display line the owning scheme writes; an execution's is {§exec-conclusion-summary}. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted session scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
+| §notifications-stream-concluded `stream/concluded`           | `{ entryId, sessionId, target, subscriptionId, scheme, result, summary, wakeAction, loop_seq?, turn_seq?, sequence? }` | A subscription closes. `sessionId` identifies the initiating actor; `target` is the canonical resource URI. Optional numeric fields identify the causal log item, never parsed from `target`. Exact result truth is preserved. `summary` is a display line the owning scheme writes; an execution's is {§exec-stream}. `wakeAction` reports `wake-pending` before settlement, `no-op-active-loop` when work is already executing, `no-loop`, or `skipped-aborted`/`skipped-cancelled` for an aborted session scope. A pending wake predicts neither execution nor recipient count; subsequent ordinary loop events report actual progress and completion. |
 | §notifications-notice-event `notice/event`                   | `{ sessionId, loopId, notice: Notice }` | A transient observation or progress notice occurs. `sessionId` owns loop activity; only workspace derivation progress uses `null` with `loopId=0`. It cannot alter durable history, scheduling, recovery, or model-visible failure truth. |
 | §notifications-outside-event `outside/event`                 | `{ sessionId, loopId, turnId, coordinate, text, tokens }` | An admitted emission carried text outside every operation ({§outside-text}): once per admitted emission, the exact stored text, its packet weight, and the turn's `<session>-<loop>-<turn>` coordinate. It is transient presentation evidence; the turn's `outside` source remains the durable authority. |
 | §notifications-reasoning-event `reasoning/event`             | `{ sessionId, loopId, turnId, loopSeq, turnSeq, modelCallId, requestSequence, phase, delta? }` | A main emission call exposes readable reasoning. `loopSeq` and `turnSeq` are its turn's ordinals in the session's log, the `L/T` of `reasoning://<session>/L/T` ({§turn-source-resources}). Each physical request that emits reasoning owns a distinct positive `requestSequence` and balanced start/content/end stream; opening a retry closes the preceding stream before any retry delta. Only content carries a nonempty exact delta. It is transient presentation evidence, never a log row, Notice, packet field, or BARE/child channel. The settled provider response remains the durable authority. |
@@ -3059,7 +2531,7 @@ An adapter's `(namespace, reference)` identifies one durable model session. Both
 to core; protocol syntax belongs to the adapter. `readSessionReference` returns its workspace and
 session IDs or null, without creating anything. `ensureSessionReference` returns the same identity,
 atomically creating an ordinary folderless workspace and root model session if absent. Names follow
-{§workspace-auto-name} and {§session-auto-name}; no owner is claimed and no work starts.
+{§execution-output-identity} and {§execution-output-identity}; no owner is claimed and no work starts.
 
 The association is immutable while its session exists. Concurrent allocation creates exactly one
 workspace, session and association; failure leaves none. Renaming a workspace, changing approval
@@ -3361,7 +2833,7 @@ execute, enter model history, or become a later request's successful output.
   | Status | Outcome |
   |---|---|
   | 100 / 102 | Queued / running |
-  | 202 | WAIT or an eligible final response joining a live obligation ({§wait-obligation-matrix}, {§session-wait-timing}) |
+  | 202 | WAIT or an eligible final response joining a live obligation ({§loop-completion}, {§session-wait-timing}) |
   | 200 | Messages answered, results observed, held work settled |
   | 499 | Session-scope or client cancellation |
   | 429 | Turn allowance exhausted |
@@ -3372,7 +2844,7 @@ execute, enter model history, or become a later request's successful output.
   An empty WAIT continues at 102. The exact terminal result retains its Problem;
   status classes are not catch-all replacements for that evidence. No failing status
   here is ever softened because the model wrote something the harness could not read;
-  every one of them cites it instead ({§terminal-evidence}).
+  every one of them cites it instead ({§outside-text}).
 
 ### §env-delta The environment delta: what changed since the model last looked
 
@@ -3426,10 +2898,10 @@ ordinary operation evidence still reaches that child's direct parent.
 | Producer / event                                      | Durable occurrence                                                                                     | Observer projection                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and targeted non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the session. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
-| §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§loop-answer}). | Direct parent only; bounded, initially visible READ under {§session-scheme}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
+| §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§message-completion}). | Direct parent only; bounded, initially visible READ under {§session-scheme}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
 | §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `workspace:///...`.                         | Every existing session; one body-suppressed row per observer, deduplicated with any lineage audience.                               |
 | §env-delta-filesystem-narration Filesystem narration: project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
-| §env-delta-entry-materialization Executor `entry()` sink | The runtime records typed materialization evidence under its owning actor.                           | No ambient observer row unless the resulting operation itself is direct-child activity or a commons mutation ({§exec-entry-sink}). |
+| §env-delta-entry-materialization Executor `entry()` sink | The runtime records typed materialization evidence under its owning actor.                           | No ambient observer row unless the resulting operation itself is direct-child activity or a commons mutation ({§execution-output-identity}). |
 
 §env-delta-attribution **Attribution: ownership, authorship, and cause are independent.**
 
@@ -3615,7 +3087,7 @@ READ and FIND own their range or pagination before packet rendering; the packet 
 |---|---|---|
 | Accepted body, attachments, address and causal source | Durable inbox message | None; ordinary READ/FIND/COPY can recover the source. |
 | Arrival seen at a turn boundary | One inbound SEND log row, `origin="_plurnk"`, `attrs.kind="message"` | Ordinary KILL can trim or remove this observation. |
-| Answered messages | Successful executed reply, {§send-response-receipt} | None; curation cannot retract delivery. |
+| Answered messages | Successful executed reply, {§message-completion} | None; curation cannot retract delivery. |
 
 Every accepted message enters its recipient loop's inbox in arrival order, with its selected
 paths, and publishes exactly once at the next turn boundary. **Open Messages** lists the
@@ -3644,7 +3116,7 @@ replay it. An addressed reply replaces the same parent's generic activity observ
 The child's reply to its original parent-delegated message reaches that parent once,
 through the conclusion READ under {§session-scheme}; it is not a separate reply
 occurrence. Other replies remain ordinary messages. The exact loop remains addressable
-under {§loop-answer}.
+under {§message-completion}.
 Unobserved replies prevent conclusion just as unobserved child results do. All operation
 producers notify the same settlement path after durable execution; reply wake-up shares
 {§session-causal-admission}, without delaying the replying program.
@@ -4402,7 +3874,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
 | `fork-unaddressed` | 404 | This client operation acts for no session, so FORK has no log to branch ({§actor-boundary-client-operations}). |
 | `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: WORK or SEND (session://*name*) delivers a message to the live session; FORK with a name no session holds. ({§session-scheme}) |
-| `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
+| `no-operation` | 422 | The turn performed no operation ({§outside-text}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
 | `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
 | `unreadable-pattern` | 400 | The pattern reader's diagnostic for an unreadable matcher. |
@@ -4476,7 +3948,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 
 | code | status | contract |
 |---|---:|---|
-| `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec-near-miss}): The execution at /*id* is `*runtime*:///*id*`. |
+| `stream-not-found` | 404 | No execution exists at the requested address. Recovery, when the id holds an execution under another runtime ({§exec-target-routing}): The execution at /*id* is `*runtime*:///*id*`. |
 | `executor-not-registered` | 400 | No executor or MCP service named '*runtime*' is registered for this session. |
 | `runtime-unavailable` | 501 | Executable tool '*runtime*' is unavailable; detail includes the availability diagnostic. |
 | `lifetime-invalid` | 400 | The execution lifetime directive is invalid; detail identifies the invalid form. |
@@ -4484,7 +3956,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | `target-classification-failed` | 500 | The execution target could not be inspected; detail includes a bounded cause. |
 | `source-content-unavailable` | 422 | The source scheme did not supply execution content. |
 | `stream-entry-write-failed` | 500 | The execution's stream entry could not be created. |
-| `program-is-a-tool` | 404 | The command exited 127 and names a registered tool of another runtime ({§exec-tool-fall-through}). |
+| `program-is-a-tool` | 404 | The command exited 127 and names a registered tool of another runtime ({§exec-target-routing}). |
 | `executor-did-not-conclude` | 500 | The executor did not produce a terminal result. |
 | `execution-cancelled` | 499 | Execution was cancelled by the service. |
 | `executor-invalid-result` | 500 | The executor returned an invalid operation result. |
@@ -4579,7 +4051,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 
 | sentence | arises when |
 |---|---|
-| Nothing is in flight. Continuing. | a WAIT (or a premature terminal) with no live work ({§wait-obligation-matrix}) |
+| Nothing is in flight. Continuing. | a WAIT (or a premature terminal) with no live work ({§loop-completion}) |
 | All Open Messages resolved. Review new results; emit no OPs if finished. | resolved messages with unobserved results ({§loop-completion}) |
 | Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn. | the over-budget row ({§context-over-budget-row}) |
 | YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE. | a continuing or parked model turn without a NOTE ({§continued-without-note}) |
@@ -4589,9 +4061,9 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve. | dispatch of an interaction tool the session's owner would not receive ({§owner-interaction-ring}) |
 | Session name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid session name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |
-| name '*name*' has the path segment '*segment*'. Recovery: Provide a name with no '.' or '..' between its slashes; a dot within a segment is ordinary. / name is not well-formed Unicode: it holds an unpaired surrogate. | a workspace name refused at creation or rename ({§workspace-name}) |
+| name '*name*' has the path segment '*segment*'. Recovery: Provide a name with no '.' or '..' between its slashes; a dot within a segment is ordinary. / name is not well-formed Unicode: it holds an unpaired surrogate. | a workspace name refused at creation or rename ({§execution-output-identity}) |
 | The stream was cancelled by KILL. | a stream terminal after KILL |
-| '*runtime*' exited with code 127; `*program*` is a registered tool of `*owner*`. | a tool run as a shell command ({§exec-tool-fall-through}) |
+| '*runtime*' exited with code 127; `*program*` is a registered tool of `*owner*`. | a tool run as a shell command ({§exec-target-routing}) |
 | '*path*' is a directory, not a file; READ reads one file. Recovery: `FIND (_path_/)` lists its files. | READ of a directory |
 | The execution at ops://*session*/*loop* has not concluded. | a bare READ of a running session's result (425) |
 | The child provider failed. | a child's provider failure read back by its parent |

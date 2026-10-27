@@ -1278,7 +1278,7 @@ export default class Dispatcher {
 
         const target = schemeNameOf(statement.target);
         const denial = this.#denyIfDisallowed(target, origin, workspaceId, statement.target);
-        // {§send-target-recipient} — SEND addresses recipients, not otherwise
+        // {§send} — SEND addresses recipients, not otherwise
         // read-only resources. State that boundary without guessing whether the
         // model intended a reply, deletion, or directed message.
         if (denial !== null && statement.op === "SEND" && origin === "model") {
@@ -1298,7 +1298,7 @@ export default class Dispatcher {
         return denial;
     }
 
-    // {§runtime-resource-binding} The manifest that governs the coordinate decides: a runtime
+    // {§execution-output-identity} The manifest that governs the coordinate decides: a runtime
     // scheme's facet may make its claimed resources writable where the stored output is not.
     #denyIfDisallowed(schemeName: string | null, origin: WriterTier, workspaceId: number, target: ParsedPath | null = null): DispatchResult | null {
         if (schemeName === null) return null;
@@ -1599,7 +1599,7 @@ export default class Dispatcher {
     }
 
 
-    // {§send-response-receipt}: message content is literal; only its header selects a destination.
+    // {§message-completion}: message content is literal; only its header selects a destination.
     async #respond(statement: SendStatement, schemeCtx: PlurnkSchemeContext, loopId: number): Promise<DispatchResult> {
         const options = ReplyMetadata.read(statement.metadata);
         if ("failure" in options) return options.failure;
@@ -1641,10 +1641,10 @@ export default class Dispatcher {
         return result.status;
     }
 
-    // {§send-premature-terminate}: judge observation boundaries after the whole program settles.
+    // {§loop-completion}: judge observation boundaries after the whole program settles.
     async #pendingSet(sessionId: number, turnId: number, loopId: number): Promise<CompletionEvidence> {
         const pending: CompletionEvidence["pending"] = [];
-        // {§session-obligations} — all held work shares one durable projection.
+        // {§loop-completion} — all held work shares one durable projection.
         const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; sessions: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
         if (held === undefined) throw new Error(`loop ${loopId} does not exist`);
         if (held.streams === 1) pending.push("streams");
@@ -1662,7 +1662,7 @@ export default class Dispatcher {
         return { pending, receipts };
     }
 
-    // {§wait-obligation-matrix}: completion and an empty wait use the same execution evidence.
+    // {§loop-completion}: completion and an empty wait use the same execution evidence.
     async #nextPacketBoundaries(sessionId: number, turnId: number): Promise<PacketBoundaries> {
         const [turnBoundaries, streamTerminations, childTermination] = await Promise.all([
             this.#db.engine_turn_packet_boundaries.all<{ op: string; tx: string | null }>({ turn_id: turnId }),
@@ -1678,13 +1678,13 @@ export default class Dispatcher {
         };
     }
 
-    // {§wait-obligation-matrix}: fresh failures precede automatic parking and completion.
+    // {§loop-completion}: fresh failures precede automatic parking and completion.
     async #unobservedFailureCount(turnId: number): Promise<number> {
         const row = await this.#db.engine_turn_failure_count.get<{ count: number }>({ turn_id: turnId });
         return row!.count;
     }
 
-    // {§wait-obligation-matrix}: retrievals land next turn; only held work permits parking.
+    // {§loop-completion}: retrievals land next turn; only held work permits parking.
     async hasLiveWork(loopId: number): Promise<boolean> {
         const held = await this.#db.loop_live_obligations.get<{ streams: 0 | 1; sessions: 0 | 1; messages: 0 | 1 }>({ loop_id: loopId });
         return held !== undefined && (held.streams === 1 || held.sessions === 1 || held.messages === 1);

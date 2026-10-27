@@ -32,7 +32,7 @@ const fixture = async () => {
 };
 
 for (const outcome of ["success", "failure", "cancel"] as const) {
-    test(`{§loop-answer}: the parent receives ${outcome} once, as the child's own loop answer`, async (t) => {
+    test(`{§message-completion}: the parent receives ${outcome} once, as the child's own loop answer`, async (t) => {
         const f = await fixture();
         t.after(() => f.db.close());
         await f.engine.injectIntoLoop(f.childLoop, "What did you find?", [], "session://parent", {}, undefined, await sendingOperation(f.db, f.parentLoop));

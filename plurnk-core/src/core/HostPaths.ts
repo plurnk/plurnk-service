@@ -143,7 +143,7 @@ export default class HostPaths {
     }
 
     // The inverse of expandUserPath for a path at or beneath the home: `~` for the home itself,
-    // `~/<rest>` beneath it, any other path unchanged. {§workspace-name} names a workspace after its
+    // `~/<rest>` beneath it, any other path unchanged. {§execution-output-identity} names a workspace after its
     // project root this way.
     abbreviateUserPath(path: string): string {
         const absolute = resolve(path);
@@ -157,7 +157,7 @@ export default class HostPaths {
         return value.startsWith("~/") ? resolve(this.home, value.slice(2)) : value;
     }
 
-    // {§host-path-layout} {§exec-env-scoped} — project the daemon's resolved home and XDG roots
+    // {§host-path-layout} {§execution-output-identity} — project the daemon's resolved home and XDG roots
     // onto an ambient environment before ceiling or module-launch filtering, so subprocesses
     // inherit this daemon's host layout rather than an ambient HOME or XDG root it replaced.
     projectEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {

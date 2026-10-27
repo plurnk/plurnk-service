@@ -845,7 +845,7 @@ test("{§naked-pattern} {§channel-selection}: `READ (page.html) #readable`, the
     } finally { await db.close(); }
 });
 
-test("{§exec-entry-sink} a FETCHED html page (via the exec sink) keeps its source as body and its Markdown as #readable", async () => {
+test("{§execution-output-identity} a FETCHED html page (via the exec sink) keeps its source as body and its Markdown as #readable", async () => {
     const rawHtml = `<html><head><script>ads()</script></head><body><h1>Headline</h1><p>${"the body text remains readable ".repeat(20)}</p></body></html>`;
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
@@ -877,7 +877,7 @@ test("{§exec-entry-sink} a FETCHED html page (via the exec sink) keeps its sour
         const loopId = await insertLoop(db, sessionId, 1, "fetch test");
         const turnId = await insertTurn(db, loopId, 1, 102);
         await engine.dispatch({ statement: { runtime: "fetchstub", aside: null, target: null, metadata: null, lineMarker: null, body: "go", position: { line: 1, column: 1 } }, workspaceId, sessionId, loopId, turnId, sequence: 1, origin: "model" });
-        await quiesceExecs(schemes); // {§exec-entry-sink}: settle materialization before db.close().
+        await quiesceExecs(schemes); // {§execution-output-identity}: settle materialization before db.close().
 
         const entry = await db.test_get_entry_by_coordinate.get<{ id: number }>({
             scheme: "https",

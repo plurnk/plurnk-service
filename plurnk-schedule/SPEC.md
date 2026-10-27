@@ -48,7 +48,7 @@ status, not a failure or a claim of delivery; no dates or wake conditions change
 
 | Fact | Rule |
 | --- | --- |
-| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§workspace-env}), and a Session's own `env` override wins for the verbs that Session invokes ({§functionality-scope}) |
+| The layers | the package declares `TZ=UTC` in `.env.defaults`; the operator's environment overrides it, a workspace overrides it through the `env` family ({§execution-output-identity}), and a Session's own `env` override wins for the verbs that Session invokes ({§functionality-scope}) |
 | A rule's zone | the zone stamped at its `add`; a later `env` change moves no existing rule |
 | Without a `DTSTART` | a rule starts when it is read, at the next whole second in the effective zone, so its first occurrence is still ahead: a workspace rule is read at `add`, a service rule once, when the daemon starts, in the service's zone |
 | A `DTSTART` | a floating one is read in the effective zone; one with a `TZID` or a UTC `Z` keeps its own zone |
@@ -73,7 +73,7 @@ The module holds one armed occurrence per enabled (workspace, alias). At the occ
 | Fact | Rule |
 | --- | --- |
 | The message | joins the session's live loop, waking it if parked, or starts a new loop ({§message-arrival}, {§message-causal-source}) |
-| A future occurrence | not live work for WAIT ({§wait-obligation-matrix}); it neither holds a loop open nor concludes it |
+| A future occurrence | not live work for WAIT ({§loop-completion}); it neither holds a loop open nor concludes it |
 | The next occurrence | arms from the present: a late fire delivers once and skips what it missed, never a backlog |
 | A missing session or a refused delivery | disarms the rule and lists it `unavailable` with the Problem; `enable` retries; a failure belongs to the complete definition, including its target and prompt, not just the recurrence, and retry or replacement clears it only on successful publication |
 

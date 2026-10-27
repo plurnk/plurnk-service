@@ -97,7 +97,7 @@ export default class ClientInput {
         return value;
     }
 
-    // {§workspace-name} — new names are checked at creation and rename; existing names are not rewritten.
+    // {§execution-output-identity} — new names are checked at creation and rename; existing names are not rewritten.
     static assertOptionalWorkspaceName(context: string, field: string, value: unknown): string | undefined {
         const name = ClientInput.assertOptionalName(context, field, value);
         if (name === undefined) return undefined;

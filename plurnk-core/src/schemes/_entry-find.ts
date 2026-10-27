@@ -826,7 +826,7 @@ export default class EntryFind {
         // The catalog group's default channel carries its bare addressable path;
         // align each selected resource through the same EntryManifest.toPath the catalog
         // uses. Resource order is preserved (rank for ~full-text).
-        // {§entry-owner} A match and its catalog row must have the same full resource identity.
+        // {§execution-output-identity} A match and its catalog row must have the same full resource identity.
         const byPath = new Map((await EntryManifest.catalogRowsFor(
             { ...ctx, defaultChannelFor: (name) => name === scheme ? manifest.defaultChannel : ctx.defaultChannelFor?.(name) ?? "body" },
             scheme,

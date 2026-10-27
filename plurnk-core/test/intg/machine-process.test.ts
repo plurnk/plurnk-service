@@ -955,7 +955,7 @@ describe("session-topology-mechanics", () => {
 
 const TERMINAL = new Set([200, 413, 429, 499, 500, 508]);
 
-test("{§session-auto-name} N self-forks of one parent get UNIQUE, individually-addressable names", async () => {
+test("{§execution-output-identity} N self-forks of one parent get UNIQUE, individually-addressable names", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-uniq-${crypto.randomUUID()}`);
@@ -977,7 +977,7 @@ test("{§session-auto-name} N self-forks of one parent get UNIQUE, individually-
     } finally { await db.close(); }
 });
 
-test("{§session-auto-name}: concurrent unnamed forks atomically claim distinct short names", async () => {
+test("{§execution-output-identity}: concurrent unnamed forks atomically claim distinct short names", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `fork-concurrent-${crypto.randomUUID()}`);
@@ -1017,12 +1017,12 @@ test("{§machine-processes} a fork inherits the parent's loops as HISTORY (clamp
     } finally { await db.close(); }
 });
 
-test("{§session-obligations} the completion gate and child orientation use the same any-unresolved-loop liveness law", async () => {
+test("{§loop-completion} the completion gate and child orientation use the same any-unresolved-loop liveness law", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `gate-orient-${crypto.randomUUID()}`);
         const parent = await insertSession(db, workspaceId);
-        // {§session-obligations} — the gate reads the same view the wait matrix and the drain do.
+        // {§loop-completion} — the gate reads the same view the wait matrix and the drain do.
         const gate = async (): Promise<boolean> => (await db.session_live_obligations.get<{ sessions: 0 | 1 }>({ session_id: parent }))?.sessions === 1;
         const orientCount = async (): Promise<number> => (await db.engine_child_sessions_live.all<{ name: string }>({ session_id: parent })).length;
 

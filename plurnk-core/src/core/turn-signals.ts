@@ -6,7 +6,7 @@ export const ENGINE_PROBLEMS = Object.freeze({
         code: "max-commands-exceeded",
         detail: "Later operations were not executed because the turn exceeded its operation limit.",
     },
-    // {§empty-turn} — the strike is silent; the error row is how the model hears it.
+    // {§outside-text} — the strike is silent; the error row is how the model hears it.
     no_operation: {
         status: 422,
         code: "no-operation",

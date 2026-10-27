@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import HostPaths from "./HostPaths.ts";
 
-test("{§workspace-label} a folder is spelled from the daemon's home: ~ for it, ~/ beneath it, absolute elsewhere", () => {
+test("{§execution-output-identity} a folder is spelled from the daemon's home: ~ for it, ~/ beneath it, absolute elsewhere", () => {
     const paths = new HostPaths({ home: "/home/tester", env: {} });
     for (const [folder, label] of [
         ["/home/tester", "~"],
@@ -128,7 +128,7 @@ test("{§host-path-layout} expands only explicit Plurnk ~/ overrides", () => {
     assert.equal(paths.expandUserPath("./plurnk.db"), "./plurnk.db");
 });
 
-test("{§host-path-layout} {§exec-env-scoped} projectEnvironment replaces ambient HOME and XDG roots with the daemon's resolved layout", () => {
+test("{§host-path-layout} {§execution-output-identity} projectEnvironment replaces ambient HOME and XDG roots with the daemon's resolved layout", () => {
     const isolated = new HostPaths({ env: {}, home: "/tmp/isolated/home" });
     const projected = isolated.projectEnvironment({
         HOME: "/home/operator",

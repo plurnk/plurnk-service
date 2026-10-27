@@ -9,7 +9,7 @@ FROM log_entries
 WHERE session_id = $session_id;
 
 -- PREP: engine_turn_packet_boundaries
--- {§send-premature-terminate}: executed operations, independent of log curation.
+-- {§loop-completion}: executed operations, independent of log curation.
 -- NULL op identifies actionless evidence, not a dispatched statement.
 SELECT op, tx FROM log_entries
 WHERE turn_id = $turn_id
@@ -33,7 +33,7 @@ FROM unobserved_session_completions
 WHERE session_id = $session_id AND kind = 'stream';
 
 -- PREP: engine_turn_failure_count
--- {§send-premature-terminate}: model-authored failures require observation before
+-- {§loop-completion}: model-authored failures require observation before
 -- ordinary completion. This includes bounded grammar failures in admitted programs;
 -- actionless runtime evidence is handled by its owning recovery rail.
 SELECT COUNT(*) AS count FROM log_entries
@@ -45,7 +45,7 @@ WHERE turn_id = $turn_id
 -- PREP: engine_session_has_undelivered_child_term
 -- A child conclusion newer than the parent's observation cursor is complete but
 -- not delivered. This is the same durable boundary the next packet consumes,
--- not a second timestamp race. {§send-undelivered-child-term}
+-- not a second timestamp race. {§loop-completion}
 SELECT 1 AS pending FROM unobserved_session_completions
 WHERE session_id = $session_id AND kind = 'ambient'
 LIMIT 1;

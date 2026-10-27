@@ -32,7 +32,7 @@ export interface WorkspaceRow {
     hidden_at: string | null;
 }
 
-// The stored envelope; the daemon adds the folder's label, which needs its home ({§workspace-label}).
+// The stored envelope; the daemon adds the folder's label, which needs its home ({§execution-output-identity}).
 export type WorkspaceEnvelope = Omit<ClientEnvelope, "projectLabel">;
 
 export interface SessionRow {
@@ -63,7 +63,7 @@ export interface SessionQuery {
 }
 
 export default class Envelope {
-    // {§workspace-auto-name} — five characters from the line-anchor alphabet, no prefix:
+    // {§execution-output-identity} — five characters from the line-anchor alphabet, no prefix:
     // a name says nothing about where the workspace came from.
     static readonly AUTO_NAME_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 

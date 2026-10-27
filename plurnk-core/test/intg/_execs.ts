@@ -15,7 +15,7 @@ export function testExecutors(): Promise<ExecutorRegistry> {
     return _executorsPromise;
 }
 
-// {§exec-entry-sink}: idle() settles every spawn tail, including serialized entry/narration
+// {§execution-output-identity}: idle() settles every spawn tail, including serialized entry/narration
 // writes. Tests quiesce streaming EXECs before db.close(); a long-lived child is cancelled first.
 export const quiesceExecs = async (schemes: { get(name: string): unknown }): Promise<void> => {
     const exec = schemes.get("exec") as { idle?: () => Promise<void> } | undefined;

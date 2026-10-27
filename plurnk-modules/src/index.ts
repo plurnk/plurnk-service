@@ -133,12 +133,12 @@ export interface ModuleSetupSeam {
     // {§module-workspace-paths}
     workspacePaths(workspaceId: number): Promise<WorkspacePaths>;
     // {§mcp-launch-environment} Ambient launch base, before the module's explicit bindings:
-    // excludes reserved names ({§exec-env-scoped}) without applying the model-command ceiling.
+    // excludes reserved names ({§execution-output-identity}) without applying the model-command ceiling.
     operatorEnvironment(): NodeJS.ProcessEnv;
-    // {§workspace-env} The workspace layer over admitted ambient values, or over a supplied
+    // {§execution-output-identity} The workspace layer over admitted ambient values, or over a supplied
     // reference-resolution environment. Never includes session overrides.
     readWorkspaceEnvironment(workspaceId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
-    // {§workspace-env} The same layers with the Session's own overrides on top ({§functionality-scope}).
+    // {§execution-output-identity} The same layers with the Session's own overrides on top ({§functionality-scope}).
     readSessionEnvironment(workspaceId: number, sessionId: number): Promise<(ambient?: NodeJS.ProcessEnv) => NodeJS.ProcessEnv>;
     // {§module-workspace-directory} The host owns placement; the module owns the contents.
     workspaceStateDirectory(workspaceId: number, namespaceOwner: string): Promise<string>;

@@ -78,7 +78,7 @@ export default class SchemeRegistry {
     #referenceDocs: Promise<readonly { name: string; scheme: string | null; content: string }[]> | undefined;
 
 
-    // `fetchWeb` ({§exec-entry-sink}) is forwarded to the exec handler's content:null sink; default
+    // `fetchWeb` ({§execution-output-identity}) is forwarded to the exec handler's content:null sink; default
     // = the https handler's web materializer, injectable so tests substitute automatic network acquisition.
     constructor(opts?: { fetchWeb?: WebFetch; readTeaching?: ReadTeaching }) {
         this.#readTeaching = opts?.readTeaching ?? readTeachingSource;
@@ -349,7 +349,7 @@ export default class SchemeRegistry {
         return handler === undefined ? undefined : Manifest.of(handler, name);
     }
 
-    // {§runtime-resource-binding} The manifest that governs one coordinate: the live half of a
+    // {§execution-output-identity} The manifest that governs one coordinate: the live half of a
     // runtime scheme may state a representation of its own.
     manifestAt(name: string, target: ParsedPath | null, workspaceId?: number): SchemeManifest | undefined {
         const handler = this.get(name, workspaceId);

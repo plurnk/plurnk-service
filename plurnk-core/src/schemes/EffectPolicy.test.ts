@@ -1,4 +1,4 @@
-// {§effect-policy-tunable} — one knob per effect and the panel is the whole map; an invalid value
+// {§exec-lifetime} — one knob per effect and the panel is the whole map; an invalid value
 // fails loudly at validation.
 
 import test, { afterEach } from "node:test";
@@ -14,14 +14,14 @@ afterEach(() => {
     }
 });
 
-test("{§effect-policy-tunable} the shipped panel proposes host and auto-runs read and pure", () => {
+test("{§exec-lifetime} the shipped panel proposes host and auto-runs read and pure", () => {
     assert.equal(EffectPolicy.decide("host"), "propose");
     assert.equal(EffectPolicy.decide("read"), "auto");
     assert.equal(EffectPolicy.decide("pure"), "auto");
     EffectPolicy.validateConfiguration();
 });
 
-test("{§effect-policy-tunable} every effect is its own knob, including proposing reads and auto-running host", () => {
+test("{§exec-lifetime} every effect is its own knob, including proposing reads and auto-running host", () => {
     process.env.PLURNK_SERVICE_EFFECT_READ = "propose";
     assert.equal(EffectPolicy.decide("read"), "propose", "a high-security deployment proposes even reads");
     assert.equal(EffectPolicy.decide("host"), "propose", "and says nothing about the others by doing so");
@@ -31,7 +31,7 @@ test("{§effect-policy-tunable} every effect is its own knob, including proposin
     assert.equal(EffectPolicy.decide("pure"), "propose");
 });
 
-test("{§effect-policy-tunable} an invalid or missing knob fails validation by its name", () => {
+test("{§exec-lifetime} an invalid or missing knob fails validation by its name", () => {
     process.env.PLURNK_SERVICE_EFFECT_READ = "maybe";
     assert.throws(() => EffectPolicy.validateConfiguration(), /PLURNK_SERVICE_EFFECT_READ must be one of propose, auto; got "maybe"/u);
     process.env.PLURNK_SERVICE_EFFECT_READ = "auto";

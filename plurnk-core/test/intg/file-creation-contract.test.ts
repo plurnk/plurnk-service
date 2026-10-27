@@ -1845,7 +1845,7 @@ test("{§problems-file} {§diagnostic-observation} a file target named like an e
 
 describe("refusal-recovery", () => {
 // {§problem-details} — a refusal carries the next step its producer knows (#1005).
-// {§fs-namespace} {§log-history-projection} {§exec-near-miss} {§unregistered-scheme-recovery} {§find-result-projection} {§exec-lifetime}
+// {§fs-namespace} {§log-history-projection} {§exec-target-routing} {§unregistered-scheme-recovery} {§find-result-projection} {§exec-lifetime}
 
 
 
@@ -2070,7 +2070,7 @@ test("{§exec-lifetime} {§diagnostic-observation} an execution that outlives it
     assert.equal(ended.problem.recovery, undefined);
 });
 
-test("{§exec-near-miss} an execution id written under another runtime names the address it holds", async (t) => {
+test("{§exec-target-routing} an execution id written under another runtime names the address it holds", async (t) => {
     const { db, ids, dispatch, sequence } = await runtime(t);
     assert.equal((await dispatch("````python3\nprint(1)\n````")).status, 200);
     const stream = await executionAddress(db, ids.turnId, sequence());

@@ -23797,9 +23797,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §send as canonical section heading in §send Messaging and turn disposition"
         },
         "message-completion": {
           "spec": "plurnk-core/SPEC.md",
@@ -23809,9 +23809,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 10,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §message-completion as canonical section heading in §send Messaging and turn disposition"
         },
         "session-finished-reply": {
           "spec": "plurnk-core/SPEC.md",
@@ -23821,9 +23821,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "message-completion",
+          "reason": "Folded non-heading tag §session-finished-reply (paragraph) into section heading §message-completion"
         },
         "loop-completion": {
           "spec": "plurnk-core/SPEC.md",
@@ -23833,9 +23833,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §loop-completion as canonical section heading in §send Messaging and turn disposition"
         },
         "session-obligations": {
           "spec": "plurnk-core/SPEC.md",
@@ -23845,9 +23845,9 @@
           "liveShape": "paragraph",
           "codeCitations": 18,
           "testCitations": 10,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §session-obligations (paragraph) into section heading §loop-completion"
         },
         "message-abandonment": {
           "spec": "plurnk-core/SPEC.md",
@@ -23857,9 +23857,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §message-abandonment (paragraph) into section heading §loop-completion"
         },
         "wait-obligation-matrix": {
           "spec": "plurnk-core/SPEC.md",
@@ -23869,9 +23869,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §wait-obligation-matrix (paragraph) into section heading §loop-completion"
         },
         "loop-response-messages": {
           "spec": "plurnk-core/SPEC.md",
@@ -23881,9 +23881,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "message-completion",
+          "reason": "Folded non-heading tag §loop-response-messages (paragraph) into section heading §message-completion"
         },
         "loop-terminal-authorship": {
           "spec": "plurnk-core/SPEC.md",
@@ -23893,9 +23893,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §loop-terminal-authorship (paragraph) into section heading §loop-completion"
         },
         "send-target-recipient": {
           "spec": "plurnk-core/SPEC.md",
@@ -23905,9 +23905,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "send",
+          "reason": "Folded non-heading tag §send-target-recipient (list) into section heading §send"
         },
         "send-response-receipt": {
           "spec": "plurnk-core/SPEC.md",
@@ -23917,9 +23917,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "message-completion",
+          "reason": "Folded non-heading tag §send-response-receipt (list) into section heading §message-completion"
         },
         "outside-text": {
           "spec": "plurnk-core/SPEC.md",
@@ -23929,9 +23929,9 @@
           "liveShape": "list",
           "codeCitations": 6,
           "testCitations": 10,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §outside-text as canonical section heading in §send Messaging and turn disposition"
         },
         "loop-answer": {
           "spec": "plurnk-core/SPEC.md",
@@ -23941,9 +23941,9 @@
           "liveShape": "list",
           "codeCitations": 6,
           "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "message-completion",
+          "reason": "Folded non-heading tag §loop-answer (list) into section heading §message-completion"
         },
         "empty-turn": {
           "spec": "plurnk-core/SPEC.md",
@@ -23953,9 +23953,9 @@
           "liveShape": "list",
           "codeCitations": 5,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "outside-text",
+          "reason": "Folded non-heading tag §empty-turn (list) into section heading §outside-text"
         },
         "terminal-evidence": {
           "spec": "plurnk-core/SPEC.md",
@@ -23965,9 +23965,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "outside-text",
+          "reason": "Folded non-heading tag §terminal-evidence (list) into section heading §outside-text"
         },
         "metadata-ignored": {
           "spec": "plurnk-core/SPEC.md",
@@ -23977,9 +23977,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "outside-text",
+          "reason": "Folded non-heading tag §metadata-ignored (list) into section heading §outside-text"
         },
         "send-idle-turn": {
           "spec": "plurnk-core/SPEC.md",
@@ -23989,9 +23989,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "send",
+          "reason": "Folded non-heading tag §send-idle-turn (list) into section heading §send"
         },
         "send-premature-terminate": {
           "spec": "plurnk-core/SPEC.md",
@@ -24001,9 +24001,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 13,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §send-premature-terminate (list) into section heading §loop-completion"
         },
         "completion-joins-live-work": {
           "spec": "plurnk-core/SPEC.md",
@@ -24013,9 +24013,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §completion-joins-live-work (list) into section heading §loop-completion"
         },
         "completion-defers-to-results": {
           "spec": "plurnk-core/SPEC.md",
@@ -24025,9 +24025,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 9,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §completion-defers-to-results (list) into section heading §loop-completion"
         },
         "send-administrative-terminal": {
           "spec": "plurnk-core/SPEC.md",
@@ -24037,9 +24037,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §send-administrative-terminal (list) into section heading §loop-completion"
         },
         "send-undelivered-child-term": {
           "spec": "plurnk-core/SPEC.md",
@@ -24049,9 +24049,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "loop-completion",
+          "reason": "Folded non-heading tag §send-undelivered-child-term (list) into section heading §loop-completion"
         },
         "exec": {
           "spec": "plurnk-core/SPEC.md",
@@ -24061,9 +24061,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §exec as canonical section heading in §exec Executions"
         },
         "exec-target-routing": {
           "spec": "plurnk-core/SPEC.md",
@@ -24073,9 +24073,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §exec-target-routing as canonical section heading in §exec Executions"
         },
         "exec-target-near-miss": {
           "spec": "plurnk-core/SPEC.md",
@@ -24085,9 +24085,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-target-routing",
+          "reason": "Folded non-heading tag §exec-target-near-miss (paragraph) into section heading §exec-target-routing"
         },
         "exec-target-documentation": {
           "spec": "plurnk-core/SPEC.md",
@@ -24097,9 +24097,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-target-routing",
+          "reason": "Folded non-heading tag §exec-target-documentation (paragraph) into section heading §exec-target-routing"
         },
         "exec-tool-fall-through": {
           "spec": "plurnk-core/SPEC.md",
@@ -24109,9 +24109,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-target-routing",
+          "reason": "Folded non-heading tag §exec-tool-fall-through (paragraph) into section heading §exec-target-routing"
         },
         "exec-source-temporary": {
           "spec": "plurnk-core/SPEC.md",
@@ -24121,9 +24121,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-target-routing",
+          "reason": "Folded non-heading tag §exec-source-temporary (paragraph) into section heading §exec-target-routing"
         },
         "exec-scratch-directory": {
           "spec": "plurnk-core/SPEC.md",
@@ -24133,9 +24133,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-target-routing",
+          "reason": "Folded non-heading tag §exec-scratch-directory (paragraph) into section heading §exec-target-routing"
         },
         "exec-registry-resolves": {
           "spec": "plurnk-core/SPEC.md",
@@ -24145,9 +24145,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-target-routing",
+          "reason": "Folded non-heading tag §exec-registry-resolves (paragraph) into section heading §exec-target-routing"
         },
         "exec-near-miss": {
           "spec": "plurnk-core/SPEC.md",
@@ -24157,9 +24157,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-target-routing",
+          "reason": "Folded non-heading tag §exec-near-miss (paragraph) into section heading §exec-target-routing"
         },
         "exec-lifetime": {
           "spec": "plurnk-core/SPEC.md",
@@ -24169,9 +24169,9 @@
           "liveShape": "paragraph",
           "codeCitations": 10,
           "testCitations": 8,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §exec-lifetime as canonical section heading in §exec Executions"
         },
         "exec-host-proposes": {
           "spec": "plurnk-core/SPEC.md",
@@ -24181,9 +24181,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-lifetime",
+          "reason": "Folded non-heading tag §exec-host-proposes (paragraph) into section heading §exec-lifetime"
         },
         "entry-owner": {
           "spec": "plurnk-core/SPEC.md",
@@ -24193,9 +24193,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §entry-owner (paragraph) into section heading §execution-output-identity"
         },
         "execution-output-identity": {
           "spec": "plurnk-core/SPEC.md",
@@ -24205,9 +24205,9 @@
           "liveShape": "paragraph",
           "codeCitations": 6,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §execution-output-identity as canonical section heading in §exec Executions"
         },
         "runtime-resource-binding": {
           "spec": "plurnk-core/SPEC.md",
@@ -24217,9 +24217,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §runtime-resource-binding (paragraph) into section heading §execution-output-identity"
         },
         "session-auto-name": {
           "spec": "plurnk-core/SPEC.md",
@@ -24229,9 +24229,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §session-auto-name (paragraph) into section heading §execution-output-identity"
         },
         "workspace-name": {
           "spec": "plurnk-core/SPEC.md",
@@ -24241,9 +24241,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §workspace-name (paragraph) into section heading §execution-output-identity"
         },
         "workspace-label": {
           "spec": "plurnk-core/SPEC.md",
@@ -24253,9 +24253,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §workspace-label (paragraph) into section heading §execution-output-identity"
         },
         "workspace-auto-name": {
           "spec": "plurnk-core/SPEC.md",
@@ -24265,9 +24265,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §workspace-auto-name (paragraph) into section heading §execution-output-identity"
         },
         "exec-readpure-ungated": {
           "spec": "plurnk-core/SPEC.md",
@@ -24277,9 +24277,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-lifetime",
+          "reason": "Folded non-heading tag §exec-readpure-ungated (paragraph) into section heading §exec-lifetime"
         },
         "effect-policy-tunable": {
           "spec": "plurnk-core/SPEC.md",
@@ -24289,9 +24289,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-lifetime",
+          "reason": "Folded non-heading tag §effect-policy-tunable (paragraph) into section heading §exec-lifetime"
         },
         "exec-stream": {
           "spec": "plurnk-core/SPEC.md",
@@ -24301,9 +24301,9 @@
           "liveShape": "paragraph",
           "codeCitations": 15,
           "testCitations": 9,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained §exec-stream as canonical section heading in §exec Executions"
         },
         "stream-observation-result": {
           "spec": "plurnk-core/SPEC.md",
@@ -24313,9 +24313,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-stream",
+          "reason": "Folded non-heading tag §stream-observation-result (paragraph) into section heading §exec-stream"
         },
         "stream-channel-deletion": {
           "spec": "plurnk-core/SPEC.md",
@@ -24325,9 +24325,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-stream",
+          "reason": "Folded non-heading tag §stream-channel-deletion (paragraph) into section heading §exec-stream"
         },
         "exec-conclusion-summary": {
           "spec": "plurnk-core/SPEC.md",
@@ -24337,9 +24337,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-stream",
+          "reason": "Folded non-heading tag §exec-conclusion-summary (paragraph) into section heading §exec-stream"
         },
         "exec-concurrency": {
           "spec": "plurnk-core/SPEC.md",
@@ -24349,9 +24349,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-lifetime",
+          "reason": "Folded non-heading tag §exec-concurrency (paragraph) into section heading §exec-lifetime"
         },
         "exec-stream-page": {
           "spec": "plurnk-core/SPEC.md",
@@ -24361,9 +24361,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-stream",
+          "reason": "Folded non-heading tag §exec-stream-page (paragraph) into section heading §exec-stream"
         },
         "workspace-env": {
           "spec": "plurnk-core/SPEC.md",
@@ -24373,9 +24373,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §workspace-env (paragraph) into section heading §execution-output-identity"
         },
         "exec-env-scoped": {
           "spec": "plurnk-core/SPEC.md",
@@ -24385,9 +24385,9 @@
           "liveShape": "paragraph",
           "codeCitations": 14,
           "testCitations": 8,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §exec-env-scoped (paragraph) into section heading §execution-output-identity"
         },
         "exec-hold-until-concluded": {
           "spec": "plurnk-core/SPEC.md",
@@ -24397,9 +24397,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "exec-lifetime",
+          "reason": "Folded non-heading tag §exec-hold-until-concluded (list) into section heading §exec-lifetime"
         },
         "exec-entry-sink": {
           "spec": "plurnk-core/SPEC.md",
@@ -24409,9 +24409,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "execution-output-identity",
+          "reason": "Folded non-heading tag §exec-entry-sink (list) into section heading §execution-output-identity"
         }
       },
       "tests": {
@@ -24430,9 +24430,9 @@
             "state-root",
             "workspace-label"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained HostPaths.test.ts (unit) covering exec-env-scoped, host-path-layout, share-folder"
         },
         "plurnk-core/src/schemes/EffectPolicy.test.ts": {
           "tier": "unit",
@@ -24445,9 +24445,9 @@
           "citedTags": [
             "effect-policy-tunable"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained EffectPolicy.test.ts (unit) covering effect-policy-tunable"
         },
         "plurnk-core/src/schemes/ExecScheduler.test.ts": {
           "tier": "unit",
@@ -24460,9 +24460,9 @@
           "citedTags": [
             "exec-concurrency"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained ExecScheduler.test.ts (unit) covering exec-concurrency"
         },
         "plurnk-core/src/schemes/ExecScratch.test.ts": {
           "tier": "unit",
@@ -24475,9 +24475,9 @@
           "citedTags": [
             "exec-scratch-directory"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained ExecScratch.test.ts (unit) covering exec-scratch-directory"
         },
         "plurnk-core/src/schemes/exec-lifetime.test.ts": {
           "tier": "unit",
@@ -24490,9 +24490,9 @@
           "citedTags": [
             "exec-lifetime"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained exec-lifetime.test.ts (unit) covering exec-lifetime"
         },
         "plurnk-core/src/server/envelope.test.ts": {
           "tier": "unit",
@@ -24505,9 +24505,9 @@
           "citedTags": [
             "workspace-auto-name"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained envelope.test.ts (unit) covering workspace-auto-name"
         },
         "plurnk-core/test/intg/Digest.programmatic.test.ts": {
           "tier": "intg",
@@ -24521,9 +24521,9 @@
             "digest-programmatic-surface",
             "outside-text"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.interstitial-fence.test.ts",
+          "reason": "Merged Digest.programmatic.test.ts (2 tests) into Engine.interstitial-fence.test.ts"
         },
         "plurnk-core/test/intg/Engine.exec-surfaces.test.ts": {
           "tier": "intg",
@@ -24540,9 +24540,9 @@
             "executor-exit-code",
             "log-coordinate-hierarchy"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained Engine.exec-surfaces.test.ts (intg) covering context-fit, exec-stream, exec-stream-page"
         },
         "plurnk-core/test/intg/Engine.interstitial-fence.test.ts": {
           "tier": "intg",
@@ -24564,9 +24564,9 @@
             "reasoning-row",
             "unfenced-operation"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained Engine.interstitial-fence.test.ts (intg) covering balanced-fences, empty-turn, message-completion"
         },
         "plurnk-core/test/intg/Engine.lifecycle.test.ts": {
           "tier": "intg",
@@ -24586,9 +24586,9 @@
             "send-response-receipt",
             "wait-obligation-matrix"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged Engine.lifecycle.test.ts (9 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/Engine.message-replies.test.ts": {
           "tier": "intg",
@@ -24604,9 +24604,9 @@
             "send-response-receipt",
             "turn-disposition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged Engine.message-replies.test.ts (4 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/Engine.structured-stream.test.ts": {
           "tier": "intg",
@@ -24621,9 +24621,9 @@
             "markerless-first-page",
             "stream-observation-result"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.exec-surfaces.test.ts",
+          "reason": "Merged Engine.structured-stream.test.ts (7 tests) into Engine.exec-surfaces.test.ts"
         },
         "plurnk-core/test/intg/Exec.effect.test.ts": {
           "tier": "intg",
@@ -24641,9 +24641,9 @@
             "executor-scheme-output",
             "executor-sinks"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged Exec.effect.test.ts (6 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/Exec.invocation.test.ts": {
           "tier": "intg",
@@ -24663,9 +24663,9 @@
             "executor-tool-registry",
             "tools-resource-discovery"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged Exec.invocation.test.ts (10 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/Exec.scheme-source.test.ts": {
           "tier": "intg",
@@ -24687,9 +24687,9 @@
             "op-execution-order",
             "session-read-scope"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged Exec.scheme-source.test.ts (12 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/Exec.scheme.test.ts": {
           "tier": "intg",
@@ -24709,9 +24709,9 @@
             "executor-subprocess-routing",
             "fs-namespace"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained Exec.scheme.test.ts (intg) covering diagnostic-observation, exec-env-scoped, exec-executor-slot"
         },
         "plurnk-core/test/intg/completion-defers-to-results.test.ts": {
           "tier": "intg",
@@ -24728,9 +24728,9 @@
             "send-premature-terminate",
             "session-cancel-trigger"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged completion-defers-to-results.test.ts (7 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/effect-policy.test.ts": {
           "tier": "intg",
@@ -24744,9 +24744,9 @@
             "configuration-repair-path",
             "effect-policy-tunable"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged effect-policy.test.ts (2 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/entry-owner.test.ts": {
           "tier": "intg",
@@ -24762,9 +24762,9 @@
             "execution-output-identity",
             "session-auto-name"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged entry-owner.test.ts (4 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/exec-conclude-honesty.test.ts": {
           "tier": "intg",
@@ -24782,9 +24782,9 @@
             "scheme-subscriptions",
             "send-premature-terminate"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.exec-surfaces.test.ts",
+          "reason": "Merged exec-conclude-honesty.test.ts (8 tests) into Engine.exec-surfaces.test.ts"
         },
         "plurnk-core/test/intg/exec-concurrency.test.ts": {
           "tier": "intg",
@@ -24799,9 +24799,9 @@
             "executor-scheme-output",
             "stream-asked-stop"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged exec-concurrency.test.ts (3 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/exec-detached.test.ts": {
           "tier": "intg",
@@ -24814,9 +24814,9 @@
           "citedTags": [
             "exec-lifetime"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged exec-detached.test.ts (1 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/exec-env-scoping.test.ts": {
           "tier": "intg",
@@ -24832,9 +24832,9 @@
             "functionality-scope",
             "host-path-layout"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged exec-env-scoping.test.ts (4 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/exec-hold.test.ts": {
           "tier": "intg",
@@ -24847,9 +24847,9 @@
           "citedTags": [
             "exec-hold-until-concluded"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged exec-hold.test.ts (4 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/exec-lifetime.test.ts": {
           "tier": "intg",
@@ -24865,9 +24865,9 @@
             "executor-metadata",
             "notifications-loop-terminated"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged exec-lifetime.test.ts (5 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/exec-stream-page.test.ts": {
           "tier": "intg",
@@ -24883,9 +24883,9 @@
             "exec-stream-page",
             "markerless-first-page"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.exec-surfaces.test.ts",
+          "reason": "Merged exec-stream-page.test.ts (3 tests) into Engine.exec-surfaces.test.ts"
         },
         "plurnk-core/test/intg/exec-timeout.test.ts": {
           "tier": "intg",
@@ -24898,9 +24898,9 @@
           "citedTags": [
             "exec-lifetime"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged exec-timeout.test.ts (1 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/exec-tool-fall-through.test.ts": {
           "tier": "intg",
@@ -24916,9 +24916,9 @@
             "exec-tool-fall-through",
             "pinned-wording-core"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged exec-tool-fall-through.test.ts (2 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/execs-batteries.test.ts": {
           "tier": "intg",
@@ -24934,9 +24934,9 @@
             "executor-consumer-boundary",
             "executor-effect"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged execs-batteries.test.ts (3 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/find-over-stream.test.ts": {
           "tier": "intg",
@@ -24949,9 +24949,9 @@
           "citedTags": [
             "exec-stream"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.exec-surfaces.test.ts",
+          "reason": "Merged find-over-stream.test.ts (1 tests) into Engine.exec-surfaces.test.ts"
         },
         "plurnk-core/test/intg/live-harness-response.test.ts": {
           "tier": "intg",
@@ -24964,9 +24964,9 @@
           "citedTags": [
             "loop-response-messages"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged live-harness-response.test.ts (2 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/loop-answer.test.ts": {
           "tier": "intg",
@@ -24981,9 +24981,9 @@
             "message-completion",
             "turn-source-resources"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged loop-answer.test.ts (2 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/mcp-env-composition.test.ts": {
           "tier": "intg",
@@ -24999,9 +24999,9 @@
             "mcp-launch-environment",
             "mcp-server-settings"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged mcp-env-composition.test.ts (5 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/mcp-receipt-recovery.test.ts": {
           "tier": "intg",
@@ -25016,9 +25016,9 @@
             "exec-stream-page",
             "stream-observation-result"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.exec-surfaces.test.ts",
+          "reason": "Merged mcp-receipt-recovery.test.ts (1 tests) into Engine.exec-surfaces.test.ts"
         },
         "plurnk-core/test/intg/mcp-resource-owners.test.ts": {
           "tier": "intg",
@@ -25035,9 +25035,9 @@
             "mcp-result-content",
             "runtime-resource-binding"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged mcp-resource-owners.test.ts (4 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/message-completion.test.ts": {
           "tier": "intg",
@@ -25052,9 +25052,9 @@
             "loop-completion",
             "message-completion"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged message-completion.test.ts (21 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/module-runtime.test.ts": {
           "tier": "intg",
@@ -25069,9 +25069,9 @@
             "runtime-resource-binding",
             "scheme-ctx-workspace-environment"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged module-runtime.test.ts (7 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/native-tool-calls.test.ts": {
           "tier": "intg",
@@ -25086,9 +25086,9 @@
             "native-tool-call-receipt",
             "provider-native-tool-calls"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged native-tool-calls.test.ts (2 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/note-continuity.test.ts": {
           "tier": "intg",
@@ -25104,9 +25104,9 @@
             "notice-directive",
             "reasoning-operations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.interstitial-fence.test.ts",
+          "reason": "Merged note-continuity.test.ts (2 tests) into Engine.interstitial-fence.test.ts"
         },
         "plurnk-core/test/intg/outside-text-notes.test.ts": {
           "tier": "intg",
@@ -25119,9 +25119,9 @@
           "citedTags": [
             "outside-text"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.interstitial-fence.test.ts",
+          "reason": "Merged outside-text-notes.test.ts (1 tests) into Engine.interstitial-fence.test.ts"
         },
         "plurnk-core/test/intg/premature-terminate-child.test.ts": {
           "tier": "intg",
@@ -25140,9 +25140,9 @@
             "send-wait-scope",
             "session-loop-lifecycle"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged premature-terminate-child.test.ts (11 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/reply-completion.test.ts": {
           "tier": "intg",
@@ -25160,9 +25160,9 @@
             "outside-text",
             "quotation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged reply-completion.test.ts (10 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/send-200-mutation-receipts.test.ts": {
           "tier": "intg",
@@ -25175,9 +25175,9 @@
           "citedTags": [
             "completion-defers-to-results"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged send-200-mutation-receipts.test.ts (1 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/send-200-stream-success.test.ts": {
           "tier": "intg",
@@ -25192,9 +25192,9 @@
             "loop-response-messages",
             "send-premature-terminate"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged send-200-stream-success.test.ts (3 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/send-conclusion.test.ts": {
           "tier": "intg",
@@ -25218,9 +25218,9 @@
             "turn-source-resources",
             "wait-obligation-matrix"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained send-conclusion.test.ts (intg) covering emission-history, empty-turn, loop-answer"
         },
         "plurnk-core/test/intg/send-response.test.ts": {
           "tier": "intg",
@@ -25240,9 +25240,9 @@
             "send-body",
             "send-response-receipt"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged send-response.test.ts (5 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/send-target-recipient.test.ts": {
           "tier": "intg",
@@ -25256,9 +25256,9 @@
             "problems-dispatch",
             "send-target-recipient"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged send-target-recipient.test.ts (2 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/session-message-obligation.test.ts": {
           "tier": "intg",
@@ -25274,9 +25274,9 @@
             "session-obligations",
             "turn-cap-counts-the-tree"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged session-message-obligation.test.ts (2 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/session-obligations.test.ts": {
           "tier": "intg",
@@ -25289,9 +25289,9 @@
           "citedTags": [
             "session-obligations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged session-obligations.test.ts (1 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/session-overview.test.ts": {
           "tier": "intg",
@@ -25307,9 +25307,9 @@
             "message-abandonment",
             "session-finished-reply"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/send-conclusion.test.ts",
+          "reason": "Merged session-overview.test.ts (1 tests) into send-conclusion.test.ts"
         },
         "plurnk-core/test/intg/stream-channel-deletion.test.ts": {
           "tier": "intg",
@@ -25324,9 +25324,9 @@
             "readable-channel",
             "stream-channel-deletion"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.exec-surfaces.test.ts",
+          "reason": "Merged stream-channel-deletion.test.ts (1 tests) into Engine.exec-surfaces.test.ts"
         },
         "plurnk-core/test/intg/stream-liveness.test.ts": {
           "tier": "intg",
@@ -25339,9 +25339,9 @@
           "citedTags": [
             "exec-stream"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.exec-surfaces.test.ts",
+          "reason": "Merged stream-liveness.test.ts (1 tests) into Engine.exec-surfaces.test.ts"
         },
         "plurnk-core/test/intg/terminal-evidence.test.ts": {
           "tier": "intg",
@@ -25358,9 +25358,9 @@
             "output-allowance-notice",
             "terminal-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.interstitial-fence.test.ts",
+          "reason": "Merged terminal-evidence.test.ts (9 tests) into Engine.interstitial-fence.test.ts"
         },
         "plurnk-core/test/intg/workspace-env.test.ts": {
           "tier": "intg",
@@ -25373,9 +25373,9 @@
           "citedTags": [
             "workspace-env"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged workspace-env.test.ts (1 tests) into Exec.scheme.test.ts"
         },
         "plurnk-core/test/intg/workspaces.test.ts": {
           "tier": "intg",
@@ -25389,9 +25389,9 @@
             "validation-topology",
             "workspace-name"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Exec.scheme.test.ts",
+          "reason": "Merged workspaces.test.ts (4 tests) into Exec.scheme.test.ts"
         }
       }
     },

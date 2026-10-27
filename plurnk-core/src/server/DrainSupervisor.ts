@@ -51,7 +51,7 @@ export type DrainInjectionArgs = {
     childProviderSpec?: ProviderSpec | null;
     turnCeiling?: TurnCeilingSelection;
     openPaths?: string[];
-    // {§session-obligations} — the session's own operation that sends the message.
+    // {§loop-completion} — the session's own operation that sends the message.
     opener?: MessageOpener;
 };
 
@@ -120,7 +120,7 @@ type InjectPrompt = (
     opener?: MessageOpener,
 ) => Promise<{ loopId: number; turnSeq: number; messageId: number } | null>;
 type AssertInjectionCompatibility = (args: InjectionCompatibility) => Promise<void>;
-// {§message-abandonment} — completes, 499, the messages other sessions sent that an ended loop left unanswered.
+// {§loop-completion} — completes, 499, the messages other sessions sent that an ended loop left unanswered.
 type CompleteAbandonedMessages = (workspaceId: number, sessionId: number, loopId: number, status: number) => Promise<unknown>;
 type EmitEvent = (workspaceId: number, method: string, params: unknown) => void;
 
@@ -764,7 +764,7 @@ export default class DrainSupervisor {
         await this.#abandonUnanswered(workspaceId, sessionId, loopId, result.status);
     }
 
-    // {§message-abandonment} — after a loop's end is durable and published, whatever it left unanswered is
+    // {§loop-completion} — after a loop's end is durable and published, whatever it left unanswered is
     // answered for it. A failure here is logged, never a second failure of the loop that already ended.
     async #abandonUnanswered(workspaceId: number, sessionId: number, loopId: number, status: number): Promise<void> {
         try {
@@ -980,7 +980,7 @@ export default class DrainSupervisor {
     }
 
     async #sessionHasLiveObligation(sessionId: number): Promise<boolean> {
-        // {§session-obligations} — the same row the completion gate reads.
+        // {§loop-completion} — the same row the completion gate reads.
         const held = await this.#db.session_live_obligations.get<{ streams: 0 | 1; sessions: 0 | 1 }>({ session_id: sessionId });
         return held !== undefined && (held.streams === 1 || held.sessions === 1);
     }

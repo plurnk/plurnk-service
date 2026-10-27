@@ -147,7 +147,7 @@ export default class SubprocessExecutor extends BaseExecutor {
             // drive cancellation manually rather than via spawn's `signal`
             // option, which only kills the direct child ({§executor-cancellation}).
             // env: consumer-scoped when provided (drops plurnk's own secrets,
-            // {§exec-env-scoped}); host env inherited when absent.
+            // {§execution-output-identity}); host env inherited when absent.
             // fd0: a provided stdin body gets a pipe (written + EOF'd below); NO
             // stdin body gets /dev/null, never a dangling open pipe. A bare
             // interpreter reached through a generic runtime reads its program from

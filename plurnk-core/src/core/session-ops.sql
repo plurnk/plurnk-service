@@ -31,5 +31,5 @@ SELECT workspace_id, name, origin, parent_session_id,
 FROM sessions WHERE id = $id;
 
 -- PREP: session_live_obligations
--- {§session-obligations}: the session's open non-detached streams and live children, as one row.
+-- {§loop-completion}: the session's open non-detached streams and live children, as one row.
 SELECT streams, sessions FROM session_obligations WHERE session_id = $session_id;

@@ -123,7 +123,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
                 },
                 packetCount: 1,
                 waitUntil: null,
-                // {§session-obligations} A peer's task is no session's operation.
+                // {§loop-completion} A peer's task is no session's operation.
                 invocation: null,
             });
             assert.equal(typeof own?.terminatedAt, "string");

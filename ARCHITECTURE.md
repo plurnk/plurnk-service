@@ -401,14 +401,14 @@ interchangeable.
 ## How an execution outcome is observed
 
 An external execution answers `200 started`, gated or not: the
-runtime slot resolves the executor ({§exec-registry-resolves}), the spawn
+runtime slot resolves the executor ({§exec-target-routing}), the spawn
 backgrounds, and its output is *observed, not fetched* ({§exec-stream}). The
 executor streams into the channels of its `<tag>:///<id>` output entry
 ({§execution-output-identity}) and settles them (`closed` or `errored`); an executor's refusal
 travels as the settled status of the operation's log row, never as channel
 content. The model learns the result through the ordinary environment
 observation of newly publishable stream content on a later turn — there is no
-same-turn receipt ({§exec-readpure-ungated}). `read`/`pure` runtimes auto-run;
+same-turn receipt ({§exec-lifetime}). `read`/`pure` runtimes auto-run;
 `host` runtimes propose — and so does any other operation that declares the
 host effect, because the effect is the rule and the op is not: an outbound
 POST, PUT or DELETE leaves the machine exactly as a subprocess does

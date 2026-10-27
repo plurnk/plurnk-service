@@ -66,7 +66,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-model-projection}", "plurnk-core/test/intg/mcp-resource-owners.test.ts", "plurnk-core/test/intg/actor-boundary.test.ts"],
+        evidence: ["{§mcp-core-matrix}", "{§mcp-model-projection}", "plurnk-core/test/intg/Exec.scheme.test.ts", "plurnk-core/test/intg/Session.Boundary.test.ts"],
         note: "Published through the server's resource authority into Plurnk entries; not a raw client surface.",
     },
     {

@@ -22,7 +22,7 @@ WHERE w.workspace_id = $workspace_id AND w.name = $session_name
   AND ($kind != 'note' OR s.turn_id IS NOT NULL);
 
 -- PREP: turn_source_loop_answer
--- {§loop-answer} A loop's answer is the latest reply its own loop gave to its originating message
+-- {§message-completion} A loop's answer is the latest reply its own loop gave to its originating message
 -- (ordinal 1). The loop's status says whether an
 -- absent answer is still to come.
 SELECT l.status, l.terminal_result, l.terminated_by,
@@ -35,7 +35,7 @@ LEFT JOIN message_sources m ON m.loop_id = l.id AND m.ordinal = 1
 WHERE w.workspace_id = $workspace_id AND w.name = $session_name AND l.sequence = $loop_seq;
 
 -- PREP: turn_source_candidates
--- {§loop-answer}: `ops://<session>/<loop>` is a resource of its own beside each turn's emission, so
+-- {§message-completion}: `ops://<session>/<loop>` is a resource of its own beside each turn's emission, so
 -- a FIND over a session's programs also finds what its loops said.
 SELECT s.turn_id, s.kind, s.sequence, w.name AS authority,
        '/' || l.sequence || '/' || t.sequence || CASE WHEN s.kind = 'note' THEN '/' || s.sequence ELSE '' END AS pathname,

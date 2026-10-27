@@ -287,7 +287,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             } });
         this.#drains = new DrainSupervisor({
             db,
-            // {§message-abandonment} — the daemon answers, 499, what an ended loop left unanswered.
+            // {§loop-completion} — the daemon answers, 499, what an ended loop left unanswered.
             completeAbandonedMessages: (workspaceId, sessionId, loopId, status) =>
                 MessageAbandonment.complete(this.#engine, this.#db, workspaceId, sessionId, loopId, status),
             lifecycle: this.#lifecycle,
@@ -613,7 +613,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return (await Envelope.listWorkspaces(this.#db, hidden)).map((row) => ({ ...row, project_label: this.#projectLabel(row.project_root) }));
     }
 
-    // {§workspace-label} — the folder as the daemon spells it for display: the spelling a default name takes.
+    // {§execution-output-identity} — the folder as the daemon spells it for display: the spelling a default name takes.
     #projectLabel(projectRoot: string | null): string | null {
         return projectRoot === null ? null : this.#hostPaths.abbreviateUserPath(projectRoot);
     }
@@ -806,7 +806,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         const explicit = ClientInput.assertOptionalWorkspaceName("workspace.create", "name", args.name);
         const projectRoot = ClientInput.assertProjectRoot("workspace.create", args.projectRoot);
         const settings = ClientInput.parseSettings(args.settings);
-        // {§workspace-name} — with a project root and no name, the workspace is named after the root with
+        // {§execution-output-identity} — with a project root and no name, the workspace is named after the root with
         // the daemon's home abbreviated to `~`, and that name selects the existing workspace when one exists:
         // a default is a convention shared by every client, never a second workspace.
         const derived = explicit === undefined && projectRoot !== null ? this.#hostPaths.abbreviateUserPath(projectRoot) : undefined;
@@ -1166,7 +1166,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         }
 
         // Discover + probe the installed executor siblings, then hand the
-        // registry to the engine for exec dispatch ({§exec-registry-resolves}).
+        // registry to the engine for exec dispatch ({§exec-target-routing}).
         const executors = await ExecutorRegistry.build({ cwd: this.#discoveryCwd });
         for (const { runtime, error } of executors.configurationErrors()) {
             this.#configuration.record(`executor:${runtime}`, error);

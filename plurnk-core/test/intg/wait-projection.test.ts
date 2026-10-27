@@ -159,7 +159,7 @@ test("{§session-wait-timing} an early wake retires the override; a later bare W
 });
 
 for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]) {
-    test(`{§park-202-only} {§wait-obligation-matrix} ${header} parks on the actual live child, not the decoration`, async (t) => {
+    test(`{§park-202-only} {§loop-completion} ${header} parks on the actual live child, not the decoration`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "wait-obligations");
@@ -188,7 +188,7 @@ for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]
     });
 }
 
-test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose without inventing a response", async () => {
+test("{§park-202-only} {§loop-completion} WAIT retains literal prose without inventing a response", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "continuation-inventory");
@@ -216,7 +216,7 @@ test("{§park-202-only} {§wait-obligation-matrix} WAIT retains literal prose wi
     } finally { await db.close(); }
 });
 
-test("{§wait-obligation-matrix} every idle WAIT receives the same plain receipt, however often it repeats", async () => {
+test("{§loop-completion} every idle WAIT receives the same plain receipt, however often it repeats", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `idle-wait-${crypto.randomUUID()}`);

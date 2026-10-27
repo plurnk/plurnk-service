@@ -822,13 +822,13 @@ SELECT COUNT(*) AS n FROM turn_sections WHERE turn_id = $turn_id;
 UPDATE turns SET completed_at = $completed_at WHERE id = $id;
 
 -- PREP: test_open_subscription_detached
--- {§session-obligations} witnesses: an open stream, detached or not, on an entry of the session's.
+-- {§loop-completion} witnesses: an open stream, detached or not, on an entry of the session's.
 INSERT INTO subscriptions (session_id, entry_id, scheme, handle, detached)
 VALUES ($session_id, $entry_id, 'sh', 'sh: sleep', $detached)
 RETURNING id;
 
 -- PREP: test_close_subscription
--- {§session-obligations} witnesses: settle a stream with a plain success.
+-- {§loop-completion} witnesses: settle a stream with a plain success.
 UPDATE subscriptions
 SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), close_status = 200, close_result = '{"status":200}', channel_results = '{}'
 WHERE id = $id;
@@ -837,7 +837,7 @@ WHERE id = $id;
 -- {§engine-rails} — the loop's persisted strike streak, the rail's own truth.
 SELECT strike_streak FROM loops WHERE id = $loop_id;
 -- PREP: test_last_loop_reply
--- {§loop-answer}: the latest nonempty reply the loop gave to the message that started it (ordinal 1),
+-- {§message-completion}: the latest nonempty reply the loop gave to the message that started it (ordinal 1),
 -- or the latest reply in the loop when no originating message was answered.
 SELECT COALESCE(
     (SELECT r.content
@@ -878,7 +878,7 @@ ORDER BY le.id;
 SELECT kind, content FROM turn_sources WHERE turn_id = $turn_id ORDER BY kind;
 
 -- PREP: test_open_message_from
--- {§session-obligations}: the newest message a named session sent in a workspace that has no completion yet.
+-- {§loop-completion}: the newest message a named session sent in a workspace that has no completion yet.
 SELECT m.path FROM message_sources m
 WHERE m.workspace_id = $workspace_id AND m.source = $source
   AND NOT EXISTS (SELECT 1 FROM message_completions c WHERE c.message_id = m.id)

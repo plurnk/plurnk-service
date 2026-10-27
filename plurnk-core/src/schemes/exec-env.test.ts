@@ -8,7 +8,7 @@ import ExecEnv from "./exec-env.ts";
 // commands can read.
 const SHIPPED = "PATH,HOME,USER,LOGNAME,SHELL,PWD,TMPDIR,TERM,TZ,LANG,LC_*";
 
-test("{§exec-env-scoped} ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any policy", () => {
+test("{§execution-output-identity} ExecEnv.scoped strips plurnk's own (PLURNK_* + provider keys) beneath any policy", () => {
     const scoped = ExecEnv.scoped({
         PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,HOME,MY_PROJECT_KEY,OPENAI_API_KEY,AWS_REGION,CLOUDFLARE_ACCOUNT_ID,ACME_TOKEN,PLURNK_*",
         PATH: "/usr/bin", HOME: "/home/u",      // standard shell — keep
@@ -28,13 +28,13 @@ test("{§exec-env-scoped} ExecEnv.scoped strips plurnk's own (PLURNK_* + provide
     assert.equal(scoped.AWS_REGION, "us-east-1");
     assert.equal(scoped.CLOUDFLARE_ACCOUNT_ID, "account");
     assert.equal(scoped.ACME_TOKEN, undefined);
-    // {§exec-env-scoped} Ambient selectors cannot admit a reserved name.
+    // {§execution-output-identity} Ambient selectors cannot admit a reserved name.
     assert.equal(scoped.PLURNK_SERVICE_GIT_ALLOWED, undefined, "PLURNK_* config is stripped even when the policy names it");
     assert.equal(scoped.PLURNK_SERVICE_DB_PATH, undefined);
 });
 
-// {§exec-env-scoped} — the ceiling: a command receives only the ambient names the policy names.
-test("{§exec-env-scoped} ExecEnv.scoped admits only the ambient names the policy names", () => {
+// {§execution-output-identity} — the ceiling: a command receives only the ambient names the policy names.
+test("{§execution-output-identity} ExecEnv.scoped admits only the ambient names the policy names", () => {
     const host = {
         PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,
         PATH: "/usr/bin", HOME: "/home/u", LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8",
@@ -52,7 +52,7 @@ test("{§exec-env-scoped} ExecEnv.scoped admits only the ambient names the polic
     }
 });
 
-test("{§exec-env-scoped} ExecEnv.scoped: EXCLUDE narrows INHERIT without rewriting it", () => {
+test("{§execution-output-identity} ExecEnv.scoped: EXCLUDE narrows INHERIT without rewriting it", () => {
     const scoped = ExecEnv.scoped({
         PLURNK_SERVICE_EXEC_ENV_INHERIT: SHIPPED,
         PLURNK_SERVICE_EXEC_ENV_EXCLUDE: "TERM,LC_*",
@@ -64,12 +64,12 @@ test("{§exec-env-scoped} ExecEnv.scoped: EXCLUDE narrows INHERIT without rewrit
     assert.equal(scoped.LANG, "en_US.UTF-8", "exclude narrows only what it names");
 });
 
-test("{§exec-env-scoped} ExecEnv.scoped: an empty policy admits nothing ambient", () => {
+test("{§execution-output-identity} ExecEnv.scoped: an empty policy admits nothing ambient", () => {
     const scoped = ExecEnv.scoped({ PATH: "/usr/bin", SSH_AUTH_SOCK: "/run/ssh" });
     assert.deepEqual(scoped, {}, "the allowlist is declared in .env.defaults; an empty one is a cleared policy, not an unconfigured install");
 });
 
-// {§exec-env-scoped} Module-owned launches have a broader ambient base, not implicit provider credentials.
+// {§execution-output-identity} Module-owned launches have a broader ambient base, not implicit provider credentials.
 test("{§operator-config-env-defaults} ExecEnv.withoutOwnSecrets keeps the operator's environment and drops plurnk's own", () => {
     const kept = ExecEnv.withoutOwnSecrets({
         PATH: "/usr/bin", npm_config_registry: "https://registry.npmjs.org/",
@@ -87,7 +87,7 @@ test("{§operator-config-env-defaults} ExecEnv.withoutOwnSecrets keeps the opera
 
 // {§operator-config-env-defaults} — the subprocess-common floors are declared by
 // @plurnk/plurnk-execs and reach a spawn through the ceiling, which names them.
-test("{§exec-env-scoped} ExecEnv.scoped passes the declared subprocess floors through the ceiling", () => {
+test("{§execution-output-identity} ExecEnv.scoped passes the declared subprocess floors through the ceiling", () => {
     const scoped = ExecEnv.scoped({
         PLURNK_SERVICE_EXEC_ENV_INHERIT: "PATH,PAGER,GIT_PAGER,NO_COLOR,CI",
         PATH: "/usr/bin", PAGER: "cat", GIT_PAGER: "cat", NO_COLOR: "1", CI: "1",
@@ -96,7 +96,7 @@ test("{§exec-env-scoped} ExecEnv.scoped passes the declared subprocess floors t
         "a floor that the ceiling does not name would never reach the spawn that wants it");
 });
 
-test("{§exec-env-scoped} {§host-path-layout} ExecEnv.scoped and ExecEnv.withoutOwnSecrets project the daemon's HostPaths before filtering", () => {
+test("{§execution-output-identity} {§host-path-layout} ExecEnv.scoped and ExecEnv.withoutOwnSecrets project the daemon's HostPaths before filtering", () => {
     const hostPaths = new HostPaths({
         home: "/tmp/isolated-home",
         env: { PLURNK_SERVICE_STATE_ROOT: "/tmp/isolated-state" },

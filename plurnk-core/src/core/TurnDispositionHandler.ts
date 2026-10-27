@@ -46,7 +46,7 @@ export default class TurnDispositionHandler {
     }
 
     async handle(ctx: TurnContext, statement: DispositionStatement): Promise<DispatchResult> {
-        // {§wait-obligation-matrix}: record intent now; settle the complete program before parking.
+        // {§loop-completion}: record intent now; settle the complete program before parking.
         if (await this.#hasLiveWork(ctx.loopId)) {
             const seconds = statement.seconds ?? TurnDispositionHandler.configuredWaitSeconds();
             return { status: seconds === 0 ? 102 : 202, attrs: { waiting: seconds } };
@@ -86,7 +86,7 @@ export default class TurnDispositionHandler {
         const recovery = await this.#unobservedFailureCount(turnId) > 0;
         if ((recovery || !completionAllowed) && !wait) return { status: 102 };
         const { pending } = await this.#pendingSet(sessionId, turnId, loopId);
-        // {§session-obligations} — the three held kinds; everything else pending is a result owed next packet.
+        // {§loop-completion} — the three held kinds; everything else pending is a result owed next packet.
         const held = (kind: string): boolean => kind === "streams" || kind === "sessions" || kind === "messages";
         const live = pending.some(held);
         if (live && wait) {

@@ -208,7 +208,7 @@ test("{§functionality-scope} env projects session-scoped actions; its state bel
         assert.equal(bobView.definitions.find(({ alias }) => alias === "ENV_WITNESS")?.state, "active");
 
         // A host verb proposes; acceptance persists for the invoking session and no other. Then the
-        // spawn ({§exec-env-scoped}): what alice set reaches alice's next command, bob's command sees
+        // spawn ({§execution-output-identity}): what alice set reaches alice's next command, bob's command sees
         // his own entry and the untouched ceiling — a registry, not a prefix.
         const proposals: number[] = [];
         const unsubscribe = daemon.subscribeToEvents((_workspace, method, params) => {
@@ -284,7 +284,7 @@ test("{§functionality-scope} env projects session-scoped actions; its state bel
             unsubscribe();
         }
 
-        // The digest renders what each spawn recorded, beside its operation ({§exec-env-scoped}):
+        // The digest renders what each spawn recorded, beside its operation ({§execution-output-identity}):
         // alice's own value and her masked name, carol's inherited value by its source.
         await daemon.stop();
         await db.close();
@@ -307,7 +307,7 @@ test("{§functionality-scope} env projects session-scoped actions; its state bel
     }
 });
 
-// {§workspace-env} — a module reading the environment on a Session's behalf sees that Session's own
+// {§execution-output-identity} — a module reading the environment on a Session's behalf sees that Session's own
 // overrides above the workspace layer, exactly what its commands run under; the workspace read
 // never includes them.
 test("{§functionality-scope} readSessionEnvironment layers the Session's overrides over the workspace's defaults", async () => {

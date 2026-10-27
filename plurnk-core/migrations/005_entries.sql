@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS entries (
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT;
 
--- {§entry-owner}, {§execution-output-identity}: one canonical resource key.
+-- {§execution-output-identity}, {§execution-output-identity}: one canonical resource key.
 CREATE UNIQUE INDEX IF NOT EXISTS entries_identity ON entries (workspace_id, scheme, authority, pathname);
 
 -- entry_channel_rows: the stored shape of a channel. A settled channel points at its body in

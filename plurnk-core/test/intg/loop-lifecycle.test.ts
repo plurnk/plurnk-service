@@ -1464,7 +1464,7 @@ test("{§session-causal-admission}: failed database settlement rolls back before
 });
 
 for (const pending of [false, true]) {
-    test(`{§session-causal-admission} {§session-obligations}: database recovery respects pending messages (${pending})`, async () => {
+    test(`{§session-causal-admission} {§loop-completion}: database recovery respects pending messages (${pending})`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `recovery-message-${pending}`);
@@ -2025,7 +2025,7 @@ test("{§session-causal-admission}: a concurrent cancellation leaves no runnable
 });
 
 describe("cancel-provenance", () => {
-// {§loop-terminal-authorship}, {§methods-loop-cancel}: external cancellation is durable and explicit.
+// {§loop-completion}, {§methods-loop-cancel}: external cancellation is durable and explicit.
 
 
 
@@ -2089,7 +2089,7 @@ test("{§turn-record}: cancellation during packet preparation completes the turn
     });
 });
 
-test("{§loop-terminal-authorship}: cancelling a live loop records who and why", async (approvalContext) => {
+test("{§loop-completion}: cancelling a live loop records who and why", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````sh\nsleep 30\n````\n\n````NOTE\nrunning\n````"),
@@ -2565,7 +2565,7 @@ test("{§session-loop-lifecycle} a current-turn stream still active at the settl
     }
 });
 
-// {§send-premature-terminate}: a fast failure must settle before strike exhaustion reaps work.
+// {§loop-completion}: a fast failure must settle before strike exhaustion reaps work.
 test("{§session-causal-admission} a fast failed stream settles naturally and its observed failure does not itself strike out the loop", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1000";
@@ -3902,7 +3902,7 @@ test("{§session-ownership} server auto-approval settles both WORK and FORK chil
         makeMockResponse("````EDIT (workspace:///from-session)\npayload\n````\n\n````SEND\nsession done\n````", 10),
         // Fork turn 1: same shape.
         makeMockResponse("````EDIT (workspace:///from-fork)\npayload\n````\n\n````SEND\nfork done\n````", 10),
-        // {§send-premature-terminate}: the children observe their EDIT receipts
+        // {§loop-completion}: the children observe their EDIT receipts
         // before completing. A parent claim remains gated on its child results.
         ...Array.from({ length: 4 }, () => makeMockResponse("````SEND [200]\nDelegated edits observed.\n````", 10)),
     ] });
@@ -3922,12 +3922,12 @@ test("{§session-ownership} server auto-approval settles both WORK and FORK chil
     });
 });
 
-test("{§wait-obligation-matrix} a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async (approvalContext) => {
+test("{§loop-completion} a wake re-queue (100) mid-drain is re-claimed and continued — never returned as a terminal", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // The delegation-policy race: a conclusion-wake re-queues a parent's loop (202→100) between its
     // turn-end and its drain's next status check; pre-fix, runLoop read the queued 100 as an external
     // terminal and broadcast a QUEUED loop as loop/terminated{100}.
-    // Under {§wait-obligation-matrix} a loop blocks at 202 only on a live obligation, so the wake is a
+    // Under {§loop-completion} a loop blocks at 202 only on a live obligation, so the wake is a
     // REAL child-wake: the parent blocks on a spawned child, the child's conclusion re-queues the parent
     // (202→100) and the drain re-claims it (100→102). Exactly one terminal must fire for the parent, 200.
     const mock = new Mock({ contextWindow: 100000, responses: [
@@ -4404,7 +4404,7 @@ test("{§packet-items} turns: id auto-assigns on insert", async () => {
 });
 
 describe("undelivered-child-term", () => {
-// {§send-undelivered-child-term}: sessions concluding DURING the parent's generation are no
+// {§loop-completion}: sessions concluding DURING the parent's generation are no
 // longer live, but their ambient event is newer than the parent's observation cursor and queued
 // for the next packet. Both dispositions must preserve that completed-but-unobserved result.
 
@@ -4454,7 +4454,7 @@ test("{§session-loop-lifecycle} waiting on a just-concluded child continues unt
 // A branch batch that fails git-preflight finishes the child's loop before the child ever had a
 // turn. Its termination still announces to the parent, which never waits on a child that cannot
 // report (#385).
-test("{§send-undelivered-child-term} a child refused before its first turn still announces its death to the parent", async () => {
+test("{§loop-completion} a child refused before its first turn still announces its death to the parent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ghost-${crypto.randomUUID()}`);
@@ -4479,7 +4479,7 @@ test("{§send-undelivered-child-term} a child refused before its first turn stil
     } finally { await db.close(); }
 });
 
-test("{§send-undelivered-child-term} a delivered answer cannot complete before the just-concluded child is observed", async () => {
+test("{§loop-completion} a delivered answer cannot complete before the just-concluded child is observed", async () => {
     const db = await openMigrated();
     try {
         const { workspaceId, parent, parentLoop, parentTurn, engine } = await raceScenario(db);

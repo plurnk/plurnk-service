@@ -204,7 +204,7 @@ test("{§schemes-self-doc-materialization} an unchanged generated surface dispat
     }
 });
 
-test("{§exec-stream-page}: materialized shell documentation demonstrates scoped READ of an execution stream", async () => {
+test("{§exec-stream}: materialized shell documentation demonstrates scoped READ of an execution stream", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });

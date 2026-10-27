@@ -5,7 +5,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import HostPaths from "../core/HostPaths.ts";
 import { ConfigurationError } from "@plurnk/plurnk-meta";
 
-// {§exec-scratch-directory} — the one directory a standalone execution source is written to for
+// {§exec-target-routing} — the one directory a standalone execution source is written to for
 // its run. Empty derives the XDG runtime directory, else the platform temporary directory.
 export default class ExecScratch {
     static readonly KNOB = "PLURNK_SERVICE_EXEC_SCRATCH";

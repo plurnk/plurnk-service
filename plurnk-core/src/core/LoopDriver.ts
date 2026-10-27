@@ -34,7 +34,7 @@ type LoopResult = {
 // How often a held turn looks again for its hold spawns; the hold itself is the panel's.
 const HOLD_POLL_MS = 150;
 
-// {§exec-hold-until-concluded} The exec scheme's hold probe: its own hook, read where a loop holds.
+// {§exec-lifetime} The exec scheme's hold probe: its own hook, read where a loop holds.
 const holdsSpawns = (handler: object | undefined): handler is { hasActiveHoldSpawns(sessionId: number, holdSet: ReadonlySet<string>): boolean } =>
     handler !== undefined && "hasActiveHoldSpawns" in handler && typeof handler.hasActiveHoldSpawns === "function";
 
@@ -106,7 +106,7 @@ export default class LoopDriver {
         this.#loopSignals.set(loopId, executionSignal);
         const timedOut = (): boolean => executionSignal.aborted && executionSignal.reason === LOOP_TIMEOUT_REASON;
         const ruleTerminal = async (failure: SchemeResult, reason: TerminalReason): Promise<LoopResult> => {
-            // {§terminal-evidence} — the ruling is the engine's and the status never softens, but
+            // {§outside-text} — the ruling is the engine's and the status never softens, but
             // the last thing the model said is not the engine's to destroy. Cited, never embedded
             // ({§log-history-projection}): the reader READs it, and a long emission never rides into a
             // parent's packet. Attached here, so no terminal can be added that forgets.
@@ -206,7 +206,7 @@ export default class LoopDriver {
                 }
 
                 const execHandler = this.#schemes.get("exec");
-                // {§exec-hold-until-concluded} — hold matching runtime/effect
+                // {§exec-lifetime} — hold matching runtime/effect
                 // streams until conclusion or the fail-open cap, then resume the
                 // ordinary cycle without altering stream state.
                 const holdSet = new Set(Knob.list("PLURNK_SERVICE_EXEC_HOLD"));

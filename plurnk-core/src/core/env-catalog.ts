@@ -1,4 +1,4 @@
-// SPEC {§exec-env-scoped} {§operator-config-env-defaults} — the configuration catalog the
+// SPEC {§execution-output-identity} {§operator-config-env-defaults} — the configuration catalog the
 // `env` family's `discover` projects: every knob the installed packages declare, owner-labelled,
 // with each declaration's comment as its documentation.
 //

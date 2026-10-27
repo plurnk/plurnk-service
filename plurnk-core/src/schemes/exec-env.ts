@@ -1,4 +1,4 @@
-// {§exec-env-scoped} Ambient admission and ordinary env-name reservation.
+// {§execution-output-identity} Ambient admission and ordinary env-name reservation.
 // Explicit capability bindings belong to their module ({§mcp-launch-environment}).
 import { providerCredentialEnvNames } from "@plurnk/plurnk-models";
 import type HostPaths from "../core/HostPaths.ts";

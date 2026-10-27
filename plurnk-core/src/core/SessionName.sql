@@ -1,4 +1,4 @@
--- Automatic session allocation. SPEC {§session-auto-name}.
+-- Automatic session allocation. SPEC {§execution-output-identity}.
 
 -- PREP: session_name_claim
 -- Claiming the literal and creating its session are one SQLite write statement. Every session it mints is a

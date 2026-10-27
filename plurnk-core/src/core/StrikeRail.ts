@@ -4,8 +4,8 @@ import type { Db } from "./Db.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
 // {§engine-rails}: discovery misses and not-ready results are soft, and no answer to a completion claim strikes
-// (a completion joins live work, {§completion-joins-live-work}; a claim over settled results
-// defers, {§completion-defers-to-results}). Executor evidence is soft wherever it surfaces,
+// (a completion joins live work, {§loop-completion}; a claim over settled results
+// defers, {§loop-completion}). Executor evidence is soft wherever it surfaces,
 // including a completion READ ({§exec-stream}).
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 425, 501]);
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
@@ -74,7 +74,7 @@ export default class StrikeRail {
     // {§engine-rails} — an empty turn performed no activity, so its text IS its
     // observable output and is what the detector compares. Fingerprinting the empty program
     // instead makes every empty turn identical, and the detector then reports a cycle over a
-    // model that merely spoke three different times ({§empty-turn}) — 508 "loop detected" for a
+    // model that merely spoke three different times ({§outside-text}) — 508 "loop detected" for a
     // loop that never repeated anything.
     static fingerprintEmptyTurn(text: string): string {
         return createHash("sha256").update(`empty:${text.trim()}`).digest("hex");
@@ -157,7 +157,7 @@ export default class StrikeRail {
                 && !isExecutorEvidence(outcome)
                 && !isUnreadablePattern(outcome),
         );
-        // {§empty-turn} — a turn with no operation is one progress-contract strike.
+        // {§outside-text} — a turn with no operation is one progress-contract strike.
         const struck = recordedFailed || cycle.detected || turn.emptyTurn === true;
         const streak = struck ? state.strike_streak + 1 : 0;
         // {§engine-rails} — which source struck this turn, so a crossing terminal can say what
