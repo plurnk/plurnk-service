@@ -5,20 +5,20 @@ import type { LineMarker } from "@plurnk/plurnk-contracts";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-test("{§read-bytes} one hexadecimal octet per line: coordinate = line = byte", () => {
+test("{§binary-parity} one hexadecimal octet per line: coordinate = line = byte", () => {
     assert.equal(ByteView.hexLines(PNG), "89\n50\n4e\n47\n0d\n0a\n1a\n0a");
     assert.equal(ByteView.hex(PNG.subarray(1, 4)), "504e47");
     assert.equal(ByteView.hexLines(new Uint8Array()), "");
 });
 
-test("{§find-bytes} the Latin-1 view is one character per byte, newlines included", () => {
+test("{§binary-parity} the Latin-1 view is one character per byte, newlines included", () => {
     const latin1 = ByteView.latin1(PNG);
     assert.equal(latin1.length, PNG.length);
     assert.equal(latin1.charCodeAt(0), 0x89);
     assert.equal(latin1.slice(1, 4), "PNG");
 });
 
-test("{§find-bytes} byte patterns retain exact coordinates including individual CR and LF bytes", async () => {
+test("{§binary-parity} byte patterns retain exact coordinates including individual CR and LF bytes", async () => {
     const bytes = new Uint8Array([...PNG, ...Buffer.from("testword02\x00tail")]);
     const match = await ByteView.match({ dialect: "regex", raw: "/PNG|testword02/", pattern: "PNG|testword02", flags: "" }, bytes);
     assert.equal(match.status, 200);

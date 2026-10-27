@@ -153,7 +153,7 @@ source acquisition {§mimetype-binary-input}; original bytes remain in `body`.
 with optional derived facts/text in `readable`. GET, exact FIND acquisition, executor
 acquisition, and mutation responses use the same source/projection contract.
 Core READ of `body`, `#bytes`, or `#readable` may attach that complete native source
-under {§packet-attachment-parts}; scope selects the text/hex view, never native bytes.
+under {§log-wire-format}; scope selects the text/hex view, never native bytes.
 Headers carry transport evidence, not native media. Invalid or unsupported formats
 remain byte-readable without invented facts or native parts. Incomplete transfers
 and over-limit input publish no partial binary payload.

@@ -75,7 +75,7 @@ export interface LogEntryView {
     initial_folded?: unknown;
     source?: unknown;
     attrs?: unknown;
-    // {§emission-row}: the producer of the row's turn, which authored an emission row's emission.
+    // {§turn-source-resources}: the producer of the row's turn, which authored an emission row's emission.
     producer?: unknown;
     lineAnchors?: readonly string[];
     lineNumberWidth?: number;
@@ -115,11 +115,11 @@ export interface RenderedLog {
     // {§packet-items} — the records `content` joins with one blank line, in order.
     readonly records: readonly string[];
     readonly curationTargets: readonly ReclaimableLogItem[];
-    // {§packet-attachment-parts} — native deliveries selected for this request, in row order.
+    // {§log-wire-format} — native deliveries selected for this request, in row order.
     readonly attachments: readonly PacketAttachment[];
 }
 
-// {§packet-attachment-parts} — the attachment kinds and their readout weights live in one table.
+// {§log-wire-format} — the attachment kinds and their readout weights live in one table.
 import { audioWeight, imageWeight, pdfWeight } from "./attachments.ts";
 
 interface RenderedLogRow {
@@ -420,7 +420,7 @@ export default class PacketWire {
                 ...head,
                 change: `${receipt.unit} -${receipt.effect.removed} +${receipt.effect.inserted}`,
                 effect: `${receipt.effect.source} -> ${receipt.effect.result}`,
-                // {§edit-receipt-removed-text} — what a deletion took, so it can be put back from the receipt.
+                // {§edit-result-receipt-projection} — what a deletion took, so it can be put back from the receipt.
                 ...(receipt.effect.removedText === undefined ? {} : { removed: receipt.effect.removedText }),
             };
         }
@@ -451,7 +451,7 @@ export default class PacketWire {
         return endsWithLineBreak ? body.replace(/(?:\r\n|\r|\n)$/, "") : body;
     }
 
-    // {§log-address-metadata} — row identity belongs to the H3, not its operand metadata.
+    // {§log-wire-format} — row identity belongs to the H3, not its operand metadata.
     static #entryPath(coordinate: string | null, leaf: string): string {
         if (coordinate === null) throw new TypeError("A packet log row requires an addressable coordinate.");
         return `log:///${coordinate}/${leaf}`;
@@ -674,7 +674,7 @@ export default class PacketWire {
         // Absence = "model" — the session's own authorship is the default (#338). An arrival is an
         // inbound SEND row the harness published ({§message-causal-source}): its stored origin says
         // nothing, so the row names its sender instead (#706).
-        // {§emission-row}: an emission row is stored as the harness's, but names its author.
+        // {§turn-source-resources}: an emission row is stored as the harness's, but names its author.
         const author = LogEntryProjection.isEmission(e) ? e.producer : e.origin;
         if (typeof author === "string" && author !== "model" && !PacketWire.isArrival(e)) meta.origin = author;
         // {§env-delta-attribution}: render the causal session address or
@@ -771,7 +771,7 @@ export default class PacketWire {
         if (op === "SEND" && rx !== null && typeof rx === "object" && Array.isArray(rx.attachments) && rx.attachments.length > 0) {
             meta.attachments = rx.attachments.map(({ name, mediaType, target }) => ({ name, mediaType, path: target }));
         }
-        // {§operation-resource-receipt}: preserve the returned address, not a second authored target.
+        // {§log-wire-format}: preserve the returned address, not a second authored target.
         if (rx !== null && typeof rx === "object" && typeof rx.resource === "string"
             && rx.resource.length > 0 && rx.resource !== identity.target && rx.resource !== meta.stream) {
             meta.resource = rx.resource;
@@ -832,7 +832,7 @@ export default class PacketWire {
         }
     }
 
-        // {§retrieval-packet-metadata}: one extent/coordinate owner plus
+        // {§log-wire-format}: one extent/coordinate owner plus
         // only FIND aggregates that add information beyond that extent.
     static #retrievalFacts(identity: RowIdentity, e: LogEntryView, rx: RxView | null, fullBody: ResolvedLogBody): { findItems: number | null; range: RangeExtent | null } {
         const { meta, op, tx } = identity;
@@ -905,7 +905,7 @@ export default class PacketWire {
         return { findItems, range };
     }
 
-        // {§edit-result-receipt-projection} {§edit-result-copy-move-effects}
+        // {§edit-result-receipt-projection} {§edit-result-receipt-projection}
         // EDIT/scoped entry KILL own one receipt; COPY/MOVE own resource effects whose
         // optional receipts describe scoped textual materializations.
     static #mutationReceiptFacts(meta: RowIdentity["meta"], op: RowIdentity["op"], rx: RxView | null): boolean {
@@ -1015,7 +1015,7 @@ export default class PacketWire {
                 : body.length === 0
                     ? "none"
                     : "open";
-        // {§packet-extent-metadata} — a page states what it shows of what the row holds.
+        // {§log-wire-format} — a page states what it shows of what the row holds.
         const projectedChunk = projection.chunk !== null && bodyVisibility.folded.length > 0 && !bodyVisibility.fullyFolded
             ? PacketWire.#sparseChunk(fullBody.content, projectedBody.content, sourceOrdinals, projection.text)
             : projection.chunk;
@@ -1028,7 +1028,7 @@ export default class PacketWire {
 
     // The row's native attachment, a landed-unfit arrival's size, and the accounting field that
     // participates in the row it measures: iterate until its decimal width and therefore the
-    // rendered row's curation weight are stable. {§packet-token-accounting}
+    // rendered row's curation weight are stable. {§log-wire-format}
     static #rowAccounting(
         identity: RowIdentity,
         e: LogEntryView,
@@ -1047,7 +1047,7 @@ export default class PacketWire {
         // and tokens of the body the model can READ at this row's address.
         const unfit = PacketWire.#attrsOf(e).unfit;
         if (unfit !== null && typeof unfit === "object") meta.size = unfit;
-        // {§packet-attachment-parts}: retained native content shares the row's curation lifetime.
+        // {§log-wire-format}: retained native content shares the row's curation lifetime.
         const attachment = !(bodyVisibility.totalLines > 0 && bodyVisibility.fullyFolded)
             ? native
             : null;
@@ -1112,7 +1112,7 @@ export default class PacketWire {
         return null;
     }
 
-    // {§packet-attachment-parts} — project retained native parts at their recorded user boundaries.
+    // {§log-wire-format} — project retained native parts at their recorded user boundaries.
     static async wireMessages(
         packet: RequestPacket,
         bytesOf: (attachment: PacketAttachment) => Promise<Uint8Array>,
@@ -1122,7 +1122,7 @@ export default class PacketWire {
         const attachments = (packet.attachments ?? []).filter(({ kind }) => accepts(kind));
         if (attachments.length === 0) return messages;
         const groups = PacketWire.#messageSections(packet);
-        // {§packet-attachment-parts}: current packets bind each native part to the section
+        // {§log-wire-format}: current packets bind each native part to the section
         // ending at its READ. Preserve the recorded placement of older, unbound packets below.
         if (attachments.some(({ section }) => section !== undefined)) {
             for (const attachment of attachments) {
@@ -1146,7 +1146,7 @@ export default class PacketWire {
         const logIndex = groups.findIndex(({ role, sections }) => role === "user" && sections.some(({ name }) => name === "log"));
         const index = logIndex < 0 ? groups.findIndex(({ role }) => role === "user") : logIndex;
         if (index < 0) throw new Error("native packet attachments require a user message");
-        // {§packet-attachment-parts}: native evidence belongs to the log's message. A retained
+        // {§log-wire-format}: native evidence belongs to the log's message. A retained
         // packet may also hold its previous program in that message; keep its recorded tail.
         const preceding = groups[index].sections.filter(({ name }) => name !== "emission-history");
         const previous = groups[index].sections.find(({ name }) => name === "emission-history");
@@ -1161,7 +1161,7 @@ export default class PacketWire {
         return messages.map((message, at) => at === index ? { role: "user", content: parts } : message);
     }
 
-    // {§packet-attachment-parts} — the part's identity: a native part on the user turn otherwise reads as
+    // {§log-wire-format} — the part's identity: a native part on the user turn otherwise reads as
     // an arrival, and the model cannot tell that the READ row is what keeps it in the packet.
     static attachmentCaption(attachment: PacketAttachment): string {
         const facts = [attachment.mimetype];

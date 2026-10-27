@@ -2,7 +2,7 @@ import type { TextRegion } from "@plurnk/plurnk-contracts";
 import { TextCoordinates } from "@plurnk/plurnk-mimetypes";
 import type { MatchEvidence } from "@plurnk/plurnk-schemes";
 
-// {§log-readable-projection} — physical coordinates survive sparse selection.
+// {§log-kill-scope} — physical coordinates survive sparse selection.
 export default class LineSelection {
     static retain(content: string, selected: readonly number[], startLine = 1): { content: string; ordinals: number[] } {
         const allowed = new Set(selected);

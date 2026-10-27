@@ -1,7 +1,7 @@
 import type { SchemeResult } from "@plurnk/plurnk-schemes";
 import Results from "../core/results.ts";
 
-// {§edit-collision} — current-state failure, without inferring earlier validity,
+// {§edit} — current-state failure, without inferring earlier validity,
 // another writer, or fault from a failed precondition.
 export default class EditCollision {
     static result(target: string): SchemeResult;

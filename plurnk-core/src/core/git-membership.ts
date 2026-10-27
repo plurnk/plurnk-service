@@ -649,7 +649,7 @@ export default class GitMembership {
     }
 
     // Targeted definition scan (SPEC {§membership} `include`) — enumerate disk files
-    // matching {§path-glob-matching} (the pattern bounds the
+    // matching {§find} (the pattern bounds the
     // traversal; never a blind fs-walk). Files only — directories aren't members.
     // Workspace-relative paths, the same shape as git ls-files.
     static async #scanIncluded(

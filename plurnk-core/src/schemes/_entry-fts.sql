@@ -1,4 +1,4 @@
--- {§find-fulltext-selection} Native FTS5 query and ranking over visible candidates.
+-- {§find-result-projection} Native FTS5 query and ranking over visible candidates.
 
 -- PREP: fts_intern
 -- {§content-store}: the indexed text joins the content store (a no-op when a channel already holds it).

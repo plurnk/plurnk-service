@@ -176,7 +176,7 @@ test("{§quotation}: a SEND with nested examples delivers its literal body", asy
     } finally { await db.close(); }
 });
 
-// {§empty-turn} {§reasoning-row}
+// {§empty-turn} {§turn-source-resources}
 for (const [label, content, finishReason] of [
     ["an operation heading outside a fence", "Let me check.\n\nREAD (workspace:///notes.md)", "stop"],
     ["prose cut at the output allowance", "The findings give me precise integration points. Now I'll", "length"],

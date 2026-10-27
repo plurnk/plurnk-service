@@ -37,7 +37,7 @@ test("{§session-wait-timing}: WAIT receipts expose their effective maximum, not
     }
 });
 
-test("{§read-pattern-evidence}: READ preserves precise match locations beside whole lines", () => {
+test("{§read}: READ preserves precise match locations beside whole lines", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/3", op: "READ", status: 200,
         target: { scheme: null, pathname: "/example.js" },
@@ -54,7 +54,7 @@ test("{§read-pattern-evidence}: READ preserves precise match locations beside w
     assert.match(out, /12:return foo\(input\);/);
 });
 
-test("{§read-pattern-evidence}: match metadata rides whole with its source locations", () => {
+test("{§read}: match metadata rides whole with its source locations", () => {
     const matches = Array.from({ length: 30 }, (_, index) => ({
         region: { startLine: 1, startColumn: index * 4 + 1, endLine: 1, endColumn: index * 4 + 4 }, matched: "foo",
     }));
@@ -69,7 +69,7 @@ test("{§read-pattern-evidence}: match metadata rides whole with its source loca
     assert.deepEqual(row.rx.matches, matches, "the durable evidence stays complete");
 });
 
-test("{§read-pattern-evidence}: curating sparse READ lines also curates their match metadata", () => {
+test("{§read}: curating sparse READ lines also curates their match metadata", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/3", op: "READ", status: 200, folded: [[1, 1]],
         target: { scheme: null, pathname: "/example.js" }, tx: { matcher: { raw: "/foo/" } },
@@ -158,7 +158,7 @@ test("{§log-wire-format}: rejected inputs stay in JSON and multiline patterns c
     assert.equal(out.split("\n").length, 2);
 });
 
-test("{§log-address-metadata}: addressed operands and record identities remain distinct across operation families", async (t) => {
+test("{§log-wire-format}: addressed operands and record identities remain distinct across operation families", async (t) => {
     for (const op of ["READ", "FIND", "EDIT", "KILL", "SEND", "WORK", "FORK", "BARE", "WAIT", "gitea"]) {
         await t.test(op, () => {
             const address = op === "gitea" ? "list_issues" : "session://reviewer/notes.md";
@@ -186,7 +186,7 @@ test("{§log-address-metadata}: addressed operands and record identities remain 
     assert.equal(note.path, undefined, "a pathless operation does not acquire its own log address as an operand");
 });
 
-test("{§log-address-metadata}: COPY and MOVE operands do not overwrite the observed actor", () => {
+test("{§log-wire-format}: COPY and MOVE operands do not overwrite the observed actor", () => {
     for (const op of ["COPY", "MOVE"]) {
         const metadata = parseLogRecords(PacketWire.renderLog([{
             coordinate: "1/2/3", op, status: 200, origin: "_plurnk", source: "session://child",
@@ -207,7 +207,7 @@ test("{§log-address-metadata}: COPY and MOVE operands do not overwrite the obse
     }
 });
 
-test("{§operation-resource-receipt}: returned resource addresses remain distinct from authored targets without duplicate stream links", () => {
+test("{§log-wire-format}: returned resource addresses remain distinct from authored targets without duplicate stream links", () => {
     const target = { scheme: "session", hostname: "peer", pathname: "" };
     const resource = "message://peer/1";
     const row = {
@@ -229,7 +229,7 @@ test("{§operation-resource-receipt}: returned resource addresses remain distinc
     assert.equal(command.resource, undefined);
 });
 
-test("{§log-address-metadata}: explicit and automatic READs share one resource-address shape", () => {
+test("{§log-wire-format}: explicit and automatic READs share one resource-address shape", () => {
     const read = {
         coordinate: "1/2/3", op: "READ", status: 200,
         target: { scheme: "gitea", pathname: "/abcd1234" },
@@ -247,7 +247,7 @@ test("{§log-address-metadata}: explicit and automatic READs share one resource-
     assert.ok(automaticTokens > explicitTokens, "the extra producer fact is included in the row charge");
 });
 
-test("{§log-address-metadata}: delivered attachments keep their resource paths without rewriting delivery evidence", () => {
+test("{§log-wire-format}: delivered attachments keep their resource paths without rewriting delivery evidence", () => {
     const attachments = [{ name: "report.pdf", mediaType: "application/pdf", target: "session://peer/artifacts/report.pdf" }];
     const before = structuredClone(attachments);
     const output = PacketWire.renderLog([{
@@ -261,7 +261,7 @@ test("{§log-address-metadata}: delivered attachments keep their resource paths 
     assert.deepEqual(attachments, before, "the durable/exterior attachment descriptor keeps its owning contract");
 });
 
-test("{§log-readable-projection}: sparse READ rendering keeps source numbers and matching anchors after further trimming", () => {
+test("{§log-kill-scope}: sparse READ rendering keeps source numbers and matching anchors after further trimming", () => {
     const read = {
         coordinate: "1/1/1", op: "READ", origin: "model", status: 200,
         rx: { content: "two\nfour", mimetype: "text/plain", startLine: 2, lineOrdinals: [2, 4] },
@@ -275,7 +275,7 @@ test("{§log-readable-projection}: sparse READ rendering keeps source numbers an
     assert.doesNotMatch(complete, /"lineOrdinals"/, "internal coordinate maps do not become packet trivia");
 });
 
-test("{§log-readable-projection}: suppressed rows charge only their materialized metadata", () => {
+test("{§log-kill-scope}: suppressed rows charge only their materialized metadata", () => {
     const entry = {
         coordinate: "1/1/1", op: "READ", origin: "model", status: 200,
         initial_folded: [[1, -1]], rx: { content: "one\ntwo\nthree", mimetype: "text/plain", startLine: 1 },
@@ -1029,7 +1029,7 @@ test("{§problem-projection} a failed content-bearing READ renders a compact Pro
 });
 
 // {§channel-selection} — a READ row names the resource's other channels with tokens.
-test("{§retrieval-packet-metadata} log render: a READ row carries its sibling channels", () => {
+test("{§log-wire-format} log render: a READ row carries its sibling channels", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/2",
         origin: "model",
@@ -1042,7 +1042,7 @@ test("{§retrieval-packet-metadata} log render: a READ row carries its sibling c
     assert.match(out, /"channels":\{"#readable":812\}/);
 });
 
-// {§retrieval-packet-metadata} {§edit-pattern} — a pattern mutation names its matcher and count.
+// {§log-wire-format} {§edit-pattern} — a pattern mutation names its matcher and count.
 test("{§tokenomics-agnostic-ruler} log render: a pattern EDIT carries its matcher and matched count beside the receipt", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/1/3",
@@ -1120,7 +1120,7 @@ test("{§render-rule-line-navigable-prefix}: FIND ordinals retain page coordinat
         "a later page never invents page-local result ordinals");
 });
 
-test("{§retrieval-packet-metadata}: every READ/FIND mode has one concise metadata owner", async () => {
+test("{§log-wire-format}: every READ/FIND mode has one concise metadata owner", async () => {
     const region = { startLine: 2, startColumn: 1, endLine: 2, endColumn: 6 };
     const lineRegion = { startLine: 17, startColumn: 1, endLine: 18, endColumn: 1 };
     const rows = [
@@ -1672,7 +1672,7 @@ test("{§log-wire-format}: the Log is standard Markdown framing plus strict one-
     assert.equal(arr[2].body, "1:gamma\n", "an open row carries its ordinary addressable projection after metadata");
 });
 
-test("{§packet-token-accounting}: each row exposes one exact current-context charge", () => {
+test("{§log-wire-format}: each row exposes one exact current-context charge", () => {
     const entries = [
         { coordinate: "1/1/1", origin: "model", op: "FIND", status: 200, target: { scheme: "workspace", pathname: "" }, rx: { content: "[]", mimetype: "application/json" } },
         { coordinate: "1/1/2", origin: "model", op: "READ", status: 200, initial_folded: [[1, -1]], target: { scheme: null, pathname: "/folded.md" }, rx: { content: "alpha\nbeta", mimetype: "text/markdown", startLine: 1 } },

@@ -1,8 +1,10 @@
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import LogVisibility from "./LogVisibility.ts";
 import LineAnchors from "../content/line-anchors.ts";
+import LogEntryProjection from "./LogEntryProjection.ts";
 
+describe("LogVisibility", () => {
 test("{§log-kill-scope} LogVisibility composes whole and surgical scoped KILLs as one-way interval algebra", () => {
     assert.deepEqual(LogVisibility.apply([], [1, -1], 30), [[1, -1]]);
     const one = LogVisibility.apply([], [20, 20], 30);
@@ -48,7 +50,7 @@ test("{§log-kill-scope} LogVisibility resolves both published and log-bound anc
     );
 });
 
-test("{§log-scope-recovery} LogVisibility rejects character regions but treats absent lines as no-ops", () => {
+test("{§log-kill-scope} LogVisibility rejects character regions but treats absent lines as no-ops", () => {
     assert.deepEqual(
         LogVisibility.resolveScope({ marks: [1, 2, 3, 4] }, "log:///1/1/1", "a\nb\nc"),
         {
@@ -75,8 +77,8 @@ test("{§log-scope-recovery} LogVisibility rejects character regions but treats 
     );
 });
 
-// {§log-scope-recovery} {§diagnostic-observation} — every refusal ends in the same forms; the written scope is never rebuilt.
-test("{§log-scope-recovery} {§range-starts-at-one}: a zero or backward log-body scope is refused with the forms that work on the row", () => {
+// {§log-kill-scope} {§diagnostic-observation} — every refusal ends in the same forms; the written scope is never rebuilt.
+test("{§log-kill-scope} {§range-starts-at-one}: a zero or backward log-body scope is refused with the forms that work on the row", () => {
     const refusal = (marks: [number] | [number, number], content = "a\nb\nc") => LogVisibility.resolveScope({ marks }, "log:///1/9/2/READ", content);
     assert.deepEqual(refusal([0, -1]), {
         ok: false,
@@ -113,7 +115,7 @@ test("{§log-scope-recovery} {§range-starts-at-one}: a zero or backward log-bod
 });
 
 
-test("{§line-anchor-disambiguation}: log curation uses published contextual anchors even when their context is outside the retained READ slice", () => {
+test("{§line-anchors}: log curation uses published contextual anchors even when their context is outside the retained READ slice", () => {
     const block = (label: string) => `${label}\nbefore-2\nbefore-1\ntarget\nafter-1\nafter-2\nend-${label}`;
     const source = `${block("a")}\n${block("b")}`;
     const anchors = LineAnchors.tokens("workspace:///source.md", source);
@@ -124,4 +126,31 @@ test("{§line-anchor-disambiguation}: log curation uses published contextual anc
     assert.deepEqual(LogVisibility.resolveScope({ marks: [anchors[10]] }, "log:///1/2/3/READ", "target", [anchors[3]]), {
         ok: true, range: null,
     });
+});
+});
+
+describe("LogEntryProjection", () => {
+for (const runtime of ["sh", "python3", "brave", "search-api", "tool.v2+json"]) {
+    test(`{§log-history-projection}: ${runtime} receipts name the invoked runtime`, () => {
+        const statement = { runtime, target: null, body: "probe" };
+        for (const tx of [statement, JSON.stringify(statement)]) {
+            const row = { op: runtime, tx };
+            assert.equal(LogEntryProjection.op(row), runtime, "an execution row's op is its runtime, as written");
+            assert.equal(LogEntryProjection.leaf(row), runtime);
+            assert.equal(LogEntryProjection.coordinate("1/2/3", row), `1/2/3/${runtime}`);
+            assert.equal(LogEntryProjection.base(`1/2/3/${runtime}`), "1/2/3");
+            assert.equal(LogEntryProjection.base("1/2/3"), "1/2/3");
+            assert.equal(LogEntryProjection.accepts(runtime.toUpperCase(), row), true);
+            assert.equal(LogEntryProjection.accepts(null, row), true);
+            assert.equal(LogEntryProjection.accepts("READ", row), false);
+        }
+    });
+}
+
+test("{§log-history-projection}: native operations and actionless identities are unchanged", () => {
+    assert.equal(LogEntryProjection.leaf({ op: "READ" }), "READ");
+    assert.equal(LogEntryProjection.leaf({ op: null, attrs: { kind: "emissionAttempt" } }), "attempt");
+    assert.equal(LogEntryProjection.leaf({ op: null, attrs: { kind: "emissionAttempt" } }), "attempt");
+    assert.equal(LogEntryProjection.leaf({ op: "EDIT", origin: "_plurnk", attrs: { kind: "entry_materialized" } }), "READ");
+});
 });

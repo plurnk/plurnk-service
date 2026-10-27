@@ -8,7 +8,7 @@ import type {
 
 // One pre-persistence projection for ordinary operation rows. Execution keeps
 // the exact parsed statement; provider evidence keeps its separate exact
-// contract. {§log-sensitive-request-evidence}
+// contract. {§log-history-projection}
 export default class DurableStatement {
     static readonly #REDACTED = "__redacted__";
 

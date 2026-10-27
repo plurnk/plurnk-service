@@ -11,7 +11,7 @@ import LineMarkerOps from "./line-marker.ts";
 export type PatternEdit = { readonly marker: { readonly marks: [number] | [number, number, number, number] }; readonly body: string };
 
 export default class PatternEdits {
-    // {§read-pattern} Anchors refer to source lines; matches may still span lines.
+    // {§read} Anchors refer to source lines; matches may still span lines.
     static lineAnchored(matcher: MatcherBody): MatcherBody {
         if (matcher.dialect !== "regex" || matcher.flags.includes("m")) return matcher;
         return { ...matcher, flags: `${matcher.flags}m` };
@@ -32,7 +32,7 @@ export default class PatternEdits {
         return [...lines].toSorted((a, b) => a - b);
     }
 
-    // {§read-pattern-evidence} — presentation may clip a match, but cannot redefine it.
+    // {§read} — presentation may clip a match, but cannot redefine it.
     static visible(evidence: readonly MatchEvidence[], lines: readonly number[], window?: TextRegion): MatchEvidence[] {
         const shown = new Set(lines);
         const compare = (line: number, column: number, otherLine: number, otherColumn: number): number => line - otherLine || column - otherColumn;

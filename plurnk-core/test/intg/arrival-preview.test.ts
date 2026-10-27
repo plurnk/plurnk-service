@@ -114,7 +114,7 @@ test("{§markerless-first-page}: a peer session's deliverable renders as its fir
     const [projected] = parseLogRecords(rendered);
     assert.match(String(projected?.body), /^ *1:deranged output line 1/m, "the first line is visible");
     assert.doesNotMatch(String(projected?.body), new RegExp(`deranged output line ${lines + 1}$`, "m"), "the page ends where the bound says");
-    assert.equal(projected?.preview, `<1,${lines}> of 400 lines`, "{§packet-extent-metadata}: the page of the whole, in the one notation");
+    assert.equal(projected?.preview, `<1,${lines}> of 400 lines`, "{§log-wire-format}: the page of the whole, in the one notation");
     assert.equal(projected?.lines, undefined, "the preview fact replaces the redundant line count");
     const oneLine = PacketWire.renderLog([{ ...row, rx: "x".repeat(20_000) }], countTokens);
     const [single] = parseLogRecords(oneLine);

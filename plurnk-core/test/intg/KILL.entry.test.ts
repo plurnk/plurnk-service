@@ -67,7 +67,7 @@ test("{§kill-scope-entry} KILL with #fragment on missing channel returns 404", 
 });
 
 // {§kill-scope-entry}
-test("{§edit-receipt-removed-text} a scoped KILL deletes one span of an entry through the EDIT path; the log row records the KILL", async () => {
+test("{§edit-result-receipt-projection} a scoped KILL deletes one span of an entry through the EDIT path; the log row records the KILL", async () => {
     const { db, workspaceId, sessionId, loopId, turnId, engine } = await setup();
     try {
         await new Workspace().edit(editStmt(urlPath("workspace", "/notes.md"), "alpha\nbeta\ngamma"), makeSchemeCtx({ db, workspaceId, sessionId }));
@@ -77,7 +77,7 @@ test("{§edit-receipt-removed-text} a scoped KILL deletes one span of an entry t
         assert.equal(body?.content, "alpha\ngamma", "exactly the scoped line is gone");
         const row = await db.test_first_log_entry_for_turn.get<{ op: string; lineMarker: string | null }>({ turn_id: turnId });
         assert.equal(row?.op, "KILL", "the receipt is the model's own operation");
-        // {§edit-receipt-removed-text} — the deletion receipt quotes what it took.
+        // {§edit-result-receipt-projection} — the deletion receipt quotes what it took.
         const receiptRow = await db.test_first_log_entry_for_turn.get<{ rx: string | null }>({ turn_id: turnId });
         assert.match(String(receiptRow?.rx), /"removedText":"beta"/, `the removed line rides the receipt: ${String(receiptRow?.rx).slice(0, 300)}`);
     } finally { await db.close(); }

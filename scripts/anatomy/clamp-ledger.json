@@ -21299,9 +21299,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag line-anchors: H2 heading tag for Text line anchors"
         },
         "line-anchor-write-authority": {
           "spec": "plurnk-core/SPEC.md",
@@ -21311,9 +21311,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "line-anchors",
+          "reason": "Tag line-anchor-write-authority: Folded into §line-anchors"
         },
         "line-anchor-disambiguation": {
           "spec": "plurnk-core/SPEC.md",
@@ -21323,9 +21323,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "line-anchors",
+          "reason": "Tag line-anchor-disambiguation: Folded into §line-anchors"
         },
         "edit": {
           "spec": "plurnk-core/SPEC.md",
@@ -21335,9 +21335,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag edit: H2 heading tag for EDIT"
         },
         "edit-null-clears": {
           "spec": "plurnk-core/SPEC.md",
@@ -21347,9 +21347,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit",
+          "reason": "Tag edit-null-clears: Folded into §edit"
         },
         "edit-status-201-200": {
           "spec": "plurnk-core/SPEC.md",
@@ -21359,9 +21359,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit",
+          "reason": "Tag edit-status-201-200: Folded into §edit"
         },
         "edit-noop-304": {
           "spec": "plurnk-core/SPEC.md",
@@ -21371,9 +21371,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit",
+          "reason": "Tag edit-noop-304: Folded into §edit"
         },
         "edit-marker-required-on-existing": {
           "spec": "plurnk-core/SPEC.md",
@@ -21383,9 +21383,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit",
+          "reason": "Tag edit-marker-required-on-existing: Folded into §edit"
         },
         "edit-line-anchors": {
           "spec": "plurnk-core/SPEC.md",
@@ -21395,9 +21395,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit",
+          "reason": "Tag edit-line-anchors: Folded into §edit"
         },
         "edit-collision": {
           "spec": "plurnk-core/SPEC.md",
@@ -21407,9 +21407,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit",
+          "reason": "Tag edit-collision: Folded into §edit"
         },
         "edit-pattern": {
           "spec": "plurnk-core/SPEC.md",
@@ -21419,9 +21419,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag edit-pattern: H3 heading tag for Pattern EDIT"
         },
         "read": {
           "spec": "plurnk-core/SPEC.md",
@@ -21431,9 +21431,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag read: H2 heading tag for READ"
         },
         "read-read-content": {
           "spec": "plurnk-core/SPEC.md",
@@ -21443,9 +21443,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-read-content: Folded into §read"
         },
         "read-read-404": {
           "spec": "plurnk-core/SPEC.md",
@@ -21455,9 +21455,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-read-404: Folded into §read"
         },
         "read-content-wins": {
           "spec": "plurnk-core/SPEC.md",
@@ -21467,9 +21467,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-content-wins: Folded into §read"
         },
         "read-selection-projection": {
           "spec": "plurnk-core/SPEC.md",
@@ -21479,9 +21479,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-selection-projection: Folded into §read"
         },
         "log-range-miss-names-stream": {
           "spec": "plurnk-core/SPEC.md",
@@ -21491,9 +21491,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag log-range-miss-names-stream: Folded into §read"
         },
         "read-pattern": {
           "spec": "plurnk-core/SPEC.md",
@@ -21503,9 +21503,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-pattern: Folded into §read"
         },
         "read-fan-out": {
           "spec": "plurnk-core/SPEC.md",
@@ -21515,9 +21515,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-fan-out: Folded into §read"
         },
         "read-pattern-evidence": {
           "spec": "plurnk-core/SPEC.md",
@@ -21527,9 +21527,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-pattern-evidence: Folded into §read"
         },
         "read-bytes": {
           "spec": "plurnk-core/SPEC.md",
@@ -21539,9 +21539,9 @@
           "liveShape": "list",
           "codeCitations": 6,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "binary-parity",
+          "reason": "Tag read-bytes: Folded into §binary-parity"
         },
         "find-bytes": {
           "spec": "plurnk-core/SPEC.md",
@@ -21551,9 +21551,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "binary-parity",
+          "reason": "Tag find-bytes: Folded into §binary-parity"
         },
         "binary-parity": {
           "spec": "plurnk-core/SPEC.md",
@@ -21563,9 +21563,9 @@
           "liveShape": "list",
           "codeCitations": 8,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag binary-parity: H3 heading tag for Binary parity and byte views"
         },
         "log-history-projection": {
           "spec": "plurnk-core/SPEC.md",
@@ -21575,9 +21575,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag log-history-projection: H2 heading tag for The Log"
         },
         "log-curation-direct": {
           "spec": "plurnk-core/SPEC.md",
@@ -21587,9 +21587,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag log-curation-direct: Folded into §log-history-projection"
         },
         "reasoning-history": {
           "spec": "plurnk-core/SPEC.md",
@@ -21599,9 +21599,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "turn-source-resources",
+          "reason": "Tag reasoning-history: Folded into §turn-source-resources"
         },
         "log-kill-scope": {
           "spec": "plurnk-core/SPEC.md",
@@ -21611,9 +21611,9 @@
           "liveShape": "heading",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag log-kill-scope: H3 heading tag for Scoped log curation, distillation, and readable projection"
         },
         "log-kill-distillation": {
           "spec": "plurnk-core/SPEC.md",
@@ -21623,9 +21623,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-kill-scope",
+          "reason": "Tag log-kill-distillation: Folded into §log-kill-scope"
         },
         "log-target-tolerances": {
           "spec": "plurnk-core/SPEC.md",
@@ -21635,9 +21635,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-kill-scope",
+          "reason": "Tag log-target-tolerances: Folded into §log-kill-scope"
         },
         "log-target-shape": {
           "spec": "plurnk-core/SPEC.md",
@@ -21647,9 +21647,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-kill-scope",
+          "reason": "Tag log-target-shape: Folded into §log-kill-scope"
         },
         "log-scope-recovery": {
           "spec": "plurnk-core/SPEC.md",
@@ -21659,9 +21659,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-kill-scope",
+          "reason": "Tag log-scope-recovery: Folded into §log-kill-scope"
         },
         "log-readable-projection": {
           "spec": "plurnk-core/SPEC.md",
@@ -21671,9 +21671,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-kill-scope",
+          "reason": "Tag log-readable-projection: Folded into §log-kill-scope"
         },
         "log-wire-format": {
           "spec": "plurnk-core/SPEC.md",
@@ -21683,9 +21683,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag log-wire-format: H3 heading tag for Log wire format, patch, extents, and native attachments"
         },
         "log-mutation-patch": {
           "spec": "plurnk-core/SPEC.md",
@@ -21695,9 +21695,9 @@
           "liveShape": "paragraph",
           "codeCitations": 9,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag log-mutation-patch: Folded into §log-wire-format"
         },
         "rollback": {
           "spec": "plurnk-core/SPEC.md",
@@ -21707,9 +21707,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag rollback: Folded into §log-wire-format"
         },
         "log-address-metadata": {
           "spec": "plurnk-core/SPEC.md",
@@ -21719,9 +21719,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag log-address-metadata: Folded into §log-wire-format"
         },
         "packet-extent-metadata": {
           "spec": "plurnk-core/SPEC.md",
@@ -21731,9 +21731,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag packet-extent-metadata: Folded into §log-wire-format"
         },
         "operation-resource-receipt": {
           "spec": "plurnk-core/SPEC.md",
@@ -21743,9 +21743,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag operation-resource-receipt: Folded into §log-wire-format"
         },
         "packet-attachment-parts": {
           "spec": "plurnk-core/SPEC.md",
@@ -21755,9 +21755,9 @@
           "liveShape": "list",
           "codeCitations": 10,
           "testCitations": 8,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag packet-attachment-parts: Folded into §log-wire-format"
         },
         "packet-token-accounting": {
           "spec": "plurnk-core/SPEC.md",
@@ -21767,9 +21767,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag packet-token-accounting: Folded into §log-wire-format"
         },
         "retrieval-packet-metadata": {
           "spec": "plurnk-core/SPEC.md",
@@ -21779,9 +21779,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-wire-format",
+          "reason": "Tag retrieval-packet-metadata: Folded into §log-wire-format"
         },
         "read-past-end": {
           "spec": "plurnk-core/SPEC.md",
@@ -21791,9 +21791,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "read",
+          "reason": "Tag read-past-end: Folded into §read"
         },
         "turn-ops-entry": {
           "spec": "plurnk-core/SPEC.md",
@@ -21803,9 +21803,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag turn-ops-entry: Folded into §log-history-projection"
         },
         "turn-ops-log-curation": {
           "spec": "plurnk-core/SPEC.md",
@@ -21815,9 +21815,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag turn-ops-log-curation: Folded into §log-history-projection"
         },
         "emission-row": {
           "spec": "plurnk-core/SPEC.md",
@@ -21827,9 +21827,9 @@
           "liveShape": "heading",
           "codeCitations": 14,
           "testCitations": 12,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "turn-source-resources",
+          "reason": "Tag emission-row: Folded into §turn-source-resources"
         },
         "reasoning-row": {
           "spec": "plurnk-core/SPEC.md",
@@ -21839,9 +21839,9 @@
           "liveShape": "heading",
           "codeCitations": 9,
           "testCitations": 9,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "turn-source-resources",
+          "reason": "Tag reasoning-row: Folded into §turn-source-resources"
         },
         "turn-source-resources": {
           "spec": "plurnk-core/SPEC.md",
@@ -21851,9 +21851,9 @@
           "liveShape": "heading",
           "codeCitations": 5,
           "testCitations": 9,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag turn-source-resources: H3 heading tag for Turn sources, emissions, and reasoning"
         },
         "rejected-emission-entry": {
           "spec": "plurnk-core/SPEC.md",
@@ -21863,9 +21863,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "turn-source-resources",
+          "reason": "Tag rejected-emission-entry: Folded into §turn-source-resources"
         },
         "log-coordinate-hierarchy": {
           "spec": "plurnk-core/SPEC.md",
@@ -21875,9 +21875,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag log-coordinate-hierarchy: Folded into §log-history-projection"
         },
         "log-near-miss": {
           "spec": "plurnk-core/SPEC.md",
@@ -21887,9 +21887,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag log-near-miss: Folded into §log-history-projection"
         },
         "log-curation-folder-idiom": {
           "spec": "plurnk-core/SPEC.md",
@@ -21899,9 +21899,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag log-curation-folder-idiom: Folded into §log-history-projection"
         },
         "log-curation-set-selection": {
           "spec": "plurnk-core/SPEC.md",
@@ -21911,9 +21911,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag log-curation-set-selection: Folded into §log-history-projection"
         },
         "log-kill-meta-operation": {
           "spec": "plurnk-core/SPEC.md",
@@ -21923,9 +21923,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag log-kill-meta-operation: Folded into §log-history-projection"
         },
         "log-sensitive-request-evidence": {
           "spec": "plurnk-core/SPEC.md",
@@ -21935,9 +21935,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "log-history-projection",
+          "reason": "Tag log-sensitive-request-evidence: Folded into §log-history-projection"
         },
         "edit-result-render": {
           "spec": "plurnk-core/SPEC.md",
@@ -21947,9 +21947,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit-result-receipt-projection",
+          "reason": "Tag edit-result-render: Folded into §edit-result-receipt-projection"
         },
         "edit-receipt-removed-text": {
           "spec": "plurnk-core/SPEC.md",
@@ -21959,9 +21959,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit-result-receipt-projection",
+          "reason": "Tag edit-receipt-removed-text: Folded into §edit-result-receipt-projection"
         },
         "edit-receipt-anchored-context": {
           "spec": "plurnk-core/SPEC.md",
@@ -21971,9 +21971,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit-result-receipt-projection",
+          "reason": "Tag edit-receipt-anchored-context: Folded into §edit-result-receipt-projection"
         },
         "edit-result-receipt-projection": {
           "spec": "plurnk-core/SPEC.md",
@@ -21983,9 +21983,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag edit-result-receipt-projection: H3 heading tag for Mutation receipts and reviewer replacement"
         },
         "edit-result-receipt-truth": {
           "spec": "plurnk-core/SPEC.md",
@@ -21995,9 +21995,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit-result-receipt-projection",
+          "reason": "Tag edit-result-receipt-truth: Folded into §edit-result-receipt-projection"
         },
         "edit-result-reviewer-replacement": {
           "spec": "plurnk-core/SPEC.md",
@@ -22007,9 +22007,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit-result-receipt-projection",
+          "reason": "Tag edit-result-reviewer-replacement: Folded into §edit-result-receipt-projection"
         },
         "edit-result-copy-move-effects": {
           "spec": "plurnk-core/SPEC.md",
@@ -22019,9 +22019,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "edit-result-receipt-projection",
+          "reason": "Tag edit-result-copy-move-effects: Folded into §edit-result-receipt-projection"
         },
         "copy": {
           "spec": "plurnk-core/SPEC.md",
@@ -22031,9 +22031,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag copy: H2 heading tag for COPY"
         },
         "copy-missing-source-404": {
           "spec": "plurnk-core/SPEC.md",
@@ -22043,9 +22043,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "copy",
+          "reason": "Tag copy-missing-source-404: Folded into §copy"
         },
         "copy-move-pattern": {
           "spec": "plurnk-core/SPEC.md",
@@ -22055,9 +22055,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "copy",
+          "reason": "Tag copy-move-pattern: Folded into §copy"
         },
         "copy-conflict-409": {
           "spec": "plurnk-core/SPEC.md",
@@ -22067,9 +22067,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "copy",
+          "reason": "Tag copy-conflict-409: Folded into §copy"
         },
         "copy-noop-304": {
           "spec": "plurnk-core/SPEC.md",
@@ -22079,9 +22079,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "copy",
+          "reason": "Tag copy-noop-304: Folded into §copy"
         },
         "copy-cross-scheme-copy": {
           "spec": "plurnk-core/SPEC.md",
@@ -22091,9 +22091,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "copy",
+          "reason": "Tag copy-cross-scheme-copy: Folded into §copy"
         },
         "copy-destination-mimetype": {
           "spec": "plurnk-core/SPEC.md",
@@ -22103,9 +22103,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "copy",
+          "reason": "Tag copy-destination-mimetype: Folded into §copy"
         },
         "move": {
           "spec": "plurnk-core/SPEC.md",
@@ -22115,9 +22115,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag move: H2 heading tag for MOVE"
         },
         "move-relocation-deletes-source": {
           "spec": "plurnk-core/SPEC.md",
@@ -22127,9 +22127,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "move",
+          "reason": "Tag move-relocation-deletes-source: Folded into §move"
         },
         "move-decomposition": {
           "spec": "plurnk-core/SPEC.md",
@@ -22139,9 +22139,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "move",
+          "reason": "Tag move-decomposition: Folded into §move"
         },
         "move-canonical-whole-source": {
           "spec": "plurnk-core/SPEC.md",
@@ -22151,9 +22151,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "move",
+          "reason": "Tag move-canonical-whole-source: Folded into §move"
         },
         "move-cross-scheme-move": {
           "spec": "plurnk-core/SPEC.md",
@@ -22163,9 +22163,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "move",
+          "reason": "Tag move-cross-scheme-move: Folded into §move"
         },
         "move-missing-source-404": {
           "spec": "plurnk-core/SPEC.md",
@@ -22175,9 +22175,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "move",
+          "reason": "Tag move-missing-source-404: Folded into §move"
         },
         "move-dev-null-not-special": {
           "spec": "plurnk-core/SPEC.md",
@@ -22187,9 +22187,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "move",
+          "reason": "Tag move-dev-null-not-special: Folded into §move"
         },
         "find": {
           "spec": "plurnk-core/SPEC.md",
@@ -22199,9 +22199,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag find: H2 heading tag for FIND"
         },
         "log-uniform-query": {
           "spec": "plurnk-core/SPEC.md",
@@ -22211,9 +22211,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag log-uniform-query: Folded into §find"
         },
         "find-source-agnostic": {
           "spec": "plurnk-core/SPEC.md",
@@ -22223,9 +22223,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag find-source-agnostic: Folded into §find"
         },
         "find-line-anchors": {
           "spec": "plurnk-core/SPEC.md",
@@ -22235,9 +22235,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag find-line-anchors: Folded into §find"
         },
         "find-candidate-containment": {
           "spec": "plurnk-core/SPEC.md",
@@ -22247,9 +22247,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag find-candidate-containment: Folded into §find"
         },
         "find-scope-prefix-filter": {
           "spec": "plurnk-core/SPEC.md",
@@ -22259,9 +22259,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag find-scope-prefix-filter: Folded into §find"
         },
         "find-channel-selection": {
           "spec": "plurnk-core/SPEC.md",
@@ -22271,9 +22271,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag find-channel-selection: Folded into §find"
         },
         "find-glob-filter-on-content": {
           "spec": "plurnk-core/SPEC.md",
@@ -22283,9 +22283,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag find-glob-filter-on-content: Folded into §find"
         },
         "find-fulltext-selection": {
           "spec": "plurnk-core/SPEC.md",
@@ -22295,9 +22295,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find-result-projection",
+          "reason": "Tag find-fulltext-selection: Folded into §find-result-projection"
         },
         "fts-word-phrase": {
           "spec": "plurnk-core/SPEC.md",
@@ -22307,9 +22307,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find-result-projection",
+          "reason": "Tag fts-word-phrase: Folded into §find-result-projection"
         },
         "find-scoped-isolation": {
           "spec": "plurnk-core/SPEC.md",
@@ -22319,9 +22319,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find-result-projection",
+          "reason": "Tag find-scoped-isolation: Folded into §find-result-projection"
         },
         "find-result-projection": {
           "spec": "plurnk-core/SPEC.md",
@@ -22331,9 +22331,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 13,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Tag find-result-projection: H3 heading tag for Result projection and full-text search"
         },
         "scheme-catalog-aside": {
           "spec": "plurnk-core/SPEC.md",
@@ -22343,9 +22343,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag scheme-catalog-aside: Folded into §find"
         },
         "path-glob-matching": {
           "spec": "plurnk-core/SPEC.md",
@@ -22355,9 +22355,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "find",
+          "reason": "Tag path-glob-matching: Folded into §find"
         }
       },
       "tests": {
@@ -22373,9 +22373,9 @@
             "body-projection",
             "reasoning-row"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/body-preview.test.ts: Unit tests for body preview"
         },
         "plurnk-core/src/content/byte-view.test.ts": {
           "tier": "unit",
@@ -22390,9 +22390,9 @@
             "find-bytes",
             "read-bytes"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/byte-view.test.ts: Unit tests for hex byte view"
         },
         "plurnk-core/src/content/edit-receipt.test.ts": {
           "tier": "unit",
@@ -22411,9 +22411,9 @@
             "edit-result-reviewer-replacement",
             "operator-config-only-home"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/edit-receipt.test.ts: Unit tests for edit receipts"
         },
         "plurnk-core/src/content/line-anchors.test.ts": {
           "tier": "unit",
@@ -22429,9 +22429,9 @@
             "line-anchors",
             "resolved-edit-statement"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/line-anchors.test.ts: Unit tests for line anchors"
         },
         "plurnk-core/src/content/line-selection.test.ts": {
           "tier": "unit",
@@ -22444,9 +22444,9 @@
           "citedTags": [
             "log-readable-projection"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/line-selection.test.ts: Unit tests for line selection"
         },
         "plurnk-core/src/content/pattern-edits.test.ts": {
           "tier": "unit",
@@ -22461,9 +22461,9 @@
             "edit-pattern",
             "kill-pattern"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/pattern-edits.test.ts: Unit tests for pattern edits"
         },
         "plurnk-core/src/content/read-projector.native.test.ts": {
           "tier": "unit",
@@ -22476,9 +22476,9 @@
           "citedTags": [
             "mimetype-binary-input"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/content/read-projector.scope.test.ts",
+          "reason": "Test file plurnk-core/src/content/read-projector.native.test.ts: Merge native read-projector test into read-projector.scope.test.ts"
         },
         "plurnk-core/src/content/read-projector.scope.test.ts": {
           "tier": "unit",
@@ -22491,9 +22491,9 @@
           "citedTags": [
             "read-zero-start"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/read-projector.scope.test.ts: Consolidated read-projector unit tests"
         },
         "plurnk-core/src/content/read-resolve.test.ts": {
           "tier": "unit",
@@ -22507,9 +22507,9 @@
             "log-readable-projection",
             "markerless-first-page"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/content/read-resolve.test.ts: Unit tests for read-resolve"
         },
         "plurnk-core/src/core/DurableStatement.test.ts": {
           "tier": "unit",
@@ -22522,9 +22522,9 @@
           "citedTags": [
             "log-sensitive-request-evidence"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/core/DurableStatement.test.ts: Unit tests for DurableStatement credential redaction"
         },
         "plurnk-core/src/core/LogEntryProjection.test.ts": {
           "tier": "unit",
@@ -22537,9 +22537,9 @@
           "citedTags": [
             "log-coordinate-hierarchy"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/src/core/LogVisibility.test.ts",
+          "reason": "Test file plurnk-core/src/core/LogEntryProjection.test.ts: Merge LogEntryProjection unit tests into LogVisibility.test.ts"
         },
         "plurnk-core/src/core/LogVisibility.test.ts": {
           "tier": "unit",
@@ -22556,9 +22556,9 @@
             "log-scope-recovery",
             "range-starts-at-one"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/core/LogVisibility.test.ts: Consolidated log visibility and projection unit tests"
         },
         "plurnk-core/src/core/PathGlob.test.ts": {
           "tier": "unit",
@@ -22571,9 +22571,9 @@
           "citedTags": [
             "path-glob-matching"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/core/PathGlob.test.ts: Unit tests for PathGlob"
         },
         "plurnk-core/src/core/attachments.test.ts": {
           "tier": "unit",
@@ -22586,9 +22586,9 @@
           "citedTags": [
             "packet-attachment-parts"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/core/attachments.test.ts: Unit tests for attachments"
         },
         "plurnk-core/src/core/caps/DbProjectionCaps.test.ts": {
           "tier": "unit",
@@ -22606,9 +22606,9 @@
             "mimetype-parse-issues",
             "scheme-projection"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/core/caps/DbProjectionCaps.test.ts: Unit tests for DbProjectionCaps"
         },
         "plurnk-core/src/schemes/_entry-find.test.ts": {
           "tier": "unit",
@@ -22622,9 +22622,9 @@
             "find-result-projection",
             "markerless-first-page"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/schemes/_entry-find.test.ts: Unit tests for _entry-find"
         },
         "plurnk-core/src/schemes/_path-scope.test.ts": {
           "tier": "unit",
@@ -22641,9 +22641,9 @@
             "path-glob",
             "path-glob-matching"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/src/schemes/_path-scope.test.ts: Unit tests for _path-scope"
         },
         "plurnk-core/test/intg/Digest.emission-rows.test.ts": {
           "tier": "intg",
@@ -22657,9 +22657,9 @@
             "emission-row",
             "share-packet-names"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Digest.emission-rows.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/Digest.reasoning-rows.test.ts": {
           "tier": "intg",
@@ -22673,9 +22673,9 @@
             "digest-forensic-fidelity",
             "reasoning-row"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Digest.reasoning-rows.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/Engine.anchors-follow-shift.test.ts": {
           "tier": "intg",
@@ -22690,9 +22690,9 @@
             "line-anchor-disambiguation",
             "line-anchors"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.anchors-follow-shift.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/Engine.copy-mimetype.test.ts": {
           "tier": "intg",
@@ -22709,9 +22709,9 @@
             "copy-noop-304",
             "mimetype-verbatim-transfer"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.copy-move.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.copy-mimetype.test.ts: Merge into Engine.copy-move.test.ts"
         },
         "plurnk-core/test/intg/Engine.copy-move-regions.test.ts": {
           "tier": "intg",
@@ -22730,9 +22730,9 @@
             "mimetype-verbatim-transfer",
             "move-canonical-whole-source"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.copy-move.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.copy-move-regions.test.ts: Merge into Engine.copy-move.test.ts"
         },
         "plurnk-core/test/intg/Engine.copy-move.test.ts": {
           "tier": "intg",
@@ -22751,9 +22751,9 @@
             "move-dev-null-not-special",
             "move-missing-source-404"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/test/intg/Engine.copy-move.test.ts: Consolidated COPY, MOVE, Binary Parity, and Cross-Scheme Proposal intg suite"
         },
         "plurnk-core/test/intg/Engine.dispatch.test.ts": {
           "tier": "intg",
@@ -22792,9 +22792,9 @@
             "universal-read-composition",
             "unregistered-scheme-recovery"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.dispatch.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/Engine.edit-batch-receipts.test.ts": {
           "tier": "intg",
@@ -22810,9 +22810,9 @@
             "line-anchor-disambiguation",
             "problems-dispatch"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.edit-batch-receipts.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/Engine.edit-receipt-anchors.test.ts": {
           "tier": "intg",
@@ -22825,9 +22825,9 @@
           "citedTags": [
             "edit-receipt-anchored-context"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.edit-receipt-anchors.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/Engine.find-recursive-glob.test.ts": {
           "tier": "intg",
@@ -22840,9 +22840,9 @@
           "citedTags": [
             "find-candidate-containment"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.find-recursive-glob.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/Engine.read-authority.test.ts": {
           "tier": "intg",
@@ -22856,9 +22856,9 @@
             "line-anchor-write-authority",
             "line-anchors"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Engine.read-authority.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/File.reviewed-batch.test.ts": {
           "tier": "intg",
@@ -22875,9 +22875,9 @@
             "scheme-edit-proposal-receipt",
             "send-premature-terminate"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/File.reviewed-batch.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/File.scheme.proposal.test.ts": {
           "tier": "intg",
@@ -22904,9 +22904,9 @@
             "slice-semantics-compose-pattern",
             "unscoped-edit-create-only"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/File.scheme.proposal.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/Log.find.test.ts": {
           "tier": "intg",
@@ -22922,9 +22922,9 @@
             "log-uniform-query",
             "markerless-first-page"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Log.find.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/Log.kill-scope.test.ts": {
           "tier": "intg",
@@ -22943,9 +22943,9 @@
             "log-target-tolerances",
             "turn-ops-log-curation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/Log.kill-scope.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/Log.read.test.ts": {
           "tier": "intg",
@@ -22963,9 +22963,9 @@
             "log-range-miss-names-stream",
             "problems-schemes"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/test/intg/Log.read.test.ts: Consolidated Log READ/FIND/KILL, Readable Projection, Distillation, Redaction, and Mutation Patch intg suite"
         },
         "plurnk-core/test/intg/READ.audio.test.ts": {
           "tier": "intg",
@@ -22978,9 +22978,9 @@
           "citedTags": [
             "packet-attachment-parts"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/READ.audio.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/READ.bytes.test.ts": {
           "tier": "intg",
@@ -22995,9 +22995,9 @@
             "markerless-first-page",
             "read-bytes"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/READ.bytes.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/READ.image.test.ts": {
           "tier": "intg",
@@ -23014,9 +23014,9 @@
             "packet-attachment-parts",
             "read-bytes"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/READ.image.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/READ.pdf.test.ts": {
           "tier": "intg",
@@ -23029,9 +23029,9 @@
           "citedTags": [
             "packet-attachment-parts"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/READ.pdf.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/Session.edit.test.ts": {
           "tier": "intg",
@@ -23051,9 +23051,9 @@
             "problems-dispatch",
             "text-scope-runtime"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/test/intg/Session.edit.test.ts: Consolidated Op Surface, Line Anchors, EDIT, Proposals, and Pattern Contract intg suite"
         },
         "plurnk-core/test/intg/Session.find.test.ts": {
           "tier": "intg",
@@ -23068,9 +23068,9 @@
             "markerless-first-page",
             "problems-schemes"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/test/intg/Session.find.test.ts: Consolidated FIND, Result Projection, and FTS5 intg suite"
         },
         "plurnk-core/test/intg/Session.read.test.ts": {
           "tier": "intg",
@@ -23092,9 +23092,9 @@
             "read-selection-projection",
             "text-scope-runtime"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/test/intg/Session.read.test.ts: Consolidated READ, Native Media, Byte View, Extents, and Skill/MCP Media READ intg suite"
         },
         "plurnk-core/test/intg/arrival-row-protection.test.ts": {
           "tier": "intg",
@@ -23108,9 +23108,9 @@
             "log-kill-meta-operation",
             "message-arrival"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/arrival-row-protection.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/auto-anti-clobber.test.ts": {
           "tier": "intg",
@@ -23123,9 +23123,9 @@
           "citedTags": [
             "edit-collision"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/auto-anti-clobber.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/binary-parity.test.ts": {
           "tier": "intg",
@@ -23142,9 +23142,9 @@
             "read-bytes",
             "scheme-source-bytes"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.copy-move.test.ts",
+          "reason": "Test file plurnk-core/test/intg/binary-parity.test.ts: Merge into Engine.copy-move.test.ts"
         },
         "plurnk-core/test/intg/caps-entries.test.ts": {
           "tier": "intg",
@@ -23158,9 +23158,9 @@
             "binary-parity",
             "capability-ctx"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/caps-entries.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/catalog-summary.test.ts": {
           "tier": "intg",
@@ -23173,9 +23173,9 @@
           "citedTags": [
             "scheme-catalog-aside"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/catalog-summary.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/copy-move-pattern.test.ts": {
           "tier": "intg",
@@ -23188,9 +23188,9 @@
           "citedTags": [
             "copy-move-pattern"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.copy-move.test.ts",
+          "reason": "Test file plurnk-core/test/intg/copy-move-pattern.test.ts: Merge into Engine.copy-move.test.ts"
         },
         "plurnk-core/test/intg/copy-move-to-file.test.ts": {
           "tier": "intg",
@@ -23216,9 +23216,9 @@
             "proposal",
             "proposal-reject-fails"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Engine.copy-move.test.ts",
+          "reason": "Test file plurnk-core/test/intg/copy-move-to-file.test.ts: Merge into Engine.copy-move.test.ts"
         },
         "plurnk-core/test/intg/durable-log-redaction.test.ts": {
           "tier": "intg",
@@ -23231,9 +23231,9 @@
           "citedTags": [
             "log-sensitive-request-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/durable-log-redaction.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/edit-pattern.test.ts": {
           "tier": "intg",
@@ -23249,9 +23249,9 @@
             "readable-channel",
             "zero-width-column-one-insert"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/edit-pattern.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/executor-receipt-recovery.test.ts": {
           "tier": "intg",
@@ -23268,9 +23268,9 @@
             "log-range-miss-names-stream",
             "log-readable-projection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/executor-receipt-recovery.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/find-line-anchors.test.ts": {
           "tier": "intg",
@@ -23283,9 +23283,9 @@
           "citedTags": [
             "find-line-anchors"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/find-line-anchors.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/find-read-orthogonal.test.ts": {
           "tier": "intg",
@@ -23299,9 +23299,9 @@
             "find-result-projection",
             "read-exact-target"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/find-read-orthogonal.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/find-read-uniform.test.ts": {
           "tier": "intg",
@@ -23319,9 +23319,9 @@
             "read-find-normalization",
             "read-pattern"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/find-read-uniform.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/find-result-projection.test.ts": {
           "tier": "intg",
@@ -23337,9 +23337,9 @@
             "range-extent",
             "session-tool-admission"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/find-result-projection.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/floor-scope-capstone.test.ts": {
           "tier": "intg",
@@ -23352,9 +23352,9 @@
           "citedTags": [
             "edit-marker-required-on-existing"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/floor-scope-capstone.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/fulltext.test.ts": {
           "tier": "intg",
@@ -23371,9 +23371,9 @@
             "fts-word-phrase",
             "persistent-search-index"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/fulltext.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/history-addressing.test.ts": {
           "tier": "intg",
@@ -23388,9 +23388,9 @@
             "stream-asked-stop",
             "turn-source-resources"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/history-addressing.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/log-kill-distillation.test.ts": {
           "tier": "intg",
@@ -23403,9 +23403,9 @@
           "citedTags": [
             "log-kill-distillation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/log-kill-distillation.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/log-mutation-patch.test.ts": {
           "tier": "intg",
@@ -23418,9 +23418,9 @@
           "citedTags": [
             "log-mutation-patch"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/log-mutation-patch.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/log-readable-projection.test.ts": {
           "tier": "intg",
@@ -23438,9 +23438,9 @@
             "problems-functionality",
             "range-starts-at-one"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/log-readable-projection.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/log_entries.test.ts": {
           "tier": "intg",
@@ -23461,9 +23461,9 @@
             "scheme-address-network",
             "validation-topology"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/log_entries.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/manifest-order.test.ts": {
           "tier": "intg",
@@ -23476,9 +23476,9 @@
           "citedTags": [
             "find-result-projection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/manifest-order.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/matcher-content-conformance.test.ts": {
           "tier": "intg",
@@ -23494,9 +23494,9 @@
             "find-source-agnostic",
             "scope-slot"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.find.test.ts",
+          "reason": "Test file plurnk-core/test/intg/matcher-content-conformance.test.ts: Merge into Session.find.test.ts"
         },
         "plurnk-core/test/intg/mcp-media-composition.test.ts": {
           "tier": "intg",
@@ -23510,9 +23510,9 @@
             "mcp-result-content",
             "packet-attachment-parts"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/mcp-media-composition.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/mcp-prompt-composition.test.ts": {
           "tier": "intg",
@@ -23526,9 +23526,9 @@
             "emission-history",
             "packet-attachment-parts"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/mcp-prompt-composition.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/note-curation.test.ts": {
           "tier": "intg",
@@ -23542,9 +23542,9 @@
             "emission-history",
             "log-kill-scope"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Log.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/note-curation.test.ts: Merge into Log.read.test.ts"
         },
         "plurnk-core/test/intg/op-uri-contract.test.ts": {
           "tier": "intg",
@@ -23560,9 +23560,9 @@
             "fs-namei",
             "path-syntax"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/op-uri-contract.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/packet-extents.test.ts": {
           "tier": "intg",
@@ -23575,9 +23575,9 @@
           "citedTags": [
             "packet-extent-metadata"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/packet-extents.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/pattern-contract.test.ts": {
           "tier": "intg",
@@ -23595,9 +23595,9 @@
             "read-pattern",
             "slice-semantics-compose-pattern"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/pattern-contract.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/pattern-dialects.test.ts": {
           "tier": "intg",
@@ -23611,9 +23611,9 @@
             "find-source-agnostic",
             "mimetype-query"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.edit.test.ts",
+          "reason": "Test file plurnk-core/test/intg/pattern-dialects.test.ts: Merge into Session.edit.test.ts"
         },
         "plurnk-core/test/intg/read-pattern.test.ts": {
           "tier": "intg",
@@ -23628,9 +23628,9 @@
             "read-fan-out",
             "read-pattern"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/read-pattern.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/reasoning-budget.test.ts": {
           "tier": "intg",
@@ -23647,9 +23647,9 @@
             "reasoning-row",
             "turn-source-resources"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/reasoning-budget.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/reasoning-observation.test.ts": {
           "tier": "intg",
@@ -23664,9 +23664,9 @@
             "reasoning-row",
             "session-initialization-entry"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/reasoning-observation.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/reasoning-operations.test.ts": {
           "tier": "intg",
@@ -23682,9 +23682,9 @@
             "reasoning-operations",
             "reasoning-row"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/reasoning-operations.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/reasoning-resources.test.ts": {
           "tier": "intg",
@@ -23700,9 +23700,9 @@
             "session-read-scope",
             "turn-source-resources"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/reasoning-resources.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/reasoning-row.test.ts": {
           "tier": "intg",
@@ -23716,9 +23716,9 @@
             "emission-history",
             "reasoning-row"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/turn-source-resources.test.ts",
+          "reason": "Test file plurnk-core/test/intg/reasoning-row.test.ts: Merge into turn-source-resources.test.ts"
         },
         "plurnk-core/test/intg/skill-resources.test.ts": {
           "tier": "intg",
@@ -23734,9 +23734,9 @@
             "skills-functionality",
             "skills-resources"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Session.read.test.ts",
+          "reason": "Test file plurnk-core/test/intg/skill-resources.test.ts: Merge into Session.read.test.ts"
         },
         "plurnk-core/test/intg/turn-source-resources.test.ts": {
           "tier": "intg",
@@ -23752,9 +23752,9 @@
             "outside-text",
             "turn-source-resources"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Test file plurnk-core/test/intg/turn-source-resources.test.ts: Consolidated Turn Sources, Emissions, Reasoning Rows, and Reasoning Operations intg suite"
         }
       }
     },

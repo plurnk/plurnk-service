@@ -86,7 +86,7 @@ interface FindAddress {
     // when this predicate returns false. Counts and weights stay consistent
     // because the filter runs before matching and rendering.
     readonly visible?: (pathname: string) => boolean | Promise<boolean>;
-    // {§find-bytes} — the scheme's byte supplier, so a binary channel without a readable
+    // {§binary-parity} — the scheme's byte supplier, so a binary channel without a readable
     // projection is searched as bytes rather than skipped.
     readonly bytes?: (pathname: string, authority: string) => ByteSource;
     // {§membership-auto-add} — the model's universe beyond membership; file scheme, model dispatches only.
@@ -118,7 +118,7 @@ const uniqueMatchLocations = (locations: readonly MatchEvidence[]): MatchLocatio
 // Scheme results retain model-independent curation `weight` and typed regions. The generated
 // JSON body is the final model-facing boundary ({§find-result-projection}): the familiar `tokens`
 // label describes the same visible-body cost shown in the packet, a region reads in the one scope
-// notation ({§packet-extent-metadata}), and a location names its channel only off the default.
+// notation ({§log-wire-format}), and a location names its channel only off the default.
 const scoped = (key: string, value: unknown): unknown => key === "region" || key === "enclosingRegion"
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an item's region fields hold the TextRegions this module built; an entries walk does not carry which key holds which type
     ? ScopeFormat.region(value as TextRegion)
@@ -264,7 +264,7 @@ type FindScope = {
     scope: PathScope | null;
 };
 
-// {§find-scoped-isolation} A candidate row retains the selected workspace and literal authority.
+// {§find-result-projection} A candidate row retains the selected workspace and literal authority.
 type Candidate = { entry_id: number; authority: string; pathname: string; channel: string; deep_hash: string | null; content?: string; mimetype?: string };
 
 // {§relation-indexed-dialects} An indexed dialect over candidates the index does not yet cover.
@@ -458,7 +458,7 @@ export default class EntryFind {
         return { scheme, projectRoot, authority, multipleAuthorities, authorityScope, scopePathname, scope };
     }
 
-    // {§find-scope-prefix-filter} {§find-scoped-isolation} The candidate rows: SQL's safe superset on the
+    // {§find} {§find-result-projection} The candidate rows: SQL's safe superset on the
     // literal prefix, the authority glob applied, the asker's visibility applied, and derivation
     // settled before an indexed dialect reads it.
     static async #selectCandidates(
@@ -472,7 +472,7 @@ export default class EntryFind {
         // SQL receives only the literal prefix and returns a safe superset. The
         // path matcher owns the shell-glob truth below: unlike SQLite GLOB, `*`
         // cannot cross `/`, while `**` can. A declared folder scope remains a
-        // recursive prefix independent of glob syntax. {§find-scope-prefix-filter}
+        // recursive prefix independent of glob syntax. {§find}
         const { db, workspaceId } = ctx;
         const fulltext = statement.matcher?.dialect === "fts";
         let candidates = await db[fulltext ? "find_workspace_entry_candidate_ids" : "find_workspace_entry_candidates"].all<Candidate>({
@@ -535,7 +535,7 @@ export default class EntryFind {
             : [];
     }
 
-    // The shell-glob truth over the candidates ({§find-scope-prefix-filter}): a malformed glob is refused by
+    // The shell-glob truth over the candidates ({§find}): a malformed glob is refused by
     // name, and an exact path left with nothing is the scheme's miss.
     static #scopeCandidates(
         candidates: Candidate[],
@@ -660,7 +660,7 @@ export default class EntryFind {
         return matches;
     }
 
-    // {§find-source-agnostic} The content matcher over the candidates' text and bytes, and over the universe
+    // {§find} The content matcher over the candidates' text and bytes, and over the universe
     // beyond membership: a hit there proposes admission instead of showing content ({§membership-auto-add}).
     static async #matchContent(
         matcher: NonNullable<FindStatement["matcher"]>,
@@ -676,11 +676,11 @@ export default class EntryFind {
         const { candidates, ambientKeys, channelOf, effectiveBytes } = selection;
         const { mimetypes } = ctx;
         if (mimetypes === undefined) throw new Error("EntryFind.#matchContent: body matcher requires the mimetypes capability in ctx");
-        // {§find-source-agnostic} — the shared content-matcher primitive (Log.find runs the same
+        // {§find} — the shared content-matcher primitive (Log.find runs the same
         // one over log rows). Candidates key by pathname; each hit becomes a Match.
         const textCandidates: Array<{ key: string; content: string; mimetype: string }> = [];
         const byteCandidates: string[] = [];
-        // {§find-bytes}/{§binary-parity} — a binary channel is searched as bytes, never as its stored
+        // {§binary-parity}/{§binary-parity} — a binary channel is searched as bytes, never as its stored
         // text form: from the scheme's byte supplier (a File member's disk) or, absent one, from the
         // bytes a DB entry keeps base64 in its content. It is never handed to the text matcher, so its
         // bytes cannot poison a text search; a binary channel with neither source has nothing to search.
@@ -749,7 +749,7 @@ export default class EntryFind {
         }];
     }
 
-    // {§find-bytes} — the matcher runs over the bytes as one character each, so a text pattern
+    // {§binary-parity} — the matcher runs over the bytes as one character each, so a text pattern
     // finds strings and `\xNN` escapes find byte sequences; every hit is re-expressed in byte
     // coordinates that paste into a byte READ. The load is bounded by the mimetypes binary input
     // ceiling; a larger resource fails by name rather than being skipped.

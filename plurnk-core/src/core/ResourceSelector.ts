@@ -92,7 +92,7 @@ export default class ResourceSelector {
                 { retryable: false },
             );
         }
-        // {§copy-move-pattern} — a pattern selects source spans; a destination is a
+        // {§copy} — a pattern selects source spans; a destination is a
         // place, named by its scope.
         if (access === "write" && matcher !== null) {
             return MutationEffects.failure(
@@ -347,7 +347,7 @@ export default class ResourceSelector {
         };
     }
 
-    // {§copy-move-pattern} — selection and removal share the same source regions.
+    // {§copy} — selection and removal share the same source regions.
     async #matchedSpans(
         matcher: MatcherBody,
         resolvedMarker: { readonly selection: ResolvedResourceSelection; readonly precondition: LineAnchorPrecondition | null },

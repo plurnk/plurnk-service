@@ -126,7 +126,7 @@ ORDER BY p.sequence;
 -- current loop. Coordinates append /<op> only for rows that represent an operation.
 -- Status 202 entries in state='proposed' are model-invisible until resolved.
 -- Packet suppression and deliberate trimming remain separate facts under
--- {§log-readable-projection}; the packet renderer combines them.
+-- {§log-kill-scope}; the packet renderer combines them.
 SELECT
     le.id,
     l.sequence  AS loop_seq,
@@ -142,21 +142,21 @@ SELECT
     le.tx, le.mimetype_tx,
     le.state, le.outcome, le.initial_folded, le.folded,
     le.source, le.weight, le.attrs,
-    -- {§emission-row}: an emission row names its author, the producer of its turn.
+    -- {§turn-source-resources}: an emission row names its author, the producer of its turn.
     t.producer
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
 -- WHERE renders exactly one session's log — {§actor-boundary} {§machine-processes}
 -- Proposed rows wait for resolution ({§proposal-proposed-hidden}); a log-KILL that worked
--- stays out of the packet ({§log-kill-meta-operation}).
+-- stays out of the packet ({§log-history-projection}).
 -- Every failed operation remains visible ({§operation-result-uniform-error-channel}).
 WHERE le.session_id = $session_id
   AND NOT (le.status_rx = 202 AND le.state = 'proposed')
   AND NOT (
       (COALESCE(le.op, '') = 'KILL' AND COALESCE(le.scheme, '') = 'log')
       AND le.status_rx < 400
-      -- {§log-kill-meta-operation} — the one curation receipt the model cannot infer. A success
+      -- {§log-history-projection} — the one curation receipt the model cannot infer. A success
       -- is legible from the rows that are gone; a 204 is not, and with both silent the model
       -- cannot tell 'my KILL worked' from 'there was nothing to kill', so it repeats until its
       -- ceiling (#779). A mismatch shows in the packet of the very next turn, then retires.

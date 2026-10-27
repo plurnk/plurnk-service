@@ -408,7 +408,7 @@ export default class AstBuilder {
         AstBuilder.#ignoreUnread("READ", AstBuilder.#unread(lifted.consumed, split.inline, null), position);
         const aside = AstBuilder.#asideOf(ctx) ?? lifted.aside;
         // {§read-find-normalization} — a READ is never rewritten: a glob target is the runtime's
-        // fan-out over every matching path, with or without a matcher (core {§read-fan-out}).
+        // fan-out over every matching path, with or without a matcher (core {§read}).
         return [...AstBuilder.#annotation(split.below, position), ...lifted.selections.flatMap(AstBuilder.#selectionTargets).map((selection): ReadStatement => ({
             op: "READ",
             aside,
@@ -603,7 +603,7 @@ export default class AstBuilder {
         if (first.target === null) throw new PlurnkParseError(position.line, position.column, "parser", "KILL requires a target.");
         const split = AstBuilder.#splitInlineBody(ctx, position);
         const shape = StatementShape.body("KILL", first);
-        // {§log-kill-distillation} — beneath a log KILL the body is the model's distillation of what it retires,
+        // {§log-kill-scope} — beneath a log KILL the body is the model's distillation of what it retires,
         // never a matcher; an inline pattern on the heading line still lifts. Every other target takes no body.
         const distilling = shape === "distillation";
         const lifted = AstBuilder.#liftSelections("KILL", slots, position, split.inline);

@@ -22,7 +22,7 @@ const urlPath = (scheme: string, pathname: string): UrlPath => ({
     pathname, query: null, fragment: null,
 });
 
-// {§edit-marker-required-on-existing}: a fixed full-replace marker makes a
+// {§edit}: a fixed full-replace marker makes a
 // repeated EDIT of the same path stays a legal, IDENTICAL-fingerprint 200 across
 // turns (the cycle-detection tests below depend on that repeatability), never a
 // refusal once the first turn has created the path.
@@ -52,7 +52,7 @@ const response = (ops: PlurnkStatement[], content: string = "", completion: numb
 });
 
 // The deterministic HARD-failure (403 writableBy) generator for the strike/notice tests:
-// a scheme the model can't write. Log does not serve this role — {§turn-ops-log-curation}
+// a scheme the model can't write. Log does not serve this role — {§log-history-projection}
 // admits the model through its gate for the KILL curation lever (other ops 501, a SOFT failure).
 class Sealed {
     static manifest = {
@@ -164,7 +164,7 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
             assert.ok(initializationRows.some(({ op }) => op === "FIND"), "source retention does not replace executed results");
             const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: result.turnId }))!.packet);
             assert.deepEqual(logEntries(packet).filter(({ logPath }) => logPath.endsWith("/emission")), [],
-                "`_plurnk` initialization never fabricates a content announcement ({§emission-row}); its READ of its own program is an ordinary row");
+                "`_plurnk` initialization never fabricates a content announcement ({§turn-source-resources}); its READ of its own program is an ordinary row");
 
             const inferenceRows = await rowsFor(turns[1].id);
             const inferenceSource = sources.find((row) => row.turn_id === turns[1].id && row.kind === "ops");
@@ -178,7 +178,7 @@ test("{§turn-record}: initialization and inference preserve turnOps beside ordi
     }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: exact request accounting preserves reasoning-inclusive pricing", async () => {
+test("{§edit} Engine.runTurn: exact request accounting preserves reasoning-inclusive pricing", async () => {
     const events: ReasoningEventPayload[] = [];
     const { db, engine, workspaceId, sessionId, loopId } = await setup((_workspaceId, event) => events.push(event));
     try {
@@ -296,7 +296,7 @@ test("{§notifications-reasoning-event}: retries produce distinct physical-reque
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: only accepted durable messages enter Open Messages", async () => {
+test("{§edit} Engine.runTurn: only accepted durable messages enter Open Messages", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `ws-${crypto.randomUUID()}`);
@@ -322,7 +322,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: only accepted durable
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: admitted response does not change packet request-weight semantics", async () => {
+test("{§edit} Engine.runTurn: admitted response does not change packet request-weight semantics", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -373,7 +373,7 @@ test("{§send-premature-terminate} Engine.runTurn: multi-op turn - the arrival r
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: a trusted disposition-less program continues with only its authored operations", async () => {
+test("{§edit} Engine.runTurn: a trusted disposition-less program continues with only its authored operations", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -390,7 +390,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: a trusted disposition
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: an empty trusted batch fails without leaving a producer turn open", async () => {
+test("{§edit} Engine.runTurn: an empty trusted batch fails without leaving a producer turn open", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({ contextWindow: 100000, responses: [response([])] });
@@ -415,7 +415,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: an empty trusted batc
 // Cap dispatches at the configured limit; overflow ops are silently dropped
 // (no per-op log rows, to keep forensics from drowning in identical refusals)
 // and a single max_commands_exceeded failure tells the model next turn.
-test("{§edit-marker-required-on-existing} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overflow drops + a durable failure pointer", async () => {
+test("{§edit} Engine.runTurn: PLURNK_SERVICE_MAX_COMMANDS caps dispatched actions; overflow drops + a durable failure pointer", async () => {
     const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
     process.env.PLURNK_SERVICE_MAX_COMMANDS = "3";
     try {
@@ -522,7 +522,7 @@ test("{§loop-terminals} Engine.runLoop: hitting maxTurns terminates the loop at
 // {§engine-rails}: hard outcomes accumulate consecutive strikes;
 // soft outcomes (404, 501) and clean turns reset the streak.
 
-test("{§edit-marker-required-on-existing} Engine.runLoop: three consecutive hard failures abandon at 500 with strike_threshold reason", async () => {
+test("{§edit} Engine.runLoop: three consecutive hard failures abandon at 500 with strike_threshold reason", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         // EDIT sealed:/// → 403 (writableBy denial = hard). In-progress inventory continues.
@@ -582,7 +582,7 @@ test("{§send-premature-terminate} Engine.runLoop: soft failures (404) do NOT ac
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runLoop: clean turn between hard failures resets the streak", async () => {
+test("{§edit} Engine.runLoop: clean turn between hard failures resets the streak", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
@@ -753,7 +753,7 @@ test("{§rail-accounting-private} Engine.runLoop: cycle detection is internal �
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: the durable failure projection shows once, then ages out", async () => {
+test("{§edit} Engine.runTurn: the durable failure projection shows once, then ages out", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied = (): EditStatement => ({
@@ -791,7 +791,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: the durable failure p
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw", async () => {
+test("{§edit} Engine.runTurn: assistantRaw passes through into turn.packet.assistantRaw", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const raw = { vendor: "anthropic", id: "msg_xyz" };
@@ -810,7 +810,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: assistantRaw passes t
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: sequence increments across multiple turn calls in the same loop", async () => {
+test("{§edit} Engine.runTurn: sequence increments across multiple turn calls in the same loop", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -906,7 +906,7 @@ test("{§session-initialization-entry} Engine.runTurn: the second turn's log sec
     } finally { await db.close(); }
 });
 
-test("{§edit-receipt-anchored-context} Engine.runTurn: the log section parses an application/json rx body", async () => {
+test("{§edit-result-receipt-projection} Engine.runTurn: the log section parses an application/json rx body", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -928,14 +928,14 @@ test("{§edit-receipt-anchored-context} Engine.runTurn: the log section parses a
         // The EDIT's result span renders as an anchored coordinate line —
         // observable proof #buildLog parsed the JSON rx: a string rx couldn't yield
         // rx.span, so the render would fall back to the authored statement instead.
-        assert.match(String(edit.body), /^1<@[0-9A-Za-z]{5}>v\n$/, "{§edit-receipt-anchored-context}");
+        assert.match(String(edit.body), /^1<@[0-9A-Za-z]{5}>v\n$/, "{§edit-result-receipt-projection}");
     } finally { await db.close(); }
 });
 
 // {§operation-result-uniform-error-channel}: action-bound failures project into
 // the next packet's Errors section.
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: Errors is empty on a clean first turn", async () => {
+test("{§edit} Engine.runTurn: Errors is empty on a clean first turn", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -949,7 +949,7 @@ test("{§edit-marker-required-on-existing} Engine.runTurn: Errors is empty on a 
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Errors pointers use the canonical projected operation of a materialization row", async () => {
+test("{§edit} Errors pointers use the canonical projected operation of a materialization row", async () => {
     const { db, sessionId, loopId } = await setup();
     try {
         const turnId = await insertTurn(db, loopId, 1, 102);
@@ -999,7 +999,7 @@ test("{§log-row-self-explains} Engine.runTurn: previous-turn 403 surfaces in th
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: Errors includes only the immediately previous turn", async () => {
+test("{§edit} Engine.runTurn: Errors includes only the immediately previous turn", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const denied: EditStatement = {
@@ -1048,7 +1048,7 @@ test("{§outside-text}: free text is the turn's outside source, never delivered,
     } finally { await db.close(); }
 });
 
-test("{§edit-marker-required-on-existing} Engine.runTurn: NOTE carries literal working memory separate from provider reasoning", async () => {
+test("{§edit} Engine.runTurn: NOTE carries literal working memory separate from provider reasoning", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({

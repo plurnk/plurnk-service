@@ -108,7 +108,7 @@ export default class LoopDriver {
         const ruleTerminal = async (failure: SchemeResult, reason: TerminalReason): Promise<LoopResult> => {
             // {§terminal-evidence} — the ruling is the engine's and the status never softens, but
             // the last thing the model said is not the engine's to destroy. Cited, never embedded
-            // ({§turn-ops-entry}): the reader READs it, and a long emission never rides into a
+            // ({§log-history-projection}): the reader READs it, and a long emission never rides into a
             // parent's packet. Attached here, so no terminal can be added that forgets.
             const unconcluded = await unconcludedEmission(this.#db, loopId);
             const ruled = unconcluded === null ? failure : Results.extend(failure, { unconcluded: unconcluded.resource });

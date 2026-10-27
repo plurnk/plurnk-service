@@ -211,7 +211,7 @@ export default class EntryOps {
         // `<scope>` always addresses the selected channel's textual representation.
         // Structured query dialects locate content but never redefine mutation coordinates.
         // A missing selected channel has nothing to scope into, so a markerless body
-        // becomes that channel's content. {§edit-marker-required-on-existing}: an
+        // becomes that channel's content. {§edit}: an
         // existing selected channel has no easy-clobber path: a marker is REQUIRED,
         // even for a deliberate full rewrite (`<1,-1>` states that intent explicitly).
         let newContent: string;
@@ -279,7 +279,7 @@ export default class EntryOps {
                 channel: targetChannel,
                 detail: EDIT_NOOP_DETAIL,
                 ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
-            };  // {§edit-noop-304} — teaching rides the receipt, not the hot path (#342)
+            };  // {§edit} — teaching rides the receipt, not the hot path (#342)
         }
 
         let entryId: number;
@@ -330,7 +330,7 @@ export default class EntryOps {
         // Search derivation is not a write concern; SearchIndex attaches before the next model execution.
         await EntryReadable.sync(ctx, entryId, targetChannel, defaultChannel, newContent, effectiveMimetype);
 
-        // {§edit-receipt-anchored-context} — the same identity the READ projector hashes with.
+        // {§edit-result-receipt-projection} — the same identity the READ projector hashes with.
         const receiptIdentity = EntryManifest.channelPath({ scheme, authority, pathname }, targetChannel ?? "", defaultChannel);
         const receiptEdits = !channelExists
             ? [{ marker: { marks: [1, -1] as [number, number] }, body: newContent }]
@@ -347,7 +347,7 @@ export default class EntryOps {
             editReceipt: editReceipt(originalContent, newContent, receiptEdits, parseIssues, receiptIdentity),
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
             ...(merges === undefined ? {} : { merges }),
-        };  // {§edit-status-201-200}
+        };  // {§edit}
     }
 
     // Delete the exact workspace resource; its channels follow by CASCADE. 404 when absent.
@@ -442,7 +442,7 @@ export default class EntryOps {
         const path = EntryManifest.toPath(scheme, authority, pathname, projectRoot);
         const identity = EntryManifest.channelPath({ scheme, authority, pathname }, selectedChannel, manifest.defaultChannel, projectRoot);
         const stored = await EntryCrud.readEntry({ authority, pathname }, ctx, scheme);
-        // {§read-read-404} + {§fs-namespace} — ENOENT carries its fact, the RESOLVED name in wire
+        // {§read} + {§fs-namespace} — ENOENT carries its fact, the RESOLVED name in wire
         // canon: the model distinguishes wrong-address from wrong-range by the strings alone.
         if (stored.entry === null) {
             return failure(

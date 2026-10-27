@@ -18,4 +18,4 @@ unknown. `summary` is that same line and `deepJson` is the facts record
 | `deepJson` | The facts record ({§pdf-facts-line}). |
 
 Nothing is extracted, rendered or indexed; the document rides the packet as a
-native part on a route that accepts one ({§packet-attachment-parts}).
+native part on a route that accepts one ({§log-wire-format}).

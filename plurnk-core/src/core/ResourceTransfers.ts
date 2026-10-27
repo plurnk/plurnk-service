@@ -101,7 +101,7 @@ export default class ResourceTransfers {
             source: {
                 ...statement.source,
                 // Canonicalize only the execution selection. #writeLog retains
-                // the authored marker as operation evidence. {§move-canonical-whole-source}
+                // the authored marker as operation evidence. {§move}
                 lineMarker: sourceLineMarker,
             },
             destination: statement.destination,
@@ -131,7 +131,7 @@ export default class ResourceTransfers {
         return ResourceTransfers.#withMatched(MutationEffects.prependScopeNormalizations(result, selected.scopeNormalizations), selected);
     }
 
-    // {§copy-move-pattern} — a pattern transfer reports how many spans it selected.
+    // {§copy} — a pattern transfer reports how many spans it selected.
     static #withMatched(result: DispatchResult, selected: SelectedSource): DispatchResult {
         if (selected.matchedScopes === undefined || result.status >= 300) return result;
         return Results.assert({ ...result, matched: selected.matchedScopes.length });
@@ -149,7 +149,7 @@ export default class ResourceTransfers {
         destination: MetadataResourceSelection;
         ctx: PlurnkSchemeContext;
     }): Promise<DispatchResult> {
-        // {§move-decomposition} — a MOVE reads its source exactly as COPY does and then retires
+        // {§move} — a MOVE reads its source exactly as COPY does and then retires
         // it with the source scheme's own KILL: an entry scheme deletes or edits the entry, the
         // log curates its projection. The recorded evidence is never a write target.
         const resolvedSource = await this.#selection.resolveResourceSelection(source, ctx, "read");
@@ -169,7 +169,7 @@ export default class ResourceTransfers {
                 {}, { scheme: resolvedSource.scheme, channel: resolvedSource.channel, operation: "MOVE", retryable: false },
             );
         }
-        // {§copy-move-pattern} — a curated source retires rows, not lines of its projection.
+        // {§copy} — a curated source retires rows, not lines of its projection.
         if (selected.matchedScopes !== undefined && ResourceTransfers.#curatedSource(resolvedSource)) {
             return MutationEffects.failure(
                 "pattern-unsupported", 400,
@@ -324,7 +324,7 @@ export default class ResourceTransfers {
     }
 
     // The edits that take a scoped source out of its channel: the scope itself, or each span a
-    // pattern selected ({§copy-move-pattern}).
+    // pattern selected ({§copy}).
     static #sourceRemovals(
         source: ResolvedResourceSelection & { readonly matchedScopes?: readonly LineMarker[] },
         position: EditStatement["position"],
@@ -337,7 +337,7 @@ export default class ResourceTransfers {
     }
 
 
-    // {§move-decomposition} — a logging scheme's KILL is content curation (the projection trims,
+    // {§move} — a logging scheme's KILL is content curation (the projection trims,
     // the row is retired, the evidence stays), so it is a MOVE's source removal. A stream's KILL
     // is process control and is not.
     static #curatedSource(source: { readonly manifest: SchemeManifest }): boolean {
@@ -427,7 +427,7 @@ export default class ResourceTransfers {
     }
 
 
-    // {§copy-destination-mimetype} {§fs-write-surface} The destination half of a transfer: bound and read as it
+    // {§copy} {§fs-write-surface} The destination half of a transfer: bound and read as it
     // stands, its channel type agreed with the source, then written — a scoped creation, a region of an existing
     // channel, or the whole channel — with the effect and the receipt the row carries.
     async writeDestination(
@@ -523,7 +523,7 @@ export default class ResourceTransfers {
         // match and re-write. A text destination has no source projection, so this is its channel mimetype.
         const destProjection = (existing?.attributes as { sourceProjection?: { mimetype?: unknown } } | undefined)?.sourceProjection;
         const destRealMimetype = typeof destProjection?.mimetype === "string" ? destProjection.mimetype : destinationChannel?.mimetype;
-        // {§copy-destination-mimetype}: a transfer supplies the absent channel's type;
+        // {§copy}: a transfer supplies the absent channel's type;
         // a recognized destination suffix still participates in compatibility checking.
         const expectedMimetype = destRealMimetype
             ?? await PathMimetype.resolveEntryMimetype(
@@ -604,7 +604,7 @@ export default class ResourceTransfers {
         if (source.bytes !== undefined) {
             // {§binary-parity} — a byte source into a destination region is a splice: the destination's
             // named byte window becomes exactly the source bytes, every other byte untouched. The whole
-            // result is re-written. Coordinate = byte, as the source range is ({§read-bytes}).
+            // result is re-written. Coordinate = byte, as the source range is ({§binary-parity}).
             return this.#spliceBytes(
                 handler, storageAddress, destination, existing ?? null,
                 source.bytes, source.mimetype, destinationEffect, ctx,
@@ -712,7 +712,7 @@ export default class ResourceTransfers {
                         body: creationContent,
                     }],
                     parseIssues,
-                    // {§edit-receipt-anchored-context} — the destination's READ identity
+                    // {§edit-result-receipt-projection} — the destination's READ identity
                     EntryManifest.channelPath(storageAddress, destination.channel, destination.manifest.defaultChannel, destination.projectRoot),
                 ),
             );
@@ -896,7 +896,7 @@ export default class ResourceTransfers {
     }
 
 
-    // {§move-decomposition} A MOVE settles in two halves under one row. When the destination was written before
+    // {§move} A MOVE settles in two halves under one row. When the destination was written before
     // the proposal, the proposal was the source's own KILL; when the source was deferred, the proposal was the
     // destination's write and an accepted one retires the source now. Either way a settlement carries the
     // destination's effects, and a refusal after the destination was written says so.
@@ -914,7 +914,7 @@ export default class ResourceTransfers {
         ids: ProposalIds;
     }): Promise<ProposalSettlement> {
         if (statement.op !== "MOVE") return settlement;
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§move-decomposition}: a MOVE's proposal attrs are the orchestration attrs this module wrote when it decomposed the MOVE
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- {§move}: a MOVE's proposal attrs are the orchestration attrs this module wrote when it decomposed the MOVE
         const attrs = result.attrs as OrchestrationProposalAttrs | undefined;
         if (attrs?.moveDestinationWritten !== undefined) {
             const destinationEffects = attrs.moveDestinationEffects === undefined

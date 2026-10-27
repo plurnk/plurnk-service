@@ -1,5 +1,5 @@
 // SqlRite adapter for membership glob evaluation. The filename owns SQLite's `glob_match` name;
-// the semantics are {§path-glob-matching}, the one matcher every overlay decision uses, so a
+// the semantics are {§find}, the one matcher every overlay decision uses, so a
 // constraint evaluated in a statement and one evaluated in the process cannot disagree.
 import PathGlob from "./PathGlob.ts";
 

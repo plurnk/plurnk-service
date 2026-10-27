@@ -174,7 +174,7 @@ export default class EditMutations {
                 `Scheme '${schemeName}' returned READ 200 without its canonical derivation identity.`,
             );
         }
-        // {§line-anchor-write-authority}: internal validation does not depend on published edit hints.
+        // {§line-anchors}: internal validation does not depend on published edit hints.
         const lineAnchors = LineAnchors.tokens(lineAnchorIdentity, content);
 
         let resolved: ResolvedEditStatement;

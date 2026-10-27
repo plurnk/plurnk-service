@@ -23,7 +23,7 @@ import PacketWire from "../../src/core/packet-wire.ts";
 import EntryOps from "../../src/schemes/_entry-ops.ts";
 import MembershipMaterialization from "../../src/core/MembershipMaterialization.ts";
 import { serverProposals, ownSession, TEST_OWNER } from "./_approval.ts";
-import { TurnDisposition, Validator, type EntryReadResult, type ParsedPath, type CapabilityPolicy, type ProposalPolicy, type EditStatement, type PlurnkStatement, type UrlPath, type OperationResult, type ReadStatement, PathSyntax } from "@plurnk/plurnk-contracts";
+import { TurnDisposition, Validator, type EntryReadResult, type ParsedPath, type CapabilityPolicy, type ProposalPolicy, type EditStatement, type PlurnkStatement, type OperationResult, type ReadStatement, PathSyntax } from "@plurnk/plurnk-contracts";
 import { Mock, chatMessageText, type MockResponse, type ChatMessage } from "@plurnk/plurnk-providers";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { openMigrated, seedEnvelope, insertWorkspace, insertSession, insertLoop, insertOperationTurn, seedEntryWithChannel, rootWorkspace, insertTurn } from "./_db.ts";
@@ -48,7 +48,7 @@ import { type Db } from "../../src/core/Db.ts";
 import { resourcePaths } from "./_find.ts";
 import { type FindResult } from "../../src/schemes/_entry-find.ts";
 import { logEntries } from "./_packet.ts";
-import { statement } from "./reasoning-fixture.ts";
+import { statement as parseSingleStatement } from "./reasoning-fixture.ts";
 import { clientRead } from "./_client-read.ts";
 import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
 import { Module as McpModule } from "@plurnk/plurnk-mcp";
@@ -469,7 +469,7 @@ for (const readers of [undefined, 1]) test(`{§scheme-address} a client read acq
             ? [(rx as { resource: string }).resource] : []).find((resource) => resource.startsWith("message://"));
         assert.ok(note !== undefined && short !== undefined, "the turn noted, and its arrival names its message");
         const coordinate = `${note.loop_seq}/${note.turn_seq}/${note.sequence}`;
-        // {§log-readable-projection} A deliberate scoped KILL trims the row's second line from every later reader.
+        // {§log-kill-scope} A deliberate scoped KILL trims the row's second line from every later reader.
         const trimmed = await modelOperation(daemon, db, { workspaceId, sessionId, statement: killStmt(parsePath(`log:///${coordinate}/NOTE`), { marks: [2] }) });
         assert.equal(trimmed.status, 200);
         const read = async (target: string, slice: { channel?: string; offset?: number } = {}): Promise<EntryReadResult> =>
@@ -938,7 +938,7 @@ const repeated = (body: string) => {
 };
 
 for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
-    test(`{§line-anchor-disambiguation}: ${op} uses contextual READ handles after a separate operation shifts the resource`, async (t) => {
+    test(`{§line-anchors}: ${op} uses contextual READ handles after a separate operation shifts the resource`, async (t) => {
         const { run, read, write } = await runtime(t);
         const source = "workspace:///source.md";
         const destination = "workspace:///destination.md";
@@ -977,7 +977,7 @@ for (const op of ["EDIT", "KILL", "COPY", "MOVE"] as const) {
     });
 }
 
-test("{§line-anchor-disambiguation}: changed extended context refuses EDIT without changing either twin", async (t) => {
+test("{§line-anchors}: changed extended context refuses EDIT without changing either twin", async (t) => {
     const { read, write, run } = await runtime(t);
     const path = "workspace:///stale.md";
     const lines = repeated("target");
@@ -1429,7 +1429,7 @@ test("{§scheme-catalog-parse-issues} catalog quietly marks parser recovery with
     } finally { await db.close(); }
 });
 
-test("{§scheme-catalog-aside} catalog projects a bounded aside on only its exact markdown channel", async () => {
+test("{§find} catalog projects a bounded aside on only its exact markdown channel", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `manifest-summary-${crypto.randomUUID()}`);
@@ -1904,7 +1904,7 @@ for (const c of REFUSED) test(`{§op-methods-op-dispatch}: refused attempt, ${c.
     });
 });
 
-test("{§edit-receipt-anchored-context}: every EDIT receipt carries its own padded window, and a later receipt supersedes a neighbour's anchor", async () => {
+test("{§edit-result-receipt-projection}: every EDIT receipt carries its own padded window, and a later receipt supersedes a neighbour's anchor", async () => {
     await withProject(async (ctx) => {
         const { edits, published } = await program(ctx, 1, (a) => [edit(DEBUG, a(11), URLS_IMPORT), edit(DEBUG, a(12), "from django.utils import timezone  # kept"), edit(DEBUG, a(23), EXCEPT_404)]);
         const [a] = published;
@@ -2151,13 +2151,7 @@ test("{§disposition-anywhere} internal turn programs admit a disposition anywhe
 });
 
 describe("end_to_end_mock", () => {
-const urlPath = (scheme: string, pathname: string): UrlPath => ({
-    kind: "url", raw: `${scheme}://${pathname}`, scheme,
-    username: null, password: null, hostname: null, port: null,
-    pathname, query: null, fragment: null,
-});
-
-const editStmt = (pathname: string, body: string): EditStatement => ({
+const e2eEditStmt = (pathname: string, body: string): EditStatement => ({
     metadata: null,
     op: "EDIT", aside: null,
     target: urlPath("workspace", pathname),
@@ -2202,7 +2196,7 @@ test("{§send-premature-terminate} e2e: single-turn EDIT + SEND — entry create
         const provider = new Mock({
             contextWindow: 100000,
             // {§send-premature-terminate} — an EDIT receipt lands next packet, so the turn continues.
-            responses: [response([editStmt("/france/capital", "Paris"), noteStmt("answered")])],
+            responses: [response([e2eEditStmt("/france/capital", "Paris"), noteStmt("answered")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         const result = await dispatchTurn(engine, provider, db, env);
@@ -2233,7 +2227,7 @@ test("{§op-methods-op-dispatch} e2e: three EDITs in one turn — sequence 1/2/3
         const provider = new Mock({
             contextWindow: 100000,
             responses: [response([
-                editStmt("/a", "1"), editStmt("/b", "2"), editStmt("/c", "3"),
+                e2eEditStmt("/a", "1"), e2eEditStmt("/b", "2"), e2eEditStmt("/c", "3"),
                 noteStmt("more"),
             ])],
         });
@@ -2255,7 +2249,7 @@ test("{§op-methods-op-dispatch} e2e: cross-turn state — turn 2 sees entry wri
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-multi");
         const message = await db.message_source_resources.get<{ path: string }>({ workspace_id: env.workspaceId, scheme: "message", target: null });
         assert.ok(message);
-        const readStmt = (pathname: string): PlurnkStatement => ({
+        const e2eReadStmt = (pathname: string): PlurnkStatement => ({
             metadata: null,
             op: "READ", aside: null,
             target: urlPath("workspace", pathname),
@@ -2265,8 +2259,8 @@ test("{§op-methods-op-dispatch} e2e: cross-turn state — turn 2 sees entry wri
         const provider = new Mock({
             contextWindow: 100000,
             responses: [
-                response([editStmt("/state", "from turn 1"), noteStmt("continuing")]),
-                response([readStmt("/state"), noteStmt("reading")]),
+                response([e2eEditStmt("/state", "from turn 1"), noteStmt("continuing")]),
+                response([e2eReadStmt("/state"), noteStmt("reading")]),
                 response([sendStmt(parsePath(message.path), "done")]),
             ],
         });
@@ -2294,7 +2288,7 @@ test("{§provider-instantiation} e2e: Mock queue exhaustion throws after the exp
         const env = await seedEnvelopeNoTurn(db, "ws-e2e-exhaust");
         const provider = new Mock({
             contextWindow: 100000,
-            responses: [response([editStmt("/only", "x"), sendStmt(null, "")])],
+            responses: [response([e2eEditStmt("/only", "x"), sendStmt(null, "")])],
         });
         const engine = new Engine({ db, schemes: new SchemeRegistry() });
         await dispatchTurn(engine, provider, db, env);
@@ -2414,7 +2408,7 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         assert.ok(notes.every((row) => row.origin === undefined || row.origin === "model"));
         // Source identity never depends on the reader ({§turn-source-resources}); alice's later packets are under test.
         const observer = await insertSession(db, workspaceId, null, "observer");
-        const read = (source: string, reader = observer) => clientRead(engine, db, { workspaceId, sessionId: reader, statement: statement(source) });
+        const read = (source: string, reader = observer) => clientRead(engine, db, { workspaceId, sessionId: reader, statement: parseSingleStatement(source) });
         const firstSource = await read(frame(`READ (${String(notes[0].resource)}) <1,-1>`, null));
         assert.equal(firstSource.status, 200);
         assert.equal(firstSource.content, "The network is not the cause.");
@@ -2431,7 +2425,7 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         const rawReasoning = await read(frame("READ (reasoning://alice/1/2) <1,-1>", null));
         assert.equal(rawReasoning.content, reasoning);
         const found = await engine.dispatch({ ...context, turnId: final.turnId, sequence: 40, origin: "model",
-            statement: statement(frame("FIND (note://alice/1/2/*) /parser/", null)),
+            statement: parseSingleStatement(frame("FIND (note://alice/1/2/*) /parser/", null)),
         });
         assert.equal(found.status, 200);
         assert.deepEqual(resourcePaths(found as FindResult), [`note://alice/${contentNote}`], "source search still works after log curation");
@@ -2440,7 +2434,7 @@ test("{§turn-source-resources} #713: notes have durable sources, normal log cur
         assert.equal(inherited.content, firstSource.content, "FORK preserves source identity and content");
         for (const op of ["EDIT", "KILL"]) {
             const refused = await engine.dispatch({ ...context, turnId: final.turnId, sequence: op === "EDIT" ? 50 : 51, origin: "model",
-                statement: statement(frame(`${op} (${String(notes[0].resource)})`, op === "EDIT" ? "Changed" : null)),
+                statement: parseSingleStatement(frame(`${op} (${String(notes[0].resource)})`, op === "EDIT" ? "Changed" : null)),
             });
             assert.equal(refused.status, 403, `${op} cannot change immutable note evidence`);
         }
@@ -2515,7 +2509,7 @@ test("{§reasoning-operations} {§emission-admission}: a rejected emission canno
         const notes = sources.filter(({ kind }) => kind === "note");
         assert.equal(notes.filter(({ content }) => content === "This belongs to the accepted attempt.").length, 1);
         assert.ok(notes.every(({ content }) => content !== "This belongs to the rejected attempt."));
-        const reasoning = await clientRead(engine, db, { workspaceId, sessionId, statement: statement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
+        const reasoning = await clientRead(engine, db, { workspaceId, sessionId, statement: parseSingleStatement(frame("READ (reasoning://alice/1/2) <1,-1>", null)) });
         assert.equal(reasoning.content, acceptedReasoning);
     } finally { await db.close(); }
 });
@@ -2660,7 +2654,7 @@ for (const shape of ["separate", "glob", "final"] as const) {
 });
 
 describe("packet-envelope", () => {
-// {§emission-row} {§emission-history}: durable programs, curatable records, complete retained operations.
+// {§turn-source-resources} {§emission-history}: durable programs, curatable records, complete retained operations.
 
 
 
@@ -2719,7 +2713,7 @@ test("{§emission-history}: curation removes memory receipts; source READ still 
     assert.equal((JSON.parse(rows.find(({ coordinate }) => coordinate.startsWith("1/2/"))!.rx) as { content: string }).content, first);
 });
 
-test("{§emission-row}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {
+test("{§turn-source-resources}: initialization has no replay; canonical content carries interstitial text as the NOTEs it became and preserves row chronology", async (t) => {
     const canonical = `${frame("NOTE", "Let me look around first.")}\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\n${frame("NOTE", "Done for now.")}`;
     const { db, result, provider, rows } = await run("envelope-chronology", "Answer.", [
         say(`Let me look around first.\n\n${surveyRead}\n\n${frame("NOTE", "Bearings: nothing read yet.")}\n\nDone for now.`), say(frame("SEND [200]", "Answer.")),
@@ -2745,7 +2739,7 @@ test("{§emission-row}: initialization has no replay; canonical content carries 
     assert.match(chatMessageText(request[3]), /^### log:\/\/\/1\/2\/3\/NOTE[\s\S]*### log:\/\/\/1\/2\/4\/READ/u, "the turn's results follow the operations that caused them");
 });
 
-test("{§emission-row}: curation retires the immediately preceding emission without reviving an older one", async (t) => {
+test("{§turn-source-resources}: curation retires the immediately preceding emission without reviving an older one", async (t) => {
     const mode = process.env.PLURNK_SERVICE_EMISSION_HISTORY;
     process.env.PLURNK_SERVICE_EMISSION_HISTORY = "latest";
     t.after(() => { if (mode === undefined) delete process.env.PLURNK_SERVICE_EMISSION_HISTORY; else process.env.PLURNK_SERVICE_EMISSION_HISTORY = mode; });
@@ -2763,7 +2757,7 @@ test("{§emission-row}: curation retires the immediately preceding emission with
     assert.ok(PacketWire.sectionContent(await build(), "log").includes("log:///1/2/2/emission"), "an older live emission is not replayed");
 });
 
-test("{§emission-row}: a scoped KILL cannot partially curate a program; a sweep preserves it and an unscoped KILL retires it", async (t) => {
+test("{§turn-source-resources}: a scoped KILL cannot partially curate a program; a sweep preserves it and an unscoped KILL retires it", async (t) => {
     const { db, result, provider, rows } = await run("envelope-scope", "Answer.\nSecond line.\nThird line.", [
         say(frame("EDIT (workspace:///scope.md)", "line one\nline two\nline three")),
         say(frame("KILL (log:///1/2/2/emission) <1,-1>", null)),
@@ -2783,7 +2777,7 @@ test("{§emission-row}: a scoped KILL cannot partially curate a program; a sweep
     assert.deepEqual(JSON.parse(retired.folded), []);
 });
 
-test("{§emission-row} {§emission-admission}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
+test("{§turn-source-resources} {§emission-admission}: an echoed emission heading is tolerated and dropped, never a NOTE, never replayed", async (t) => {
     const { db, result, provider, rows } = await run("envelope-echo", "Answer.", [
         say(`### log:///1/2/2/emission (ops://exampleSessionName/1/2) · 30\n\n${surveyRead}\n\n${frame("NOTE", "Noted.")}`), say(frame("SEND [200]", "Answer.")),
     ], 3);
@@ -3425,11 +3419,11 @@ test("{§op-methods-op-dispatch}: each EDIT records its own revision; an earlier
             assert.notEqual(edits[0].receipt?.revision, edits[1].receipt?.revision, "each EDIT identifies its own committed revision");
             const unanchored = (context: unknown): string => String(context).replace(/^ *(\d+)<@[0-9A-Za-z]{5}>/gm, "$1:");
             assert.deepEqual(edits.map((row) => ({ ...row.receipt?.effect, context: unanchored((row.receipt?.effect as { context?: unknown } | undefined)?.context) })), [
-                // {§edit-receipt-anchored-context} — four lines of boundary context (the shipped default) reach the whole file here.
+                // {§edit-result-receipt-projection} — four lines of boundary context (the shipped default) reach the whole file here.
                 { requested: "<4>", source: "<4>", result: "<4>", removed: 1, inserted: 1, context: "1:one\n2:two\n3:three\n4:FOUR" },
                 { requested: "<2>", source: "<2>", result: "<2,3>", removed: 1, inserted: 2, context: "1:one\n2:TWO\n3:2.5\n4:three\n5:FOUR" },
             ]);
-            for (const row of edits) assert.match(String((row.receipt?.effect as { context?: unknown } | undefined)?.context), /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/, "{§edit-receipt-anchored-context}");
+            for (const row of edits) assert.match(String((row.receipt?.effect as { context?: unknown } | undefined)?.context), /^ *[1-9]\d*<@[0-9A-Za-z]{5}>/, "{§edit-result-receipt-projection}");
         } finally { ws.close(); }
     });
 });
@@ -3457,7 +3451,7 @@ test("{§op-methods-op-dispatch}: overlapping numeric EDITs apply to successive 
     });
 });
 
-test("{§edit-line-anchors}: a two-anchor whole-line range survives the composed EDIT path", async (approvalContext) => {
+test("{§edit}: a two-anchor whole-line range survives the composed EDIT path", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const content = "alpha\nbeta\ngamma\ndelta";
     const [alpha, beta] = LineAnchors.tokens("workspace:///anchored-range.md", content);

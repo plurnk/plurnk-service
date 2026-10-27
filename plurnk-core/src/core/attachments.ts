@@ -1,6 +1,6 @@
 import type { InputModality } from "@plurnk/plurnk-providers";
 
-// {§packet-attachment-parts} — the kinds of member a packet can carry as a native part and the
+// {§log-wire-format} — the kinds of member a packet can carry as a native part and the
 // catalog modality the route must declare.
 export type AttachmentKind = "image" | "pdf" | "audio";
 

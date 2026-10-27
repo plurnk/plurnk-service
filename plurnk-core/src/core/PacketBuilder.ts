@@ -375,7 +375,7 @@ export default class PacketBuilder {
         }));
         const renderWeight = PacketWire.packetToWireMessages({ sections })
             .reduce((sum, { content }) => sum + weighContent(content), 0);
-        // {§packet-attachment-parts}: all text is already in the ordered messages.
+        // {§log-wire-format}: all text is already in the ordered messages.
         const packet: RequestPacket = { weight: renderWeight + attachmentsWeight, sections, attributions: [], attachments };
         this.#allowances.set(packet.sections, { budget: curationBudget, offset });
         this.#streamObservations.set(packet.sections, openChannels);

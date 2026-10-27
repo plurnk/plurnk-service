@@ -81,7 +81,7 @@ export interface EntryCatalogChannel {
     readonly sourceMimetype?: string;
     readonly weight: number;
     readonly lines: number;
-    // {§scheme-catalog-aside} the channel's one-line orientation, clipped; absent when it has none.
+    // {§find} the channel's one-line orientation, clipped; absent when it has none.
     readonly aside?: string;
     readonly parseIssues?: number;
 }
@@ -261,7 +261,7 @@ export interface SchemeAddressCtx {
     // `subscriptions.open` instead, which subsumes this.
     readonly signal: AbortSignal | undefined;
     // The operation row an accepted application settles, so a scheme can keep what it did on that
-    // row ({§log-mutation-patch}); absent outside proposal application.
+    // row ({§log-wire-format}); absent outside proposal application.
     readonly logEntryId?: number;
 }
 

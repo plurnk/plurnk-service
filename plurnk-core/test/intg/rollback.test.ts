@@ -1,5 +1,5 @@
 import { serverProposals, TEST_OWNER } from "./_approval.ts";
-// {§rollback} {§methods-workspace-rollback} — a session's settled file mutations after a coordinate are
+// {§log-wire-format} {§methods-workspace-rollback} — a session's settled file mutations after a coordinate are
 // reversed latest first as one client operation of the acting person; a patchless row is skipped; drift stops
 // the rollback where it is; a rollback is itself reversible; a coordinate that is not a row refuses.
 import test from "node:test";
@@ -30,7 +30,7 @@ const parseOne = (source: string): PlurnkStatement => {
 
 const exists = async (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
-test("{§rollback} reversals land as one client operation of the acting person, latest first; patchless rows are skipped; drift stops it; a rollback is reversible", async (t) => {
+test("{§log-wire-format} reversals land as one client operation of the acting person, latest first; patchless rows are skipped; drift stops it; a rollback is reversible", async (t) => {
     serverProposals(t, "accept");
     const env = { PLURNK_SERVICE_GIT_ALLOWED: process.env.PLURNK_SERVICE_GIT_ALLOWED, PLURNK_SERVICE_GIT_AUTO: process.env.PLURNK_SERVICE_GIT_AUTO };
     process.env.PLURNK_SERVICE_GIT_ALLOWED = "1";

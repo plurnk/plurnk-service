@@ -115,7 +115,7 @@ const receiptFields = (
 
 function assertEffectReceipt(value: unknown): asserts value is EditEffectReceipt {
     const effect = receiptRecord(value, "EDIT effect receipt");
-    // {§edit-receipt-removed-text} — optional: present only on a pure deletion.
+    // {§edit-result-receipt-projection} — optional: present only on a pure deletion.
     const { removedText, ...exact } = effect;
     exactFields(
         exact,
@@ -357,7 +357,7 @@ const lineEffects = (
     });
 };
 
-// {§edit-receipt-removed-text} — a pure deletion's removed lines ride its receipt so it can be
+// {§edit-result-receipt-projection} — a pure deletion's removed lines ride its receipt so it can be
 // undone from what the model already sees; long spans are cut, not dropped.
 const removedTextOf = (lines: readonly string[]): string => {
     const shown = Knob.integer("PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES", 0);
@@ -436,7 +436,7 @@ const codePointEffects = (
 
 const contextRadius = (): number => Knob.integer("PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES", 0);
 
-// {§edit-receipt-anchored-context} — with the resource's anchor identity, the resulting context
+// {§edit-result-receipt-projection} — with the resource's anchor identity, the resulting context
 // renders exactly as a READ does (`@xxxxx L:text`), so the next batch can cite the landed
 // lines by anchor without a READ. Without an identity it stays line-numbered.
 const addContext = (

@@ -28,7 +28,7 @@ export const pathScope = (pathname: string, folderScopes: boolean): PathScope =>
     return { kind: "glob", pattern: pathname, candidatePrefix, shallowPrefix, recursivePrefix };
 };
 
-// {§find-scope-prefix-filter} — `**` crosses directories in every spelling. Shell globbing
+// {§find} — `**` crosses directories in every spelling. Shell globbing
 // reads a `**` glued to a name (`**.go`, `src/**.ts`) as a single-segment `*`; the taught
 // rule holds, so the glued form is matched as `**/*<rest>`.
 const crossingDoubleStar = (pattern: string): string => pattern.replace(/(^|\/)\*\*(?=[^/*])/g, "$1**/*");

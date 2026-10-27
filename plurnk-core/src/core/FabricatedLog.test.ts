@@ -18,7 +18,7 @@ test("{§emission-admission} {§diagnostic-observation} the diagnostic quotes th
         "`### log:///2/1/5/READ` is a log entry, and only the harness writes the log.");
 });
 
-test("{§emission-admission} {§emission-row} an echoed emission heading is tolerated, and a later invented receipt still is not", () => {
+test("{§emission-admission} {§turn-source-resources} an echoed emission heading is tolerated, and a later invented receipt still is not", () => {
     assert.equal(FabricatedLog.find("### log:///1/4/2/emission (ops://exampleSessionName/1/4) · 88"), null);
     assert.equal(FabricatedLog.find("### log:///1/4/2/EMISSION · 88"), null, "the leaf compares case-insensitively");
     assert.deepEqual(FabricatedLog.find("### log:///1/4/2/emission · 88\n\n### log:///1/4/3/READ (a.md) · 9"), { heading: "### log:///1/4/3/READ", line: 2 });

@@ -67,7 +67,7 @@ export default class LogVisibility {
         content: string,
         publishedAnchors: readonly string[] = [],
     ): LogVisibilityScopeResolution {
-        // {§log-scope-recovery} — every refusal ends in the forms that work on this row, never a rebuild of the
+        // {§log-kill-scope} — every refusal ends in the forms that work on this row, never a rebuild of the
         // written scope ({§diagnostic-observation}).
         const retire = `KILL (${identity}) with no scope retires the whole row`;
         const refuse = (detail: string, recovery = `Trim one line with <L> or lines L through M with <L,M>; ${retire}.`) =>

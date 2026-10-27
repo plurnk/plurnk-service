@@ -904,7 +904,7 @@ test("{§fence-heading-in-body} at-sign matcher text remains in the fallback glo
     }
 });
 
-test("a READ with a pattern on an exact target stays a READ ({§read-pattern})", () => {
+test("a READ with a pattern on an exact target stays a READ ({§read})", () => {
     const result = PlurnkParser.parse([
         "````READ (data/users.json) <1,-1> @data/users.json````",
     ].join("\n"));

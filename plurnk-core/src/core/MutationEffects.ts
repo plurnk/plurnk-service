@@ -66,7 +66,7 @@ export default class MutationEffects {
         result: DispatchResult,
         pending: readonly PendingResourceEffect[],
     ): DispatchResult {
-        // {§edit-result-copy-move-effects} — only an applied mutation earns
+        // {§edit-result-receipt-projection} — only an applied mutation earns
         // engine-composed effects; native scheme receipts remain internal input.
         const exact = Results.assert(result);
         if (exact.status === 304 || exact.status === 202 || exact.status >= 300) return exact;
@@ -138,7 +138,7 @@ export default class MutationEffects {
     }
 
 
-    // {§copy-move-observation} {§edit-result-copy-move-effects} — scoped
+    // {§copy-move-observation} {§edit-result-receipt-projection} — scoped
     // COPY/MOVE into an unscoped channel is a text materialization even when
     // CRUD creates the channel wholesale. Carry the receipt through synchronous
     // writes and proposals; the destination scheme owns reviewed output.

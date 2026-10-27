@@ -33,7 +33,7 @@ const runtime = async (t: TestContext) => {
     return { dispatch, db };
 };
 
-// {§read-pattern} {§graph-relations}
+// {§read} {§graph-relations}
 test("{§kill-pattern} a graph READ selects definitions and references without becoming a FIND", async (t) => {
     const { dispatch } = await runtime(t);
     const definition = await dispatch("````READ (workspace:///resolvers.py) &RoutePattern````");
@@ -52,7 +52,7 @@ test("{§kill-pattern} a graph READ selects definitions and references without b
 });
 
 // {§kill-pattern}
-test("{§read-pattern} a full-text KILL removes the highlighted source token rather than its containing line", async (t) => {
+test("{§read} a full-text KILL removes the highlighted source token rather than its containing line", async (t) => {
     const { dispatch, db } = await runtime(t);
     const result = await dispatch("````KILL (workspace:///resolvers.py) ~LocaleRegexDescriptor````");
     assert.equal(result.status, 200, JSON.stringify(result));

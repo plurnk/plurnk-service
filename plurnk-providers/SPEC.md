@@ -532,7 +532,7 @@ model request.
 
 ### §provider-input-modalities Native input parts
 
-A provider declares `inputModalities`, the set of native non-text inputs its model accepts, from the catalog's input modalities (Models.dev `modalities.input` minus `text`, kept to the vocabulary `image`, `pdf`, `audio`, `video`; empty when the model is unknown). Which parts actually ride a request is the service's decision per attachment ({§packet-attachment-parts} in the core specification).
+A provider declares `inputModalities`, the set of native non-text inputs its model accepts, from the catalog's input modalities (Models.dev `modalities.input` minus `text`, kept to the vocabulary `image`, `pdf`, `audio`, `video`; empty when the model is unknown). Which parts actually ride a request is the service's decision per attachment ({§log-wire-format} in the core specification).
 
 | Fact | Rule |
 | --- | --- |

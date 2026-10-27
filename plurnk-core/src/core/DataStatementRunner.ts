@@ -203,7 +203,7 @@ export default class DataStatementRunner {
         return this.#runMethod(bound);
     }
 
-    // {§line-anchor-write-authority}: initialization's producer is not the model's write grant, so a
+    // {§line-anchors}: initialization's producer is not the model's write grant, so a
     // scheme that edits by anchor but does not publish them on every READ is asked whether the
     // model may write this target; a ≥500 answer is the READ's result.
     async #lineAnchorGrant(bound: BoundStatement): Promise<{ publishesLineAnchors: boolean; refusal: DispatchResult | null }> {
@@ -294,7 +294,7 @@ export default class DataStatementRunner {
                     pathname: resolved.pathname,
                 },
             publishesLineAnchors,
-            // {§read-bytes} — a scheme that can supply the resource's bytes hands READ its source.
+            // {§binary-parity} — a scheme that can supply the resource's bytes hands READ its source.
             resolved === null
                 ? undefined
                 : handler.byteSource?.(resolved, schemeCtx),

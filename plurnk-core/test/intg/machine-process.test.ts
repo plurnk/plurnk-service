@@ -501,7 +501,7 @@ for (const operation of ["COPY", "MOVE"]) for (const destination of ["", "caller
 });
 
 describe("Engine.log-curation-receipts", () => {
-// {§log-kill-meta-operation}
+// {§log-history-projection}
 
 
 
@@ -515,7 +515,7 @@ const rows = (log: string, op: string): Array<Record<string, unknown>> =>
     parseLogRecords(log).filter(({ logPath: path }) => typeof path === "string" && path.endsWith(`/${op}`));
 const row = (log: string, op: string): Record<string, unknown> | undefined => rows(log, op)[0];
 
-test("{§log-kill-meta-operation} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async (approvalContext) => {
+test("{§log-history-projection} a KILL that worked never renders; one that matched nothing renders once; errors, resource KILLs, and forensic evidence remain", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 32768, responses: [
         "````EDIT (workspace:///note)\nfirst line\nsecond line\n````\n\n````READ (workspace:///note)````\n````NOTE\nwrote\n````",

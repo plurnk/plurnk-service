@@ -74,7 +74,7 @@ test("{§markerless-first-page}: a READ without a scope lands as its first page,
         const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, turnNumber: 2, provider });
         const packet = JSON.parse((await db.test_get_turn.get<{ packet: string }>({ id: second.turnId }))!.packet);
         const row = logEntries(packet).find((entry) => /^log:\/\/\/1\/2\/\d+\/READ$/u.test(entry.logPath))!;
-        assert.equal(row.range, `<1,${to}> of 600 lines`, "{§packet-extent-metadata}: one fact, one notation");
+        assert.equal(row.range, `<1,${to}> of 600 lines`, "{§log-wire-format}: one fact, one notation");
         assert.equal(String(row.body).trimEnd().split("\n").length, to, "the row shows exactly the page");
         const sliced = (await db.test_log_entries_by_turn.all<{ op: string; status_rx: number; rx: string }>({ turn_id: second.turnId }))
             .find((entry) => entry.op === "READ" && !LogEntryProjection.isEmission(entry))!;

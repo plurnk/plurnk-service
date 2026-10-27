@@ -342,7 +342,7 @@ for (const preview of ["0", "1"]) for (const [label, response, reasoning, notes,
     ["prose with reasoning", "Four.", "I should verify the arithmetic.", [], "Four."],
     ["empty response", "", null, [], undefined],
 ] as const) {
-    test(`{§empty-turn} {§reasoning-row}: ${label} preserves sources and strikes; preview=${preview} is not authored work`, async (t) => {
+    test(`{§empty-turn} {§turn-source-resources}: ${label} preserves sources and strikes; preview=${preview} is not authored work`, async (t) => {
         const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
         process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
         t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = previous; });

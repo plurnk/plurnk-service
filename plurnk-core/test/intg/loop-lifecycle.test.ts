@@ -3956,10 +3956,10 @@ test("{§wait-obligation-matrix} a wake re-queue (100) mid-drain is re-claimed a
     });
 });
 
-test("{§log-kill-meta-operation} log-targeted KILL is recorded in the DB, and a failed one persists", async (approvalContext) => {
+test("{§log-history-projection} log-targeted KILL is recorded in the DB, and a failed one persists", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // Successful meta-operations are forensic but render-free; failures remain
-    // visible error signals. {§log-kill-meta-operation}
+    // visible error signals. {§log-history-projection}
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````EDIT (workspace:///note)\nsome content worth folding\n````\n\n````NOTE\nwrote\n````", 10),
         // The phantom KILL fails (404); the next turn observes the failure.

@@ -1,5 +1,5 @@
-// {§rollback} — undo a session's settled file mutations after one of its log coordinates. Each row's
-// patch ({§log-mutation-patch}) is reversed against the file as it is now and written back as an
+// {§log-wire-format} — undo a session's settled file mutations after one of its log coordinates. Each row's
+// patch ({§log-wire-format}) is reversed against the file as it is now and written back as an
 // ordinary operation of the acting client, so every step is a proposal, a row and a patch of its
 // own; the first file that no longer holds what its mutation wrote stops the rollback where it is.
 import { errnoCode } from "@plurnk/plurnk-contracts";
@@ -65,7 +65,7 @@ export default class Rollback {
         for (const row of rows) {
             const rowCoordinate = `${row.loop_seq}/${row.turn_seq}/${row.sequence}`;
             if (row.patch === null) {
-                // A file mutation that kept no patch: nothing is invented for it ({§log-mutation-patch}).
+                // A file mutation that kept no patch: nothing is invented for it ({§log-wire-format}).
                 if (row.scheme === null || row.scheme === "file") skipped.push({ coordinate: rowCoordinate, reason: "no-patch" });
                 continue;
             }

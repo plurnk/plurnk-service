@@ -162,7 +162,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-result-content}", "{§packet-attachment-parts}", "plurnk-mcp McpExecutor '{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence'", "plurnk-core test/intg/mcp-media-composition.test.ts"],
+        evidence: ["{§mcp-result-content}", "{§log-wire-format}", "plurnk-mcp McpExecutor '{§mcp-result-content} every passive content variant is preserved losslessly as channel evidence'", "plurnk-core test/intg/mcp-media-composition.test.ts"],
         note: "Typed resource publication, lossless #json evidence, and native image/audio READ compose through a real MCP endpoint. Native delivery follows model modalities and provider codec support; client media rendering is outside this protocol contract.",
     },
     {

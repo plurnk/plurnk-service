@@ -15,7 +15,7 @@ export type PacketAssistant = {
     reasoning: string | null;
 };
 
-// {§packet-attachment-parts} — one READ-selected native delivery, weighed and addressable for the wire.
+// {§log-wire-format} — one READ-selected native delivery, weighed and addressable for the wire.
 export interface PacketAttachment {
     readonly section?: string;
     readonly contentHash: string;

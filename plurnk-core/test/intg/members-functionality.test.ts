@@ -134,7 +134,7 @@ const problemOf = async (run: () => Promise<unknown>): Promise<{ type?: string; 
     return { ...error.result.problem, status: error.result.status };
 };
 
-test("{§path-glob-matching} members discovery, scans, exclusions and SQL agree on escaped filenames", async () => {
+test("{§find} members discovery, scans, exclusions and SQL agree on escaped filenames", async () => {
     const temporary = await mkdtemp(join(tmpdir(), "plurnk-members-glob-"));
     const root = join(temporary, String.raw`base\[1]`);
     const intended = String.raw`dir\name/a.txt`;

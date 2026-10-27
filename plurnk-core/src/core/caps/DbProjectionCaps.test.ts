@@ -133,7 +133,7 @@ test("{§edit-result-receipt-projection} parser-recovery inspection distinguishe
     assert.equal(await new DbProjectionCaps(missingGrammar).parseIssues("package p", "text/x-go"), undefined);
 });
 
-test("{§edit-result-copy-move-effects} parser-recovery inspection surfaces tooling failure without failing the mutation path", async () => {
+test("{§edit-result-receipt-projection} parser-recovery inspection surfaces tooling failure without failing the mutation path", async () => {
     const notices: unknown[] = [];
     const ctx = {
         mimetypes: {

@@ -6,7 +6,7 @@ export type InternalTurnStatement = PlurnkStatement;
 
 // {§statement-rendering} — core programs use the same serializer and admission parser.
 export default class TurnOps {
-    // {§emission-row} — the frozen projection is the admitted program, canonical and whole; the wire derives
+    // {§turn-source-resources} — the frozen projection is the admitted program, canonical and whole; the wire derives
     // what the model is shown from it ({§packet-wire-envelope}).
     static renderEmission(statements: readonly PlurnkStatement[]): string {
         return statements.map((statement) => {

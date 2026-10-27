@@ -10,15 +10,15 @@ JOIN loops l ON l.id = t.loop_id
 WHERE l.session_id = $session_id AND l.sequence = $loop_seq AND t.sequence = $turn_seq AND le.sequence = $sequence;
 
 -- PREP: log_append_patch
--- {§log-mutation-patch}: a file mutation appends the unified diff it made to the operation row it
+-- {§log-wire-format}: a file mutation appends the unified diff it made to the operation row it
 -- settles; a row that settles several writes keeps them in application order.
 UPDATE log_entries
    SET patch = CASE WHEN patch IS NULL THEN $patch ELSE patch || char(10) || $patch END
  WHERE id = $id;
 
 -- PREP: log_file_mutations_after
--- {§rollback}: a session's settled file mutations after a coordinate, latest first. A row keeps its
--- patch ({§log-mutation-patch}) or, for a text-free write, none; both are listed so a rollback can
+-- {§log-wire-format}: a session's settled file mutations after a coordinate, latest first. A row keeps its
+-- patch ({§log-wire-format}) or, for a text-free write, none; both are listed so a rollback can
 -- say what it reversed and what it could not.
 SELECT le.id, l.sequence AS loop_seq, t.sequence AS turn_seq, le.sequence, le.op, le.scheme, le.pathname, le.patch
 FROM active_log_entries le
@@ -92,7 +92,7 @@ WHERE log_entry_id = $id AND active = 1 AND json(folded) != json($folded)
 RETURNING log_entry_id AS id;
 
 -- PREP: log_apply_projection_plan
--- {§log-curation-direct}: a direct core-scheme curation lands its whole plan or none of it. Every
+-- {§log-history-projection}: a direct core-scheme curation lands its whole plan or none of it. Every
 -- target's precondition is counted once, before any row changes; one stale target means zero rows.
 -- The same collision-checked transition as the dispatcher's atomic curation event, without an op row.
 UPDATE log_entry_projections
@@ -109,7 +109,7 @@ WHERE log_entry_projections.log_entry_id = json_extract(plan.value, '$.id')
 RETURNING log_entry_id AS id;
 
 -- PREP: log_find_candidates
--- {§find-source-agnostic} ÷ {§log-coordinate-hierarchy} — the session's log rows as FIND candidates,
+-- {§find} ÷ {§log-history-projection} — the session's log rows as FIND candidates,
 -- three-part-coordinate-prefix-scoped (the same candidate semantics log_match_coordinates curates by), each with the
 -- fields Log's rx projection renders (FIND must match exactly what READ shows). Coordinate-ordered.
 SELECT
@@ -169,7 +169,7 @@ BEGIN
 END;
 
 -- INIT: log_entry_projections_invalidate_derivation
--- {§log-readable-projection} — derived artifacts describe the active body.
+-- {§log-kill-scope} — derived artifacts describe the active body.
 DROP TRIGGER IF EXISTS log_entry_projections_invalidate_derivation;
 CREATE TRIGGER log_entry_projections_invalidate_derivation
 AFTER UPDATE OF folded, active ON log_entry_projections

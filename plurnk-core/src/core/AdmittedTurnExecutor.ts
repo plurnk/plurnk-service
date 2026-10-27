@@ -89,7 +89,7 @@ export default class AdmittedTurnExecutor {
     }: {
         statements: readonly PlurnkStatement[];
         source: string | null;
-        // {§emission-row} — the admitted emission this turn announces, or null when nothing was admitted
+        // {§turn-source-resources} — the admitted emission this turn announces, or null when nothing was admitted
         // from a recorded source. Every caller states it.
         emission: (AdmittedTextSource & { statements: readonly PlurnkStatement[] }) | null;
         reasoning?: AdmittedTextSource | null;
@@ -122,7 +122,7 @@ export default class AdmittedTurnExecutor {
         }
         if (emission === undefined) throw new Error("executeAdmittedTurn requires the admitted emission, or null, to be stated");
         if (emission !== null && source === null) throw new Error("an admitted emission requires its recorded ops source");
-        // {§reasoning-row}: reserve chronology, not budget. The optional row is admitted after results.
+        // {§turn-source-resources}: reserve chronology, not budget. The optional row is admitted after results.
         const reasoningSequence = reasoning?.content && Knob.flag("PLURNK_SERVICE_REASONING_ROWS") ? fromSequence : null;
         let rowSequence = fromSequence + (reasoningSequence === null ? 0 : 1);
         const recordReasoning = async (): Promise<void> => {
@@ -170,7 +170,7 @@ export default class AdmittedTurnExecutor {
                 modelCallId: sourceModelCallId,
             });
         }
-        // {§emission-row} — the turn's next sequence after its recorded inputs and before its
+        // {§turn-source-resources} — the turn's next sequence after its recorded inputs and before its
         // operations, written after the selection snapshot so the emission's own program cannot select it.
         if (emission !== null) {
             const id = await this.#dispatcher.writeEmission({ ...emission, sessionId, loopId, turnId, sequence: rowSequence++ });

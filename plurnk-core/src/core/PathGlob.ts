@@ -1,7 +1,7 @@
 import { globIterate } from "glob";
 import { escape, minimatch } from "minimatch";
 
-// {§path-glob-matching} Node's fixed windowsPathsNoEscape setting cannot express
+// {§find} Node's fixed windowsPathsNoEscape setting cannot express
 // POSIX filename escapes. Matching and disk traversal use the same public engine.
 const options = {
     windowsPathsNoEscape: false,

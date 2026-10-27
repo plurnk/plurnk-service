@@ -163,7 +163,7 @@ const readProposalTimeoutMs = (): number | null => {
 // proposal was raised — and the fallback in SchemeCtxImpl refuses any non-empty capture.
 type ApplyIds = {
     workspaceId: number; sessionId: number; loopId: number; turnId: number;
-    // {§log-mutation-patch} — the operation row this application settles, so a scheme can keep
+    // {§log-wire-format} — the operation row this application settles, so a scheme can keep
     // what it did on that row.
     logEntryId?: number;
     resources?: PlurnkSchemeContext["resources"];
@@ -750,7 +750,7 @@ export default class ProposalLifecycle {
     ): Promise<ProposalSettlement> {
         const { workspaceId } = ids;
         if (resolution.decision !== "accept") return { resolution };
-        // {§move-decomposition}: once the destination is written, approval applies
+        // {§move}: once the destination is written, approval applies
         // to the source operand, including its metadata and manifest binding.
         const attrs = isRecord(originalResult.attrs) ? originalResult.attrs : undefined;
         const operand = statement.op === "MOVE" && attrs?.moveDestinationWritten !== undefined

@@ -10,7 +10,7 @@ import {
     withEditReceiptParseIssues,
 } from "./edit-receipt.ts";
 
-test("{§edit-result-receipt-truth} editReceipt correlates disjoint edits to one bounded resulting revision", () => {
+test("{§edit-result-receipt-projection} editReceipt correlates disjoint edits to one bounded resulting revision", () => {
     // The correlation is the subject; pin the window so the shipped default (4) cannot widen it.
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = "2";
@@ -38,7 +38,7 @@ test("{§edit-result-receipt-truth} editReceipt correlates disjoint edits to one
     }
 });
 
-test("{§edit-result-receipt-truth} editReceipt shows symmetric boundary evidence without echoing a large landed middle", () => {
+test("{§edit-result-receipt-projection} editReceipt shows symmetric boundary evidence without echoing a large landed middle", () => {
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES;
     try {
         process.env.PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES = "2";
@@ -97,7 +97,7 @@ test("{§edit-result-receipt-projection} editReceipt preserves authored statemen
     ]);
 });
 
-test("{§edit-result-reviewer-replacement} reviewerReplacementReceipt separates one landed replacement from superseded authored EDITs", () => {
+test("{§edit-result-receipt-projection} reviewerReplacementReceipt separates one landed replacement from superseded authored EDITs", () => {
     const authored = editReceipt(
         "one\ntwo\nthree\nfour\n",
         "one\nTWO\nthree\nFOUR\n",
@@ -249,7 +249,7 @@ test("{§operator-config-only-home} editReceipt fails hard when its context tuni
     }
 });
 
-test("{§edit-result-copy-move-effects} receipt and resource-effect validators reject malformed extension results", () => {
+test("{§edit-result-receipt-projection} receipt and resource-effect validators reject malformed extension results", () => {
     const batch = editReceipt("a", "b", [{
         marker: { marks: [1] },
         body: "b",
@@ -308,7 +308,7 @@ test("{§edit-result-copy-move-effects} receipt and resource-effect validators r
     );
 });
 
-test("{§edit-result-receipt-truth} parser-recovery evidence follows the complete landed revision through row projection", () => {
+test("{§edit-result-receipt-projection} parser-recovery evidence follows the complete landed revision through row projection", () => {
     const batch = editReceipt(
         "one\ntwo",
         "one\nbroken(",
@@ -337,7 +337,7 @@ test("{§edit-result-receipt-truth} parser-recovery evidence follows the complet
 
 import LineAnchors from "./line-anchors.ts";
 
-test("{§edit-receipt-anchored-context} with an identity the resulting context is anchored exactly as a READ renders it", () => {
+test("{§edit-result-receipt-projection} with an identity the resulting context is anchored exactly as a READ renders it", () => {
     const original = "one\ntwo\nthree\nfour\nfive\nsix\nseven\n";
     const updated = "one\nTWO\nthree\nfour\nfive\nsix\nseven\n";
     const receipt = editReceipt(original, updated, [{ marker: { marks: [2] }, body: "TWO" }], undefined, "workspace:///notes.md");
@@ -353,7 +353,7 @@ test("{§edit-receipt-anchored-context} with an identity the resulting context i
     assert.match(plain.effects[0]?.context ?? "", /^1:one\n2:TWO/, "no identity keeps the line-numbered form");
 });
 
-test("{§edit-receipt-removed-text} the panel says how much of a deletion its receipt quotes", () => {
+test("{§edit-result-receipt-projection} the panel says how much of a deletion its receipt quotes", () => {
     const prior = process.env.PLURNK_SERVICE_EDIT_RECEIPT_REMOVED_LINES;
     const deleted = (): string | undefined => editReceipt("a\nb\nc\nd\ne", "a\ne", [{ marker: { marks: [2, 4] }, body: "" }]).effects[0]?.removedText;
     try {

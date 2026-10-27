@@ -215,7 +215,7 @@ export default class ToolResources {
             content: JSON.stringify({ tools: tools.map(({ definition }) => definition) }, null, 2),
         }];
         const schemaPath = (target: string): string => `${childrenRoot}/${ToolResources.targetSegment(target)}.json`;
-        // {§scheme-catalog-aside} — the runtime's summary is its complete menu: every tool inside
+        // {§find} — the runtime's summary is its complete menu: every tool inside
         // the invocation form, shown whole by the catalog, so the discovery row invokes without a READ.
         const summary = typeof source.summary === "string" ? authoredSummary(source, source.summary) : summaryWitness(
             source.runtime,

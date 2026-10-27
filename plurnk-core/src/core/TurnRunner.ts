@@ -14,7 +14,7 @@ import type { ApplicationGauge, BareStatement, CapabilityPolicy, FindStatement, 
 // Notice envelopes are defined by @plurnk/plurnk-contracts.
 // before being pushed to the loop's notices buffer.
 export type ParseErrorInfo = Pick<PlurnkParseError, "message" | "line" | "column"> & { source: string; recovery?: string; attempt?: ParseAttempt };
-// {§emission-row} {§reasoning-row}: source text and its durable turn coordinates.
+// {§turn-source-resources} {§turn-source-resources}: source text and its durable turn coordinates.
 export type AdmittedTextSource = { readonly content: string; readonly sessionName: string; readonly loopSeq: number; readonly turnSeq: number };
 const comparePosition = (
     a: { line: number; column: number },
@@ -163,7 +163,7 @@ type SplitProviderResponse = {
     // {§outside-text}: the text of a turn that fenced no operation, in source order; null when the turn
     // fenced one, since its text then joined the program as NOTEs.
     outside: string | null;
-    // {§emission-row}: the admitted content program; null when none was admitted. The emission
+    // {§turn-source-resources}: the admitted content program; null when none was admitted. The emission
     // site renders them against their own source; reasoning operations stay in their own source.
     emissionStatements: readonly PlurnkStatement[] | null;
 };
@@ -622,7 +622,7 @@ export default class TurnRunner {
         return { line, column };
     }
 
-    // {§packet-attachment-parts}: native parts come from the READ's immutable snapshot,
+    // {§log-wire-format}: native parts come from the READ's immutable snapshot,
     // never from a source that may have changed since the observation.
     async #wireMessages(packet: RequestPacket, ctx: PlurnkSchemeContext, provider: Provider): Promise<MaterializedModelRequest> {
         const accepted = acceptedKinds(provider.inputModalities);
@@ -857,7 +857,7 @@ export default class TurnRunner {
         }
         // {§session-initialization-entry} — the survey is an ordinary operation program: recorded as the
         // turn's ops source and executed through the same path as a model's program; it authors no reasoning.
-        // {§emission-row} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
+        // {§turn-source-resources} — a `_plurnk` turn has receipts, never a fabricated assistant emission.
         // {§message-arrival} — the message reaches the model as an inbound SEND in the first
         // model turn; initialization does not READ it a second time.
         const admittedInitializationStatements: Array<FindStatement | ReadStatement> = [];
@@ -1688,7 +1688,7 @@ export default class TurnRunner {
         // Non-fatal provider transport notices on an accepted turn. Forward each
         // Notice with a content-offset `line:col`;
         // the model resolves it against its own emission — READ ops://<session>/<loop>/<turn> at the
-        // cited lines ({§turn-ops-entry}) — not an embedded snippet that would duplicate the emission.
+        // cited lines ({§log-history-projection}) — not an embedded snippet that would duplicate the emission.
         for (const notice of response.notices ?? []) {
             const located = typeof notice.position === "number"
                 ? this.#offsetToLineColumn(packetAssistant.content, notice.position)

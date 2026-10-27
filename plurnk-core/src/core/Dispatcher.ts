@@ -140,7 +140,7 @@ export type SchemeWithEntryAddress = Pick<SchemeHandler, "resolveEntryAddress">;
 // Op dispatch ({§op-methods-op-dispatch}): admission, operation-owner routing,
 // durable log writing, and proposal lifecycle.
 export default class Dispatcher {
-    // {§log-kill-distillation} The log scheme curates: the hook the registry's log handler publishes.
+    // {§log-kill-scope} The log scheme curates: the hook the registry's log handler publishes.
     static #curates(handler: SchemeHandler): handler is SchemeHandler & LogCurationHandler {
         return "curate" in handler && typeof handler.curate === "function";
     }
@@ -440,7 +440,7 @@ export default class Dispatcher {
     // records the model's KILL. Schemes that implement kill() (streams) take the scope themselves;
     // the log's scoped KILL is curation.
     readonly #scopedEntryEdits = new WeakMap<KillStatement, EditStatement>();
-    // {§log-kill-distillation} — the NOTE a log KILL's body becomes, keyed so its row names what it distilled.
+    // {§log-kill-scope} — the NOTE a log KILL's body becomes, keyed so its row names what it distilled.
     readonly #distillations = new WeakMap<NoteStatement, string>();
 
     #scopedEntryEdit(statement: PlurnkStatement, workspaceId: number): EditStatement | null {
@@ -532,7 +532,7 @@ export default class Dispatcher {
             result = this.#resourceMutations.withMergeFacts(edit, result);
             this.#resourceMutations.settleEdit(edit, result);
         }
-        // {§log-kill-distillation} — a log KILL's body is the model's own NOTE row whatever the kill's
+        // {§log-kill-scope} — a log KILL's body is the model's own NOTE row whatever the kill's
         // outcome: written after the kill's receipt at the next sequence, so it never falls inside the
         // kill's own selection, and kept when the kill misses, because what the model wrote about its
         // environment is the model's to retire, never the daemon's to drop.
@@ -1021,7 +1021,7 @@ export default class Dispatcher {
         });
     }
 
-    // {§scheme-address} {§log-readable-projection} A computed representation's channels as a client reads them:
+    // {§scheme-address} {§log-kill-scope} A computed representation's channels as a client reads them:
     // deliberate trimming applied, each weighed as a stored channel is.
     #computedChannels(resolved: { readonly representation: StoredEntryData; readonly visibleLines?: Readonly<Record<string, readonly number[]>> }): Record<string, ComputedClientChannel> {
         return Object.fromEntries(Object.entries(resolved.representation.channels).map(([name, { content, mimetype, state }]) => {
@@ -1374,7 +1374,7 @@ export default class Dispatcher {
         return statement.op === "FORK" || statement.op === "WORK"; // session control targets session://<name> (grammar 0.74.55)
     }
 
-    // {§rejected-emission-entry} — rejected provider bytes, never an admitted program.
+    // {§turn-source-resources} — rejected provider bytes, never an admitted program.
     async writeEmissionAttempt({ verbatim, sessionId, loopId, turnId, sequence, modelCallId }: {
         verbatim: string; sessionId: number; loopId: number; turnId: number; sequence: number;
         modelCallId: number;
@@ -1407,7 +1407,7 @@ export default class Dispatcher {
         return row.id;
     }
 
-    // {§emission-row} — the announcement of an admitted emission: the harness's born-folded READ of its
+    // {§turn-source-resources} — the announcement of an admitted emission: the harness's born-folded READ of its
     // own turn's ops source, whose frozen body is the complete canonical content program.
     async writeEmission({ content, sessionName, loopSeq, turnSeq, sessionId, loopId, turnId, sequence }: {
         content: string; sessionName: string; loopSeq: number; turnSeq: number;
@@ -1451,7 +1451,7 @@ export default class Dispatcher {
         return row.id;
     }
 
-    // {§reasoning-row} — the model's own reasoning, landed as the harness's READ of the turn's reasoning
+    // {§turn-source-resources} — the model's own reasoning, landed as the harness's READ of the turn's reasoning
     // source immediately before the emission row: whole when it fits the row's page, otherwise its last page
     // (#999: a turn's conclusions sit at its end), only when the packet has room for it after everything else
     // this turn lands; without room, no row and nothing else changes.

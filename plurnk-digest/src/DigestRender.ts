@@ -185,11 +185,11 @@ export default class DigestRender {
     static #renderGroupedOpLine(row: LogRow, m: DigestModel): string {
         const parsedAttrs = DigestRender.parseJson(row.attrs, {});
         const attrs: Readonly<Record<string, unknown>> = isRecord(parsedAttrs) ? parsedAttrs : {};
-        // {§emission-row}: the announcement of an admitted emission, and whether the model retired it.
+        // {§turn-source-resources}: the announcement of an admitted emission, and whether the model retired it.
         if (row.op === "READ" && attrs.kind === "emission") {
             return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "emission" : "emission (killed)", DigestRender.#environmentOf(row, m));
         }
-        // {§reasoning-row}: the turn's reasoning landed as a row, and whether the model retired it.
+        // {§turn-source-resources}: the turn's reasoning landed as a row, and whether the model retired it.
         if (row.op === "READ" && attrs.kind === "reasoning") {
             return DigestRender.#renderOpLine(row, row.projection_active === 1 ? "reasoning" : "reasoning (killed)", DigestRender.#environmentOf(row, m));
         }
@@ -633,7 +633,7 @@ export default class DigestRender {
         return measures;
     }
 
-    // {§emission-row} — announced, retired by the model, and echoed back as headings in its own text.
+    // {§turn-source-resources} — announced, retired by the model, and echoed back as headings in its own text.
     static #renderEmissions(session: SessionRow, m: DigestModel): string {
         const rows = m.emissionRows.filter((row) => row.session_id === session.id);
         const killed = rows.filter((row) => row.active === 0).length;
@@ -643,7 +643,7 @@ export default class DigestRender {
         return `${rows.length} announced · ${killed} killed · ${echoes} header echo${echoes === 1 ? "" : "es"}`;
     }
 
-    // {§reasoning-row} — landed, retired by the model, and turns that reasoned.
+    // {§turn-source-resources} — landed, retired by the model, and turns that reasoned.
     static #renderReasonings(session: SessionRow, m: DigestModel): string {
         const rows = m.reasoningRows.filter((row) => row.session_id === session.id);
         const killed = rows.filter((row) => row.active === 0).length;

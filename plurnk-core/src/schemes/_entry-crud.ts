@@ -44,7 +44,7 @@ export default class EntryCrud {
     }
 
     // {§binary-parity} — a DB entry stores a binary channel's bytes base64 in its TEXT content
-    // ({§read-bytes}); this turns that stored content back into the byte supplier the read projector and
+    // ({§binary-parity}); this turns that stored content back into the byte supplier the read projector and
     // COPY/MOVE source-select consume exactly as they consume a File member's on-disk bytes. Decoded once.
     static contentByteSource(content: string): ByteSource {
         const bytes = Buffer.from(content, "base64");

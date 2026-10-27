@@ -10,12 +10,12 @@ import { resolveOperatorGrammarPath } from "./TurnRunner.ts";
 
 describe("ProviderInstantiate", () => {
 // A loopback port the kernel just handed out and this process released: closed, by evidence.
-const releasedPort = (): Promise<number> => new Promise((resolve, reject) => {
+const releasedPort = (): Promise<number> => new Promise((res, reject) => {
     const server = createServer();
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
         const { port } = server.address() as AddressInfo;
-        server.close(() => resolve(port));
+        server.close(() => res(port));
     });
 });
 

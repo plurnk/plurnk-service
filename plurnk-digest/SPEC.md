@@ -176,8 +176,8 @@ does not make the measured counters inconsistent.
 
 | Each session summary | Counts |
 | --- | --- |
-| `Emissions:` | its announced emission rows, those the session KILLed, and the headings it echoed ({§emission-row}) |
-| `Reasonings:` | its landed reasoning rows, those the session KILLed, and the turns that reasoned ({§reasoning-row}); the op mix leaves both harness rows out |
+| `Emissions:` | its announced emission rows, those the session KILLed, and the headings it echoed ({§turn-source-resources}) |
+| `Reasonings:` | its landed reasoning rows, those the session KILLed, and the turns that reasoned ({§turn-source-resources}); the op mix leaves both harness rows out |
 | Cost | how many settled requests carry no usage at all (errored or aborted exchanges) — their server-side spend is unrecorded rather than silently priced as zero |
 | The reasoning chronology | distinguishes readable reasoning content from provider-reported reasoning usage: when tokens were reported but no readable content was returned, it states both facts instead of implying that no reasoning occurred |
 

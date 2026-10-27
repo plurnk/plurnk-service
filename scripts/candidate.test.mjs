@@ -426,7 +426,7 @@ test("{§environment-layers} orientation verdict rejects a plausible answer that
     assert.ok(verdict.failed.includes("evidence"));
 });
 
-test("{§emission-row} orientation verdict counts only the model's own inspection", () => {
+test("{§turn-source-resources} orientation verdict counts only the model's own inspection", () => {
     const harnessOnly = structuredClone(orientationRecord);
     harnessOnly.turns = [
         { turn: 1, ops: [

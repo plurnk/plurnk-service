@@ -133,8 +133,8 @@ test("{§capability-admission} derives an inventory summary from the effective e
     assert.doesNotMatch(runtimeDoc, /fail/);
 });
 
-// {§scheme-catalog-aside} — a runtime's summary is its complete menu, however many tools it has.
-test("{§scheme-catalog-aside} a large runtime's inventory summary names every tool", () => {
+// {§find} — a runtime's summary is its complete menu, however many tools it has.
+test("{§find} a large runtime's inventory summary names every tool", () => {
     const tool = (name: string) => ({
         target: name,
         summary: `${name} does a thing.`,

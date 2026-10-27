@@ -16,7 +16,7 @@ export default class EntryFts {
         await db.fts_attach.run({ derivation_id: derivationId, hash });
     }
 
-    // {§fts-word-phrase} — FTS5 barewords hold only letters, digits and `_`, so a word with inner
+    // {§find-result-projection} — FTS5 barewords hold only letters, digits and `_`, so a word with inner
     // punctuation (`inherited-members`, `x.y`, `c++`) parses as a column filter or a syntax error.
     // Each such word becomes the phrase its tokens already are; FTS5's own syntax passes untouched.
     static nativeQuery(query: string): string {
@@ -63,7 +63,7 @@ export default class EntryFts {
                 // SQL is prepared at database startup. These are FTS5 MATCH-parser errors
                 // at execution, not arbitrary SQLite failures or guesses about intent.
                 if (!(cause instanceof Error) || !/^(?:fts5: syntax error|unterminated string$|no such column:|expected integer, got )/.test(cause.message)) throw cause;
-                // {§fts-word-phrase} {§diagnostic-observation} — FTS5's own message travels as the diagnostic;
+                // {§find-result-projection} {§diagnostic-observation} — FTS5's own message travels as the diagnostic;
                 // the recovery is the dialect's form, never a rewrite of the query.
                 const recovery = "An FTS5 query is barewords, \"quoted phrases\", and AND, OR, NOT and NEAR between them.";
                 const failure = Results.failure(

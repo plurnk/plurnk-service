@@ -145,7 +145,7 @@ export default class LineAnchors {
         return anchors.flatMap((anchor, index) => counts.get(anchor)! > 1 ? [index] : []);
     }
 
-    // {§line-anchor-disambiguation}: doubling fixed-size fingerprints keeps even
+    // {§line-anchors}: doubling fixed-size fingerprints keeps even
     // an all-identical file O(N log N) after the configured minimum windows.
     static #disambiguate(identity: string, contextLines: number, bodies: readonly string[], anchors: string[]): readonly string[] {
         let repeated = LineAnchors.#repeated(anchors);

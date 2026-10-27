@@ -212,7 +212,7 @@ export interface ApplicationPort extends HttpHost {
     setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding>;
     /** {§methods-session-hide} Hide or show a session with every session beneath it; a hide is refused while they hold live work. */
     setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding>;
-    // {§rollback} — reverse `sessionId`'s settled file mutations after its log coordinate `to`, latest
+    // {§log-wire-format} — reverse `sessionId`'s settled file mutations after its log coordinate `to`, latest
     // first, as one client operation of `actor` ({§connection-lifecycle}); stops at the first file that no
     // longer holds what its mutation wrote.
     rollback(args: {

@@ -7,7 +7,7 @@ import LineMarkerOps from "./line-marker.ts";
 export type { ByteSource } from "@plurnk/plurnk-schemes";
 
 // The byte view of a resource: one hexadecimal octet per line, so coordinate = line = byte and
-// the text READ/FIND algebra applies unchanged ({§read-bytes}, {§find-bytes}).
+// the text READ/FIND algebra applies unchanged ({§binary-parity}, {§binary-parity}).
 export default class ByteView {
     static readonly CHANNEL = "bytes";
     static readonly PROJECTION = "hex";
@@ -34,7 +34,7 @@ export default class ByteView {
         return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("latin1");
     }
 
-    // {§find-bytes} Offsets belong to bytes, not decoded text: CR and LF remain independently selectable.
+    // {§binary-parity} Offsets belong to bytes, not decoded text: CR and LF remain independently selectable.
     static async match(matcher: MatcherBody, bytes: Uint8Array): Promise<MatchResult> {
         const body = PatternEdits.lineAnchored(matcher);
         if (body.dialect !== "regex" && body.dialect !== "glob") return Matcher.unsupported(body, "application/octet-stream");

@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     -- 'error' is an ACTIONLESS row ({§operation-results} — errors are log items): a parse failure that
     -- produced no op still records a log entry (op='error', status_rx≥400, no target) so the model
     -- can fold/kill/recall its own mistakes like any other log row — one budget surface, the log.
-    -- Rejected-attempt artifacts carry NULL here ({§rejected-emission-entry}).
+    -- Rejected-attempt artifacts carry NULL here ({§turn-source-resources}).
     -- No op enum here: the grammar op set is grammar's contract (PlurnkOp), and this column is written
     -- only by the PlurnkOp-typed engine (grammar ops), service row selectors, or NULL for no op.
     -- Validity lives at the parse + type layer, not duplicated in DDL.
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     initial_folded  TEXT    NOT NULL DEFAULT '[]'
                     CHECK (json_valid(initial_folded) AND json_type(initial_folded) = 'array'),
 
-    -- {§log-mutation-patch}: a settled file mutation's row keeps the unified diff of what it did,
+    -- {§log-wire-format}: a settled file mutation's row keeps the unified diff of what it did,
     -- served as the row's `patch` channel and never entering a receipt or packet.
     patch           TEXT,
 
@@ -127,7 +127,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS log_entries_session_ambient_event
     ON log_entries (session_id, ambient_event_id)
     WHERE ambient_event_id IS NOT NULL;
 
--- {§emission-row}: one announcement per turn.
+-- {§turn-source-resources}: one announcement per turn.
 CREATE UNIQUE INDEX IF NOT EXISTS log_entries_emission_turn
 ON log_entries (turn_id)
 WHERE json_extract(attrs, '$.kind') = 'emission';
@@ -392,7 +392,7 @@ BEGIN
     SELECT RAISE(ABORT, 'a durable log event must retain its projection');
 END;
 
--- {§emission-row} An emission is curated whole: its projection is retired, never trimmed.
+-- {§turn-source-resources} An emission is curated whole: its projection is retired, never trimmed.
 CREATE TRIGGER IF NOT EXISTS log_entry_projections_emission_whole
 BEFORE UPDATE OF folded ON log_entry_projections
 WHEN json(NEW.folded) != json('[]')

@@ -397,7 +397,7 @@ turn0 surveys only the compact summary/invocations. Full tool descriptions
 remain in the linked input-contract documents. With tools, the runtime declares
 `{ from: "tools", description }`: purpose annotates rather than replaces the
 complete effective menu in the runtime Summary and survey row
-({§scheme-catalog-aside}). Without a stated purpose the menu stands alone. The tool
+({§find}). Without a stated purpose the menu stands alone. The tool
 doc's Summary section IS the invocation form
 ```` ```server (tool) <!-- one-liner --> ````, so the discovery row teaches the
 call ({§tools-resource-materialization}).
@@ -847,7 +847,7 @@ complete result, including metadata and annotations, remains available in
 
 Unnamed resources receive eight-character hexadecimal identifiers, not ordinal
 labels. No binary base64 is copied into the default result body. Listing a
-resource creates no native model attachment; READ uses {§packet-attachment-parts},
+resource creates no native model attachment; READ uses {§log-wire-format},
 including scoped byte reads, supported modalities, and the owning READ's retention
 and curation lifecycle.
 Resource publication is passive; completion of the originating execution retains

@@ -8,7 +8,7 @@ interface LogEntryProjectionRow {
     readonly tx?: unknown;
 }
 
-// {§log-coordinate-hierarchy}: one model-facing identity for a durable row,
+// {§log-history-projection}: one model-facing identity for a durable row,
 // independent of the dispatch type retained in storage.
 export default class LogEntryProjection {
     static #decode(value: unknown, field: string): unknown {
@@ -29,7 +29,7 @@ export default class LogEntryProjection {
         return materializedEntry ? "READ" : op;
     }
 
-    // {§emission-row}: the announcement of an admitted emission, stored as the harness's READ of its
+    // {§turn-source-resources}: the announcement of an admitted emission, stored as the harness's READ of its
     // own turn's ops source and addressed by its own leaf. The schema admits the kind only on that shape.
     static isEmission(row: LogEntryProjectionRow): boolean {
         if (row.op !== "READ") return false;
@@ -37,7 +37,7 @@ export default class LogEntryProjection {
         return attrs !== null && typeof attrs === "object" && (attrs as { kind?: unknown }).kind === "emission";
     }
 
-    // {§reasoning-row}: the harness's READ of the turn's reasoning source, addressed by its own leaf.
+    // {§turn-source-resources}: the harness's READ of the turn's reasoning source, addressed by its own leaf.
     static isReasoning(row: LogEntryProjectionRow): boolean {
         if (row.op !== "READ") return false;
         const attrs = LogEntryProjection.#decode(row.attrs, "attrs");

@@ -122,7 +122,7 @@ test("{§send-response-receipt}: a delivered reply names the open messages it an
     });
 });
 
-test("{§packet-extent-metadata} {§context-fit}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async (approvalContext) => {
+test("{§log-wire-format} {§context-fit}: a sent reply renders whole in the next request; delivery and the retained body are unchanged", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const body = Array.from({ length: 40 }, (_, index) => `delivered line ${index + 1}`).join("\n");
     const mock = new Mock({ contextWindow: 100_000, responses: [

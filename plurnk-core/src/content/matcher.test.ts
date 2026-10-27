@@ -164,7 +164,7 @@ test("{§mimetype-query} relation dialects (~full-text / &graph) never reach the
     await assert.rejects(Matcher.matchAgainstContent({ dialect: "graph", raw: "&graph" }, "x", "text/markdown", stub), /content-only/);
 });
 
-test("{§find-candidate-containment} #449: one crashing candidate drops out; the operation and its siblings survive", async () => {
+test("{§find} #449: one crashing candidate drops out; the operation and its siblings survive", async () => {
     const crashing = stubQuery(async ({ content }) => {
         if (content === "poison") throw new TypeError("Cannot read properties of null (reading 'tagName')");
         return content.includes("foo") ? [hit(1, "foo")] : [];

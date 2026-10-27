@@ -17,7 +17,7 @@ import ReadResolve from "./read-resolve.ts";
 import Matcher from "./matcher.ts";
 import PatternEdits from "./pattern-edits.ts";
 
-// {§packet-attachment-parts} — a projected image member names its picture: source mimetype and
+// {§log-wire-format} — a projected image member names its picture: source mimetype and
 // the handler's dimensions, read from the member's projection facts, never from the bytes.
 const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string; width: number; height: number; bytes: number } | null => {
     const projection = attributes?.sourceProjection;
@@ -27,7 +27,7 @@ const imageOf = (attributes: StoredEntryData["attributes"]): { mimetype: string;
     return { mimetype: projection.mimetype, width: facts.width, height: facts.height, bytes: facts.bytes };
 };
 
-// {§packet-attachment-parts} — a projected PDF member names its document: source mimetype, the
+// {§log-wire-format} — a projected PDF member names its document: source mimetype, the
 // handler's page count when the page tree is readable ({§mimetype-pdf-facts}), and its size.
 // {§channel-selection} — the stream address a log execution item recorded, when the scheme supplied it.
 const streamOf = (attributes: StoredEntryData["attributes"]): string | null => {
@@ -54,7 +54,7 @@ const audioOf = (attributes: StoredEntryData["attributes"]): { mimetype: string;
 };
 
 export interface AnchoredReadResult extends EntryReadResult {
-    // {§read-selection-projection} — a positional slice reads as the text primitive; the channel's
+    // {§read} — a positional slice reads as the text primitive; the channel's
     // own mimetype rides beside it so a consumer can still run the channel's handlers.
     readonly sourceMimetype?: string;
     readonly lineOrdinals?: readonly number[];
@@ -93,7 +93,7 @@ export default class ReadProjector {
     ): AnchoredReadResult {
         if (projected.status >= 400) return projected;
         const producerResult = source?.producerResult;
-        // {§read-content-wins}/{§exec-stream} — completed output stays readable, including failed commands.
+        // {§read}/{§exec-stream} — completed output stays readable, including failed commands.
         const contentDelivered = isStream && typeof projected.content === "string" && projected.content.length > 0;
         const liveness = source === undefined || source.state === "static"
             ? {}
@@ -112,7 +112,7 @@ export default class ReadProjector {
         }
     }
 
-    // {§read-bytes} — one hexadecimal octet per line under the text coordinate algebra: without a
+    // {§binary-parity} — one hexadecimal octet per line under the text coordinate algebra: without a
     // scope the first page of bytes ({§markerless-first-page}), `<a,b>` selects bytes, `<1,-1>` is everything.
     // The source is sized, then only the window is read; the source mimetype is never relabelled.
     static async #projectBytes(
@@ -262,11 +262,11 @@ export default class ReadProjector {
             detail: string,
             fields: Readonly<Record<string, unknown>> = {},
             extensions: Readonly<Record<string, unknown>> = {},
-        // {§read-selection-projection} The failure is a read result: the members a read result names, then the
+        // {§read} The failure is a read result: the members a read result names, then the
         // scheme's own fields, as the failure builder lays them out.
         ): EntryReadResult => Results.failure(`scheme:${manifest.name}`, code, status, detail, { content: null, mimetype: null, channel, ...fields }, extensions);
 
-        // {§read-bytes} — `#bytes` is the raw view of any resource whose scheme supplies bytes.
+        // {§binary-parity} — `#bytes` is the raw view of any resource whose scheme supplies bytes.
         if (selected === ByteView.CHANNEL && !Object.hasOwn(manifest.channels, selected)) {
             if (bytes === undefined) {
                 return failure(
@@ -319,7 +319,7 @@ export default class ReadProjector {
         }
 
         if (await MimetypeBinary.isBinaryMimetype(selectedRepresentation.mimetype, mimetypes)) {
-            // {§read-bytes} — a binary channel reads as its bytes; readable text is a separate channel.
+            // {§binary-parity} — a binary channel reads as its bytes; readable text is a separate channel.
             if (bytes !== undefined) {
                 return ReadProjector.#producerResult(withAttachmentFacts(await ReadProjector.#projectBytes(
                     statement,
@@ -391,7 +391,7 @@ export default class ReadProjector {
             lineMarker = statement.lineMarker as LineMarker | null;
         }
 
-        // {§read-pattern} — a matcher selects the lines the READ renders: every line a match
+        // {§read} — a matcher selects the lines the READ renders: every line a match
         // touches, in source order, inside the scope, with its ordinary anchors. Zero matches is
         // an empty read, never a failure; `matched` counts the selected lines inside the scope.
         let visibleLines = opts.visibleLines?.[selected];
@@ -427,10 +427,10 @@ export default class ReadProjector {
             lineMarker,
             ...(visibleLines === undefined ? {} : { visibleLines }),
         });
-        // {§read-past-end} — a plain line range starting past the end of nonempty content asks for
+        // {§read} — a plain line range starting past the end of nonempty content asks for
         // more than there is: the answer is no lines with the extent, as an empty FIND page is (#759).
         // A command's log row keeps its refusal: there the range is the address mistake, and the
-        // refusal names the stream below ({§log-range-miss-names-stream}).
+        // refusal names the stream below ({§read}).
         const [first, last] = lineMarker?.marks.length === 2 ? lineMarker.marks : [];
         if (resolved.status === 416 && visibleLines === undefined && streamOf(representation.attributes) === null
             && resolved.range !== undefined && resolved.range.unit === "line" && resolved.range.total > 0
@@ -449,7 +449,7 @@ export default class ReadProjector {
             : lineMarker === null ? visibleLines.length : (resolved.lineOrdinals?.length ?? 0);
         if (resolved.status >= 400) {
             if (resolved.problem !== undefined) {
-                // {§log-range-miss-names-stream} — a 416 on a stream-bearing log execution item carries the
+                // {§read} — a 416 on a stream-bearing log execution item carries the
                 // stream's address as a fact; it names no cause ({§diagnostic-observation}).
                 const stream = resolved.status === 416
                     ? streamOf(representation.attributes)

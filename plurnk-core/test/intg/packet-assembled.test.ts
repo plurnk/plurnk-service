@@ -232,7 +232,7 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
             "{§session-initialization-entry}: turn 0 exposes its NOTEs and its surveys, and nothing else",
         );
         assert.equal(initialization.some(({ path: target }) => target?.startsWith("ops://") === true), false,
-            "turn 0 reads none of its own program, and it announces no emission ({§emission-row})");
+            "turn 0 reads none of its own program, and it announces no emission ({§turn-source-resources})");
         assert.deepEqual(provider.received[0].filter(({ role }) => role === "assistant"), []);
         const initializationOutcomes = initialization;
         assert.deepEqual(
@@ -248,7 +248,7 @@ test("{§session-initialization-entry} assembled packet: the turn-0 catalog fois
     }
 });
 
-test("{§retrieval-packet-metadata}: exact matcher FIND shows flat surgical coordinates with one compact extent", async () => {
+test("{§log-wire-format}: exact matcher FIND shows flat surgical coordinates with one compact extent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-matches-${crypto.randomUUID()}`);

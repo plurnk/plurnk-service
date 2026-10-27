@@ -337,7 +337,7 @@ test("{§find-result-projection} an exact matcher FIND stores canonical locators
     } finally { await db.close(); }
 });
 
-test("{§find-source-agnostic} Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY identity — a pathname OR a log coordinate", async () => {
+test("{§find} Matcher.matchCandidates runs ONE matcher over candidates keyed by ANY identity — a pathname OR a log coordinate", async () => {
     const mimetypes = new Mimetypes(); await mimetypes.ready();
     const candidates = [
         { key: "workspace:///a.md", content: "the engine is fast", mimetype: "text/markdown" },

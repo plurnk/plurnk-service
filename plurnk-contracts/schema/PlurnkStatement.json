@@ -456,7 +456,7 @@
                 },
                 "body": {
                     "type": ["string", "null"],
-                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern})."
+                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-scope}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern})."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

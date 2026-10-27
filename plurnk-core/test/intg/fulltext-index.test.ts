@@ -51,11 +51,6 @@ const url = (pathname: string): UrlPath => ({
     pathname: `/${pathname}`, query: null, fragment: null,
 });
 const fullReplace: LineMarker = { marks: [1, -1] };
-const editStmt = (target: UrlPath, body: string, marker: LineMarker | null = null): ResolvedEditStatement => ({
-    metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: marker, body,
-    matcher: null, position: { line: 1, column: 1 },
-});
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
     const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });
     return rows.map((r) => r.pathname);
@@ -386,7 +381,7 @@ test("{§mimetype} write resolves mimetype and derives only the readable project
     } finally { await db.close(); }
 });
 
-test("{§read-bytes} a binary file persists only derived Unicode and refreshes when its projection identity changes (#140)", async () => {
+test("{§binary-parity} a binary file persists only derived Unicode and refreshes when its projection identity changes (#140)", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-readable-binary-"));
     const db = await openMigrated();
     try {
@@ -500,7 +495,7 @@ test("{§read-bytes} a binary file persists only derived Unicode and refreshes w
                 observedBytes: 4,
             },
         });
-        // {§read-bytes} — the marker stays honest (no derived Unicode), and the source still reads as
+        // {§binary-parity} — the marker stays honest (no derived Unicode), and the source still reads as
         // its bytes: the raw view needs no extension and never relabels the mimetype.
         const rawView = await readFileScheme(readStmt(localPath("document.binary")), limitedCtx);
         assert.equal(rawView.status, 200, "an over-limit source reads as its bytes");
@@ -513,7 +508,7 @@ test("{§read-bytes} a binary file persists only derived Unicode and refreshes w
     }
 });
 
-test("{§copy-destination-mimetype} an admitted file type survives reprojection, but not an external source change", async () => {
+test("{§copy} an admitted file type survives reprojection, but not an external source change", async () => {
     const root = await mkdtemp(join(tmpdir(), "plurnk-retained-type-"));
     const db = await openMigrated();
     try {
@@ -634,7 +629,7 @@ test("{§mimetype} registry-aware classification governs file decoding, operatio
             ...readStmt(localPath("opaque.encoded")),
             lineMarker: { marks: [1] },
         }, ctx);
-        // {§read-bytes} — a handler-declared binary file reads as its bytes; `<1>` is its first byte.
+        // {§binary-parity} — a handler-declared binary file reads as its bytes; `<1>` is its first byte.
         assert.equal(opaque.status, 200, "the handler-declared binary file reads as its bytes");
         assert.equal(opaque.content, "6f");
         assert.equal(opaque.range?.unit, "byte");
@@ -2264,7 +2259,7 @@ test("{§scheme-surface} exact matcher FIND invokes preparation, then returns fl
     }
 });
 
-test("{§find-channel-selection}: exact FIND composes the selected channel's producer result", async () => {
+test("{§find}: exact FIND composes the selected channel's producer result", async () => {
     const db = await openMigrated();
     const schemes = new SchemeRegistry();
     schemes.register("prepared", new PreparedDataScheme());
@@ -2532,10 +2527,6 @@ const url = (pathname: string): UrlPath => ({
     username: null, password: null, hostname: null, port: null,
     pathname: `/${pathname}`, query: null, fragment: null,
 });
-const editStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({
-    metadata: null,
-    op: "EDIT", aside: null, target, lineMarker: null, body, matcher: null, position: { line: 1, column: 1 },
-});
 const fts = async (db: Db, workspaceId: number, query: string): Promise<string[]> => {
     const rows = await db.test_fts_search.all<{ pathname: string }>({ workspace_id: workspaceId, query });
     return rows.map((r) => r.pathname);
@@ -2662,9 +2653,9 @@ test("{§persistent-search-index} a model turn joins an in-flight startup warm b
         await new Workspace().edit(editStmt(url("orientation.md"), "semantic orientation evidence\n"), ctx);
 
         let release!: () => void;
-        const blocked = new Promise<void>((resolve) => { release = resolve; });
+        const blocked = new Promise<void>((res) => { release = res; });
         let entered!: () => void;
-        const processing = new Promise<void>((resolve) => { entered = resolve; });
+        const processing = new Promise<void>((res) => { entered = res; });
         const originalProcess = mimetypes.process.bind(mimetypes);
         let first = true;
         mimetypes.process = async (...args): Promise<Awaited<ReturnType<typeof originalProcess>>> => {
@@ -2692,7 +2683,7 @@ test("{§persistent-search-index} a model turn joins an in-flight startup warm b
             provider, workspaceId, sessionId, loopId, turnNumber: 1,
             messages: [{ role: "system", content: "test" }, { role: "user", content: "go" }],
         });
-        await new Promise<void>((resolve) => setImmediate(resolve));
+        await new Promise<void>((res) => setImmediate(res));
         assert.equal(provider.remaining, 1, "provider is untouched while semantic coverage is incomplete");
 
         release();

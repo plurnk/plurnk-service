@@ -451,7 +451,7 @@ of the surrounding filesystem or external services.
 
 | Data | Authority and lifetime |
 | --- | --- |
-| Model working context | Log projections; curation changes visibility, not the recorded event or its source ({§log-history-projection}, {§log-readable-projection}). |
+| Model working context | Log projections; curation changes visibility, not the recorded event or its source ({§log-history-projection}, {§log-kill-scope}). |
 | Accepted messages, operations, approval decisions and turn sources | Core's durable records; independent of curation, but containing-object deletion can cascade history. The approval is recorded before application and remains distinct from its result ({§message-projection}, {§turn-source-resources}, {§log-history-projection}, {§proposal-decision-evidence}). |
 | Database commits | Connection-time WAL synchronization governs crash/power-loss durability, separately from retention and backups ({§db-durability}). |
 | Provider requests and accounting | One record per physical request, including failed requests and unknown usage; forked history does not create new spend ({§tokenomics-provider-usage}). |

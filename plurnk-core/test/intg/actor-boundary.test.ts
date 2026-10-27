@@ -732,7 +732,7 @@ test("{§env-delta-no-coalescing} {§env-delta-commons-mutation} commons mutatio
         await engine.runTurn({ provider, workspaceId, sessionId: independent, loopId: independentLoop, messages, turnNumber: 1 });
         await engine.runTurn({ provider, workspaceId, sessionId: late, loopId: lateLoop, messages, turnNumber: 1 });
 
-        // {§log-address-metadata}: the real parent packet retains both operands and the actor.
+        // {§log-wire-format}: the real parent packet retains both operands and the actor.
         const storedPacket = await db.test_get_packet.get<{ packet: string }>({ id: parentTurn.turnId });
         const activity = logEntries(JSON.parse(storedPacket!.packet)).filter(({ source }) => source === "session://child");
         for (const [op, from, to] of [["COPY", "source", "copy"], ["MOVE", "copy", "moved"]]) {
@@ -1168,7 +1168,7 @@ test("{§actor-boundary} turn-0 once-per-session foists fire on the session's fi
     }
 });
 
-test("{§emission-row} the turn-0 initialization consists of the real orienting operations", async () => {
+test("{§turn-source-resources} the turn-0 initialization consists of the real orienting operations", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     try {
         process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist each survey whole at turn 0
@@ -1199,7 +1199,7 @@ test("{§emission-row} the turn-0 initialization consists of the real orienting 
                     assert.ok(items.length > 0, `the ${row.scheme ?? "file"}:${row.pathname} survey runs because it selects something`);
                 }
                 assert.equal(initializationRows.some(LogEntryProjection.isEmission), false,
-                    "`_plurnk` initialization has no content emission ({§emission-row})");
+                    "`_plurnk` initialization has no content emission ({§turn-source-resources})");
                 const turn = await db.test_get_turn.get<{ producer: string; kind: string; status: number; completed_at: string | null }>({ id: commons.turn_id });
                 assert.deepEqual(
                     { producer: turn?.producer, kind: turn?.kind, status: turn?.status },
@@ -1302,7 +1302,7 @@ test("{§session-initialization-entry} an empty workspace runs only the surveys 
                     "initialization contains its opening NOTE, the five surveys that select something, its closing NOTE, and nothing else",
                 );
                 assert.equal(initializationRows.some(({ scheme }) => scheme === "ops"), false,
-                    "turn 0 reads none of its own program, and it announces no emission ({§emission-row})");
+                    "turn 0 reads none of its own program, and it announces no emission ({§turn-source-resources})");
             } finally { ws.close(); }
         });
     } finally { if (prev === undefined) delete process.env.PLURNK_SERVICE_FILES_ITEMS; else process.env.PLURNK_SERVICE_FILES_ITEMS = prev; }

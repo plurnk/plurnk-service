@@ -100,7 +100,7 @@ END;
 -- response body itself is model_call_responses, below.
 CREATE TABLE IF NOT EXISTS model_calls (
     id               INTEGER NOT NULL PRIMARY KEY,
-    -- {§packet-attachment-parts}: exact model-facing log coordinates whose
+    -- {§log-wire-format}: exact model-facing log coordinates whose
     -- native bytes were present in this completed request. The ordinary READ
     -- result remains independently durable in the log.
     native_inputs    TEXT    NOT NULL DEFAULT '[]' CHECK (

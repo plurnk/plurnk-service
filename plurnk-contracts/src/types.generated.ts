@@ -497,7 +497,7 @@ lineMarker: (TextLineMarker | null)
  */
 matcher: (MatcherBody | null)
 /**
- * A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-distillation}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern}).
+ * A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-scope}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern}).
  */
 body: (string | null)
 position: Position

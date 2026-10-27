@@ -41,7 +41,7 @@ export type SelectedSource = ResolvedResourceSelection & {
     readonly identity?: string;
     readonly content: string;
     readonly completeContent: string;
-    // {§copy-move-pattern} A MOVE removes the same source regions it transferred.
+    // {§copy} A MOVE removes the same source regions it transferred.
     readonly matchedScopes?: readonly LineMarker[];
     // {§binary-parity} — a binary source carries its selected bytes here (whole resource, or the byte
     // range the marker names); `content` is then "". The destination writes them verbatim.
@@ -97,6 +97,6 @@ export type ProposalIds = {
     sessionId: number;
     loopId: number;
     turnId: number;
-    // {§log-mutation-patch} — the operation row being settled, for the facts a scheme keeps on it.
+    // {§log-wire-format} — the operation row being settled, for the facts a scheme keeps on it.
     logEntryId?: number;
 };

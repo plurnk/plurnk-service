@@ -10,7 +10,7 @@ const url = (raw: string): UrlPath => {
     return parsed;
 };
 
-test("{§log-sensitive-request-evidence} DurableStatement projects URL credential slots without mutating execution input", () => {
+test("{§log-history-projection} DurableStatement projects URL credential slots without mutating execution input", () => {
     const target = url("https://user:password@example.test/path?#body");
     const statement: ReadStatement = {
         op: "READ",
@@ -36,7 +36,7 @@ test("{§log-sensitive-request-evidence} DurableStatement projects URL credentia
     assert.deepEqual(statement.metadata, ["Set-Cookie: a=1", "Set-Cookie: b=2"]);
 });
 
-test("{§log-sensitive-request-evidence} DurableStatement applies the same projection to both COPY operands", () => {
+test("{§log-history-projection} DurableStatement applies the same projection to both COPY operands", () => {
     const statement: CopyStatement = {
         op: "COPY",
         aside: null,
@@ -57,7 +57,7 @@ test("{§log-sensitive-request-evidence} DurableStatement applies the same proje
     assert.deepEqual(projected.destination.lineMarker, { marks: [1, 1] });
 });
 
-test("{§log-sensitive-request-evidence} DurableStatement leaves query text, authored bodies, and local targets exact", () => {
+test("{§log-history-projection} DurableStatement leaves query text, authored bodies, and local targets exact", () => {
     const statement: EditStatement = {
         op: "EDIT",
         aside: null,

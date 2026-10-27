@@ -5,7 +5,7 @@ import TurnOps from "./TurnOps.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 
 
-test("{§emission-row} the frozen projection keeps every header and body whole, and adds no nested operations", () => {
+test("{§turn-source-resources} the frozen projection keeps every header and body whole, and adds no nested operations", () => {
     const headers = [
         "READ (workspace:///notes.md) <1,-1> /needle/ <!-- inspect -->",
         "EDIT (workspace:///notes.md) <@abcde> <!-- replace -->",
@@ -47,7 +47,7 @@ for (const [name, body] of [
     ["nonempty", "The original body."],
 ] as const) {
     for (const header of ["EDIT (workspace:///notes.md)", "SEND (session://helper)"]) {
-        test(`{§emission-row} ${header}: an ${name} body renders as the session wrote it`, () => {
+        test(`{§turn-source-resources} ${header}: an ${name} body renders as the session wrote it`, () => {
             const source = PlurnkParser.frame(header, body);
             const statements = TurnOps.parseInternal(source);
             assert.equal(statements.length, 1);
@@ -56,7 +56,7 @@ for (const [name, body] of [
     }
 }
 
-test("{§emission-row} a long body is frozen whole", () => {
+test("{§turn-source-resources} a long body is frozen whole", () => {
     const body = Array.from({ length: 120 }, (_line, index) => `line ${index + 1}`).join("\n");
     const statements = TurnOps.parseInternal(PlurnkParser.frame("EDIT (workspace:///notes.md)", body));
     assert.equal(TurnOps.renderEmission(statements), PlurnkParser.frame("EDIT (workspace:///notes.md)", body));

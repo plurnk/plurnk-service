@@ -47,7 +47,7 @@ export const serverSummary = (
         : `Tools: ${tools}.`;
 };
 
-// {§scheme-catalog-aside}: purpose annotates the effective menu, never replaces it.
+// {§find}: purpose annotates the effective menu, never replaces it.
 export const runtimeServerSummary = (
     name: string,
     catalog: ServerCatalog | undefined,

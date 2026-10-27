@@ -11,7 +11,7 @@ import { logEntries, packetSection } from "./_packet.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { isExecutionOp } from "@plurnk/plurnk-contracts";
 
-test("{§log-coordinate-hierarchy}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async (approvalContext) => {
+test("{§log-history-projection}: executor receipts keep one identity through packets, errors, retrieval, search, and curation", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const runtime = "search-api2";
     const path = `log:///1/2/2/${runtime}`;
@@ -53,7 +53,7 @@ test("{§log-coordinate-hierarchy}: executor receipts keep one identity through 
     });
 });
 
-test("{§log-coordinate-hierarchy}: rejected executor proposals use the same receipt identity as immediate failures", async (approvalContext) => {
+test("{§log-history-projection}: rejected executor proposals use the same receipt identity as immediate failures", async (approvalContext) => {
     serverProposals(approvalContext, "reject");
     const mock = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````sh\nprintf rejected\n````\n````NOTE\nInspect the decision.\n````", 10),

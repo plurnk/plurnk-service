@@ -789,7 +789,7 @@ ok(
     "the no-model diagnostic points to the XDG user config and complete option catalog",
 );
 
-// {§find-fulltext-selection}: exercise native search through the installed daemon
+// {§find-result-projection}: exercise native search through the installed daemon
 // with no active model, network fixture or generation request.
 const searchBoot = await bootStart({
     PLURNK_SERVICE_DB_PATH: resolve(sandbox, "fulltext.db"),

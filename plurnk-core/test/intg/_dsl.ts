@@ -16,7 +16,7 @@ export const urlPath = (scheme: string, pathname: string, fragment: string | nul
 
 export const localPath = (raw: string): LocalPath => ({ kind: "local", raw });
 
-// {§edit-marker-required-on-existing}: a marker is required on an existing
+// {§edit}: a marker is required on an existing
 // entry; states a deliberate whole-content rewrite explicitly, resolving through
 // the ordinary marker math to a full replace.
 export const fullReplace: LineMarker = { marks: [1, -1] };

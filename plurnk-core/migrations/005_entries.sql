@@ -318,7 +318,7 @@ CREATE INDEX IF NOT EXISTS symbol_refs_name   ON symbol_refs (name);
 
 CREATE INDEX IF NOT EXISTS symbol_refs_source ON symbol_refs (derivation_id, container);
 
--- {§find-fulltext-selection} Native full-text index of the addressed READ body.
+-- {§find-result-projection} Native full-text index of the addressed READ body.
 -- rowid is the content-addressed derivation id.
 -- {§content-store} The index reads its text from the content store instead of keeping a copy:
 -- external content, kept in step by the derivation triggers in _entry-fts.sql.
@@ -330,7 +330,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS derivation_fts USING fts5(content, content='d
 -- {§db-fk-indexes} Content collection asks whether any derivation still indexes a body.
 CREATE INDEX IF NOT EXISTS derivations_content ON derivations (content_id) WHERE content_id IS NOT NULL;
 
--- {§packet-attachment-parts}: READ snapshots survive source changes and log curation.
+-- {§log-wire-format}: READ snapshots survive source changes and log curation.
 CREATE TABLE IF NOT EXISTS native_contents (
     hash TEXT NOT NULL PRIMARY KEY CHECK (length(hash) = 64),
     content BLOB NOT NULL

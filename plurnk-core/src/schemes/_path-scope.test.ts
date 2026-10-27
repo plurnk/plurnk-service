@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { pathFolderSummaries, pathScope, pathScopeMatches } from "./_path-scope.ts";
 
-test("{§find-scope-prefix-filter} terminal `*` is a complete one-level structural selector", () => {
+test("{§find} terminal `*` is a complete one-level structural selector", () => {
     const scope = pathScope("src/*", true);
     assert.equal(pathScopeMatches(scope, "src/a.ts"), true);
     assert.equal(pathScopeMatches(scope, "src/.hidden.ts"), true);
@@ -10,7 +10,7 @@ test("{§find-scope-prefix-filter} terminal `*` is a complete one-level structur
     assert.equal(pathScopeMatches(scope, "other/a.ts"), false);
 });
 
-test("{§find-scope-prefix-filter} terminal `**` is a complete recursive structural selector", () => {
+test("{§find} terminal `**` is a complete recursive structural selector", () => {
     const root = pathScope("**", true);
     assert.equal(pathScopeMatches(root, ".env.defaults"), true);
     assert.equal(pathScopeMatches(root, ".github/workflows/ci.yml"), true);
@@ -21,7 +21,7 @@ test("{§find-scope-prefix-filter} terminal `**` is a complete recursive structu
     assert.equal(pathScopeMatches(nested, "other/a.ts"), false);
 });
 
-test("{§path-glob-matching} richer path patterns retain shell-glob semantics", () => {
+test("{§find} richer path patterns retain shell-glob semantics", () => {
     const scope = pathScope("src/**/*.ts", true);
     assert.equal(pathScopeMatches(scope, "src/a.ts"), true);
     assert.equal(pathScopeMatches(scope, "src/deep/a.ts"), true);
@@ -29,7 +29,7 @@ test("{§path-glob-matching} richer path patterns retain shell-glob semantics", 
     assert.equal(pathScopeMatches(scope, "src/deep/a.go"), false);
 });
 
-test("{§find-scope-prefix-filter} a `**` glued to a name still crosses directories: `**.go` is `**/*.go`", () => {
+test("{§find} a `**` glued to a name still crosses directories: `**.go` is `**/*.go`", () => {
     const glued = pathScope("**.go", true);
     assert.equal(pathScopeMatches(glued, "main.go"), true);
     assert.equal(pathScopeMatches(glued, "terminal/history.go"), true, "the taught rule: `**` crosses directories");
@@ -45,7 +45,7 @@ test("{§find-scope-prefix-filter} a `**` glued to a name still crosses director
     assert.equal(pathScopeMatches(suffixed, "pkg/x.go"), false);
 });
 
-test("{§path-glob-matching} generic path bracket segments remain character classes", () => {
+test("{§find} generic path bracket segments remain character classes", () => {
     const scope = pathScope("src/[ab].ts", true);
     assert.equal(pathScopeMatches(scope, "src/a.ts"), true);
     assert.equal(pathScopeMatches(scope, "src/b.ts"), true);
@@ -64,7 +64,7 @@ test("{§path-glob} an escaped backslash stays inside its filename segment", () 
     assert.deepEqual(paths.filter((pathname) => pathScopeMatches(scope, pathname)), [String.raw`dir\name/a.txt`]);
 });
 
-test("{§find-scope-prefix-filter} an empty declared folder root is a recursive collection", () => {
+test("{§find} an empty declared folder root is a recursive collection", () => {
     const scope = pathScope("", true);
     assert.equal(scope.kind, "folder");
     assert.equal(pathScopeMatches(scope, "src/a.ts"), true);

@@ -1,6 +1,6 @@
 import type { LineMarker, RangeExtent, TextLineMarker, TextRegion } from "@plurnk/plurnk-contracts";
 
-// {§packet-extent-metadata} — display only; selection always uses the typed facts.
+// {§log-wire-format} — display only; selection always uses the typed facts.
 export default class ScopeFormat {
     static marker({ marks }: LineMarker | TextLineMarker): string {
         return `<${marks.join(",")}>`;

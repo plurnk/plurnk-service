@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import PathGlob from "./PathGlob.ts";
 
-test("{§path-glob-matching} traversal and matching select the same literal names and shell patterns", async () => {
+test("{§find} traversal and matching select the same literal names and shell patterns", async () => {
     const temporary = await mkdtemp(join(tmpdir(), "plurnk-path-glob-"));
     const root = join(temporary, String.raw`base\[1]`);
     const names = [

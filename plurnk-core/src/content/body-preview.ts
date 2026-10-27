@@ -19,7 +19,7 @@ export default class BodyPreview {
         return { marks: [1, Knob.integer("PLURNK_SERVICE_PREVIEW_LINES", 1)] };
     }
 
-    // {§reasoning-row} — the last page of a text whose conclusions sit at its end: the final `maxLines` logical
+    // {§turn-source-resources} — the last page of a text whose conclusions sit at its end: the final `maxLines` logical
     // lines, preferring line boundaries and using a column scope for an oversized final line. `whole` says the text fits
     // the page as it stands, in which case `start` is 0 and the marker covers every line.
     static selectTail(text: string, maxLines: number): { start: number; marker: LineMarker; whole: boolean } {

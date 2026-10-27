@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import ReadResolve from "./read-resolve.ts";
 
-test("{§log-readable-projection} {§markerless-first-page}: a markerless READ of a visible-line selection returns every retained line", async () => {
+test("{§log-kill-scope} {§markerless-first-page}: a markerless READ of a visible-line selection returns every retained line", async () => {
     const lines = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`);
     const visibleLines = Array.from({ length: 24 }, (_, i) => i + 17);
     const result = await ReadResolve.resolve({ content: lines.join("\n"), mimetype: "text/plain", visibleLines, lineMarker: null });
@@ -12,14 +12,14 @@ test("{§log-readable-projection} {§markerless-first-page}: a markerless READ o
     assert.deepEqual(result.range?.returned, [17, 40]);
 });
 
-test("{§log-readable-projection}: a retained superline returns whole; no character bound cuts it", async () => {
+test("{§log-kill-scope}: a retained superline returns whole; no character bound cuts it", async () => {
     const result = await ReadResolve.resolve({ content: `omitted\n${"😀".repeat(3000)}`, mimetype: "text/plain", visibleLines: [2], lineMarker: null });
     assert.equal(result.status, 200);
     assert.equal(result.content, "😀".repeat(3000));
     assert.deepEqual(result.lineOrdinals, [2]);
 });
 
-test("{§log-readable-projection}: sparse character scopes retain honest boundaries and separators", async () => {
+test("{§log-kill-scope}: sparse character scopes retain honest boundaries and separators", async () => {
     const content = "one\r\ntwo\r\nsecret\r\nfour\r\nfive";
     const selected = await ReadResolve.resolve({ content, mimetype: "text/plain", visibleLines: [2, 4], lineMarker: { marks: [1, 2, 5, 2] } });
     assert.equal(selected.content, "two\r\nfour\r\n");

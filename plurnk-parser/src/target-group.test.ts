@@ -44,7 +44,7 @@ test("{§target-group} {§statement-rendering}: canonical statements reparse wit
     }
 });
 
-test("{§target-group} {§log-kill-distillation}: distillation lands once; other operations keep their arity", () => {
+test("{§target-group} {§log-kill-scope}: distillation lands once; other operations keep their arity", () => {
     for (const paths of ["(log:///1/2/3/READ) (log:///1/3/2/FIND)", "(log:///1/2/3/READ, log:///1/3/2/FIND)"]) {
         const kills = operations(`\`\`\`KILL ${paths}\nBoth held the same fact.\n\`\`\``) as KillStatement[];
         assert.deepEqual(kills.map(({ body }) => body), ["Both held the same fact.", null]);

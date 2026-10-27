@@ -19,7 +19,7 @@ import { testExecutors, quiesceExecs } from "./_execs.ts";
 import { urlPath, editStmt, findStmt, fullReplace, readStmt, regex, copyStmt, moveStmt } from "./_dsl.ts";
 import { resourcePaths } from "./_find.ts";
 import { Mock } from "@plurnk/plurnk-providers";
-import { type ReadStatement, type CopyStatement, type EditStatement, type FindStatement, type MatcherBody, type MoveStatement } from "@plurnk/plurnk-contracts";
+import { type ReadStatement, type CopyStatement, type EditStatement, type FindStatement, type MoveStatement } from "@plurnk/plurnk-contracts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
@@ -105,7 +105,7 @@ test("{§channels} fragment targets the named channel; fragment-less targets def
     } finally { await db.close(); }
 });
 
-test("{§find-channel-selection}: FIND matches the explicitly addressed channel", async () => {
+test("{§find}: FIND matches the explicitly addressed channel", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
         await seedExecEntry(
@@ -145,7 +145,7 @@ test("{§find-channel-selection}: FIND matches the explicitly addressed channel"
     } finally { await db.close(); }
 });
 
-test("{§find-channel-selection}: channel-scoped catalog FIND excludes resources lacking that channel", async () => {
+test("{§find}: channel-scoped catalog FIND excludes resources lacking that channel", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
         await seedExecEntry(db, workspaceId, sessionId, "/run/complete", "out", "err");
@@ -212,7 +212,7 @@ test("{§channel-selection}: FIND reports an undeclared channel with the declare
     } finally { await db.close(); }
 });
 
-test("{§find-fulltext-selection}: full-text FIND ranks the addressed channel's derivation", async () => {
+test("{§find-result-projection}: full-text FIND ranks the addressed channel's derivation", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
         const manifest = schemeManifest(

@@ -1845,7 +1845,7 @@ test("{§problems-file} {§diagnostic-observation} a file target named like an e
 
 describe("refusal-recovery", () => {
 // {§problem-details} — a refusal carries the next step its producer knows (#1005).
-// {§fs-namespace} {§log-near-miss} {§exec-near-miss} {§unregistered-scheme-recovery} {§fts-word-phrase} {§exec-lifetime}
+// {§fs-namespace} {§log-history-projection} {§exec-near-miss} {§unregistered-scheme-recovery} {§find-result-projection} {§exec-lifetime}
 
 
 
@@ -2021,7 +2021,7 @@ test("{§membership} an ignored file's refusal names the rule's file and line, w
     assert.match(await named("configured.md") ?? "", /^Git ignores it \(`~\/my-ignore` line 1\)/u, "the user's configured excludes file is honored and named");
 });
 
-test("{§log-near-miss} a log miss beside real rows names them", async (t) => {
+test("{§log-history-projection} a log miss beside real rows names them", async (t) => {
     const { dispatch } = await runtime(t);
     await dispatch("````READ (a.md)````");
     await dispatch("````FIND (a.md) /alpha/````");
@@ -2046,7 +2046,7 @@ test("{§unregistered-scheme-recovery} {§diagnostic-observation} an unregistere
     for (const refused of [executorAuthority, listed]) assert.match(refused.problem.recovery ?? "", /^Registered schemes: .*\bfile\b.*\blog\b.*\.$/u);
 });
 
-test("{§fts-word-phrase} {§diagnostic-observation} a full-text query FTS5 refuses carries FTS5's message and the dialect's form", async (t) => {
+test("{§find-result-projection} {§diagnostic-observation} a full-text query FTS5 refuses carries FTS5's message and the dialect's form", async (t) => {
     const { engine, ids, dispatch } = await runtime(t);
     assert.equal((await dispatch("````EDIT (workspace:///notes.md)\nif all(flags):\n````")).status, 201);
     await engine.warmWorkspaceDerivations(ids.workspaceId);

@@ -169,7 +169,7 @@ test("{§problems-functionality} run.fork branches the model session into a name
     });
 });
 
-test("{§emission-row} loop.run streams log/entry notifications during execution", async () => {
+test("{§turn-source-resources} loop.run streams log/entry notifications during execution", async () => {
     const dsl = "````EDIT (workspace:///x)\nhello\n````\n\n````SEND\ndone\n````";
     const mock = new Mock({ contextWindow: 16384, responses: [makeMockResponse(dsl, 50), makeMockResponse("````SEND [200]\ndone\n````", 0)] });
 
@@ -186,7 +186,7 @@ test("{§emission-row} loop.run streams log/entry notifications during execution
             const harness = captured
                 .map((event) => (event as { entry: { id: number; op: string | null; origin: string; status_rx: number; attrs: unknown } }).entry)
                 .filter((entry) => entry.origin === "_plurnk" && entry.op !== "SEND");
-            assert.equal(harness.some(LogEntryProjection.isEmission), false, "`_plurnk` initialization announces no content emission ({§emission-row})");
+            assert.equal(harness.some(LogEntryProjection.isEmission), false, "`_plurnk` initialization announces no content emission ({§turn-source-resources})");
             const initialization = harness;
             assert.equal(
                 captured.some((event) => (event as { entry: { op: string | null } }).entry.op === null),

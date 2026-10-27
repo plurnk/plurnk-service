@@ -55,7 +55,7 @@ test("{§emission-history} {§executor-heading}: historical executor identities 
     }
 });
 
-test("{§emission-history} {§log-kill-distillation}: a failed curation request replays without duplicating its separately recorded NOTE", () => {
+test("{§emission-history} {§log-kill-scope}: a failed curation request replays without duplicating its separately recorded NOTE", () => {
     const operation = frame("KILL (log:///9/9/9)", "Still worth remembering.");
     const failed = { ...row(2, "KILL", 0), rx: { status: 404 } };
     const distilled = row(3, "NOTE", undefined, "Still worth remembering.");

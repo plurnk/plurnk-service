@@ -188,7 +188,7 @@ export default class File extends CoreSchemeAdapterBase {
         return refusal === null ? result : { ...refusal, entry: null };
     }
 
-    // {§read-bytes} — a member's bytes straight from disk: sized first, then only the window asked
+    // {§binary-parity} — a member's bytes straight from disk: sized first, then only the window asked
     // for is read; nothing is buffered beyond it and nothing is stored.
     byteSource({ pathname }: { readonly authority: string; readonly pathname: string }, ctx: CoreSchemeCallContext): ByteSource {
         const core = this.coreContext(ctx);
@@ -497,7 +497,7 @@ export default class File extends CoreSchemeAdapterBase {
             return EditCollision.result(precondition.identity);
         }
 
-        // {§edit-marker-required-on-existing} — markerless content creates a new
+        // {§edit} — markerless content creates a new
         // file; every existing-file rewrite states its range explicitly.
         let patched: string;
         let scopeNormalizations: ReadonlyArray<ScopeNormalization> | undefined;
@@ -541,7 +541,7 @@ export default class File extends CoreSchemeAdapterBase {
             status: 304,
             detail: EDIT_NOOP_DETAIL,
             ...(scopeNormalizations === undefined ? {} : { scopeNormalizations }),
-        };  // {§edit-noop-304} — teaching rides the receipt, not the hot path (#342)
+        };  // {§edit} — teaching rides the receipt, not the hot path (#342)
 
         const patch = createPatch(rel, original, patched, "current", "proposed");
         const receiptEdits = fileExists
@@ -598,7 +598,7 @@ export default class File extends CoreSchemeAdapterBase {
             };
         }
         const { canonical, rel, fileExists, original, baseSig } = target;
-        // {§copy-destination-mimetype}: retain the admitted per-call type on creation.
+        // {§copy}: retain the admitted per-call type on creation.
         const mimetype = fileExists ? target.mimetype : bodyChannel.mimetype;
         const selectedRevision = SchemeCtxImpl.fileRevisionOf(ctx);
         if (selectedRevision !== undefined && selectedRevision !== baseSig) return {
@@ -647,7 +647,7 @@ export default class File extends CoreSchemeAdapterBase {
         };
     }
 
-    // {§edit-result-receipt-truth} — accepted EDITs return the receipt for what
+    // {§edit-result-receipt-projection} — accepted EDITs return the receipt for what
     // landed. Dispatcher composes COPY/MOVE effects after this hook returns.
     async applyResolution(request: ProposalApplyRequest, ctx: CoreSchemeCallContext): Promise<ApplyResult> {
         const core = this.coreContext(ctx);
@@ -760,7 +760,7 @@ export default class File extends CoreSchemeAdapterBase {
                     },
                 );
             }
-            // {§log-mutation-patch} — what this write did to the text, current to proposed, kept on the
+            // {§log-wire-format} — what this write did to the text, current to proposed, kept on the
             // operation row being settled; a byte write keeps no patch.
             if (core.logEntryId !== undefined && patchedBytes === undefined && typeof original === "string") {
                 await core.db.log_append_patch.run({ id: core.logEntryId, patch: createPatch(relPath, original, patched, "current", "proposed") });
@@ -774,7 +774,7 @@ export default class File extends CoreSchemeAdapterBase {
         });
     }
 
-    // {§edit-result-reviewer-replacement} A reviewer's replacement lands as its own receipt against the original:
+    // {§edit-result-receipt-projection} A reviewer's replacement lands as its own receipt against the original:
     // the proposed content's receipt first, when the proposal carried none, then the replacement's over it.
     static async #reviewerReceipt(core: PlurnkSchemeContext, args: {
         attrs: ApplyArgs["attrs"];
@@ -879,7 +879,7 @@ export default class File extends CoreSchemeAdapterBase {
         if (root === null) throw new InvalidOperationResultError("An accepted file deletion has no workspace project root.");
         const requested = join(root, pathname);
         return FileSnapshot.serialize(baseline.canonical, async () => {
-            // {§log-mutation-patch} — a text member's bytes, within the materialization bound, before they
+            // {§log-wire-format} — a text member's bytes, within the materialization bound, before they
             // go; a binary or oversized member leaves no patch.
             const textual = mimetype !== null && core.mimetypes !== undefined && !(await MimetypeBinary.isBinaryMimetype(mimetype, core.mimetypes));
             const bounded = textual ? await FileSnapshot.acquire(requested, FileMaterialization.maximumBytes()) : null;

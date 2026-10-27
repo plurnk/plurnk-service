@@ -516,7 +516,7 @@ WHERE e.workspace_id = $workspace_id AND ec.name = 'body' AND ec.deep_hash IS NO
 LIMIT 1;
 
 -- PREP: test_ops_by_loop
--- {§log-kill-meta-operation} — every model-origin op row with its status.
+-- {§log-history-projection} — every model-origin op row with its status.
 SELECT op, status_rx FROM log_entries WHERE origin = 'model' ORDER BY id;
 
 -- PREP: test_set_workspace_settings
@@ -863,7 +863,7 @@ SELECT id, pathname, status_rx, lineMarker AS line_marker,
 FROM log_entries WHERE session_id = $session_id AND op = 'EDIT' AND origin = 'model' ORDER BY id;
 
 -- PREP: test_emission_rows_by_session
--- {§emission-row}: a session's emission announcements with their coordinates and projection state.
+-- {§turn-source-resources}: a session's emission announcements with their coordinates and projection state.
 SELECT l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
        le.origin, le.op, le.scheme, le.hostname, le.pathname, le.attrs, le.rx, le.initial_folded,
        projection.active, projection.folded

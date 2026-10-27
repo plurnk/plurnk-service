@@ -721,7 +721,7 @@ below the header.
 | --- | --- |
 | Compilation | the parser compiles the complete heading into one ordinary statement per member, in authored order, each with its own target, scope, metadata and resolved matcher; no duplicated first-member or group representation crosses the parser boundary |
 | Position and aside | every resulting statement retains the heading's source position and aside; a heading-level parse error refuses all its members, not valid sibling headings |
-| A distilling body ({§log-kill-distillation}) | lands once, with the first member |
+| A distilling body ({§log-kill-scope}) | lands once, with the first member |
 | Other operations | COPY and MOVE keep their two operands with their own meaning ({§transfer-resource-selections}); every other operation takes one slot, and a second slot on its heading is the slot-opener diagnostic |
 
 §safe-uri-target-groups **An explicit URI list is a target group.** In READ and KILL only,
@@ -933,7 +933,7 @@ disposition.
 
 | Fact | Rule |
 | --- | --- |
-| The body | retained on a `log:///` target, where it is the model's distillation of what the KILL retires and lands as its own NOTE row ({§log-kill-distillation}); every other targeted KILL has `body: null`, and a body beneath one draws the advisory ({§matcher-body-redirect}); beneath a `log:///` KILL the body is never read as a matcher, while an inline pattern on the heading line still lifts |
+| The body | retained on a `log:///` target, where it is the model's distillation of what the KILL retires and lands as its own NOTE row ({§log-kill-scope}); every other targeted KILL has `body: null`, and a body beneath one draws the advisory ({§matcher-body-redirect}); beneath a `log:///` KILL the body is never read as a matcher, while an inline pattern on the heading line still lifts |
 | Without a scope | KILL retires or deletes the whole target |
 | With one | it removes exactly that span — of a log body's packet projection or of an entry's content; Core owns the one-way semantics: there is no operation that restores a scoped-away log body |
 
@@ -974,12 +974,12 @@ accounting, and observation timing belong to the consuming service.
 
 §read-find-normalization An authored READ is never rewritten into a FIND. A
 glob target on READ keeps its glob, and the runtime fans it out into one exact
-READ per matching path, with the authored scope and matcher ({§read-fan-out}
+READ per matching path, with the authored scope and matcher ({§read}
 in the core SPEC). A model
 that asks to read every file under a glob gets those files, bounded by the
 FIND page and the preview scope, not a catalog it did not ask for. A matcher
 never changes the operation either: READ with a `pattern` on an exact target
-stays READ and renders the selected lines ({§read-pattern}). The survey of
+stays READ and renders the selected lines ({§read}). The survey of
 paths is FIND, and only FIND.
 
 §local-path-fragment **A bare path takes `#channel` like a URL.** `data/users.html#readable`
@@ -1414,7 +1414,7 @@ A header starts at column zero. Whitespace outside operation blocks is inert.
 Only a header aside has aside semantics. A matching closer ends its body, and no
 missing closer is inferred. No generic Markdown rendering, indentation stripping
 or recursive code-block extraction occurs. Exact source remains in `ops://<session>/`
-under {§turn-ops-log-curation}; body bytes and source positions are unchanged.
+under {§log-history-projection}; body bytes and source positions are unchanged.
 
 §response-text **The parser owns the partition between operations and response text.**
 The model-turn entry point returns each non-whitespace text span outside operation
@@ -1601,7 +1601,7 @@ text-coordinate selections use {§text-region} instead. `Validator.assertRangeEx
 enforces both the schema and the relational endpoint invariants. `unit: "byte"`
 names a selection of a binary resource's bytes, positions being 1-based byte
 offsets; the byte view is one octet per line, so the same positional algebra
-applies ({§read-bytes} in the core specification).
+applies ({§binary-parity} in the core specification).
 
 ### §entry-read-result 13.3 Client entry reads
 
@@ -2031,7 +2031,7 @@ diagnostics are:
 - §matcher-body-redirect **Unread selector text.** A non-log KILL's body is unused with one warning naming its location: `This KILL takes no body; line 2 was not used.`
   The warning never echoes discarded text. No operation recovers a matcher from below
   its header. READ/FIND bodies follow {§retrieval-annotation}; log KILL bodies follow
-  {§log-kill-distillation}.
+  {§log-kill-scope}.
 - §combined-anchor-tolerance **Combined line number and anchor in a scope.** A
   text-coordinate scope written `L<@hash>` — digits immediately before the opener — is the
   displayed `42<@abcde>` row prefix copied whole: the scope is the anchor, the number is dropped, and one

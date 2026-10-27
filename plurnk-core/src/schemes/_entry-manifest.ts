@@ -47,7 +47,7 @@ type CatalogEntryState = {
     channels: CatalogChannel[];
 };
 
-// {§scheme-catalog-aside} — prose is clipped so a row stays one line of orientation; an
+// {§find} — prose is clipped so a row stays one line of orientation; an
 // invocation-form witness (the shape a runtime's tool summary takes, its newlines written `\n` to stay
 // one summary line) is shown whole with its newlines restored, so the row's JSON escapes each once.
 const catalogAside = (value: string | null): string | undefined => {
@@ -61,7 +61,7 @@ const catalogAside = (value: string | null): string | undefined => {
 };
 
 export default class EntryManifest {
-    // {§scheme-catalog-aside} — the catalog shows a prose summary whole up to this many code points.
+    // {§find} — the catalog shows a prose summary whole up to this many code points.
     static summaryCodePoints(): number { return Knob.integer("PLURNK_SERVICE_CATALOG_SUMMARY_CHARS", 1); }
 
     static toPath(scheme: string, authority: string, pathname: string, projectRoot: string | null = null): string {

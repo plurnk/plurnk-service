@@ -9,7 +9,7 @@ import type { PlurnkSchemeContext } from "./scheme-types.ts";
 
 export type PatternOperation = "EDIT" | "KILL" | "COPY" | "MOVE" | "SEND";
 
-// {§edit-pattern} {§kill-pattern} {§copy-move-pattern} — the half of a pattern operation that
+// {§edit-pattern} {§kill-pattern} {§copy} — the half of a pattern operation that
 // every mutation shares once the resource's text is in hand: the match itself and
 // the source scope that admits complete match regions.
 export default class PatternSelection {

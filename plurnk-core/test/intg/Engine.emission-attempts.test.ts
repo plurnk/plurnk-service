@@ -1365,7 +1365,7 @@ test("{§emission-admission} a frame exhaustion shares prior contract strikes an
     } finally { await db.close(); }
 });
 
-test("{§rejected-emission-entry} digest preserves rejected emissions as forensic artifacts without putting them in the accepted packet", async () => {
+test("{§turn-source-resources} digest preserves rejected emissions as forensic artifacts without putting them in the accepted packet", async () => {
     // The surveys are the initialization program; with the preview off there is none and no digest stem for it.
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";

@@ -123,13 +123,13 @@ ORDER BY r.id;
 SELECT session_id, op, COUNT(*) AS n
 FROM log_entries
 WHERE op IS NOT NULL
-  -- {§emission-row}, {§reasoning-row}: harness rows are not model-authored operations.
+  -- {§turn-source-resources}, {§turn-source-resources}: harness rows are not model-authored operations.
   AND COALESCE(json_extract(attrs, '$.kind'), '') NOT IN ('emission', 'reasoning')
 GROUP BY session_id, op
 ORDER BY session_id, n DESC, op;
 
 -- PREP: digest_emissions
--- {§emission-row}: every emission a session's rows announced, retired ones included: a stored request
+-- {§turn-source-resources}: every emission a session's rows announced, retired ones included: a stored request
 -- places exactly the emission rows its own log section carried ({§packet-wire-envelope}).
 SELECT le.session_id,
        l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
@@ -143,7 +143,7 @@ WHERE json_extract(le.attrs, '$.kind') = 'emission'
 ORDER BY le.id;
 
 -- PREP: digest_reasonings
--- {§reasoning-row}: every reasoning row landed, retired ones included.
+-- {§turn-source-resources}: every reasoning row landed, retired ones included.
 SELECT le.session_id,
        l.sequence || '/' || t.sequence || '/' || le.sequence AS coordinate,
        json_extract(le.rx, '$.content') AS content,

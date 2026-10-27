@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://schemas.plurnk.xyz/v0/RollbackReport.json",
     "title": "RollbackReport",
-    "description": "What a rollback to a log coordinate did ({§rollback}): the file mutations it reversed, latest first, each as an ordinary operation of the acting client; the rows it could not reverse because they kept no patch; and, when it stopped, the row and path where the file no longer matched what that mutation wrote.",
+    "description": "What a rollback to a log coordinate did ({§log-wire-format}): the file mutations it reversed, latest first, each as an ordinary operation of the acting client; the rows it could not reverse because they kept no patch; and, when it stopped, the row and path where the file no longer matched what that mutation wrote.",
     "type": "object",
     "additionalProperties": false,
     "required": ["to", "restored", "skipped", "stopped"],

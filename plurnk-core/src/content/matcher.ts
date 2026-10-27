@@ -82,14 +82,14 @@ export default class Matcher {
         return SchemeMatcher.matchAgainstContent(body, content, mimetype, mimetypes, (value) => ErrorDetail.preview(value));
     }
 
-    // {§find-source-agnostic} — apply a content matcher to a list of candidates from ANY source
+    // {§find} — apply a content matcher to a list of candidates from ANY source
     // (entries, log rows, ...), returning one selection per resource keyed by the
     // caller's own identity, with all addressable evidence grouped on it. The
     // matcher never cares what table content came from; this is
     // the shared primitive both EntryFind and Log.find run, so every dialect works uniformly by
     // construction rather than being re-implemented per scheme. A 4xx matcher
     // failure ends the whole operation; 204 no-match and 203 unlocated-match
-    // candidates simply drop out. A regex anchors each line ({§find-line-anchors}).
+    // candidates simply drop out. A regex anchors each line ({§find}).
     static async matchCandidates(
         body: MatcherBody,
         candidates: ReadonlyArray<{ key: string; content: string; mimetype: string }>,
@@ -100,7 +100,7 @@ export default class Matcher {
         let queryable = 0;
         let unsupported: ProblemDetails | undefined;
         for (const cand of candidates) {
-            // {§find-candidate-containment} (#449) — arbitrary member content can crash a
+            // {§find} (#449) — arbitrary member content can crash a
             // mimetype handler (a template partial crashed Readability and killed a
             // 1,916-file FIND as a blank 500). One candidate's crash is that candidate's
             // unqueryability, never the operation's: it drops out like unsupported

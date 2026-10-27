@@ -249,7 +249,7 @@ non-`200` content remains eligible for transfer.
 | Non-success `SchemeResult` | Preserve the expected address or mutability refusal exactly. |
 | `null` | No resource at this selector. |
 
-Entry, channel, notification, subscription, mutation, proposal, client-read, and cancellation capabilities use that same workspace coordinate. Caller identity supplies provenance, not resource ownership or an alternate namespace. READ checks model write eligibility only to publish EDIT anchors ({§line-anchor-write-authority}); COPY checks the destination and MOVE also checks source mutability before any destination effect.
+Entry, channel, notification, subscription, mutation, proposal, client-read, and cancellation capabilities use that same workspace coordinate. Caller identity supplies provenance, not resource ownership or an alternate namespace. READ checks model write eligibility only to publish EDIT anchors ({§line-anchors}); COPY checks the destination and MOVE also checks source mutability before any destination effect.
 
 A sibling does `export default class X implements SchemeHandler` (with `static manifest: SchemeManifest`) and gets compile-time signature checking. Every registered handler exposes either that static manifest or an instance `manifest` for dynamically derived identities; `Manifest.of` validates the complete resolved declaration and its registration name before the handler becomes dispatchable. The interface is the handler-delegable subset of grammar's operation union. Log-targeted KILL is core-owned curation, and WORK/FORK and the native dispositions are core-owned session/program operations; none is dispatchable to an extension scheme. **The statement + path types (`ReadStatement`, `SendStatement`, `UrlPath`, …) are re-exported from this barrel**, so a sibling depends on and peers (`^1`) ONLY `@plurnk/plurnk-schemes` — grammar rides underneath as the framework's transitive dep (§3).
 
@@ -477,7 +477,7 @@ configured mimetype framework's typed bounded-input failure.
 `Slicer.window(marker, total, unit)` resolves a one- or two-coordinate marker against a
 total alone, with the exact normalization, sentinels, extents, and 416 facts of `lines()`, for
 a resource whose positions are not text lines in memory: the byte view of a binary
-(`unit: "byte"`, {§read-bytes} in core). A sentinel selects nothing (`start: null`); a
+(`unit: "byte"`, {§binary-parity} in core). A sentinel selects nothing (`start: null`); a
 region of four coordinates has no meaning over a window and is refused.
 
 ### §slicer-text-algebra Text-region slicing and replacement - `Slicer`
@@ -608,7 +608,7 @@ database schemas, prepared-statement names, and private service modules.
 **Interfaces only**: this repo exports the contract and the consumer injects
 its implementation.
 
-`SchemeCtx` carries per-dispatch identity (`workspaceId`/`sessionId`/`loopId`/`turnId`/`writer`/`signal`, and during proposal application `logEntryId`, the operation row being settled, so a scheme can keep what it did on that row, {§log-mutation-patch}) plus capability namespaces:
+`SchemeCtx` carries per-dispatch identity (`workspaceId`/`sessionId`/`loopId`/`turnId`/`writer`/`signal`, and during proposal application `logEntryId`, the operation row being settled, so a scheme can keep what it did on that row, {§log-wire-format}) plus capability namespaces:
 
 §scheme-ctx-workspace-environment `workspaceId` selects shared Functionality and admission policy; `sessionId` attributes the operation and selects its journal. Core binds the addressed resource before supplying this context. Handlers must use that binding rather than reinterpret caller identity as resource ownership ({§runtime-resource-binding}).
 

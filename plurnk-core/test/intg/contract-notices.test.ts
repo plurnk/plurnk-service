@@ -91,7 +91,7 @@ const getPacket = async (db: Awaited<ReturnType<typeof openMigrated>>, turnId: n
 
 test("{§notice-content-offset-pointer} a content-offset NOTICE (output_unaccounted) carries a line:col pointer, no embedded snippet", async () => {
     // A NOTICE points at exact source retrievable through ops://<session>/, not an automatic log row.
-    // ({§turn-ops-entry}) — the model READs it at the cited lines. No snippet duplicating the bytes.
+    // ({§log-history-projection}) — the model READs it at the cited lines. No snippet duplicating the bytes.
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = noticeProvider(1);

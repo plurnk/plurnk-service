@@ -226,7 +226,7 @@ test("{§kill-scope-entry}: LogBody projects scoped entry KILL through the ordin
     }
 });
 
-test("{§edit-result-receipt-projection} {§edit-result-copy-move-effects} LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () => {
+test("{§edit-result-receipt-projection} {§edit-result-receipt-projection} LogBody rejects malformed EDIT, KILL and COPY/MOVE result receipts", () => {
     for (const op of ["EDIT", "KILL"]) {
         assert.throws(
             () => LogBody.resolve({ op, tx: "", rx: { receipt: { effect: { context: "x" } } } }),

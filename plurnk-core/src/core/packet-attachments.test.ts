@@ -25,7 +25,7 @@ const pdfRow = () => readRow({
     mimetype_rx: "text/plain",
 });
 
-test("{§packet-attachment-parts} audio duration weighs the retained source, with a byte fallback", async () => {
+test("{§log-wire-format} audio duration weighs the retained source, with a byte fallback", async () => {
     const row = readRow({
         target: { kind: "url", raw: "file:///clip.wav", scheme: "file", pathname: "/clip.wav" },
         tx: { target: { kind: "url", raw: "file:///clip.wav", scheme: "file", pathname: "/clip.wav" } },
@@ -57,7 +57,7 @@ test("{§packet-attachment-parts} audio duration weighs the retained source, wit
     assert.deepEqual(user.content[2], { type: "file", data: bytes, mediaType: "audio/wav" });
 });
 
-test("{§packet-attachment-parts} a visible READ of an image weighs the picture and becomes an image attachment", () => {
+test("{§log-wire-format} a visible READ of an image weighs the picture and becomes an image attachment", () => {
     const rendered = PacketWire.renderLogWithAccounting([readRow()], weigh);
     assert.equal(imageWeight(640, 480), 410);
     assert.deepEqual(rendered.attachments, [{ contentHash, coordinate: "1/1/2", path: "file:///logo.png", scheme: "file", pathname: "/logo.png", mimetype: "image/png", kind: "image", width: 640, height: 480, weight: 410 }]);
@@ -66,7 +66,7 @@ test("{§packet-attachment-parts} a visible READ of an image weighs the picture 
     assert.ok(active > 410, `tokens carries the picture: ${active}`);
 });
 
-test("{§packet-attachment-parts} a visible READ of a PDF weighs its pages and becomes a pdf attachment", () => {
+test("{§log-wire-format} a visible READ of a PDF weighs its pages and becomes a pdf attachment", () => {
     const rendered = PacketWire.renderLogWithAccounting([pdfRow()], weigh);
     assert.equal(pdfWeight(3, 4096), 4500);
     assert.equal(pdfWeight(null, 4096), 1024, "an unreadable page tree weighs by bytes");
@@ -82,7 +82,7 @@ test("{§packet-attachment-parts} a visible READ of a PDF weighs its pages and b
         "a document whose page tree is unreadable still attaches, without a page count");
 });
 
-test("{§packet-attachment-parts} repeated projections retain native content while a plain READ has none", () => {
+test("{§log-wire-format} repeated projections retain native content while a plain READ has none", () => {
     const row = readRow();
     const initial = PacketWire.renderLogWithAccounting([row], weigh);
     const repeated = PacketWire.renderLogWithAccounting([row], weigh);
@@ -93,7 +93,7 @@ test("{§packet-attachment-parts} repeated projections retain native content whi
     assert.doesNotMatch(text.content, /tokensAttachment/);
 });
 
-test("{§packet-attachment-parts} route support decides both native delivery and its request weight", () => {
+test("{§log-wire-format} route support decides both native delivery and its request weight", () => {
     const blind = PacketWire.renderLogWithAccounting(
         [readRow()],
         weigh,
@@ -110,7 +110,7 @@ test("{§packet-attachment-parts} route support decides both native delivery and
     assert.match(seeing.content, /"tokensAttachment":410/);
 });
 
-test("{§packet-attachment-parts} retained native parts follow the packet text without ejection teaching", async () => {
+test("{§log-wire-format} retained native parts follow the packet text without ejection teaching", async () => {
     const packet: RequestPacket = {
         weight: 10,
         sections: [
@@ -144,7 +144,7 @@ test("{§packet-attachment-parts} retained native parts follow the packet text w
     await assert.rejects(PacketWire.wireMessages(packet, async () => { throw new Error("Missing immutable native content"); }), /Missing immutable native content/);
 });
 
-test("{§packet-attachment-parts} a stored packet admits attachments of a known kind and refuses malformed ones", () => {
+test("{§log-wire-format} a stored packet admits attachments of a known kind and refuses malformed ones", () => {
     const base = { weight: 1, sections: [], attributions: [] };
     assert.doesNotThrow(() => StoredPacket.assert(base), "attachments are optional for packets stored before them");
     assert.throws(() => StoredPacket.assert({ ...base, attachments: [{ scheme: "file" }] }), /attachments\[0\]/);
@@ -190,7 +190,7 @@ test("{§packet-wire-envelope}: historical unbound native attachments retain the
     assert.deepEqual(textOnly, PacketWire.packetToWireMessages(packet), "unsupported media do not change the text envelope");
 });
 
-test("{§packet-attachment-parts} native-only observations are weighed and reclaimable", () => {
+test("{§log-wire-format} native-only observations are weighed and reclaimable", () => {
     const row = readRow({ id: 42, rx: { content: "", mimetype: "text/markdown", image: { mimetype: "image/png", width: 640, height: 480, bytes: 12345 } } });
     const rendered = PacketWire.renderLogWithAccounting([row], weigh);
     const charge = Number(/^### log:\/\/\/1\/1\/2\/READ \(file:\/\/\/logo\.png\) · (\d+)$/mu.exec(rendered.content)?.[1]);
@@ -225,7 +225,7 @@ test("{§packet-wire-envelope} historical native requests retain their recorded 
     ], "reading evidence must not retrofit current message roles or move retained native evidence");
 });
 
-test("{§packet-attachment-parts} interpolated native parts remain at their READ boundary as history grows", async () => {
+test("{§log-wire-format} interpolated native parts remain at their READ boundary as history grows", async () => {
     const attachment = { ...PacketWire.renderLogWithAccounting([readRow()], weigh).attachments[0], section: "log/1/1/2" };
     const record = "### log:///1/1/2/READ (logo.png) · 410";
     const packet: RequestPacket = {

@@ -85,7 +85,7 @@ const budgetOf = (packet: RequestPacket): {
     largest?: Array<{ path: string; tokens: number }>;
 } => JSON.parse(packetSection(packet, "budget").split("\n")[0]);
 
-test("{§packet-token-accounting} non-unit calibration preserves one ruler for READ, FIND, inventory and total", async (t) => {
+test("{§log-wire-format} non-unit calibration preserves one ruler for READ, FIND, inventory and total", async (t) => {
     const f = await fixture(t);
     await prepareLog(f);
     const uncalibrated = await f.build();
@@ -236,7 +236,7 @@ test("{§tokenomics-client-gauge} failed and rejected provider attempts retain t
     }
 });
 
-test("{§packet-token-accounting} scoped and whole KILL reclaim stable costs without altering source or forensic bytes", async (t) => {
+test("{§log-wire-format} scoped and whole KILL reclaim stable costs without altering source or forensic bytes", async (t) => {
     const f = await fixture(t);
     const { args, content, readId } = await prepareLog(f);
     await recordSamples(f);

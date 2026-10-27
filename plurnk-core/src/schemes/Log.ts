@@ -69,7 +69,7 @@ export interface LogCurationOutcome {
 // leaf must agree. Matching is case-insensitive: model operations render
 // uppercase while `attempt` and engine-minted selectors are lowercase.
 const COORDINATE = /^(\d+)\/(\d+)\/(\d+)(?:\/([A-Za-z0-9_.+-]+))?$/;
-// {§log-coordinate-hierarchy} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
+// {§log-history-projection} — a log coordinate is a HIERARCHICAL PREFIX: `1` selects loop 1's rows,
 // `1/2` turn 1/2's rows, `1/2/3` the one row. A full coordinate is always 3 parts, so a 1- or 2-part
 // path is unambiguously a prefix — the trailing slash is OPTIONAL (`log:///1/2` ≡ `log:///1/2/`).
 const PARTIAL_COORDINATE = /^\d+(?:\/\d+)?\/?$/;
@@ -80,18 +80,18 @@ const numericCoordinateIntervalsValid = (pathname: string): boolean => pathname.
     return interval === null || BigInt(interval[1]) <= BigInt(interval[2]);
 });
 
-// {§log-target-shape} — the working form the refusal of a target nothing can read shows; it names the
+// {§log-kill-scope} — the working form the refusal of a target nothing can read shows; it names the
 // shape and presumes nothing about what the author meant ({§diagnostic-observation}). A sweep that
-// matches nothing stays the bare 204 ({§log-curation-folder-idiom}): no text rides the packet for it.
+// matches nothing stays the bare 204 ({§log-history-projection}): no text rides the packet for it.
 const LOG_TARGET_SHAPE = "A log target is `log:///<loop>/<turn>/<sequence>` with an optional `/<op>` leaf; a shorter path is a prefix, and `*`, `**`, `[1-7]` or `{a,b}` may stand in any segment.";
 
-// {§log-target-tolerances} — a `|` between KILL targets lists them; each piece may be written bare or
+// {§log-kill-scope} — a `|` between KILL targets lists them; each piece may be written bare or
 // as a full `log:///` address. The card teaches the brace set; the list is tolerated, never taught.
 const splitLogTargets = (pathname: string): string[] | null => pathname.includes("|")
     ? pathname.split("|").map((piece) => piece.replace(/^log:\/\/\//u, "").replace(/^\//u, ""))
     : null;
 
-// {§log-target-tolerances} — the near-miss shapes the target reader accepts, each read as the one
+// {§log-kill-scope} — the near-miss shapes the target reader accepts, each read as the one
 // target it can only have meant, so that a miss by shape costs no turn and no text: a bracketed comma
 // list in a numeric slot is a set; a non-numeric literal in a numeric slot, after at least one
 // numeric slot, is the leaf with the missing slots `*`; `*` segments between the sequence and the
@@ -116,7 +116,7 @@ const normalizeLogTarget = (pathname: string): string => {
     return segments.join("/");
 };
 
-// A log target pathname → the coordinate GLOB it scopes ({§log-coordinate-hierarchy}): a partial
+// A log target pathname → the coordinate GLOB it scopes ({§log-history-projection}): a partial
 // coordinate (`1`, `1/2`, with or without slash) is a prefix over its descendants; a trailing
 // slash is the folder idiom; a full coordinate/glob passes through. null = malformed.
 const coordinateGlob = (pathname: string): string | null => {
@@ -139,7 +139,7 @@ const parseCoordinate = (pathname: string): LogCoordinate | null => {
     };
 };
 
-// {§log-coordinate-hierarchy} Numeric intervals are a property of the log's
+// {§log-history-projection} Numeric intervals are a property of the log's
 // three decimal coordinate slots, not a redefinition of resource-path globs.
 // Substitute only candidate coordinate values admitted by each interval, then
 // let the shared path matcher retain ownership of every other glob construct.
@@ -190,7 +190,7 @@ const coordinateCandidatePrefix = (prefix: string | null): string | null => pref
     ? null
     : LogEntryProjection.base(prefix);
 
-// {§log-near-miss} — a coordinate that names no row beside rows that exist names them: the turn's
+// {§log-history-projection} — a coordinate that names no row beside rows that exist names them: the turn's
 // rows carrying the leaf written first, since the leaf is what the model asked for and the sequence
 // its guess, then the row at that coordinate under its own leaf; else the turn's rows, else the
 // loop's latest turn. Undefined when the loop holds nothing either (#1005).
@@ -264,7 +264,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     static manifest: SchemeManifest = {
         name: "log",
         authority: "resource",
-        // {§log-mutation-patch} — a settled file mutation's row offers its diff; other rows offer no channel.
+        // {§log-wire-format} — a settled file mutation's row offers its diff; other rows offer no channel.
         channels: { patch: "text/x-diff" },
         defaultChannel: "",
         category: "logging",
@@ -403,7 +403,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                         mimetype: underlyingMimetype,
                         state: "static",
                     },
-                    // {§log-mutation-patch} — a settled file mutation's diff, addressable as `#patch`.
+                    // {§log-wire-format} — a settled file mutation's diff, addressable as `#patch`.
                     ...(row.patch === null ? {} : { patch: { content: row.patch, mimetype: "text/x-diff", state: "static" as const } }),
                 },
                 // {§channel-selection} (#502) — an execution item's stream link rides as
@@ -414,8 +414,8 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         };
     }
 
-    // {§log-uniform-query} — FIND over the session's log rows, on the SAME source-agnostic primitive
-    // every entry scheme runs (Matcher.matchCandidates, {§find-source-agnostic}): candidates are the
+    // {§find} — FIND over the session's log rows, on the SAME source-agnostic primitive
+    // every entry scheme runs (Matcher.matchCandidates, {§find}): candidates are the
     // coordinate-scoped rows resolved by LogBody exactly as READ shows them, so every content
     // dialect works on log BY CONSTRUCTION and log FIND -> coordinate READ composes like any scheme.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
@@ -495,7 +495,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         );
     }
 
-    // {§log-coordinate-hierarchy} The scope the target names: a coordinate, a prefix or a glob, refused when
+    // {§log-history-projection} The scope the target names: a coordinate, a prefix or a glob, refused when
     // malformed; an exact coordinate that names no row is the miss with its near miss.
     async #findScope(
         statement: FindStatement,
@@ -606,7 +606,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     // Every dialect resolves to one selection per row: rank for ~full-text, the relation index for &graph, every
-    // row for a bare listing, and the content matcher otherwise ({§find-source-agnostic}).
+    // row for a bare listing, and the content matcher otherwise ({§find}).
     static async #selectLogMatches(
         statement: FindStatement,
         core: PlurnkSchemeContext,
@@ -775,9 +775,9 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return row !== undefined && LogEntryProjection.accepts(coordinate.op, row) ? row.id : null;
     }
 
-    // {§log-target-tolerances} — a `|` list is the union of its pieces: one unreadable piece refuses
+    // {§log-kill-scope} — a `|` list is the union of its pieces: one unreadable piece refuses
     // the whole target and names the piece; an empty union is the exact miss's 404 when every piece
-    // is an exact coordinate, otherwise the sweep's 204 ({§log-curation-folder-idiom}).
+    // is an exact coordinate, otherwise the sweep's 204 ({§log-history-projection}).
     async #resolveIds(
         pathname: string,
         ctx: PlurnkSchemeContext,
@@ -809,7 +809,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
                 ? { status: 404, ids: [] }
                 : { status: 200, ids: [id] };
         }
-        // {§log-coordinate-hierarchy} — one resolution for every consumer (curation here, find below).
+        // {§log-history-projection} — one resolution for every consumer (curation here, find below).
         const glob = coordinateGlob(target);
         if (glob === null) return { status: 400, ids: [], error: `The log target '${pathname}' is malformed.` };
         const scope = pathScope(glob, false);
@@ -821,7 +821,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         let matched: CoordinateRow[];
         try { matched = candidates.filter((row) => coordinateScopeMatches(scope, row.coordinate)); }
         catch { return { status: 400, ids: [], error: `The log glob '${glob}' is malformed.` }; }
-        // {§log-curation-folder-idiom} — a well-formed empty selection is a
+        // {§log-history-projection} — a well-formed empty selection is a
         // successful no-op and remains outside the error surface.
         if (matched.length === 0) return { status: 204, ids: [] };
         return { status: 200, ids: matched.map((row) => row.id) };
@@ -872,7 +872,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         return ids.length === 0 ? { status: 204, ids: [] } : { status: 200, ids };
     }
 
-    // {§log-curation-direct} — one statement lands the whole plan or none of it.
+    // {§log-history-projection} — one statement lands the whole plan or none of it.
     async #applyDirect(plan: LogCurationPlan, ctx: PlurnkSchemeContext): Promise<void> {
         if (plan.targets.length === 0) return;
         const landed = await ctx.db.log_apply_projection_plan.all<{ id: number }>({
@@ -965,7 +965,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
     }
 
     // One row under a scoped KILL: a natively active row retires whole; an emission is curated whole
-    // ({§emission-row}) and refused under an exact scope; any other row folds the resolved line range out of its
+    // ({§turn-source-resources}) and refused under an exact scope; any other row folds the resolved line range out of its
     // visibility, or refuses with the scope's own Problem.
     static #scopedRowTarget(statement: KillStatement, row: CurationTargetRow, exact: boolean): LogCurationPlan["targets"][number] | LogCurationOutcome {
         if (row.native_active === 1) {
@@ -1014,7 +1014,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
             };
         }
         const before = LogVisibility.parse(row.folded);
-        // {§emission-row}: source announcements are curated whole; ordinary rows own their bodies.
+        // {§turn-source-resources}: source announcements are curated whole; ordinary rows own their bodies.
         if (LogEntryProjection.isEmission(row)) {
             if (exact) {
                 return {
@@ -1048,7 +1048,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         };
     }
 
-    // {§log-target-tolerances} A selection that found nothing or could not be read, named as what it was: an exact
+    // {§log-kill-scope} A selection that found nothing or could not be read, named as what it was: an exact
     // coordinate's miss carries its near miss, a malformed target the working form.
     static async #selectionFailure(
         selected: { status: number; error?: string },
@@ -1081,7 +1081,7 @@ export default class Log extends CoreSchemeAdapterBase implements CoreRepresenta
         };
     }
 
-    // {§log-curation-set-selection} — the target and an optional pattern select the rows by
+    // {§log-history-projection} — the target and an optional pattern select the rows by
     // intersection, exactly as they do for a scoped KILL; a scope only decides what happens to them.
     async #planKill(
         statement: KillStatement,

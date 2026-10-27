@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Db } from "./Db.ts";
 
-// {§packet-attachment-parts}: immutable bytes are shared; each READ owns its observation.
+// {§log-wire-format}: immutable bytes are shared; each READ owns its observation.
 export default class NativeContent {
     static async retain(db: Db, content: Uint8Array): Promise<string> {
         const hash = createHash("sha256").update(content).digest("hex");

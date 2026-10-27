@@ -98,7 +98,7 @@ export default class MembershipMaterialization {
             size: async () => bytes.length,
             read: async (start, end) => bytes.subarray(start - 1, end),
         };
-        // {§copy-destination-mimetype}: reprojecting unchanged bytes must not erase their admitted type.
+        // {§copy}: reprojecting unchanged bytes must not erase their admitted type.
         const retainedMimetype = unchanged ? sourceProjection?.mimetype ?? known.mimetype : null;
         const mimetype = retainedMimetype ?? (source === null
             ? await FileMaterialization.detectMimetype(canonical, ctx.mimetypes)

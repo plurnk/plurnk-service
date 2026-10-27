@@ -34,7 +34,7 @@ for (const path of ["notes.md", "log:///1/2/3", "log://session/1/2/3"]) {
     }
 }
 
-test("{§log-kill-distillation}: every accepted heading preserves the exact distillation and the following operation", () => {
+test("{§log-kill-scope}: every accepted heading preserves the exact distillation and the following operation", () => {
     for (const path of ["log:///1/2/3", "log://session/1/2/3"]) {
         for (const heading of [`KILL (${path}) <1>`, `KILL <1> (${path})`, `KILL → ${path} <1>`]) {
             const body = "Retained fact: 42.\n\nEvidence 🐜 stays here.";
