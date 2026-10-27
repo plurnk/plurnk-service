@@ -18,7 +18,7 @@ import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import type { ResolvedModuleOptions } from "./config.ts";
 import SessionTranslator from "./SessionTranslator.ts";
 
-export const OWNER_ADDRESS = "acp:///owner";
+export const OWNER_ADDRESS = "acp://operator";
 
 export const AVAILABLE_COMMANDS: readonly AvailableCommand[] = Object.freeze([
     { name: "mcp", description: "Manage workspace MCP servers" },

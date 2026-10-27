@@ -353,6 +353,17 @@ export class GateTracker {
         }
     }
 
+    cancelSessionGates(workspaceId: number, sessionId: number): void {
+        for (const [key, gate] of this.#activeGates.entries()) {
+            if (gate.workspaceId === workspaceId && gate.sessionId === sessionId) {
+                gate.settled = true;
+                this.#activeGates.delete(key);
+                for (const ctrl of gate.peerControllers.values()) ctrl.abort();
+                gate.peerControllers.clear();
+            }
+        }
+    }
+
     removePeer(peer: AcpPeer): void {
         for (const gate of this.#activeGates.values()) {
             const ctrl = gate.peerControllers.get(peer);

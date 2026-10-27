@@ -470,7 +470,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     name: "helper",
                     created_at: "2026-10-25T00:00:00.000Z",
                     origin: "model",
-                    owner: "acp:///owner",
+                    owner: "acp://operator",
                     parentSessionId: 1,
                     kind: "work",
                     lifecycle: "running",
@@ -646,7 +646,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         target: { scheme: "sh", authority: null, pathname: null },
                         body: "rm -rf build",
                         disposition: { decision: "review" },
-                        owner: "acp:///owner",
+                        owner: "acp://operator",
                         attrs: { tag: "sh", body: "rm -rf build", cwd: "/workspace/alpha" },
                         subject: { type: "command", command: "rm -rf build", cwd: "/workspace/alpha" },
                     };
@@ -658,7 +658,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         sessionId: 1,
                         loopId: 1,
                         turnId: 1,
-                        recipient: "acp:///owner",
+                        recipient: "acp://operator",
                         request: {
                             toolName: "question",
                             mode: "form",

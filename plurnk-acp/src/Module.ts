@@ -562,6 +562,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             case "loop/terminated": {
                 if (!isTerminatedEvent(params)) break;
                 const sessionId = params.sessionId;
+                this.#gates.cancelSessionGates(workspaceId, sessionId);
                 this.#broadcastSessionUpdate(workspaceId, sessionId, (s) => s.translator.terminated(params));
                 const status = params.result.status;
                 const childState = params.hitMaxTurns || status === 429
@@ -937,10 +938,19 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     });
                 }
 
-                const sessionProposals = proposals.filter(
-                    (p) => p.sessionId === bound.sessionId && p.disposition.decision === "review",
+                const peerBoundSessionIds = new Set(
+                    [...peer.sessions.values()]
+                        .filter((s) => s.workspaceId === bound.workspaceId)
+                        .map((s) => s.sessionId),
                 );
-                const sessionInteractions = interactions.filter((i) => i.sessionId === bound.sessionId);
+                const sessionProposals = proposals.filter(
+                    (p) =>
+                        p.disposition.decision === "review" &&
+                        (p.sessionId === bound.sessionId || !peerBoundSessionIds.has(p.sessionId)),
+                );
+                const sessionInteractions = interactions.filter(
+                    (i) => i.sessionId === bound.sessionId || !peerBoundSessionIds.has(i.sessionId),
+                );
 
                 const activeLoop = selectSessionLoop(loops);
                 const lifecycle = activeLoop !== null ? lifecycleOfLoopStatus(activeLoop.status) : "idle";
@@ -1163,7 +1173,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 }
                 const plurnkMeta = extractPlurnkMeta(ctx.params._meta);
                 const messageId = plurnkMeta.messageId ?? crypto.randomUUID();
-                const messageAddress = `acp:///sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
+                const messageAddress = `acp://operator/sessions/${encodeURIComponent(bound.acpSessionId)}/messages/${encodeURIComponent(messageId)}`;
 
                 await this.#seam.messageAdmission({
                     workspaceId: bound.workspaceId,
