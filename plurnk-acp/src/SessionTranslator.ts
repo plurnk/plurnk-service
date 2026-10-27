@@ -1,10 +1,6 @@
-// Pure standard ACP v2 projection from daemon events onto ACP v2 SessionUpdate notifications,
-// RequestPermissionRequest, and CreateElicitationRequest.
+// {§acp-plurnk-metadata} {§acp-history-window} Pure standard ACP v2 projection from daemon events onto ACP v2 SessionUpdate notifications.
 
 import type {
-    CreateElicitationRequest,
-    ElicitationSchema,
-    RequestPermissionRequest,
     SessionUpdate,
     ToolCallContent,
     ToolCallStatus,
@@ -16,17 +12,14 @@ import {
     isSafeInteger,
     type ApplicationInboxMessage,
     type ApplicationLoopPacket,
-    type ClientInteractionProjection,
-    type ClientInteractionResolution,
     type LogEntryNotification,
     type LogEntryWire,
     type Notice,
     type OutsideEventNotification,
-    type ProposalProjection,
-    type ProposalResolution,
     type ReasoningEventNotification,
     type TerminatedNotification,
 } from "@plurnk/plurnk-contracts";
+import { buildUnifiedDiff } from "./diff.ts";
 
 export interface AcpSessionUpdate {
     readonly sessionId: string;
@@ -43,308 +36,9 @@ export type ReplayResult = AcpSessionUpdate[] & {
     readonly history: ReplayHistoryLinks;
 };
 
-export interface Resolution extends ProposalResolution {
-    readonly logEntryId: number;
-}
-
-export interface InteractionResolution {
-    readonly interactionId: number;
-    readonly resolution: ClientInteractionResolution;
-}
-
 const MODEL_FACTS: ReadonlySet<string> = new Set(["lineAnchors", "lineAnchorIdentity", "lineNumberWidth"]);
 
-export const proposalKey = (logEntryId: number): string => `proposal:${logEntryId}`;
-export const logEntryIdFromKey = (key: string): number | null => {
-    const m = /^proposal:(\d+)$/u.exec(key);
-    return m === null ? null : Number(m[1]);
-};
-
-export const interactionToolCallId = (interactionId: number): string => `int:${interactionId}`;
-export const interactionIdFromToolCallId = (toolCallId: string): number | null => {
-    const m = /^int:(\d+)$/u.exec(toolCallId);
-    return m === null ? null : Number(m[1]);
-};
-
 export const terminalIdForEntry = (logEntryId: number): string => `term:${logEntryId}`;
-
-const buildUnifiedDiff = (filePath: string, oldText: string, newText: string): string => {
-    const oldLines = oldText.length === 0 ? [] : oldText.split("\n");
-    const newLines = newText.length === 0 ? [] : newText.split("\n");
-    const header = [
-        `--- a/${filePath}`,
-        `+++ b/${filePath}`,
-        `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
-    ];
-    const removed = oldLines.map((line) => `-${line}`);
-    const added = newLines.map((line) => `+${line}`);
-    return [...header, ...removed, ...added].join("\n");
-};
-
-export const STANDARD_PERMISSION_OPTIONS = [
-    { optionId: "allow_once", name: "Allow once", kind: "allow_once" as const },
-    { optionId: "allow_always", name: "Allow always", kind: "allow_always" as const },
-    { optionId: "reject_once", name: "Reject once", kind: "reject_once" as const },
-    { optionId: "reject_always", name: "Reject always", kind: "reject_always" as const },
-];
-
-export const proposalToolCall = (
-    proposal: ProposalProjection,
-): Extract<SessionUpdate, { sessionUpdate: "tool_call_update" }> => {
-    const attrs = isRecord(proposal.attrs) ? proposal.attrs : {};
-    const target =
-        proposal.target?.pathname ??
-        proposal.target?.scheme ??
-        (typeof attrs.path === "string" ? attrs.path : null);
-    const subject = proposal.subject;
-    const title = subject?.type === "tool_call"
-        ? subject.title
-        : target === null
-            ? proposal.op
-            : `${proposal.op} (${target})`;
-    const kind = subject?.type === "tool_call"
-        ? subject.kind
-        : SessionTranslator.toolKindOf(proposal.op, proposal.target?.scheme ?? null);
-    const locations = subject?.type === "tool_call"
-        ? subject.locations
-        : target !== null
-            ? [{ path: target }]
-            : undefined;
-    const content: ToolCallContent[] = [];
-    if (subject?.type === "tool_call" && subject.diff !== undefined) {
-        content.push({
-            type: "diff",
-            changes: [{ operation: "modify", path: subject.diff.path }],
-            patch: {
-                format: "git_patch",
-                text: subject.diff.patch,
-            },
-        });
-    } else if (typeof attrs.original === "string" && typeof attrs.patched === "string") {
-        const path = target ?? "";
-        content.push({
-            type: "diff",
-            changes: [{ operation: "modify", path }],
-            patch: {
-                format: "git_patch",
-                text: buildUnifiedDiff(path, attrs.original, attrs.patched),
-            },
-        });
-    } else {
-        const bodyText = typeof proposal.body === "string"
-            ? proposal.body
-            : typeof attrs.body === "string"
-                ? attrs.body
-                : "";
-        if (bodyText.length > 0) {
-            content.push({
-                type: "content",
-                content: { type: "text", text: bodyText },
-            });
-        }
-    }
-    return {
-        sessionUpdate: "tool_call_update",
-        toolCallId: proposalKey(proposal.logEntryId),
-        name: proposal.op,
-        title,
-        kind,
-        status: "pending",
-        ...(locations !== undefined ? { locations } : {}),
-        ...(content.length > 0 ? { content } : {}),
-        rawInput: {
-            op: proposal.op,
-            target: proposal.target ?? null,
-            ...(proposal.body !== undefined && proposal.body !== null ? { body: proposal.body } : {}),
-        },
-        _meta: {
-            plurnk: {
-                proposal,
-            },
-        },
-    };
-};
-
-export const proposalPermissionRequest = (
-    sessionId: string,
-    proposal: ProposalProjection,
-): RequestPermissionRequest => {
-    const attrs = isRecord(proposal.attrs) ? proposal.attrs : {};
-    const target =
-        proposal.target?.pathname ??
-        proposal.target?.scheme ??
-        (typeof attrs.path === "string" ? attrs.path : null);
-    const title = target === null ? proposal.op : `${proposal.op} (${target})`;
-
-    if (proposal.subject?.type === "command") {
-        return {
-            sessionId,
-            title,
-            description: "Review the requested command.",
-            subject: {
-                type: "command",
-                command: proposal.subject.command,
-                cwd: proposal.subject.cwd,
-            },
-            options: [...STANDARD_PERMISSION_OPTIONS],
-            _meta: {
-                plurnk: {
-                    proposal,
-                },
-            },
-        };
-    }
-
-    const toolCall = proposalToolCall(proposal);
-    const { sessionUpdate: _, ...toolCallFields } = toolCall;
-    return {
-        sessionId,
-        title: toolCall.title ?? title,
-        description: "Review the requested action.",
-        subject: {
-            type: "tool_call",
-            toolCall: toolCallFields,
-        },
-        options: [...STANDARD_PERMISSION_OPTIONS],
-        _meta: {
-            plurnk: {
-                proposal,
-            },
-        },
-    };
-};
-
-export const resolutionFromPermissionResponse = (
-    keyOrLogEntryId: string | number,
-    response: unknown,
-): Resolution | null => {
-    const logEntryId = typeof keyOrLogEntryId === "number"
-        ? keyOrLogEntryId
-        : logEntryIdFromKey(keyOrLogEntryId);
-    if (logEntryId === null || !Number.isSafeInteger(logEntryId) || logEntryId <= 0) return null;
-    if (!isRecord(response)) return null;
-
-    if (isRecord(response.outcome)) {
-        const kind = response.outcome.outcome;
-        if (kind === "cancelled") {
-            return { logEntryId, decision: "cancel" };
-        }
-        if (kind === "selected") {
-            const optionId = response.outcome.optionId;
-            if (optionId === "allow_once") {
-                return { logEntryId, decision: "accept", scope: "once" };
-            }
-            if (optionId === "allow_always") {
-                return { logEntryId, decision: "accept", scope: "always", outcome: "allow_always" };
-            }
-            if (optionId === "reject_once") {
-                return { logEntryId, decision: "reject", scope: "once" };
-            }
-            if (optionId === "reject_always") {
-                return { logEntryId, decision: "reject", scope: "always", outcome: "reject_always" };
-            }
-            return null;
-        }
-    }
-    return null;
-};
-
-export const interactionToolCall = (interaction: ClientInteractionProjection): SessionUpdate => ({
-    sessionUpdate: "tool_call_update",
-    toolCallId: interactionToolCallId(interaction.interactionId),
-    name: interaction.request.toolName,
-    title: interaction.request.toolName,
-    kind: "other",
-    status: "in_progress",
-    rawInput: interaction.request,
-    _meta: {
-        plurnk: {
-            interaction,
-        },
-    },
-});
-
-export const interactionToolCallResult = (
-    interactionId: number,
-    resolution: ClientInteractionResolution,
-): SessionUpdate => ({
-    sessionUpdate: "tool_call_update",
-    toolCallId: interactionToolCallId(interactionId),
-    status: resolution.action === "accept" ? "completed" : "failed",
-    rawOutput: resolution,
-    content: [{ type: "content", content: { type: "text", text: JSON.stringify(resolution) } }],
-});
-
-export const interactionElicitationRequest = (
-    sessionId: string,
-    interaction: ClientInteractionProjection,
-): CreateElicitationRequest => {
-    const { request } = interaction;
-    if (request.mode === "url") {
-        return {
-            scope: "session",
-            sessionId,
-            toolCallId: interactionToolCallId(interaction.interactionId),
-            mode: "url",
-            message: request.message,
-            elicitationId: request.elicitationId,
-            url: request.url,
-            _meta: {
-                plurnk: {
-                    interaction,
-                },
-            },
-        };
-    }
-    const rawSchema = request.requestedSchema;
-    const schema = rawSchema.type === "object"
-        ? { properties: {}, ...rawSchema }
-        : {
-            type: "object",
-            properties: {
-                value: rawSchema,
-            },
-        };
-    return {
-        scope: "session",
-        sessionId,
-        toolCallId: interactionToolCallId(interaction.interactionId),
-        mode: "form",
-        message: request.message,
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion
-        requestedSchema: schema as unknown as ElicitationSchema,
-        _meta: {
-            plurnk: {
-                interaction,
-            },
-        },
-    };
-};
-
-export const interactionResolutionFromResponse = (
-    keyOrInteractionId: string | number,
-    response: unknown,
-): InteractionResolution | null => {
-    const interactionId = typeof keyOrInteractionId === "number"
-        ? keyOrInteractionId
-        : interactionIdFromToolCallId(keyOrInteractionId);
-    if (interactionId === null || !Number.isSafeInteger(interactionId) || interactionId <= 0) return null;
-    if (!isRecord(response)) return null;
-
-    if (response.action === "cancel" || response.action === "decline") {
-        return { interactionId, resolution: { action: response.action } };
-    }
-    if (response.action === "accept") {
-        return {
-            interactionId,
-            resolution: {
-                action: "accept",
-                ...(isRecord(response.content) ? { content: response.content } : {}),
-            },
-        };
-    }
-    return null;
-};
 
 const extractMessageId = (source: string | null, sessionId: string): string | null => {
     if (typeof source !== "string" || source.length === 0) return null;
@@ -437,13 +131,11 @@ export default class SessionTranslator {
         }
     }
 
-    static #statusOf(row: { readonly status_rx?: unknown; readonly status?: unknown }): number {
-        if (typeof row.status_rx === "number") return row.status_rx;
-        if (typeof row.status === "number") return row.status;
-        return 200;
+    static #statusOf(row: { readonly status_rx?: unknown }): number {
+        return typeof row.status_rx === "number" ? row.status_rx : 200;
     }
 
-    static toolStatusOf(row: { readonly state?: unknown; readonly status_rx?: unknown; readonly status?: unknown; readonly attrs?: unknown }): ToolCallStatus {
+    static toolStatusOf(row: { readonly state?: unknown; readonly status_rx?: unknown; readonly attrs?: unknown }): ToolCallStatus {
         if (row.state === "proposed") return "pending";
         const statusRx = SessionTranslator.#statusOf(row);
         if (row.state === "failed" || row.state === "cancelled" || statusRx >= 400) {
@@ -692,7 +384,17 @@ export default class SessionTranslator {
                 : parsedTx;
             const content: ToolCallContent[] = [];
 
-            if (typeof attrs.original === "string" && typeof attrs.patched === "string") {
+            if (typeof attrs.patch === "string" && attrs.patch.length > 0) {
+                const path = address ?? entry.pathname ?? "";
+                content.push({
+                    type: "diff",
+                    changes: [{ operation: "modify", path }],
+                    patch: {
+                        format: "git_patch",
+                        text: attrs.patch,
+                    },
+                });
+            } else if (typeof attrs.original === "string" && typeof attrs.patched === "string") {
                 const path = address ?? entry.pathname ?? "";
                 content.push({
                     type: "diff",
@@ -778,33 +480,17 @@ export default class SessionTranslator {
         return updates;
     }
 
-    reasoning(event: ReasoningEventNotification | Record<string, unknown>): AcpSessionUpdate[] {
-        const rec = event as Record<string, unknown>;
-        if (rec.sessionId !== this.#sessionId) return [];
-        const phase = typeof rec.phase === "string" ? rec.phase : "content";
-        const delta = typeof rec.delta === "string" ? rec.delta : "";
-        if (phase !== "content" || delta.length === 0) return [];
-        const callId = typeof rec.modelCallId === "number" || typeof rec.modelCallId === "string"
-            ? rec.modelCallId
-            : typeof rec.callId === "number" || typeof rec.callId === "string"
-                ? rec.callId
-                : 1;
-        const reqSeq = typeof rec.requestSequence === "number" || typeof rec.requestSequence === "string"
-            ? rec.requestSequence
-            : typeof rec.requestSeq === "number" || typeof rec.requestSeq === "string"
-                ? rec.requestSeq
-                : 1;
-        const messageId = `model-call-${callId}/request-${reqSeq}/reasoning`;
-        if (typeof rec.turnId === "number" || typeof rec.turnId === "string") {
-            const wId = typeof rec.sessionId === "number" || typeof rec.sessionId === "string" ? rec.sessionId : this.#sessionId;
-            this.#streamedReasoningTurns.add(`${wId}:${rec.turnId}`);
-        }
+    reasoning(event: ReasoningEventNotification): AcpSessionUpdate[] {
+        if (event.sessionId !== this.#sessionId) return [];
+        if (event.phase !== "content" || event.delta.length === 0) return [];
+        const messageId = `model-call-${event.modelCallId}/request-${event.requestSequence}/reasoning`;
+        this.#streamedReasoningTurns.add(`${event.sessionId}:${event.turnId}`);
         return [{
             sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "agent_thought_chunk",
                 messageId,
-                content: { type: "text", text: delta },
+                content: { type: "text", text: event.delta },
             },
         }];
     }
@@ -851,29 +537,22 @@ export default class SessionTranslator {
         return updates;
     }
 
-    notice(notice: Notice | Record<string, unknown>): AcpSessionUpdate[] {
-        const rec = notice as Record<string, unknown>;
-        const severity = rec.level === "error"
+    notice(notice: Notice): AcpSessionUpdate[] {
+        const severity = notice.level === "error"
             ? "error"
-            : rec.level === "warn"
+            : notice.level === "warn"
                 ? "warning"
                 : "info";
-        const source = typeof rec.source === "string" ? rec.source : "daemon";
-        const kind = typeof rec.kind === "string"
-            ? rec.kind
-            : typeof rec.code === "string"
-                ? rec.code
-                : "notice";
         return [{
             sessionId: this.#acpSessionId,
             update: {
                 sessionUpdate: "notice",
                 severity,
-                title: `${source}:${kind}`,
-                description: typeof rec.message === "string" ? rec.message : undefined,
+                title: `${notice.source}:${notice.kind}`,
+                ...(typeof notice.message === "string" ? { description: notice.message } : {}),
                 _meta: {
                     plurnk: {
-                        notice: rec,
+                        notice,
                     },
                 },
             },
@@ -918,30 +597,21 @@ export default class SessionTranslator {
         }];
     }
 
-    terminated(event: TerminatedNotification | Record<string, unknown>): AcpSessionUpdate[] {
-        const rec: Record<string, unknown> = isRecord(event) ? event : {};
-        if (rec.sessionId !== this.#sessionId) return [];
-        const usageObj = isRecord(rec.usage) ? rec.usage : {};
-        const accounting = isRecord(usageObj.accounting) ? usageObj.accounting : {};
-        const costUsd = accounting.costUsd ?? (typeof accounting.knownCostUsd === "string" || typeof accounting.knownCostUsd === "number" ? accounting.knownCostUsd : null);
-        const cost = costUsd !== null && costUsd !== undefined && costUsd !== false
+    terminated(event: TerminatedNotification): AcpSessionUpdate[] {
+        if (event.sessionId !== this.#sessionId) return [];
+        const usageObj = event.usage;
+        const accounting = usageObj?.accounting;
+        const costUsd = accounting?.costUsd ?? accounting?.knownCostUsd ?? null;
+        const cost = costUsd !== null && costUsd !== undefined
             ? { amount: Number(costUsd), currency: "USD" }
             : undefined;
-        const providerUsage = isRecord(accounting.usage)
-            ? accounting.usage
-            : isRecord(accounting.knownUsage)
-                ? accounting.knownUsage
-                : null;
-        const inputTokens = typeof providerUsage?.inputTokens === "number" ? providerUsage.inputTokens : 0;
-        const outputTokens = typeof providerUsage?.outputTokens === "number" ? providerUsage.outputTokens : 0;
-        const totalTokens = typeof providerUsage?.totalTokens === "number"
-            ? providerUsage.totalTokens
-            : (inputTokens + outputTokens);
-        const outputDetails = isRecord(providerUsage?.outputTokenDetails) ? providerUsage.outputTokenDetails : null;
-        const inputDetails = isRecord(providerUsage?.inputTokenDetails) ? providerUsage.inputTokenDetails : null;
-        const reasoningTokens = typeof outputDetails?.reasoningTokens === "number" ? outputDetails.reasoningTokens : null;
-        const cacheReadTokens = typeof inputDetails?.cacheReadTokens === "number" ? inputDetails.cacheReadTokens : null;
-        const cacheWriteTokens = typeof inputDetails?.cacheWriteTokens === "number" ? inputDetails.cacheWriteTokens : null;
+        const providerUsage = accounting?.usage ?? accounting?.knownUsage ?? null;
+        const inputTokens = providerUsage?.inputTokens ?? 0;
+        const outputTokens = providerUsage?.outputTokens ?? 0;
+        const totalTokens = providerUsage?.totalTokens ?? (inputTokens + outputTokens);
+        const reasoningTokens = providerUsage?.outputTokenDetails?.reasoningTokens ?? null;
+        const cacheReadTokens = providerUsage?.inputTokenDetails?.cacheReadTokens ?? null;
+        const cacheWriteTokens = providerUsage?.inputTokenDetails?.cacheWriteTokens ?? null;
         const usage = {
             totalTokens,
             inputTokens,
@@ -951,27 +621,11 @@ export default class SessionTranslator {
             ...(cacheWriteTokens === null ? {} : { cachedWriteTokens: cacheWriteTokens }),
         };
 
-        const resultRec = isRecord(rec.result) ? rec.result : {};
-        const status = typeof resultRec.status === "number"
-            ? resultRec.status
-            : typeof rec.status === "number"
-                ? rec.status
-                : 200;
-        const hitMaxTurns = rec.hitMaxTurns === true;
-
-        const turnIds = Array.isArray(rec.turnIds) ? rec.turnIds : null;
-        const turnCount = typeof rec.turnCount === "number"
-            ? rec.turnCount
-            : typeof rec.turns === "number"
-                ? rec.turns
-                : turnIds !== null
-                    ? turnIds.length
-                    : undefined;
-        const problem = isRecord(rec.problem)
-            ? rec.problem
-            : isRecord(resultRec.problem)
-                ? resultRec.problem
-                : null;
+        const resultRec = event.result;
+        const status = resultRec.status;
+        const hitMaxTurns = event.hitMaxTurns;
+        const turnCount = Array.isArray(event.turnIds) ? event.turnIds.length : undefined;
+        const problem = resultRec.problem ?? null;
         const terminalMeta = {
             plurnk: {
                 terminal: {
@@ -993,12 +647,12 @@ export default class SessionTranslator {
                     ? { sessionUpdate: "state_update", state: "idle", stopReason: "refusal", usage, _meta: terminalMeta }
                     : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn", usage, _meta: terminalMeta };
 
-        const curationWeight = typeof usageObj.curationWeight === "number" ? usageObj.curationWeight : 0;
-        const curationBudget = typeof usageObj.curationBudget === "number" ? usageObj.curationBudget : 0;
-        const contextTokens = typeof usageObj.contextTokens === "number" ? usageObj.contextTokens : null;
-        const contextCapacity = typeof usageObj.contextCapacity === "number" ? usageObj.contextCapacity : null;
-        const used = contextTokens ?? (typeof usageObj.curationWeight === "number" ? curationWeight : totalTokens);
-        const size = contextCapacity ?? (typeof usageObj.curationBudget === "number" ? curationBudget : 128000);
+        const curationWeight = usageObj?.curationWeight ?? 0;
+        const curationBudget = usageObj?.curationBudget ?? 0;
+        const contextTokens = usageObj?.contextTokens ?? null;
+        const contextCapacity = usageObj?.contextCapacity ?? null;
+        const used = contextTokens ?? (usageObj?.curationWeight ?? totalTokens);
+        const size = contextCapacity ?? (usageObj?.curationBudget ?? 128000);
 
         const updates: AcpSessionUpdate[] = [];
         if (problem !== null) {
@@ -1007,8 +661,8 @@ export default class SessionTranslator {
                 update: {
                     sessionUpdate: "notice",
                     severity: "error",
-                    title: typeof problem.title === "string" ? problem.title : "Loop Error",
-                    description: typeof problem.detail === "string" ? problem.detail : undefined,
+                    title: problem.title,
+                    description: problem.detail,
                 },
             });
         }
