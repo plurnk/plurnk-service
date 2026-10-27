@@ -1032,149 +1032,199 @@ Client operations (`dispatchClientAction`, executions, typed statements, `rollba
 
 ```mermaid
 flowchart LR
-  DB[(SQLite state)] --> S["1. System instructions"]
-  DB --> A["2. Emission history"]
-  DB --> B["3. Active resources & log"]
-  DB --> C["4. Turn tail: env delta, notices, arrivals, budget"]
-  S & A & B & C --> T["Trusted packetTransform(messages)"]
-  T --> P["Provider.generate(request)"]
+  S["1-3. System: definition, system-policy, inject"] --> L0["4. User: initial log / log/<coord>"]
+  L0 --> EH["5. Alternating assistant (emitted ops) & user (paired receipts + following log)"]
+  EH --> LT["5b. User: trailing log/<coord> + 6-13. Status clump (git, budget, session, work, messages, notices, errors, recap)"]
+  S & L0 & EH & LT --> TR["SchemeRegistry.transformSections(drafts, ctx)"]
+  TR --> AD["PacketSections.assertDrafts -> Provider.generate(request)"]
 ```
 
-At each turn the engine projects session state into one ordered `ProviderMessage[]` wire envelope and hands it to `provider.generate`.
+`PacketBuilder.buildRequestPacket` projects session state into ordered `PacketSectionDraft` items (`{ name, slot, header, content }`), pipes the draft array through `SchemeRegistry.transformSections(drafts, ctx)` in registration order, validates the result with `PacketSections.assertDrafts`, and emits the `ProviderMessage[]` wire envelope:
 
-| Position | Role | Wire section | Stability |
+| Order | Section `name` | Wire `slot` | Header / shape |
 | --- | --- | --- | --- |
-| 1 | `system` | Card, workspace instructions (`AGENTS.md`, `AGENTS.local.md`), and active capability headers | Prefix-stable across turns unless the card or capabilities change |
-| 2 | `assistant` / `user` pairs | Prior turns' emitted operations and their paired receipts ({§emission-history}) | Append-only within the loop; prefix-stable for provider KV caching |
-| 3 | `user` | Active resource projections, definition tables, and the session log table ({§packet}) | Updated in place as resources or log state change |
-| 4 | `user` | Current turn tail: environment delta ({§env-delta}), notices ({§operation-results}), arrived messages ({§message-arrival}), recap, and budget readout ({§tokenomics}) | Turn-local suffix |
+| 1 | `definition` | `system` | Stripped table projection of `plurnk-contracts/plurnk.md` (read fresh per loop start and wake) |
+| 2 | `system-policy` | `system` | Concatenated contents of `PLURNK_SERVICE_POLICY` files (seeded on first boot from `@plurnk/plurnk-meta/POLICY.md` into `$XDG_CONFIG_HOME/plurnk/AGENTS.md`) |
+| 3 | `inject` | `system` | `## Operator Notes` when `PLURNK_SERVICE_PACKET_INJECT` is non-empty |
+| 4–5 | `log`, `log/<coord>`, `emission-history/<coord>` | `user` / `assistant` | Initial retained log records (`## Log`) up to the first replayed turn's first surviving receipt, then alternating `assistant` (replayed turn's emitted operations) and `user` (`emission-history/<first-surviving-receipt-coordinate>` paired receipts plus following non-receipt log records), ending with remaining `log/<first-record-coordinate>` records |
+| 6 | `git` | `user` | `## Git Status` `> [!NOTE]` summary when workspace is a Git repository |
+| 7 | `budget` | `user` | `## Context` JSON gauge (`tokens`, `budget`, `percent`, and pressure `largest`) |
+| 8 | `session` | `user` | `## Session` JSON (`{"path": "session://<name>", "parent": <address\|null>, "loop": L, "turn": T}`) |
+| 9 | `work` | `user` | `## Open Work` JSON (`{"sessions": [...], "streams": [...], "messages": [...]}`; always present with `[]` when empty) |
+| 10 | `messages` | `user` | `## Open Messages` JSON index of unclosed inbound/outbound messages |
+| 11 | `notices` | `user` | `## Notices` callout blocks drained from `notices` |
+| 12 | `errors` | `user` | `## Errors` JSON array (`{status, path}`) indexing `status_rx >= 400` rows from the current and prior turn |
+| 13 | `recap` | `user` | `## Recap` callout directives (`PLURNK_SERVICE_RECAP_LINE_<alias>`) and `PLURNK_SERVICE_RECAP` / `recap.md` |
 
-A trusted module may register `packetTransform(messages, context)` to inspect or rewrite the assembled `ProviderMessage[]` list immediately before admission and transport.
+Wire message grouping: Message 1 is `system` (`1–3`); Message 2 is `user` (initial retained `log` records before the first replayed turn's first surviving receipt); Messages `3…2k` alternate `assistant` and `user` for each replayed turn; the final `user` message carries any trailing `log/<coord>` segment and the status clump (`6–13`).
 
 ### §emission-history Emission history and paired receipts
 
-Each completed turn contributes one `assistant` message containing the model's emitted operations in execution order, followed by one `user` message containing the paired execution receipts in the same order.
+`PLURNK_SERVICE_EMISSION_HISTORY` selects how prior turns in the active loop replay as `assistant`/`user` pairs:
 
-- **Paired receipt shape**: Each receipt names its operand and reports execution status, coordinate, and result metadata or refusal problem details without echoing the request body a second time.
-- **No synthetic turns**: Only turns that actually ran enter emission history; unexecuted operations after a stop boundary ({§op-surface}) produce no receipt.
+| Value | Contract |
+| --- | --- |
+| `all` (default) | Replays every eligible prior turn in the active loop that still has at least one surviving non-killed log receipt |
+| `latest` | Replays only the immediately preceding completed model inference turn in this loop (never falling back to an earlier turn if that turn has no surviving receipts) |
+| `none` | Renders all retained log records in a single `user` `log` section without `assistant` turn replay |
 
-### §tokenomics Tokenomics: context budget, gauge, fit, and wall
+Eligibility and paired-receipt rules:
+- **Admitted content turn**: A turn is eligible for emission-history replay only when its model response parsed with zero syntax errors, produced an admitted content program, and has an active emission row (`ops://<session>/<loop>/<turn>`). Each dispatched content operation records its `op_seq` ordinal in the turn's frozen canonical program; fan-out receipts retain that same ordinal.
+- **Paired receipt (`→ path`)**: In a replayed turn, the `assistant` message carries the authored operation (including its request body for `EDIT`, `NOTE`, `SEND`, `WORK`, `FORK`, or exec). Its paired receipt in the following `user` section (`emission-history/<first-surviving-receipt-coordinate>`) renders an `### <VERB> ... → <path>` H3 heading and retains retrieval/tool output, landed edit context windows, problem details, extents, and status codes while omitting the authored request body so it is never duplicated on the wire.
+- **No synthetic turns**: Unexecuted operations after a stop boundary ({§op-surface}) or rejected syntax turns produce no emission-history pair.
+
+### §tokenomics Tokenomics: one room, one gauge, one rule
 
 ```mermaid
 flowchart TD
-  R["Model contextWindow & maxOutputTokens"] --> E["Admission envelope: inputBudget = contextWindow - outputAllowance"]
-  E --> F["Pre-flight fit: calibrated token estimate <= inputBudget"]
-  F -->|fits| G["Provider.generate(request)"]
-  F -->|over budget| W["Context wall notice: drop/evict newest over-budget projection or refuse turn"]
-  G --> U["Provider usage reconciles calibration ratio"]
+  W["Content write: weight = ceil(chars / 2) in content_store / entry_channels / log_entries"] --> P["Packet render: tokens = total packet weight"]
+  M["Model limits: contextWindow, maxInputTokens, outputBudget, outputFloor"] --> C["inputCapacity = min(maxInputTokens, contextWindow - outputBudget)<br/>inputWall = min(maxInputTokens, contextWindow - outputFloor)"]
+  S["Latest settled emission sample: offset = weight - reported"] --> B["Calibrated budget = max(0, inputCapacity + offset)<br/>Wall estimate = max(0, weight - offset)"]
+  P & B --> F{"Result fits budget - tokens?"}
+  F -->|yes| OK["Admit full result"]
+  F -->|no| R413["413 result-exceeds-budget receipt (line READ keeps fitting prefix)"]
+  B & C --> WL{"Estimate or provider.assessRequestCapacity > inputWall?"}
+  WL -->|no| GEN["Submit to provider (if tokens > budget: prepend 413 packet-exceeds-budget once)"]
+  WL -->|yes| W413["Terminate loop 413 engine/context/window-overflow"]
 ```
-
-Context admission manages one shared token room across the entire assembled packet using one deterministic character/byte ruler calibrated against provider-reported input token usage.
 
 | Mechanism | Contract |
 | --- | --- |
-| Envelope admission | `inputBudget = min(model.contextWindow, PLURNK_SERVICE_MAX_CONTEXT_TOKENS) - outputAllowance`; models whose context window cannot cover the floor allowance are refused at admission. |
-| Stored weight at write | Resource and log projections store their uncalibrated token weight at write time keyed by content hash; binary payloads are sniffed and excluded from text projection. |
-| Calibrated readout | When a provider reports `usage.inputTokens`, the session updates its calibration multiplier so subsequent pre-flight estimates and the packet's budget gauge reflect actual provider tokenization. |
-| Context fit and verbs | The model curates its own context using `READ`, `FIND`, `EDIT`, `KILL`, and `log:///` state verbs; the daemon never compacts, summarizes, or folds context behind the model's back. |
-| Over-budget row and context wall | If a single newly read resource or log row would push the packet over `inputBudget`, that projection is withheld to `summary`/`none` with an explicit over-budget notice naming its token cost and coordinate selector; if the irreducible prefix exceeds `inputBudget`, the turn halts at the context wall. |
-| Client gauge | Session status notifications and `session.get` expose the same calibrated token usage and budget ceiling that the packet readout shows the model. |
-| Loop terminals | When a loop reaches `PLURNK_SERVICE_MAX_LOOP_TURNS`, exhausts its token/cost allowance, or hits an unrecoverable strike rail, it terminates with the corresponding status and problem code. |
+| Curation ruler (`contentWeight`) | `ceil(chars / 2)` computed at write time and stored in `entry_channels.weight` (alongside generated `entry_channels.lines`) and `log_entries.weight` (over canonical `LogBody`; bodyless rows weigh `0`), keyed by SHA-256 `content_hash` in `content_store`. |
+| Binary sniff | Filesystem acquisition inspects the first `8192` bytes for `NUL` (`\0`) when the path extension is not already binary, classifying `NUL`-containing files as `application/octet-stream` so raw binary bytes never enter text curation weight. |
+| Window partition | `inputCapacity = min(maxInputTokens, contextWindow - outputBudget)` reserves `outputBudget` (`PLURNK_SERVICE_OUTPUT_BUDGET`); `inputWall = min(maxInputTokens, contextWindow - outputFloor)` reserves `outputFloor`. When model limits are unknown, `inputCapacity` stays `null` (never fabricated). |
+| Calibrated offset | The latest settled emission sample fixes additive `offset = weight - reported` (falling back to the same model's most recent sample across loops/sessions, else `0`). The curation `budget` is `max(0, inputCapacity + offset)` and the provider wall estimate is `max(0, weight - offset)`. |
+| Packet gauge (`## Context`) | Reports `tokens` (complete rendered packet weight), `budget`, `percent = floor(100 * tokens / budget)`, and—when `tokens > PLURNK_SERVICE_BUDGET_PRESSURE * budget`—`largest`: the top `PLURNK_SERVICE_BUDGET_LARGEST_ITEMS` heaviest active log rows (`{path, tokens}`). |
+| Result context fit (`413 result-exceeds-budget`) | A retrieval or execution result is admitted whole only if its weight fits within `budget - tokens` (after reserving receipt weights for remaining batch operations and the turn's emission record). Otherwise it records `413 https://problems.plurnk.xyz/engine/context/result-exceeds-budget`; for a line-scoped `READ`, the receipt includes the longest prefix of anchored lines that fit. |
+| Over-budget turn row (`413 packet-exceeds-budget`) | When assembled `tokens > budget` at turn start, the engine inserts a `413 https://problems.plurnk.xyz/engine/context/packet-exceeds-budget` log row at the head of the turn (`"Context exceeds budget. YOU MUST ONLY KILL, MOVE or NOTE this turn."`), shown once then retired, and still submits the turn if it remains under `inputWall`. |
+| Context wall (`413 window-overflow`) | When the calibrated wall estimate or `provider.assessRequestCapacity` exceeds `inputWall`, the loop terminates immediately without calling the provider (`413 https://problems.plurnk.xyz/engine/context/window-overflow`). |
+| Client gauge pairs | `loop/packet.gauge` and `loop/terminated.usage` carry two distinct pairs: `curationWeight` / `curationBudget` (from the latest packet-bearing model turn) and `contextTokens` / `contextCapacity` (from the latest settled emission call; `null` when unknown, never divided or conflated). |
+| Pre-I/O provider ledger | Every provider call persists a `provider_requests` row beneath `model_calls` and `turn_attempts` before network I/O begins; `plurnk-digest` exports each payload to `requests/<id>.json`. |
+| Loop terminal statuses | `100` queued, `102` running, `202` parked on a live obligation (`WAIT`, child session, open stream, or pending reply), `200` completed, `413` budget/window overflow, `429` turn allowance (`PLURNK_SERVICE_MAX_TURNS`) exhausted, `499` cancelled, `500` strike threshold (`PLURNK_SERVICE_MAX_STRIKES`), `504` loop/exec timeout (`PLURNK_SERVICE_LOOP_TIMEOUT`), `508` cycle strike (`PLURNK_SERVICE_CYCLE_WINDOW`, `PLURNK_SERVICE_CYCLE_THRESHOLD`). |
 
 ### §env-delta Environment delta and lineage observation
 
-Between turns of a loop, the engine compares the session's last-observed workspace and lineage watermarks against current state and renders a passive `Environment delta` section when external changes occurred.
+Before building each turn's packet, the engine performs a lossless pull over the workspace occurrence journal in `(session.cursor, highWater]` and appends observed occurrences into the observer's `log_entries` (`origin: "_plurnk"`, `source: "session://<producer>"` or a subsystem token such as `"file"`), advancing the session's cursor.
 
-| Event family | Narration contract |
+| Producer / surface | Visibility rule |
 | --- | --- |
-| Child activity and termination | Reports child sessions spawned, progressed, or concluded since the parent's previous turn, citing the child's `session:///N` and `log:///N/...` coordinates so the parent can pull details via `READ` or `FIND`. |
-| Commons and entry materialization | Narrates workspace entries created, modified, moved, or deleted by another actor or external filesystem edit, attributing the causal actor when known. |
-| No coalescing across turns | Each turn observes the exact delta since its predecessor without hiding intermediate child conclusions or attributing the session's own in-turn operations as external drift. |
+| Workspace commons (`workspace:///...`) | `EDIT`, `COPY`, `MOVE`, and entry `KILL` on shared workspace entries broadcast to every existing session in the workspace (with landed bodies suppressed on passive delta rows so observers see coordinate/extent metadata without unasked payload bulk). |
+| Direct child activity | A child session's `EDIT`, `COPY`, `MOVE`, `SEND`, exec, `WORK`, `FORK`, and non-log `KILL` occurrences are visible only to its direct parent session (`parent_session_id`), never to siblings or grandparents. |
+| Direct child termination | When a direct child loop terminates, its parent receives a bounded initially visible `READ` of `ops://<child>/<loop>` summarizing the child's conclusion. |
+| Passive observation posture | Environment-delta rows enter the observer's log passively for the next turn and never wake or force a new loop on an idle session. |
 
 ---
 
 ## §packet Packet shape
 
-The assembled packet renders active resources, log records, and turn-local state as structured Markdown items with deterministic headers and content bodies.
-
-- **Stored packet and digest**: Every provider request persists the exact wire packet and item catalog so `plurnk-digest` can reconstruct the turn without re-running assembly.
-- **Resource projections**: Active entries render according to their `context_session_entry_state` (`full` body with line markers, `summary` definition table from tree-sitter/markdown symbols, or omitted when `none`).
-- **Markerless first page**: Read-only system and reference documents (`tools:///`, `schemes:///`, `skills:///`, `members:///`) render without edit line markers when line-addressed mutation does not apply.
+| Mechanism | Contract |
+| --- | --- |
+| Content-addressed packet storage | Each distinct rendered block is stored once in `packet_items` by SHA-256 hash; turn composition lives in `turn_sections` and `turn_section_items`, written atomically through the `turn_inference_evidence` view (`INSTEAD OF` trigger) and read through the `turn_packets` view as `StoredPacket` (`{ weight, attributions, assistant?, assistantRaw? }`). Unreferenced items are reclaimed by `retention_collect_packet_items`. |
+| `definition` table normalization | When projecting `plurnk-contracts/plurnk.md` into the `definition` system section, Markdown table cells strip padding whitespace and normalize separator cells to `---`. |
+| First-page preview rule (`PLURNK_SERVICE_PREVIEW_LINES`, `PLURNK_SERVICE_PREVIEW_CHARS`) | Unasked sizes—unscoped `READ` or `FIND`, closed stream outputs, arrived peer messages, and passive environment deltas—render their first page (`<1,N> of <total> lines` or character preview) without line-edit hash prefixes; model-authored bodies (`NOTE`, `WAIT`, `SEND`, `WORK`, `FORK`, exec stdin/body) and explicitly scoped reads (`<a,b>`, `<1,-1>`, or `<pattern>`) render their full requested span. |
 
 ### §message-arrival Message arrival, reply delivery, and containment
 
-Addressed messages from people or peer/child sessions arrive in the target session's inbox and are projected into the packet's arrivals section.
+```mermaid
+sequenceDiagram
+  participant Caller as Sender (person / session://<peer> / acp://...)
+  participant Inbox as Target session inbox & log
+  participant Loop as Target session loop
+  Caller->>Inbox: SEND / WORK (exterior path UUID + short key_path message://<session>/<key>)
+  Inbox->>Loop: Publish inbound SEND row (origin="_plurnk" or "user", attrs.kind="message")
+  Loop->>Caller: SEND (message://<session>/<key>) reply delivered once to sender / adapter
+  Note over Inbox,Loop: Completion barrier: loop cannot finish 200 while unpublished arrivals or wake-revision drift remain
+```
 
-- **Causal source and short identity**: Each arrived message names its sender (`session:///N` or person identity), delivery status (`[102]`, `[200]`, or problem status), and reply coordinate.
-- **Reply delivery**: When a child loop concludes with `SEND [200]` or fails terminally, its conclusion is delivered once to its parent session's arrival queue.
-- **Completion defers to messages**: If a new message arrives while a turn is executing, a terminal `SEND [200]` in that turn is downgraded to non-terminal so the loop wakes immediately for an additional turn with the newly arrived message in context.
+| Invariant | Contract |
+| --- | --- |
+| Dual identity (`path` vs `key_path`) | Every message keeps its exterior protocol UUID as durable `path` (`409` on address conflict) and receives a short session-local `key_path` (`message://<session>/<key>`) for packet display and model replies. |
+| Arrival log row | Publishing an inbox message appends an inbound `SEND` row to the recipient's log (`origin: "_plurnk"` with `attrs.kind: "message"` and `source: "session://<sender>"` or `acp://...`, or `origin: "user"` when operator-authored). |
+| Single reply delivery | `SEND (message://<session>/<key>)` delivers the reply once to the assigned session, original native sender, or external protocol adapter (`acp://...`); when a child session replies to a parent-delegated `WORK` prompt, conclusion delivery occurs through the parent's `ops://<child>/<loop>` termination `READ`. |
+| Loop containment and completion barrier | Final loop completion (`200`) atomically requires all arrived inbox messages to be published into the session log and the loop's observed wake revision to equal the session revision; any arrival that lands after the last turn's snapshot withholds `200` and continues or opens a source-keyed recovery loop. |
 
 ### §operation-results Operation results, notices, and problem codes
 
-Every operation produces a structured `OperationResult` with an HTTP-aligned status code, optional RFC 9457 `ProblemDetails` (`https://problems.plurnk.xyz/<domain>/<slug>`), and optional turn-local `Notice` items.
-
 | Channel | Contract |
 | --- | --- |
-| Uniform error channel | Refusals and failures return in the operation's receipt and log row with status `4xx`/`5xx` and a machine-readable `problem.type`; there is no separate `error:///` scheme. |
-| Self-explaining log row | A log row records its coordinate (`log:///S/L/T/OP`), target URI, status (omitting routine `200` on wire), and token charge. |
-| Notices and drain-on-read | Turn-local notices (advisories, output-allowance warnings, unregistered-scheme recovery hints, content-offset pointers, and continued-without-note reminders) drain into the next packet once and are not re-emitted on later turns. |
-| Diagnostic observation | Problem `detail` and notice text state what was read, what was done with it, and where, plus the working form of a refused construct ({§diagnostic-observation}); they never guess author intent. |
-| Unregistered scheme recovery | Addressing an unknown or disabled scheme returns `404 unregistered-scheme` and names the active schemes in `schemes:///`. |
+| Uniform error channel | Every operation or turn-rail failure in an accepted turn is recorded as a `log_entries` row with `status_rx >= 400` and RFC 9457 Problem Details in `rx` (actionless turn rails use `op = 'error'`). The `errors` packet section renders a `{status, path}` JSON index over the current and prior turn; there is no `error://` scheme. |
+| Self-explaining log row | Each log row carries its canonical `log://<session>/<loop>-<turn>-<op>` coordinate, target URI, status (omitting routine `200` on wire headers), extents, and Problem Details (`type`, `title`, `status`, `detail`) in place. |
+| Notices (`## Notices`) | Stored in `notices`, drained on packet read, and broadcast live via `notice/event` (`level: "error" \| "warn" \| "info"`). Packet rendering groups notices into `> [!CAUTION]` (`error`), `> [!WARNING]` (`warn`), and `> [!NOTE]` (`info`) callouts (`> <directive> <message> @ line:column [<kind>]`). |
+| Notice kinds | Includes `parse_advisory` (`position: { type: "content-offset", line, column }` into `ops://<session>/<loop>/<turn>`), `scope_normalized`, `continued_without_note`, `output_truncated`, `output_unaccounted`, `loop_status` (`status`, `loopSeq`, `waitUntil`, `packetCount`, `claimedAt`), and `turn_awaiting_model` / `turn_generated` (with turn wire accounting). |
+| Diagnostic observation | Problem `detail` and notice messages report only what the producer read, what it did with it, and where, plus the working form of a refused construct; they never speculate on author intent or cause. |
+| Unregistered scheme recovery | Addressing an unknown scheme returns `501 https://problems.plurnk.xyz/Resource/scheme-not-found` and lists `Registered schemes: <comma-separated names>.` |
 
 ### §share Share export and candidate runtime
 
-- **Consistent snapshot and digest (`npm run share`)**: Copies a live or archived `plurnk.db` via SQLite's backup API before invoking `plurnk-digest`, ensuring a live daemon is never locked or mutated during forensic export.
-- **Scope and target folder**: Exports either the whole database or a selected workspace/session into the caller-supplied directory (or a timestamped default directory).
-- **Candidate pinned runtime (`npm run candidate`)**: Builds all workspace packages, packs tarballs, and exercises the assembled CLI and daemon from an isolated installation directory.
-
-### §tools-resource-materialization Tool, scheme, skill, and members resources
-
-The workspace Functionality Coordinator materializes self-documentation and policy projections as virtual read-only/writable scheme entries:
-
-| Scheme | Contract |
+| Command / surface | Contract |
 | --- | --- |
-| `tools:///` | Lists active executors at `tools:///` and serves each executor's header summary or full teaching card at `tools:///<name>`. |
-| `schemes:///` | Lists active resource schemes at `schemes:///` and serves each scheme's contract and syntax at `schemes:///<name>`. |
-| `skills:///` | Lists discovered skills at `skills:///` and materializes `SKILL.md` and companion files under `skills:///<name>/...`, including the bundled `plurnk` skill. |
-| `members:///` | Projects file-membership include/exclude globs (`PLURNK_MEMBERS_*` and workspace member definitions) as percent-encoded documents under `members:///<encoded-glob>`, governed by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none`, `root`, `namespace`). |
+| `plurnk-service share [<file.db>] [<folder>]` (`npm run share`) |Snapshots `<file.db>` into a temporary file via `VACUUM INTO` (never reading or locking the live database in place) and writes an unredacted `plurnk-digest` forensic report into `<folder>` (default `$PLURNK_SERVICE_SHARE_FOLDER` or `$XDG_STATE_HOME/plurnk/shares/share-<UTC-stamp>`). Supports `--workspace=<id>` to scope export to one workspace and `--requiem` to run the post-session forensic interview. |
+| Candidate pinned runtime (`npm run candidate`) | Copies every workspace package's published `files` projection into `<state>/runtime` so the daemon and `plurnk-digest` execute from a pinned, self-contained runtime tree unaffected by subsequent working-tree edits. |
+
+### §tools-resource-materialization Executable tool, scheme, skill, and members resources
+
+The workspace Functionality Coordinator materializes self-documentation, skills, and file-membership rules at deterministic URIs:
+
+| Surface | Materialized URIs & contract |
+| --- | --- |
+| Executable tools | Materializes runtime reference pages at `workspace:///_plurnk/plurnk/<runtime>.md` (or `workspace:///_plurnk/tools/<runtime>.md` when the executor declares `resourcesPath: "/tools"`, along with `<runtime>/<percent-encoded-target>.md`, `<runtime>/input.md`, and `<runtime>.json` catalog). At Turn 0, the engine seeds `FIND (workspace:///_plurnk/tools/*.md)` plus multiline fence `FIND` rows for `expandTools` (`plurnk` and `PLURNK_MCP_EXPANDED`). Header-only runtimes end their summary aside with `(invocation only)`. |
+| Scheme reference pages | Materializes each active scheme's reference card at `workspace:///_plurnk/plurnk/<scheme>.md`; listing a scheme in `PLURNK_SERVICE_DOCS_EXCLUDE` omits its reference `.md` without disabling the scheme. |
+| Bundled `plurnk` skill | Served through the `skill://` scheme at `skill://plurnk/SKILL.md`, with companion reference files at `skill://plurnk/.env.defaults`, `skill://plurnk/packages/<package>/SPEC.md`, and `skill://plurnk/packages/<package>/dist/**/*.d.ts`. |
+| File membership (`members` Functionality family) | Configured via `PLURNK_MEMBERS_<alias>=<glob>` (`!glob` excludes; gated by `PLURNK_MEMBERS_ENABLED` and `PLURNK_MEMBERS_<alias>_ENABLED`), operated via `workspace.members.<verb>` or ```` ```plurnk (members) ```` (`list`, `add`, `remove`), bounded for model `add` by `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` (`none < root < namespace`; violations fail `403 https://problems.plurnk.xyz/members/functionality/model-scope`), persisted in `workspace_constraints` (`source: "members" \| "model"`, preserving `source: "create"`), and materialized as `workspace:///_plurnk/members/<percent-encoded-glob>.md`. |
 
 ### §packet-inject System injections, git status, and recap
 
-- **Card read per wake**: The daemon reads the system card and workspace policy files (`AGENTS.md`, `AGENTS.local.md`) at loop start and on every wake so teaching edits take effect without restarting the daemon.
-- **System injections**: Operator and harness injections attach deterministic guidance sections to the system or turn envelope without mutating workspace files.
-- **Git status and recap**: When the workspace is a Git repository, the packet includes a bounded Git status summary and a compact turn recap of recent coordinates and open proposals.
+| Surface | Contract |
+| --- | --- |
+| Card read per wake | `plurnk-contracts/plurnk.md` is read from disk at every loop start and wake so grammar/card edits take effect immediately without restarting the daemon. |
+| System policy & Turn 0 `AGENTS.md` | `PLURNK_SERVICE_POLICY` renders in the `system-policy` slot after `definition` (seeded once on first boot from `@plurnk/plurnk-meta/POLICY.md` into `$XDG_CONFIG_HOME/plurnk/AGENTS.md`); a workspace root `AGENTS.md` is foisted at Turn 0 as `workspace:///_plurnk/AGENTS.md`. |
+| Operator injection (`PLURNK_SERVICE_PACKET_INJECT`) | Renders as `## Operator Notes` in the `inject` system slot after `system-policy`. |
+| `## Git Status` (`PLURNK_SERVICE_GIT_STATUS_PATHS`) | Runs one `git status --porcelain=v2 -z` snapshot per turn to render a `> [!NOTE]` block summarizing branch, ahead/behind counts, staged, unstaged, `untracked members`, and `untracked (not members)` (bounded by `PLURNK_SERVICE_GIT_STATUS_PATHS`), and stamps two-character `XY` status flags onto `source=file` resource rows. |
+| `## Recap` (`PLURNK_SERVICE_RECAP_LINE_<alias>`, `PLURNK_SERVICE_RECAP`) | Renders every non-empty `PLURNK_SERVICE_RECAP_LINE_<alias>` in alias order ahead of `PLURNK_SERVICE_RECAP` / `recap.md`. Lines starting with `YOU MUST`, `YOU MUST NOT`, or `YOU MUST ONLY` render under `> [!IMPORTANT]`; lines starting with `YOU SHOULD`, `YOU SHOULD NOT`, or `YOU MAY` render under `> [!TIP]`; any other prefix fails configuration validation. |
 
 ---
 
 ## §matcher-dispatch Matcher selection and text regions
 
-`READ`, `FIND`, `EDIT`, `COPY`, and `KILL` compose with registered `MimetypeContract` implementations to select and slice structured or line-addressed content.
+```mermaid
+flowchart LR
+  Op["READ / FIND / EDIT / COPY / MOVE / KILL <pattern>"] --> Kind{"Pattern dialect"}
+  Kind -->|"/regex/, glob, $.jsonpath, //xpath"| Mime["@plurnk/plurnk-mimetypes -> @plurnk/plurnk-schemes/Matcher -> Core Matcher.matchCandidates"]
+  Kind -->|"~full-text (FTS5 BM25) / &symbol, &<symbol, &>symbol"| Idx["Workspace search/graph index (settles derivations once)"]
+  Mime --> Out["200 MatchEvidence[] | 204 empty | 203 raw-text fallback | 400 malformed | 415 unsupported"]
+  Idx --> OutIdx["200 MatchEvidence[] | 204 empty | 503 search-index-incomplete | 422 search-unavailable"]
+```
 
-| Mechanism | Contract |
+| Dialect family | Dispatch & status contract |
 | --- | --- |
-| Dialect dispatch | Selects the mimetype handler from the entry's stored media type or path extension (`ext-mimetype`), dispatching XPath, JSONPath, CSS, tree-sitter symbol/relation queries, regex, or line-range selectors. |
-| Graph relations | Relation-indexed dialects (`defs`, `refs`, `calls`, `imports`, `exports`, `outline`) query the derived symbol graph; if derivation is still in flight, the operation awaits readiness or falls back with status `203` and a diagnostic notice. |
-| Invalid expression | Malformed matcher expressions fail `400 invalid-matcher-expression` with the dialect's error position. |
+| Content matchers (`/regex/`, `glob`, `$.jsonpath`, `//xpath`) | Dispatched through `@plurnk/plurnk-mimetypes` $\to$ `@plurnk/plurnk-schemes/Matcher` $\to$ Core `Matcher.matchCandidates`. Returns `200` with `MatchEvidence[]`, `204` when nothing matched, `400` with bounded `diagnostic` when the pattern is malformed, `203` with `reason` when an unparseable structured source falls back to raw text, or `415` when the target mimetype does not support the dialect (omitted silently during multi-resource `FIND` if at least one candidate supports the dialect). |
+| Indexed relation dialects (`~full-text`, `&symbol`, `&<symbol`, `&>symbol`) | `~full-text` queries the FTS5 BM25 index; `&symbol` (definitions), `&<symbol` (incoming references), and `&>symbol` (outgoing referenced definitions) query the symbol graph. The engine settles pending derivations once before querying and returns `503 search-index-incomplete` (retryable) if indexing is still in flight or `422 search-unavailable` when the target is excluded or derivation failed. |
+| `MatchEvidence` and exact-span requirement | Each match carries `{ channel?, locator?, region?, enclosingRegion? }` using 4-coordinate `TextRegion` (`<startLine,startColumn,endLine,endColumn>`). Mutations and scoped transfers (`EDIT`, `COPY`, `MOVE`, scoped `KILL`) require an exact `region` and fail `422 pattern-source-unlocated` on locator-only or enclosing-only matches. |
 
 ### §zero-width-column-one-insert Text scopes, pattern composition, and rendering
 
-- **Line-navigable rendering**: Text slices render with `L<line> <marker>:` prefixes so every visible line carries a stable coordinate for follow-up `READ` or `EDIT`.
-- **Zero-width column-one insert**: An `EDIT` targeting `L<n>C1..L<n>C1` inserts before column 1 of line `n` without consuming the existing character at column 1.
-- **Pattern composition**: When a line range and a pattern/matcher selector are both supplied, the matcher runs within the bounded slice and returns matching regions in document order; Markdown normalization preserves fenced blocks and heading hierarchy.
+| Mechanism | Contract |
+| --- | --- |
+| Scope forms | `<N>` (single line), `<N,M>` (inclusive line span), `<SL,SC,EL,EC>` (1-based line/column span), `<0>` (prepend before line 1), `<-1>` (append after final line), and `<1,-1>` (entire textual body). |
+| 3-coordinate normalization | A 3-coordinate scope `<startLine,startColumn,endLine>` lowers to `<startLine,startColumn,endLine,endCol>` (through the end of `endLine`) and emits a `scope_normalized` notice. |
+| Zero-width column-1 insert (`wholeLineBody`) | An authored zero-width column-1 `EDIT` scope (`<L,1,L,1>`, `<@hash,1,@hash,1>`, or `L = finalLine + 1` immediately after a trailing newline) sets `wholeLineBody`: a non-empty replacement body that does not end in a newline automatically receives the target content's line separator (`\n` or `\r\n`) so it inserts as whole lines before line `L`. Zero-width scopes at columns `> 1` and pattern-generated regions insert byte-exact without appending a newline. |
+| Line-navigable prefix rendering | Textual bodies with a `startLine` render `@hash N:` prefixes (space-padded before `N`) when `lineAnchors` or model-writable `textEditScopes` apply, result ordinals on multi-match `FIND`, and plain `N:` otherwise. |
+| `text/plain` normalization | Auto-derived text mimetypes normalize `text/plain` to `text/markdown` (`PathMimetype.resolve`). |
 
 ### §op-invariants Operation invariants and scoped entry KILL
 
-- **Source-range `COPY`**: `COPY` from a line or matcher range reads the exact selected slice from the source entry and writes or inserts it at the destination coordinate.
-- **Scoped `KILL`**: `KILL <uri>` with no range deletes the entry (or proposes deletion on gated schemes); `KILL <uri> <selector>` removes only the selected lines or matched regions from the entry's content.
+| Operation | Invariant |
+| --- | --- |
+| Scoped `COPY` and `MOVE` | A source scope or pattern on `COPY`/`MOVE` extracts canonical source text (without rendered `@hash N:` prefixes or first-page log trims) or binary channel bytes; `MOVE` removes the selected source span or channel after transfer; destination scopes lower through `editBatch`; receipt `effects` order the destination effect before the source effect. |
+| Scoped entry `KILL` | `KILL (entry) <scope>` or `KILL (entry) <pattern>` dispatches as an empty-body `EDIT` over the same scope or pattern (`204` with `matched: 0` when a pattern matches nothing; `400 kill-pattern-unsupported` when applied to a stream `KILL`). |
 
 ---
 
 ## §test-artifact-retention Testing and evidence
 
-Deterministic tests (`test:unit`, `test:intg`) run against the hermetic `mocktest` provider and fixture-scaled budgets (`plurnk-core/test/setup.ts`); real-model verification runs through `test:live` and `plurnk-bench`.
-
 | Mechanism | Contract |
 | --- | --- |
-| Artifact retention | Every `live` and `demo` specimen run retains its SQLite database, `digest/digest.md`, `digest/digest.json`, and `census.json` under `$PLURNK_BENCHMARKS/tier-<tier>-<stamp>/`. |
-| Tier census and deadline | Each specimen enforces a wall-clock deadline via `AbortSignal`, records loop/turn/request/token counts in `census.json`, and rolls up into the tier's `census.md`. |
-| Provider conformance and FS state | Live smoke and tier sweeps verify end-to-end provider transport, tool/operation execution, and post-turn filesystem resource state against real models. |
+| Live smoke & specimen selection | `PLURNK_SERVICE_LIVE_TIMEOUT` bounds each live specimen's wall-clock execution; `npm run test:live -- --specimen "<name>"` filters by specimen name and exits non-zero when zero specimens match. |
+| Benchmark & test artifact layout (`PLURNK_BENCHMARKS`) | Defaults to `~/benchmarks`. Deterministic integration runs (`PLURNK_TEST_RUN` / `PLURNK_TEST_LANE`) reclaim their SQLite directories on pass and retain them on failure. Tier sweeps (`PLURNK_TIER_RUN`, `tier-<live\|demo>-<stamp>/`) retain per-session `<label>-XXXXXX/{plurnk.db,digest/,census.json}` plus run-level `census.md` and `census.json`. |
+| Specimen capability gates | Specimens declare environmental prerequisites via `input:<image\|pdf\|audio\|video>`, `reasoning`, `output-budget`, `env:<NAME>`, `url:<URL>`, `bin:<name>`, and `checkout:<client>`. |
+| Pure-DB invariant check (`ResourceState.check(db)`) | Asserts tuple uniqueness, canonical file-key fixpoint, channel orphan-freedom, closed admission set, signature coherence, and zero idle-turn entry growth across every persisted database state. |
