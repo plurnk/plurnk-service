@@ -399,7 +399,8 @@ export const createHarness = async (options?: {
             statements.map(() => ({ status: 200, message: "OK", content: "executed", mimetype: "text/plain" })),
         cancelLoop: async () => true,
         executorTags: () => ["sh", "js"],
-        readLog: async ({ sessionId }) => logs.filter((l) => l.session_id === sessionId),
+        readLog: async ({ sessionId, loopSeq }) =>
+            logs.filter((l) => l.session_id === sessionId && (loopSeq === undefined || l.loop_seq === loopSeq)),
         listProviders: () => ({
             aliases: [
                 {
@@ -731,6 +732,11 @@ export const createHarness = async (options?: {
         setSessionEffort: async ({ effort }) => {
             currentEffort = effort as Effort;
             currentEffortSource = "explicit";
+            currentModel = {
+                ...currentModel,
+                effort: currentEffort,
+                effortSource: "explicit",
+            };
             return {
                 effort: currentEffort,
                 source: "explicit",

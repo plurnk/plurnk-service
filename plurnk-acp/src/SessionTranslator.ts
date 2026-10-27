@@ -290,6 +290,7 @@ export default class SessionTranslator {
             loopSeq: entry.loop_seq,
             sequence: entry.sequence,
             scope: null,
+            ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
         };
         if (isResponse || isBodiedWait) {
             updates.push({
@@ -418,11 +419,15 @@ export default class SessionTranslator {
                 content.push(block);
             }
 
-            const comment = isRecord(parsedTx) && typeof parsedTx.comment === "string" && parsedTx.comment.length > 0
-                ? parsedTx.comment
-                : typeof attrs.comment === "string" && attrs.comment.length > 0
-                    ? attrs.comment
-                    : null;
+            const comment = isRecord(parsedTx) && typeof parsedTx.aside === "string" && parsedTx.aside.length > 0
+                ? parsedTx.aside
+                : isRecord(parsedTx) && typeof parsedTx.comment === "string" && parsedTx.comment.length > 0
+                    ? parsedTx.comment
+                    : typeof attrs.aside === "string" && attrs.aside.length > 0
+                        ? attrs.aside
+                        : typeof attrs.comment === "string" && attrs.comment.length > 0
+                            ? attrs.comment
+                            : null;
             const baseTitle = address === null ? entry.op : `${entry.op} (${address})`;
             const title = comment === null ? baseTitle : `${baseTitle} — ${comment}`;
             const bodyUrl = this.#origin !== undefined
@@ -567,6 +572,15 @@ export default class SessionTranslator {
                 sessionUpdate: "agent_message_chunk",
                 messageId: `outside-${event.coordinate}`,
                 content: { type: "text", text: event.text },
+                _meta: {
+                    plurnk: {
+                        op: "outside-",
+                        outside: {
+                            coordinate: event.coordinate,
+                            tokens: event.tokens,
+                        },
+                    },
+                },
             },
         }];
     }

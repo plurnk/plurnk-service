@@ -352,6 +352,7 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                         session_id: 1,
                         sequence: 2,
                         op: "EDIT",
+                        tx: { op: "EDIT", aside: "update x" },
                         attrs: {
                             path: "/workspace/alpha/file.ts",
                             original: "const x = 1;\n",
@@ -790,12 +791,13 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 assert.ok(discovered.actions["workspace.mcp.list"]);
                 Validator.assertAcpDiscovery(discovered);
 
-                const loops = await ctx.request<{ items?: unknown[] } | unknown[]>("_plurnk/action", {
+                const loops = await ctx.request<{ items?: unknown[]; updates?: unknown[] } | unknown[]>("_plurnk/action", {
                     kind: "session.loops",
                     workspace: "alpha",
-                    params: {},
+                    params: { loopSeq: 1 },
                 });
                 assert.ok(Array.isArray(Array.isArray(loops) ? loops : loops.items));
+                assert.ok(!Array.isArray(loops) && Array.isArray(loops.updates));
 
                 const parsedOk = await ctx.request<{ results: Array<{ status: number }> }>("_plurnk/action", {
                     kind: "op.parse",

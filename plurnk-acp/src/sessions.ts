@@ -36,6 +36,8 @@ export interface BoundSession {
     readonly acpSessionId: string;
     readonly workspaceId: number;
     readonly workspaceName: string;
+    readonly projectRoot: string | null;
+    readonly projectLabel: string | null;
     readonly sessionId: number;
     readonly sessionName: string;
     readonly translator: SessionTranslator;
@@ -175,10 +177,20 @@ export const resolveWorkspace = async (
     createIfMissing: boolean,
     explicitProjectRoot?: string | null,
     settings?: Record<string, unknown>,
-): Promise<{ readonly workspaceId: number; readonly workspaceName: string }> => {
+): Promise<{
+    readonly workspaceId: number;
+    readonly workspaceName: string;
+    readonly projectRoot: string | null;
+    readonly projectLabel: string | null;
+}> => {
     if (workspaceIdHint !== undefined) {
         const attached = await seam.attachWorkspace({ workspaceId: workspaceIdHint });
-        return { workspaceId: attached.workspaceId, workspaceName: attached.workspaceName };
+        return {
+            workspaceId: attached.workspaceId,
+            workspaceName: attached.workspaceName,
+            projectRoot: attached.projectRoot ?? null,
+            projectLabel: attached.projectLabel ?? null,
+        };
     }
 
     const effectiveProjectRoot = explicitProjectRoot !== undefined
@@ -190,7 +202,12 @@ export const resolveWorkspace = async (
     if (workspaceNameHint !== undefined && workspaceNameHint.length > 0) {
         try {
             const attached = await seam.attachWorkspace({ name: workspaceNameHint });
-            return { workspaceId: attached.workspaceId, workspaceName: attached.workspaceName };
+            return {
+                workspaceId: attached.workspaceId,
+                workspaceName: attached.workspaceName,
+                projectRoot: attached.projectRoot ?? null,
+                projectLabel: attached.projectLabel ?? null,
+            };
         } catch (err) {
             const problem = extractProblemFromError(err);
             if (!createIfMissing || (problem !== null && problem.status !== 404)) {
@@ -201,14 +218,24 @@ export const resolveWorkspace = async (
                 ...(effectiveProjectRoot !== undefined ? { projectRoot: effectiveProjectRoot } : {}),
                 ...(settings !== undefined ? { settings } : {}),
             });
-            return { workspaceId: created.workspaceId, workspaceName: created.workspaceName };
+            return {
+                workspaceId: created.workspaceId,
+                workspaceName: created.workspaceName,
+                projectRoot: created.projectRoot ?? null,
+                projectLabel: created.projectLabel ?? null,
+            };
         }
     }
 
     if (effectiveProjectRoot !== undefined && effectiveProjectRoot !== null) {
         try {
             const attached = await seam.attachWorkspace({ projectRoot: effectiveProjectRoot });
-            return { workspaceId: attached.workspaceId, workspaceName: attached.workspaceName };
+            return {
+                workspaceId: attached.workspaceId,
+                workspaceName: attached.workspaceName,
+                projectRoot: attached.projectRoot ?? null,
+                projectLabel: attached.projectLabel ?? null,
+            };
         } catch (err) {
             const problem = extractProblemFromError(err);
             if (!createIfMissing || (problem !== null && problem.status !== 404)) {
@@ -218,13 +245,23 @@ export const resolveWorkspace = async (
                 projectRoot: effectiveProjectRoot,
                 ...(settings !== undefined ? { settings } : {}),
             });
-            return { workspaceId: created.workspaceId, workspaceName: created.workspaceName };
+            return {
+                workspaceId: created.workspaceId,
+                workspaceName: created.workspaceName,
+                projectRoot: created.projectRoot ?? null,
+                projectLabel: created.projectLabel ?? null,
+            };
         }
     }
 
     try {
         const attached = await seam.attachWorkspace({ name: "default" });
-        return { workspaceId: attached.workspaceId, workspaceName: attached.workspaceName };
+        return {
+            workspaceId: attached.workspaceId,
+            workspaceName: attached.workspaceName,
+            projectRoot: attached.projectRoot ?? null,
+            projectLabel: attached.projectLabel ?? null,
+        };
     } catch (err) {
         const problem = extractProblemFromError(err);
         if (!createIfMissing || (problem !== null && problem.status !== 404)) {
@@ -234,7 +271,12 @@ export const resolveWorkspace = async (
             name: "default",
             ...(settings !== undefined ? { settings } : {}),
         });
-        return { workspaceId: created.workspaceId, workspaceName: created.workspaceName };
+        return {
+            workspaceId: created.workspaceId,
+            workspaceName: created.workspaceName,
+            projectRoot: created.projectRoot ?? null,
+            projectLabel: created.projectLabel ?? null,
+        };
     }
 };
 
@@ -252,6 +294,8 @@ export const resolveSessionBinding = async (
 
     let workspaceId: number;
     let workspaceName: string;
+    let projectRoot: string | null = null;
+    let projectLabel: string | null = null;
     let requestedSessionName: string | undefined;
 
     if (rawSessionId !== undefined && rawSessionId.includes("#")) {
@@ -267,6 +311,8 @@ export const resolveSessionBinding = async (
             const attached = await seam.attachWorkspace({ workspaceId: parsed.workspaceId });
             workspaceId = attached.workspaceId;
             workspaceName = attached.workspaceName;
+            projectRoot = attached.projectRoot ?? null;
+            projectLabel = attached.projectLabel ?? null;
         } catch (err) {
             const problem = extractProblemFromError(err);
             if (problem !== null && problem.status === 404) {
@@ -296,6 +342,8 @@ export const resolveSessionBinding = async (
             }
             workspaceId = attached.workspaceId;
             workspaceName = attached.workspaceName;
+            projectRoot = attached.projectRoot ?? null;
+            projectLabel = attached.projectLabel ?? null;
             requestedSessionName = session.name;
         } else {
             try {
@@ -310,6 +358,8 @@ export const resolveSessionBinding = async (
                 );
                 workspaceId = resolved.workspaceId;
                 workspaceName = resolved.workspaceName;
+                projectRoot = resolved.projectRoot;
+                projectLabel = resolved.projectLabel;
             } catch (err) {
                 const problem = extractProblemFromError(err);
                 if (!allowCreate && problem !== null && problem.status === 404) {
@@ -335,6 +385,8 @@ export const resolveSessionBinding = async (
         );
         workspaceId = resolved.workspaceId;
         workspaceName = resolved.workspaceName;
+        projectRoot = resolved.projectRoot;
+        projectLabel = resolved.projectLabel;
         requestedSessionName = plurnkMeta.sessionName;
     }
 
@@ -398,6 +450,8 @@ export const resolveSessionBinding = async (
         acpSessionId,
         workspaceId,
         workspaceName,
+        projectRoot,
+        projectLabel,
         sessionId: session.id,
         sessionName: session.name,
         translator,

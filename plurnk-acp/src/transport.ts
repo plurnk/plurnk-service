@@ -184,22 +184,18 @@ export const handleMessagesRoute = async (
         seam.readLog({ workspaceId, sessionId }),
         seam.readInbox({ workspaceId, sessionId }),
     ]);
-    let filtered = allEntries;
-    if (loopParam !== null && /^\d+$/.test(loopParam)) {
-        const targetLoop = Number(loopParam);
-        filtered = allEntries.filter((e) => e.loop_seq === targetLoop);
-    } else if (beforeParam !== null && /^\d+$/.test(beforeParam)) {
-        const beforeLoop = Number(beforeParam);
-        filtered = allEntries.filter((e) => e.loop_seq < beforeLoop);
-    }
+    const targetLoop = loopParam !== null && /^\d+$/.test(loopParam) ? Number(loopParam) : undefined;
+    const beforeLoop = beforeParam !== null && /^\d+$/.test(beforeParam) ? Number(beforeParam) : undefined;
     const translator = new SessionTranslator({
         acpSessionId,
         workspaceId,
         sessionId,
         origin,
     });
-    const replayed = SessionTranslator.replay(translator, filtered, inbox, {
+    const replayed = SessionTranslator.replay(translator, allEntries, inbox, {
         historyLoops: opts.historyLoops,
+        ...(targetLoop !== undefined ? { exactLoopSeq: targetLoop } : {}),
+        ...(beforeLoop !== undefined ? { beforeLoopSeq: beforeLoop } : {}),
     });
     res.writeHead(200, { "content-type": "application/json" });
     res.end(

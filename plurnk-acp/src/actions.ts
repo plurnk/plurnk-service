@@ -1,12 +1,13 @@
 // {§acp-action-binding} {§acp-daemon-client} `_plurnk/action` dispatch, discovery advertisement, and slash commands.
 
 import { RequestError, type SessionUpdate } from "@agentclientprotocol/sdk/experimental/v2/unstable";
-import { Validator, isRecord, type AcpDiscovery } from "@plurnk/plurnk-contracts";
+import { Validator, isRecord, isSafeInteger, type AcpDiscovery } from "@plurnk/plurnk-contracts";
 import type { ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import SessionTranslator from "./SessionTranslator.ts";
 import {
     OWNER_ADDRESS,
+    formatSessionId,
     parseSessionId,
     resolveWorkspace,
     type AcpPeer,
@@ -299,6 +300,23 @@ export const handlePlurnkAction = async (
     if (kind === "session.loops") {
         const target = await resolveActionTarget(seam, rawParams, params, false);
         const items = await seam.listSessionLoops({ workspaceId: target.workspaceId, sessionId: target.sessionId });
+        if (typeof params.loopSeq === "number" && isSafeInteger(params.loopSeq) && params.loopSeq > 0) {
+            const entries = await seam.readLog({
+                workspaceId: target.workspaceId,
+                sessionId: target.sessionId,
+                loopSeq: params.loopSeq,
+            });
+            const translator = new SessionTranslator({
+                acpSessionId: formatSessionId(target.workspaceId, target.sessionName),
+                workspaceId: target.workspaceId,
+                sessionId: target.sessionId,
+                origin,
+            });
+            const replayed = SessionTranslator.replay(translator, entries, [], {
+                exactLoopSeq: params.loopSeq,
+            });
+            return { items, updates: replayed.map((r) => r.update) };
+        }
         return { items };
     }
 

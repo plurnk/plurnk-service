@@ -814,6 +814,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             workspace: {
                                 id: bound.workspaceId,
                                 name: bound.workspaceName,
+                                projectRoot: bound.projectRoot,
+                                projectLabel: bound.projectLabel,
                                 preparation: this.#seam.workspacePreparationStatus(bound.workspaceId),
                                 activity: this.#seam.workspaceDerivationStatus(bound.workspaceId),
                             },
@@ -846,7 +848,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                 );
 
                 const providerCatalog = tryListProviders(this.#seam);
-                const [entries, inbox, loops, proposals, interactions, configOptions, modelInfo] = await Promise.all([
+                const [entries, inbox, loops, proposals, interactions, configOptions, modelInfo, spend, streams, budget] = await Promise.all([
                     this.#seam.readLog({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                     this.#seam.readInbox({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                     this.#seam.listSessionLoops({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
@@ -854,6 +856,9 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     this.#seam.pendingClientInteractions(bound.workspaceId),
                     buildConfigOptions(this.#seam, bound.workspaceId, bound.sessionId),
                     this.#seam.readSessionModel({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                    this.#seam.sessionAccounting({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                    this.#seam.readStreams({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
+                    this.#seam.sessionGauge({ workspaceId: bound.workspaceId, sessionId: bound.sessionId }),
                 ]);
 
                 const replayed = SessionTranslator.replay(bound.translator, entries, inbox, {
@@ -909,6 +914,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     this.#dispatchGateToPeer(gate, peer, bound);
                 }
 
+                const refLoop = activeLoop ?? loops.at(-1) ?? null;
+
                 return {
                     configOptions,
                     availableCommands: [...AVAILABLE_COMMANDS],
@@ -918,6 +925,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             workspace: {
                                 id: bound.workspaceId,
                                 name: bound.workspaceName,
+                                projectRoot: bound.projectRoot,
+                                projectLabel: bound.projectLabel,
                                 preparation: this.#seam.workspacePreparationStatus(bound.workspaceId),
                                 activity: this.#seam.workspaceDerivationStatus(bound.workspaceId),
                             },
@@ -925,7 +934,15 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             status: {
                                 model: modelInfo.model,
                                 spawnModel: modelInfo.spawnModel,
+                                loopSeq: refLoop?.sequence ?? null,
+                                waitUntil: activeLoop?.waitUntil ?? null,
+                                claimedAt: refLoop?.claimedAt ?? null,
+                                terminatedAt: refLoop?.terminatedAt ?? null,
+                                inbox,
+                                spend,
+                                streams,
                             },
+                            budget,
                             ...(providerCatalog.aliases !== null ? { providers: providerCatalog.aliases } : {}),
                             history: replayed.history,
                         },
@@ -1042,16 +1059,29 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                         ctx.params.configId,
                         ctx.params.value,
                     );
+                    const modelInfo = await this.#seam.readSessionModel({
+                        workspaceId: bound.workspaceId,
+                        sessionId: bound.sessionId,
+                    });
+                    const statusMeta = {
+                        plurnk: {
+                            status: {
+                                model: modelInfo.model,
+                                spawnModel: modelInfo.spawnModel,
+                            },
+                        },
+                    };
                     this.#broadcastSessionUpdate(bound.workspaceId, bound.sessionId, (s) => [
                         {
                             sessionId: s.acpSessionId,
                             update: {
                                 sessionUpdate: "config_option_update",
                                 configOptions,
+                                _meta: statusMeta,
                             },
                         },
                     ]);
-                    return { configOptions };
+                    return { configOptions, _meta: statusMeta };
                 } catch (err) {
                     throw toRequestError(err);
                 }
@@ -1147,6 +1177,8 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                             workspace: {
                                 id: bound.workspaceId,
                                 name: bound.workspaceName,
+                                projectRoot: bound.projectRoot,
+                                projectLabel: bound.projectLabel,
                                 preparation: this.#seam.workspacePreparationStatus(bound.workspaceId),
                                 activity: this.#seam.workspaceDerivationStatus(bound.workspaceId),
                             },
