@@ -23,15 +23,15 @@ import {
     reasoningResponseStyleFromEnv,
     inferenceAdmissionFromEnv,
 } from "./env.ts";
-import AiSdkProvider, {
-    type AiSdkProviderConfig,
+import ModelProvider, {
+    type ModelProviderConfig,
     type GrammarStyle,
     type NativeEffort,
-    type AiSdkProviderOptions,
+    type ModelProviderOptions,
     type CacheAffinity,
     type NativeRequestControls,
-} from "./AiSdkProvider.ts";
-import { configuredProviderInfo, createSdkModel } from "./sdkModels.ts";
+} from "./ModelProvider.ts";
+import { configuredProviderInfo, createProviderModel } from "./modelAdapters.ts";
 import { providerSource } from "./notices.ts";
 import type { InputModality, Provider, ProviderCostNormalizer } from "./types.ts";
 import { INPUT_MODALITIES } from "./types.ts";
@@ -40,7 +40,7 @@ import { estimateProviderCost } from "./cost.ts";
 import { emitWarningOnce } from "./warnings.ts";
 import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
 import { withProviderDefaults } from "./defaults.ts";
-import type { LanguageModelSource } from "./aiSdkTransport.ts";
+import type { ModelTransportSource } from "./modelTransport.ts";
 import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
 // {§provider-interface} — the catalog's input modalities, kept to the vocabulary the wire
@@ -135,7 +135,7 @@ const reasoningCapabilities = (
     readonly efforts: readonly [Effort, ...Effort[]];
     readonly outputTokenField?: "max_tokens" | "max_completion_tokens";
     readonly reasoningRequestBody?: (mode: Effort, reasoningBudget: number | null) => Record<string, unknown>;
-    readonly reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => AiSdkProviderOptions | undefined;
+    readonly reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => ModelProviderOptions | undefined;
 } => {
     const declaredEfforts = declaredReasoningEfforts(name, env);
     const wireEfforts = info === undefined ? [...declaredEfforts] : catalogWireEfforts(info, declaredEfforts);
@@ -268,13 +268,13 @@ const reasoningCapabilities = (
 };
 
 // {§provider-effort} Read-only discovery and construction share admission;
-// the compatible SDK package is the only catalog transport without a native model.
+// the compatible adapter is the only catalog transport without a native model.
 export const catalogEfforts = (
     provider: ProviderInfo,
     info: ModelInfo,
     env: NodeJS.ProcessEnv,
 ): readonly [Effort, ...Effort[]] => reasoningCapabilities(
-    provider.id, withProviderDefaults(env), info, provider.npm !== "@ai-sdk/openai-compatible",
+    provider.id, withProviderDefaults(env), info, provider.adapter !== "openai-compatible",
 ).efforts;
 
 const adaptiveEffortProjection = ({
@@ -291,7 +291,7 @@ const adaptiveEffortProjection = ({
     reasoningCapable: boolean;
     info?: ModelInfo;
     declared: readonly Exclude<ModelEffort, null>[];
-}): Pick<AiSdkProviderConfig, "adaptiveEffort" | "adaptiveEffortProviderOptions"> => {
+}): Pick<ModelProviderConfig, "adaptiveEffort" | "adaptiveEffortProviderOptions"> => {
     if (!reasoningCapable) return { adaptiveEffort: "provider-default" };
     if (name === "anthropic" && model.includes("claude-")) {
         return {
@@ -314,11 +314,11 @@ const adaptiveEffortProjection = ({
     return { adaptiveEffort: "provider-default" };
 };
 
-export const providerFromSdkModel = ({
+export const providerFromModelAdapter = ({
     name,
     env,
     model,
-    languageModel,
+    modelTransport,
     normalizeCost,
     url,
     headers,
@@ -336,7 +336,7 @@ export const providerFromSdkModel = ({
     name: string;
     env: NodeJS.ProcessEnv;
     model: string;
-    languageModel?: LanguageModelSource;
+    modelTransport?: ModelTransportSource;
     normalizeCost?: ProviderCostNormalizer;
     url?: string;
     headers?: Readonly<Record<string, string>>;
@@ -347,11 +347,10 @@ export const providerFromSdkModel = ({
     // capability; "none" keeps the grammar off the wire.
     grammarStyle?: GrammarStyle;
     cacheAffinity?: CacheAffinity;
-    systemCacheProviderOptions?: AiSdkProviderOptions;
-    reasoningResponseProviderOptions?: AiSdkProviderOptions;
+    systemCacheProviderOptions?: ModelProviderOptions;
+    reasoningResponseProviderOptions?: ModelProviderOptions;
     additiveReasoningProvider?: "anthropic" | "bedrock";
     requestControls?: NativeRequestControls;
-    sdkPackage?: string;
     endpoint?: string;
 }): Provider => {
     emitWarningOnce(
@@ -378,7 +377,7 @@ export const providerFromSdkModel = ({
         reasoningRequestBody,
         reasoningRequestProviderOptions,
     } = reasoningCapabilities(
-        name, env, info, languageModel !== undefined,
+        name, env, info, modelTransport !== undefined,
     );
     const adaptiveEffort = adaptiveEffortProjection({
         name,
@@ -424,11 +423,11 @@ export const providerFromSdkModel = ({
     const affinityEnabled = cacheAffinityFromEnv(env, name);
     const cacheWritePolicy = cacheWritePolicyFromEnv(env, name);
 
-    return new AiSdkProvider({
+    return new ModelProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, endpoint ?? url?.replace(/\/chat\/completions$/, "") ?? `sdk:${name}`),
         model,
         ...(attributions === undefined ? {} : { attributions }),
-        ...(languageModel === undefined ? {} : { languageModel }),
+        ...(modelTransport === undefined ? {} : { modelTransport }),
         ...(normalizeCost === undefined ? {} : { normalizeCost }),
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
@@ -502,24 +501,23 @@ export const catalogProviderFromEnv = (
             `${name} provider: context window unresolved for "${wireModel}" — set PLURNK_PROVIDERS_CONTEXT_WINDOW or update the Models.dev snapshot`,
         );
     }
-    const sdk = createSdkModel(name, wireModel, env, baseUrlOverride);
-    if (sdk === null) return null;
+    const adapted = createProviderModel(name, wireModel, env, baseUrlOverride);
+    if (adapted === null) return null;
 
-    return providerFromSdkModel({
+    return providerFromModelAdapter({
         name,
         env,
         model: wireModel,
-        languageModel: sdk.languageModel,
-        normalizeCost: sdk.normalizeCost,
-        url: sdk.compatible?.url,
-        endpoint: sdk.endpoint,
-        headers: sdk.compatible?.headers,
-        cacheAffinity: sdk.cacheAffinity,
-        systemCacheProviderOptions: sdk.systemCacheProviderOptions,
-        reasoningResponseProviderOptions: sdk.reasoningResponseProviderOptions,
-        additiveReasoningProvider: sdk.additiveReasoningProvider,
-        ...(sdk.requestControls === undefined ? {} : { requestControls: sdk.requestControls }),
-        sdkPackage: sdk.catalog?.npm,
+        modelTransport: adapted.modelTransport,
+        normalizeCost: adapted.normalizeCost,
+        url: adapted.compatible?.url,
+        endpoint: adapted.endpoint,
+        headers: adapted.compatible?.headers,
+        cacheAffinity: adapted.cacheAffinity,
+        systemCacheProviderOptions: adapted.systemCacheProviderOptions,
+        reasoningResponseProviderOptions: adapted.reasoningResponseProviderOptions,
+        additiveReasoningProvider: adapted.additiveReasoningProvider,
+        ...(adapted.requestControls === undefined ? {} : { requestControls: adapted.requestControls }),
         contextWindow,
         info,
     });

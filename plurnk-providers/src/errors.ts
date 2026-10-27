@@ -39,7 +39,7 @@ export class APICallError extends Error {
         data?: unknown;
     }) {
         super(message, cause === undefined ? undefined : { cause });
-        this.name = "AI_APICallError";
+        this.name = "APICallError";
         this.url = url;
         this.requestBodyValues = requestBodyValues;
         this.statusCode = statusCode;
@@ -69,7 +69,7 @@ export class RetryError extends Error {
         errors: readonly unknown[];
     }) {
         super(message);
-        this.name = "AI_RetryError";
+        this.name = "RetryError";
         this.reason = reason;
         this.errors = errors;
         this.lastError = errors[errors.length - 1];
@@ -85,7 +85,7 @@ export class JSONParseError extends Error {
 
     constructor({ text, cause }: { text: string; cause: unknown }) {
         super(`JSON parsing failed: Text: ${text}.`, cause === undefined ? undefined : { cause });
-        this.name = "AI_JSONParseError";
+        this.name = "JSONParseError";
         this.text = text;
     }
 
@@ -99,7 +99,7 @@ export class TypeValidationError extends Error {
 
     constructor({ value, cause }: { value: unknown; cause: unknown }) {
         super(`Type validation failed: Value: ${JSON.stringify(value)}.`, cause === undefined ? undefined : { cause });
-        this.name = "AI_TypeValidationError";
+        this.name = "TypeValidationError";
         this.value = value;
     }
 
@@ -113,7 +113,7 @@ export class InvalidResponseDataError extends Error {
 
     constructor({ data, message = `Invalid response data: ${JSON.stringify(data)}.` }: { data: unknown; message?: string }) {
         super(message);
-        this.name = "AI_InvalidResponseDataError";
+        this.name = "InvalidResponseDataError";
         this.data = data;
     }
 

@@ -1,5 +1,5 @@
-export { default as AiSdkProvider } from "./AiSdkProvider.ts";
-export type { AiSdkProviderConfig, GrammarStyle, ProviderFetch, ReasoningStyle } from "./AiSdkProvider.ts";
+export { default as ModelProvider } from "./ModelProvider.ts";
+export type { ModelProviderConfig, GrammarStyle, ProviderFetch, ReasoningStyle } from "./ModelProvider.ts";
 export type {
     ChatMessage,
     FinishReason,

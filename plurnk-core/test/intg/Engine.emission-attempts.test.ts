@@ -11,7 +11,7 @@ import ModelCall, { ProviderAccountingIntegrityError } from "../../src/core/Mode
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AiSdkProvider, Mock, ProviderError, type MockResponse, type ProviderAttempt, type ProviderRequestAccounting, type ProviderUsage, chatMessageText, validateProviderRequestAccounting, type ChatMessage, type InputModality, type Provider, type ProviderResponse, parseAliasesFromEnv, resolveActiveRoute, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
+import { ModelProvider, Mock, ProviderError, type MockResponse, type ProviderAttempt, type ProviderRequestAccounting, type ProviderUsage, chatMessageText, validateProviderRequestAccounting, type ChatMessage, type InputModality, type Provider, type ProviderResponse, parseAliasesFromEnv, resolveActiveRoute, type ProviderAlias, type ProviderSpec } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { Digest } from "@plurnk/plurnk-digest";
 import { OperationFailureError } from "../../src/core/results.ts";
@@ -148,7 +148,7 @@ test("{§provider-failure-normalization}: one model call durably settles a trans
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         let calls = 0;
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "connectivity-witness",
             url: "https://provider.test/v1/chat/completions",
             contextWindow: 100_000,
@@ -428,7 +428,7 @@ test("{§provider-interface} repeated reasoning and its final answer settle once
         const chunk = (delta: Record<string, string>, finish: string | null = null): string => `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
         const usage = `data: ${JSON.stringify({ id: "r", object: "chat.completion.chunk", created: 1, model: "repeat-witness", choices: [], usage: { prompt_tokens: 10, completion_tokens: 100, total_tokens: 110, completion_tokens_details: { reasoning_tokens: 80 } } })}\n\n`;
         let calls = 0;
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "repeat-witness",
             url: "https://provider.test/v1/chat/completions",
             contextWindow: 100_000,

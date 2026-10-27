@@ -1,7 +1,7 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import AiSdkProvider, { type AiSdkProviderConfig } from "./AiSdkProvider.ts";
-import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
+import ModelProvider, { type ModelProviderConfig } from "./ModelProvider.ts";
+import { configuredProviderInfo, createProviderModel, providerReadiness } from "./modelAdapters.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
 import { catalogProviderFromEnv } from "./catalogProvider.ts";
@@ -10,19 +10,19 @@ import { loadActiveProvider } from "./ProviderRegistry.ts";
 
 test("{§model-fact-resolution} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
-        PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_NPM: "@ai-sdk/openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_ADAPTER: "openai-compatible",
         PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_BASE_URL: "https://api.acme.test/v1",
         PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_API_KEY_ENV: "ACME_API_KEY",
     }), {
         id: "acme-cloud",
         name: "acme-cloud",
-        npm: "@ai-sdk/openai-compatible",
+        adapter: "openai-compatible",
         env: ["ACME_API_KEY"],
         api: "https://api.acme.test/v1",
     });
     assert.throws(
         () => configuredProviderInfo("acme-cloud", {
-            PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_NPM: "@ai-sdk/openai-compatible",
+            PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_ADAPTER: "openai-compatible",
             PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_API_KEY_ENV: "ACME_API_KEY,ACME_TOKEN",
         }),
         /one exact name, never an ordered fallback/,
@@ -87,14 +87,14 @@ test("{§provider-configuration}: Bedrock reports its actual alternative authent
 
 test("{§provider-configuration}: operator-declared unauthenticated compatible endpoints are ready without an invented credential", () => {
     assert.deepEqual(providerReadiness("acme", {
-        PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER: "openai-compatible",
         PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL: "http://127.0.0.1:9000/v1",
     }), { ready: true, causes: [] });
 });
 
 test("{§provider-configuration}: an authenticated operator declaration reports its missing credential-name configuration", () => {
     const env = {
-        PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai",
+        PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER: "openai",
     };
     assert.deepEqual(providerReadiness("acme", env), {
         ready: false,
@@ -104,25 +104,25 @@ test("{§provider-configuration}: an authenticated operator declaration reports 
         }],
     });
     assert.throws(
-        () => createSdkModel("acme", "model", env),
+        () => createProviderModel("acme", "model", env),
         /PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV must be set/,
     );
 });
 
-test("{§provider-sdk-boundary} createSdkModel constructs Cerebras from Models.dev facts", () => {
-    const sdk = createSdkModel("cerebras", "gemma-4-31b", {
+test("{§provider-sdk-boundary} createProviderModel constructs Cerebras from Models.dev facts", () => {
+    const sdk = createProviderModel("cerebras", "gemma-4-31b", {
         CEREBRAS_API_KEY: "test-key",
     });
     assert.notEqual(sdk, null);
-    assert.equal(sdk?.catalog?.npm, "@ai-sdk/cerebras");
-    assert.notEqual(sdk?.languageModel, undefined);
+    assert.equal(sdk?.catalog?.adapter, "cerebras");
+    assert.notEqual(sdk?.modelTransport, undefined);
     assert.equal(sdk?.compatible, undefined);
 });
 
-test("{§provider-effort} SDK construction does not freeze request-local reasoning controls", () => {
-    const source = createSdkModel("openrouter", "z-ai/glm-5.3-flash", {
+test("{§provider-effort} adapter construction does not freeze request-local reasoning controls", () => {
+    const source = createProviderModel("openrouter", "z-ai/glm-5.3-flash", {
         OPENROUTER_API_KEY: "test-key",
-    })?.languageModel;
+    })?.modelTransport;
     assert.equal(typeof source, "function");
     const model = (typeof source === "function" ? source(globalThis.fetch) : source) as { settings?: { reasoning?: unknown } };
     assert.ok(model);
@@ -131,7 +131,7 @@ test("{§provider-effort} SDK construction does not freeze request-local reasoni
 
 test("{§provider-request-authority} attribution rejects malformed URLs", () => {
     assert.throws(
-        () => createSdkModel("openrouter", "openai/gpt-5", {
+        () => createProviderModel("openrouter", "openai/gpt-5", {
             OPENROUTER_API_KEY: "key",
             PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL: "plurnk",
         }),
@@ -139,22 +139,22 @@ test("{§provider-request-authority} attribution rejects malformed URLs", () => 
     );
 });
 
-test("{§provider-effort} the Google SDK adapter owns its readable-reasoning response projection", () => {
+test("{§provider-effort} the Google adapter owns its readable-reasoning response projection", () => {
     assert.deepEqual(
-        createSdkModel("google", "gemini-flash-latest", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
+        createProviderModel("google", "gemini-flash-latest", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
         { google: { thinkingConfig: { includeThoughts: true } } },
     );
     assert.equal(
-        createSdkModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
+        createProviderModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
         undefined,
     );
 });
 
-test("{§provider-monetary-evidence} createSdkModel attaches DeepInfra's documented response-cost normalizer", () => {
-    const sdk = createSdkModel("deepinfra", "zai-org/GLM-5.2", {
+test("{§provider-monetary-evidence} createProviderModel attaches DeepInfra's documented response-cost normalizer", () => {
+    const sdk = createProviderModel("deepinfra", "zai-org/GLM-5.2", {
         DEEPINFRA_API_KEY: "test-key",
     });
-    assert.notEqual(sdk?.languageModel, undefined);
+    assert.notEqual(sdk?.modelTransport, undefined);
     assert.deepEqual(sdk?.normalizeCost?.({
         usage: { estimated_cost: 5.04e-5 },
         response: { id: "response-1" },
@@ -166,11 +166,11 @@ test("{§provider-monetary-evidence} createSdkModel attaches DeepInfra's documen
 });
 
 test("{§model-fact-resolution} catalog credential names are law without any package or operator alias", () => {
-    const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", withProviderDefaults({
+    const sdk = createProviderModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", withProviderDefaults({
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "key",
     }));
-    assert.equal(sdk?.languageModel, undefined);
+    assert.equal(sdk?.modelTransport, undefined);
     assert.deepEqual(sdk?.compatible, {
         url: "https://api.cloudflare.com/client/v4/accounts/account/ai/v1/chat/completions",
         headers: { Authorization: "Bearer key" },
@@ -179,7 +179,7 @@ test("{§model-fact-resolution} catalog credential names are law without any pac
 });
 
 test("{§model-fact-resolution} an operator credential override holds one exact name", () => {
-    const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
+    const sdk = createProviderModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
         CLOUDFLARE_ACCOUNT_ID: "account",
         MY_ORG_CLOUDFLARE_KEY: "key",
         PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_API_KEY_ENV: "MY_ORG_CLOUDFLARE_KEY",
@@ -192,7 +192,7 @@ test("{§model-fact-resolution} an operator credential override holds one exact 
 
 test("{§model-fact-resolution} ordered credential fallbacks are rejected at construction", () => {
     assert.throws(
-        () => createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
+        () => createProviderModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
             CLOUDFLARE_ACCOUNT_ID: "account",
             CLOUDFLARE_API_TOKEN: "token",
             PLURNK_PROVIDERS_PROVIDER_CLOUDFLARE_WORKERS_AI_API_KEY_ENV: "CLOUDFLARE_API_TOKEN,CLOUDFLARE_API_KEY",
@@ -200,49 +200,49 @@ test("{§model-fact-resolution} ordered credential fallbacks are rejected at con
         /one exact name, never an ordered fallback/,
     );
     assert.throws(
-        () => createSdkModel("acme", "model", {
-            PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
+        () => createProviderModel("acme", "model", {
+            PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER: "openai-compatible",
             PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY,ACME_TOKEN",
         }),
         /one exact name, never an ordered fallback/,
     );
 });
 
-test("{§provider-sdk-boundary} the SDK adapter supplies each documented cache-affinity projection", () => {
+test("{§provider-sdk-boundary} the adapter supplies each documented cache-affinity projection", () => {
     assert.deepEqual(
-        createSdkModel("openai", "gpt-4.1-mini", withProviderDefaults({ OPENAI_API_KEY: "key" }))?.cacheAffinity,
+        createProviderModel("openai", "gpt-4.1-mini", withProviderDefaults({ OPENAI_API_KEY: "key" }))?.cacheAffinity,
         { target: "provider-option", provider: "openai", name: "promptCacheKey" },
     );
     assert.deepEqual(
-        createSdkModel("deepinfra", "zai-org/GLM-5.2", withProviderDefaults({ DEEPINFRA_API_KEY: "key" }))?.cacheAffinity,
+        createProviderModel("deepinfra", "zai-org/GLM-5.2", withProviderDefaults({ DEEPINFRA_API_KEY: "key" }))?.cacheAffinity,
         { target: "provider-option", provider: "deepinfra", name: "prompt_cache_key" },
     );
     assert.deepEqual(
-        createSdkModel("openrouter", "openai/gpt-5", withProviderDefaults({ OPENROUTER_API_KEY: "key" }))?.cacheAffinity,
+        createProviderModel("openrouter", "openai/gpt-5", withProviderDefaults({ OPENROUTER_API_KEY: "key" }))?.cacheAffinity,
         { target: "header", name: "x-session-id" },
     );
     assert.deepEqual(
-        createSdkModel("fireworks-ai", "accounts/fireworks/models/test", withProviderDefaults({ FIREWORKS_API_KEY: "key" }))?.cacheAffinity,
+        createProviderModel("fireworks-ai", "accounts/fireworks/models/test", withProviderDefaults({ FIREWORKS_API_KEY: "key" }))?.cacheAffinity,
         { target: "header", name: "x-session-affinity" },
     );
-    assert.equal(createSdkModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "key" })?.cacheAffinity, undefined);
+    assert.equal(createProviderModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "key" })?.cacheAffinity, undefined);
 });
 
 test("{§provider-sdk-boundary} explicit stable-system cache breakpoints exist only where a provider supports them", () => {
     const cacheControl = { type: "ephemeral" };
-    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createSdkModel(provider, model, withProviderDefaults(env))?.systemCacheProviderOptions;
+    const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createProviderModel(provider, model, withProviderDefaults(env))?.systemCacheProviderOptions;
     assert.deepEqual(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), { anthropic: { cacheControl } });
     assert.deepEqual(system("openrouter", "anthropic/claude-sonnet-4.6", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
     assert.deepEqual(system("openrouter", "~anthropic/claude-sonnet-latest", { OPENROUTER_API_KEY: "key" }), { openrouter: { cacheControl } });
     assert.equal(system("openrouter", "openai/gpt-5", { OPENROUTER_API_KEY: "key" }), undefined);
     assert.equal(system("deepseek", "deepseek-v4-flash", { DEEPSEEK_API_KEY: "key" }), undefined);
-    assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic SDK declares none");
+    assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic adapter declares none");
 });
 
 test("{§provider-sdk-boundary} an operator-declared compatible provider receives no guessed cache extension", () => {
-    const sdk = createSdkModel("acme", "model", {
+    const sdk = createProviderModel("acme", "model", {
         ACME_API_KEY: "key",
-        PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
+        PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER: "openai-compatible",
         PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL: "https://api.acme.test/v1",
         PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV: "ACME_API_KEY",
     });
@@ -252,58 +252,51 @@ test("{§provider-sdk-boundary} an operator-declared compatible provider receive
 
 test("{§provider-configuration} a cataloged compatible provider fails before transport when its declared credential is absent", () => {
     assert.throws(
-        () => createSdkModel("deepseek", "deepseek-v4-flash", {}),
+        () => createProviderModel("deepseek", "deepseek-v4-flash", {}),
         /deepseek provider: DEEPSEEK_API_KEY must be set/,
     );
 });
 
-test("{§model-fact-resolution} createSdkModel fails clearly for a declared but unsupported SDK package", () => {
+test("{§model-fact-resolution} createProviderModel fails clearly for a declared but unsupported adapter", () => {
     assert.throws(
-        () => createSdkModel("acme", "model", {
-            PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@acme/ai-sdk",
+        () => createProviderModel("acme", "model", {
+            PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER: "acme-custom",
         }),
-        /Models.dev declares unsupported AI SDK package @acme\/ai-sdk/,
+        /unsupported provider adapter acme-custom/,
     );
 });
 
-// {§model-fact-resolution}: the catalog admits a provider only for an SDK package it names, so every admitted
-// provider constructs; a package on the generator's list without a construction here is a route that reports ready
+// {§model-fact-resolution}: the catalog admits a provider only for an adapter it names, so every admitted
+// provider constructs; an adapter on the generator's list without a construction here is a route that reports ready
 // and then cannot run.
-test("{§model-fact-resolution} every catalog provider constructs a model through its SDK package", async () => {
+test("{§model-fact-resolution} every catalog provider constructs a model through its adapter", async () => {
     const { catalogSnapshot, lookupProvider } = await import("@plurnk/plurnk-models");
     const failures: string[] = [];
     for (const [provider, models] of Object.entries(catalogSnapshot())) {
         const info = lookupProvider(provider)!;
         const model = Object.keys(models)[0];
         const env = withProviderDefaults(Object.fromEntries(info.env.map((name) => [name, "test-value"])));
-        try { if (createSdkModel(provider, model, env) === null) failures.push(`${provider} (${info.npm}): no model`); }
-        catch (cause) { failures.push(`${provider} (${info.npm}): ${(cause as Error).message}`); }
+        try { if (createProviderModel(provider, model, env) === null) failures.push(`${provider} (${info.adapter}): no model`); }
+        catch (cause) { failures.push(`${provider} (${info.adapter}): ${(cause as Error).message}`); }
     }
     assert.deepEqual(failures, []);
 });
 
 {
 // {§provider-request-authority} — a configured service tier or logprobs count reaches a native route only
-// through the option its SDK documents, and a control the SDK does not document is named, never
-// dropped in silence (#988). Requests are captured as the SDK serialized them; nothing leaves the host.
-
-
-
-
-
-
-
+// through the option its adapter documents, and a control the adapter does not document is named, never
+// dropped in silence (#988). Requests are captured as serialized; nothing leaves the host.
 
 const KEYS = {
     OPENAI_API_KEY: "k", GROQ_API_KEY: "k", CEREBRAS_API_KEY: "k", MISTRAL_API_KEY: "k",
     XAI_API_KEY: "k", GOOGLE_GENERATIVE_AI_API_KEY: "k", ANTHROPIC_API_KEY: "k",
 };
 
-const nativeProvider = (provider: string, model: string, extra: Partial<AiSdkProviderConfig> = {}): AiSdkProvider => {
-    const sdk = createSdkModel(provider, model, KEYS);
-    assert.ok(sdk?.languageModel, `${provider} is a native route`);
-    return new AiSdkProvider({
-        model, languageModel: sdk.languageModel, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+const nativeProvider = (provider: string, model: string, extra: Partial<ModelProviderConfig> = {}): ModelProvider => {
+    const sdk = createProviderModel(provider, model, KEYS);
+    assert.ok(sdk?.modelTransport, `${provider} is a native route`);
+    return new ModelProvider({
+        model, modelTransport: sdk.modelTransport, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         retryAttempts: 0, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null },
         ...(sdk.requestControls === undefined ? {} : { requestControls: sdk.requestControls }),
         ...extra,
@@ -344,7 +337,7 @@ for (const streaming of [true, false]) {
         const result = await provider.generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
         assert.equal(result.assistant.content, "ok");
         assert.equal(bodies.length, 1);
-        assert.equal(bodies[0].service_tier, "priority", "the tier rides the SDK's documented option");
+        assert.equal(bodies[0].service_tier, "priority", "the tier rides the adapter's documented option");
         assert.equal(bodies[0].logprobs, true);
         assert.equal(bodies[0].top_logprobs, 3);
         if (!streaming) assert.equal(result.assistant.logprobs?.[0]?.token, "ok", "the requested evidence comes back");
@@ -359,7 +352,7 @@ test("{§provider-request-authority} logprobs count 0 asks for the chosen token 
     assert.equal(bodies[0].top_logprobs, 0, "no alternative tokens are requested");
 });
 
-// Each SDK that documents a service tier serializes the configured value; the reply need not parse.
+// Each adapter that documents a service tier serializes the configured value; the reply need not parse.
 for (const [provider, model, tier] of [
     ["groq", "llama-3.3-70b-versatile", "flex"],
     ["cerebras", "gemma-4-31b", "flex"],
@@ -378,7 +371,7 @@ for (const [provider, model, tier] of [
     });
 }
 
-test("{§provider-request-authority} a control the SDK does not document is named once and not sent", async (t) => {
+test("{§provider-request-authority} a control the adapter does not document is named once and not sent", async (t) => {
     t.after(() => mock.restoreAll());
     resetEmittedWarnings();
     const warned: string[] = [];
@@ -396,11 +389,11 @@ test("{§provider-request-authority} a control the SDK does not document is name
 });
 
 test("{§provider-request-authority} a compatible route keeps its body fields and refuses native controls", () => {
-    assert.throws(() => new AiSdkProvider({
+    assert.throws(() => new ModelProvider({
         model: "m", url: "https://example.test/v1/chat/completions", fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         retryAttempts: 0, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null },
         requestControls: { namespace: "openai", serviceTier: true, logprobs: true },
-    }), /native request controls require an AI SDK model/u);
+    }), /native request controls require a model transport/u);
 });
 
 test("{§provider-request-authority} the catalog route carries the operator's tier and logprobs beside its cache key", async (t) => {
@@ -468,12 +461,12 @@ test.afterEach(() => mock.restoreAll());
 
 for (const [name, route] of [
     ["catalog compatible", "fireworks-ai/accounts/fireworks/models/kimi-k3"],
-    ["native OpenAI SDK", "openai/gpt-4.1-mini"],
+    ["native OpenAI adapter", "openai/gpt-4.1-mini"],
     ["local compatible", "openai/local-sampling-test"],
 ] as const) {
     test(`{§provider-configuration}: ${name} carries alias sampling to the wire and caller values win`, async () => {
         const calls = installWire();
-        const topK = name === "native OpenAI SDK" ? {} : { PLURNK_PROVIDERS_TOP_K_SAMPLE_BOX: "40" };
+        const topK = name === "native OpenAI adapter" ? {} : { PLURNK_PROVIDERS_TOP_K_SAMPLE_BOX: "40" };
         const provider = await loadActiveProvider({
             ...baseEnv,
             PLURNK_MODEL_sample_box: route,
@@ -491,7 +484,7 @@ for (const [name, route] of [
         assert.deepEqual(samplingOf(calls[0]), {
             temperature: 1,
             top_p: 1,
-            ...(name === "native OpenAI SDK" ? {} : { top_k: 40 }),
+            ...(name === "native OpenAI adapter" ? {} : { top_k: 40 }),
             presence_penalty: 0.25,
             frequency_penalty: -0.5,
             seed: 0,
@@ -499,7 +492,7 @@ for (const [name, route] of [
         const sampling = {
             temperature: 0,
             top_p: 0.7,
-            ...(name === "native OpenAI SDK" ? {} : { top_k: 10 }),
+            ...(name === "native OpenAI adapter" ? {} : { top_k: 10 }),
             presence_penalty: 0,
             frequency_penalty: 0,
             seed: 17,
@@ -549,7 +542,7 @@ test("{§provider-configuration}: numeric boundaries remain values, not absence"
     }
 });
 
-test("{§provider-configuration}: native Google SDK maps every sampling control the current model takes", async () => {
+test("{§provider-configuration}: native Google adapter maps every sampling control the current model takes", async () => {
     let config: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
         config = (JSON.parse(requestBody(init)) as { generationConfig: Record<string, unknown> }).generationConfig;

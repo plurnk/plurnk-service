@@ -66,10 +66,10 @@ test("{§model-catalog-projection} resolveModel: a unique provider-native suffix
     assert.equal(resolved?.id, native);
 });
 
-test("{§model-catalog-projection} provider catalog carries Models.dev's AI SDK construction facts", () => {
+test("{§model-catalog-projection} provider catalog carries Models.dev's adapter construction facts", () => {
     assert.deepEqual(lookupProvider("google"), providerCatalogSnapshot().google);
     assert.equal(lookupProvider("google")?.name, "Google");
-    assert.equal(lookupProvider("google")?.npm, "@ai-sdk/google");
+    assert.equal(lookupProvider("google")?.adapter, "google");
     assert.ok(lookupProvider("google")?.env.includes("GEMINI_API_KEY"));
     assert.equal(lookupProvider("cloudflare-workers-ai")?.id, "cloudflare-workers-ai");
 });

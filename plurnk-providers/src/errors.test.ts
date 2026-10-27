@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import RequestCapture from "./RequestCapture.ts";
-import AiSdkProvider from "./AiSdkProvider.ts";
+import ModelProvider from "./ModelProvider.ts";
 import { APICallError, JSONParseError, ProviderError, RETRYABLE_PROVIDER_KINDS, RetryError, TypeValidationError, classifyProviderError, toProviderError } from "./errors.ts";
 import { providerSource } from "./notices.ts";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { createAnthropic, createSdkModel } from "./sdkModels.ts";
+import { createAnthropic, createProviderModel } from "./modelAdapters.ts";
 import { requestBody } from "../../scripts/lib/test-fetch.ts";
 import { type ProviderAttempt, type ProviderRequestAccounting } from "./types.ts";
 
@@ -249,12 +249,12 @@ test("{§provider-failure-normalization} a terminated body, invalid JSON, a sche
 
     const parse = toProviderError(processingFailure(new JSONParseError({ text: "<html>502 Bad Gateway</html>".repeat(40), cause: new SyntaxError("Unexpected token <") })), "provider:test", 512);
     assert.equal(parse.problem.providerKind, "invalid_response");
-    assert.deepEqual(parse.problem.cause, { causeKind: "invalid_json", causeName: "AI_JSONParseError", causeMessage: "JSON parsing failed (1120 characters)" });
+    assert.deepEqual(parse.problem.cause, { causeKind: "invalid_json", causeName: "JSONParseError", causeMessage: "JSON parsing failed (1120 characters)" });
     assert.doesNotMatch(JSON.stringify(parse.problem), /Bad Gateway/, "the payload never enters the Problem");
 
     const schema = toProviderError(processingFailure(new TypeValidationError({ value: { choices: "not-an-array", secret: "sk-live" }, cause: new Error("Expected array, received string at choices\nmore lines") })), "provider:test", 512);
     assert.equal(schema.problem.providerKind, "invalid_response");
-    assert.deepEqual(schema.problem.cause, { causeKind: "schema_invalid", causeName: "AI_TypeValidationError", causeMessage: "Type validation failed: Expected array, received string at choices" });
+    assert.deepEqual(schema.problem.cause, { causeKind: "schema_invalid", causeName: "TypeValidationError", causeMessage: "Type validation failed: Expected array, received string at choices" });
     assert.doesNotMatch(JSON.stringify(schema.problem), /sk-live|not-an-array/, "the value never enters the Problem");
 
     const internal = toProviderError(processingFailure(new RangeError("Invalid array length\n    at Array.push (stack frame)")), "provider:test", 512);
@@ -319,10 +319,10 @@ for (const native of [false, true]) {
             const address = server.address();
             assert.ok(address !== null && typeof address === "object");
             const origin = `http://127.0.0.1:${address.port}`;
-            const provider = new AiSdkProvider({
+            const provider = new ModelProvider({
                 model: "fixture",
                 ...(native
-                    ? { languageModel: createSdkModel("openai", "fixture", { OPENAI_API_KEY: "fixture-secret" }, `${origin}/v1`)!.languageModel! }
+                    ? { modelTransport: createProviderModel("openai", "fixture", { OPENAI_API_KEY: "fixture-secret" }, `${origin}/v1`)!.modelTransport! }
                     : { url: `${origin}/v1/chat/completions`, headers: { Authorization: "Bearer fixture-secret" } }),
                 streaming: false, rawBody: capture,
                 fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
@@ -352,15 +352,15 @@ for (const native of [false, true]) {
 
 for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] as const) {
     test(`{§provider-interface}: ${protocol} retains the native SDK body after owned transforms`, async () => {
-        const sdk = createSdkModel(protocol, "fixture", {
+        const sdk = createProviderModel(protocol, "fixture", {
             GEMINI_API_KEY: "fixture-secret", ANTHROPIC_API_KEY: "fixture-secret", OPENROUTER_API_KEY: "fixture-secret",
             AWS_REGION: "us-east-1", AWS_BEARER_TOKEN_BEDROCK: "fixture-secret",
         });
-        assert.ok(sdk?.languageModel);
+        assert.ok(sdk?.modelTransport);
         let sent: string | undefined;
         let evidence: { request?: { body: string } } | undefined;
-        const provider = new AiSdkProvider({
-            model: "fixture", languageModel: sdk.languageModel,
+        const provider = new ModelProvider({
+            model: "fixture", modelTransport: sdk.modelTransport,
             streaming: false, rawBody: true, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
             fetch: async (_url, init) => {
@@ -406,8 +406,8 @@ test("{§provider-request-accounting} native Messages failures retain SDK reason
         chunks.map((chunk) => `event: ${chunk.type}\ndata: ${JSON.stringify(chunk)}\n\n`).join(""),
         { headers: { "content-type": "text/event-stream" } },
     ) });
-    const provider = new AiSdkProvider({
-        model: "fixture", languageModel: anthropic("fixture"), streaming: true, rawBody: false,
+    const provider = new ModelProvider({
+        model: "fixture", modelTransport: anthropic("fixture"), streaming: true, rawBody: false,
         fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
         temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
     });
@@ -432,7 +432,7 @@ for (const reported of [false, true]) {
             vendor_evidence: "retained without interpretation",
         };
         const settled: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "fixture", url: "https://example.test/v1/chat/completions",
             streaming: true, rawBody: false, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,
@@ -466,7 +466,7 @@ for (const capture of [false, true]) {
         const records: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
         const bodies: string[] = [];
         let calls = 0;
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "fixture", url: "https://example.test/v1/chat/completions", streaming: false,
             rawBody: capture, fetchTimeoutMs: 1000, operationTimeoutMs: 5000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 1,

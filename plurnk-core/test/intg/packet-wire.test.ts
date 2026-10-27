@@ -15,7 +15,7 @@ import { contentWeight } from "../../src/core/content-weight.ts";
 import { parseLogRecords } from "../LogRecords.ts";
 import { mkdtemp, readFile, rm, access, mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AiSdkProvider, Mock, type MockResponse, chatMessageText, type ChatMessage } from "@plurnk/plurnk-providers";
+import { ModelProvider, Mock, type MockResponse, chatMessageText, type ChatMessage } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { testArtifactDirectory } from "../../../scripts/lib/test-artifacts.ts";
 import { Digest, Share } from "@plurnk/plurnk-digest";
@@ -2034,7 +2034,7 @@ test("{§provider-failure-normalization}: blank emissions retain their wire chan
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");
         let requests = 0;
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "wire-evidence", url: "https://example.test/v1/chat/completions",
             fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             contextWindow: 100000, outputBudget: 1000,

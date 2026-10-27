@@ -14,7 +14,7 @@ import Turn from "../../src/core/Turn.ts";
 import TurnMaterialization from "../../src/core/TurnMaterialization.ts";
 import { type Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, holdChild, sendingOperation, seedEntryWithChannel } from "./_db.ts";
-import { Mock, type MockResponse, AiSdkProvider, ProviderError } from "@plurnk/plurnk-providers";
+import { Mock, type MockResponse, ModelProvider, ProviderError } from "@plurnk/plurnk-providers";
 import { withDaemon, rpcCall, connect, runLoopToTerminal, waitForDb } from "./_rpc.ts";
 import { namedModelSession } from "./_sessions.ts";
 import { type SchemeManifest } from "../../src/core/scheme-types.ts";
@@ -1258,7 +1258,7 @@ test("{§engine-rails} a whole-call deadline recovers through the real provider 
     serverProposals(approvalContext, "accept");
     await withEnv({ PLURNK_SERVICE_PROVIDER_RECOVERY: "20000", PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF: "10" }, async () => {
         const requests: string[] = [];
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "deadline-recovery", url: "https://example.test/v1/chat/completions",
             contextWindow: 100_000, fetchTimeoutMs: 50, operationTimeoutMs: 500,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 3,

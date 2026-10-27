@@ -8,7 +8,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import StreamMock from "./_stream-mock.ts";
 import Dsl from "./dsl.ts";
 import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
-import { Mock, chatMessageText, AiSdkProvider } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText, ModelProvider } from "@plurnk/plurnk-providers";
 import { rpcCall, connect, withDaemon, subscribeNotifications, waitFor, waitForDb, runLoopToTerminal } from "./_rpc.ts";
 import { makeMockResponse } from "./_mock.ts";
 import { isArrivalRow, packetSection } from "./_packet.ts";
@@ -869,7 +869,7 @@ const run = async (
 ): Promise<void> => {
     serverProposals(t, "accept");
     let calls = 0;
-    const provider = new AiSdkProvider({
+    const provider = new ModelProvider({
         model: "invocation-witness", url: "https://example.test/v1/chat/completions",
         contextWindow: 100_000, streaming: true, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,
@@ -1218,7 +1218,7 @@ const streamed = (frames: readonly object[]): Response => new Response(new Reada
 test("{§methods} {§methods-invocation} beforeId pages newest first through the whole log, and the reasoning row names its streaming request", async (t) => {
     serverProposals(t, "accept");
     let calls = 0;
-    const provider = new AiSdkProvider({
+    const provider = new ModelProvider({
         model: "paging-witness", url: "https://example.test/v1/chat/completions",
         contextWindow: 100_000, streaming: true, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,

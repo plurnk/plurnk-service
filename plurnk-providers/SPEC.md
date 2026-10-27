@@ -8,8 +8,8 @@ Stable model-provider contract, capacity and monetary accounting authority, and 
 
 | Subpath | Surface | Runtime boundary |
 |---|---|---|
-| `@plurnk/plurnk-providers` | Full `Provider` contract, `AiSdkProvider`, `Pool`, `Mock`, `instantiateProvider`, `loadActiveProvider`, `discover`, and configuration helpers | Node >= 26 |
-| `@plurnk/plurnk-providers/openai` | `AiSdkProvider` and OpenAI-compatible transport | Runtime-neutral (no `node:*` imports) |
+| `@plurnk/plurnk-providers` | Full `Provider` contract, `ModelProvider`, `Pool`, `Mock`, `instantiateProvider`, `loadActiveProvider`, `discover`, and configuration helpers | Node >= 26 |
+| `@plurnk/plurnk-providers/openai` | `ModelProvider` and OpenAI-compatible transport | Runtime-neutral (no `node:*` imports) |
 | `@plurnk/plurnk-providers/accounting` | `aggregateProviderAccounting`, `estimateProviderCost`, `providerCostNormalizer`, `resolveProviderCost`, `sumProviderCostsUsd`, `validateProviderUsage` | Runtime-neutral (browser-bundlable) |
 | `@plurnk/plurnk-providers/errors` | `ProviderError`, `RETRYABLE_PROVIDER_KINDS`, `classifyProviderError`, `toProviderError`, `providerSource` | Runtime-neutral (browser-bundlable) |
 
@@ -52,7 +52,7 @@ Every physical attempt settles a `ProviderRequestAccounting` record (`{ provider
 
 ## §provider-sdk-boundary SDK and transport boundary
 
-`sdkModels.ts` and `aiSdkTransport.ts` adapt `@earendil-works/pi-ai` and vendor HTTP protocols (`@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google`, `@ai-sdk/mistral`, `@ai-sdk/xai`, `@ai-sdk/groq`, `@ai-sdk/cerebras`, `@ai-sdk/deepinfra`, `@ai-sdk/togetherai`, `@openrouter/ai-sdk-provider`, `@ai-sdk/amazon-bedrock`, `@ai-sdk/openai-compatible`) behind `AiSdkProvider`:
+`modelAdapters.ts` and `modelTransport.ts` adapt `@earendil-works/pi-ai` and vendor HTTP protocols (`openai`, `anthropic`, `google`, `mistral`, `xai`, `groq`, `cerebras`, `deepinfra`, `togetherai`, `openrouter`, `amazon-bedrock`, `openai-compatible`) behind `ModelProvider`:
 
 - Prompt cache affinity (`PLURNK_PROVIDERS_CACHE_AFFINITY=1`) projects each provider's documented session key (`promptCacheKey` on OpenAI, `prompt_cache_key` on DeepInfra, `x-session-id` header on OpenRouter, `x-session-affinity` header on Fireworks and Cloudflare Workers AI).
 - Stable-system cache write policy (`PLURNK_PROVIDERS_CACHE_WRITE_POLICY=stable-system`) attaches ephemeral cache breakpoints on system messages only for providers that support them (Anthropic and Anthropic routes on OpenRouter).

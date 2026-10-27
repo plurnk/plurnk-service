@@ -9,7 +9,7 @@ import Engine from "../../src/core/Engine.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
 import { serverProposals } from "./_approval.ts";
-import { Mock, type ProviderAlias, type ProviderSpec, type MockResponse, AiSdkProvider } from "@plurnk/plurnk-providers";
+import { Mock, type ProviderAlias, type ProviderSpec, type MockResponse, ModelProvider } from "@plurnk/plurnk-providers";
 import { type Effort, Validator } from "@plurnk/plurnk-contracts";
 import { OperationFailureError } from "../../src/core/results.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -1320,7 +1320,7 @@ test("{§notifications}: provider SSE reaches standard ACP before the reasoning 
         const send = (content: string, finish: string | null = null): void => controller.enqueue(new TextEncoder().encode(
             `data: ${JSON.stringify({ id: "streaming", object: "chat.completion.chunk", created: 1, model: "m", choices: [{ index: 0, delta: { content }, finish_reason: finish }] })}\n\n`,
         ));
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "m", url: "https://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
             temperature: 0.2, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null }, reasoningResponseStyle: "think-tags",
@@ -1378,7 +1378,7 @@ for (const style of ["structured", "think-tags"] as const) test(`{§notification
         } });
         const streams = new Map<string, ReadableStreamDefaultController<Uint8Array>>();
         const requests = new Map<string, Record<string, unknown>>();
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "m", url: "https://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
             temperature: 0.2, repeatPenalty: null, retryAttempts: 0,

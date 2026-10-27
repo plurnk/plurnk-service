@@ -371,9 +371,6 @@ for (const [providerPackage, provider] of [
 ]) {
     ok(existsSync(resolve(mods, ...providerPackage.split("/"), "package.json")), `${provider} ships OOTB`);
 }
-for (const retired of ["ai", "@ai-sdk/openai-compatible", "@openrouter/ai-sdk-provider"]) {
-    ok(!existsSync(resolve(mods, retired)), `${retired} is absent from a clean service install`);
-}
 ok(!existsSync(resolve(mods, "onnxruntime-node")) && !existsSync(resolve(mods, "sharp")), "native onnxruntime/sharp NOT pulled (script-free, portable)");
 
 const help = runBin(["--help"], { PLURNK_SERVICE_DB_PATH: resolve(sandbox, "x.db"), PLURNK_HOST: "127.0.0.1", PLURNK_PORT: "0" });

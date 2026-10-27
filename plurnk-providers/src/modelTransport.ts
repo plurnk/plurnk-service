@@ -8,16 +8,12 @@ import {
     type CallWarning,
     type ChatMessage,
     type JSONValue,
-    type LanguageModel,
-    type LanguageModelCallOptions,
-    type LanguageModelContentPart,
-    type LanguageModelFinishReason,
-    type LanguageModelGenerateResult,
-    type LanguageModelPromptMessage,
-    type LanguageModelStreamPart,
-    type LanguageModelStreamResult,
-    type LanguageModelUsage,
-    type LanguageModelV4Usage,
+    type ModelFinishReason,
+    type ModelPromptMessage,
+    type ModelTransport,
+    type ModelTransportCallOptions,
+    type ModelTransportResult,
+    type ModelUsage,
     type ProviderAttemptFinishReason,
     type ProviderChargeEvidence,
     type ProviderReasoningObserver,
@@ -99,7 +95,7 @@ export const encodeBytesBase64 = (bytes: Uint8Array): string => {
 
 export const toUnifiedFinishReason = (
     raw: string | undefined,
-): LanguageModelFinishReason["unified"] => {
+): ModelFinishReason["unified"] => {
     switch (raw) {
         case "stop":
         case "end_turn":
@@ -143,7 +139,7 @@ const baseUrl = (completionUrl: string): string => {
 };
 
 const usageOf = (
-    usage: LanguageModelUsage,
+    usage: ModelUsage,
 ): ProviderUsage | undefined => normalizeUsage({
     prompt_tokens: usage.inputTokens,
     completion_tokens: usage.outputTokens,
@@ -160,15 +156,15 @@ const usageOf = (
 
 const wireUsageOf = (
     values: readonly unknown[],
-    sdkUsage: LanguageModelUsage | undefined,
+    modelUsage: ModelUsage | undefined,
 ): ProviderUsage | undefined => {
     for (let index = values.length - 1; index >= 0; index -= 1) {
         const usage = recordOf(values[index])?.usage;
         const raw = recordOf(usage);
         if (raw !== null && ("prompt_tokens" in raw || "completion_tokens" in raw || "total_tokens" in raw)) {
-            return normalizeUsage(raw, sdkUsage === undefined ? undefined : {
-                inputTokens: sdkUsage.inputTokens,
-                inputTokenDetails: sdkUsage.inputTokenDetails,
+            return normalizeUsage(raw, modelUsage === undefined ? undefined : {
+                inputTokens: modelUsage.inputTokens,
+                inputTokenDetails: modelUsage.inputTokenDetails,
             });
         }
     }
@@ -182,16 +178,16 @@ type UsageRefusal = { readonly reason: string; readonly usage: unknown };
 
 const settledUsage = (
     values: readonly unknown[],
-    sdkUsage: LanguageModelUsage | undefined,
+    modelUsage: ModelUsage | undefined,
 ): { usage?: ProviderUsage; usageRefusal?: UsageRefusal } => {
     try {
-        const usage = wireUsageOf(values, sdkUsage) ?? (sdkUsage === undefined ? undefined : usageOf(sdkUsage));
+        const usage = wireUsageOf(values, modelUsage) ?? (modelUsage === undefined ? undefined : usageOf(modelUsage));
         return usage === undefined ? {} : { usage };
     } catch (cause) {
         if (!(cause instanceof TypeError)) throw cause;
         return {
             ...(cause instanceof UsageDetailError ? { usage: cause.usage } : {}),
-            usageRefusal: { reason: cause.message, usage: wireUsageEvidenceOf(values) ?? sdkUsage },
+            usageRefusal: { reason: cause.message, usage: wireUsageEvidenceOf(values) ?? modelUsage },
         };
     }
 };
@@ -241,7 +237,7 @@ const metadataOf = (values: readonly unknown[]): Record<string, unknown> => {
     return metadata;
 };
 
-export type AiSdkTransportRequest = {
+export type ModelTransportRequest = {
     url: string;
     model: string;
     headers: Record<string, string>;
@@ -271,7 +267,7 @@ type WireEmission = {
     readonly unmappedChunks?: readonly unknown[];
 };
 
-export type AiSdkTransportResponse = {
+export type ModelTransportResponse = {
     model: string;
     content: string;
     reasoning: string;
@@ -289,10 +285,10 @@ export type AiSdkTransportResponse = {
 };
 
 // Native factories bind the physical request's fetch without shared mutable state.
-export type LanguageModelSource = LanguageModel | ((fetch: typeof globalThis.fetch) => LanguageModel);
+export type ModelTransportSource = ModelTransport | ((fetch: typeof globalThis.fetch) => ModelTransport);
 
-type AiSdkModelRequest = Omit<AiSdkTransportRequest, "url" | "model" | "body"> & {
-    languageModel: LanguageModelSource;
+type ModelAdapterRequest = Omit<ModelTransportRequest, "url" | "model" | "body"> & {
+    modelTransport: ModelTransportSource;
     providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
     systemProviderOptions?: Record<string, Record<string, JSONValue | undefined>>;
     temperature?: number;
@@ -326,8 +322,8 @@ const retainStreamFailureValues = <T extends object>(source: unknown, target: T)
 };
 
 // {§provider-failure-normalization} (#971) — evidence is keyed by the failure object, so the object
-// must be this request's own. A caller's abort reason is shared by every request on that signal (the
-// SDK rejects each with the reason itself), so it is wrapped per request before anything is keyed on it.
+// must be this request's own. A caller's abort reason is shared by every request on that signal, so
+// it is wrapped per request before anything is keyed on it.
 const preserveStreamFailure = (
     error: unknown,
     evidence: Omit<StreamFailure, "error">,
@@ -394,33 +390,9 @@ export const normalizeRetryAttemptError = (error: unknown): unknown => {
     }));
 };
 
-const toLanguageModelUsage = (
-    usage: LanguageModelV4Usage | undefined,
-): LanguageModelUsage | undefined => {
-    if (usage === undefined) return undefined;
-    const inputTotal = usage.inputTokens.total;
-    const outputTotal = usage.outputTokens.total;
-    return {
-        inputTokens: inputTotal,
-        outputTokens: outputTotal,
-        totalTokens: inputTotal !== undefined && outputTotal !== undefined
-            ? inputTotal + outputTotal
-            : undefined,
-        inputTokenDetails: {
-            noCacheTokens: usage.inputTokens.noCache,
-            cacheReadTokens: usage.inputTokens.cacheRead,
-            cacheWriteTokens: usage.inputTokens.cacheWrite,
-        },
-        outputTokenDetails: {
-            textTokens: usage.outputTokens.text,
-            reasoningTokens: usage.outputTokens.reasoning,
-        },
-    };
-};
-
 const executeModel = async (
-    request: AiSdkModelRequest,
-): Promise<AiSdkTransportResponse> => {
+    request: ModelAdapterRequest,
+): Promise<ModelTransportResponse> => {
     try {
         return await executeModelOnce(request);
     } catch (cause) {
@@ -432,10 +404,10 @@ const executeModel = async (
 };
 
 const executeModelOnce = async (
-    request: AiSdkModelRequest,
-): Promise<AiSdkTransportResponse> => {
+    request: ModelAdapterRequest,
+): Promise<ModelTransportResponse> => {
     const {
-        languageModel,
+        modelTransport,
         providerOptions,
         systemProviderOptions,
         temperature,
@@ -448,24 +420,24 @@ const executeModelOnce = async (
         maxOutputTokens,
         reasoning,
     } = request;
-    const resolvedModel = typeof languageModel === "function"
-        ? languageModel(request.fetch ?? outboundFetch)
-        : languageModel;
+    const resolvedModel = typeof modelTransport === "function"
+        ? modelTransport(request.fetch ?? outboundFetch)
+        : modelTransport;
     const firstNonSystem = request.messages.findIndex((message) => message.role !== "system");
     const instructionCount = firstNonSystem === -1 ? request.messages.length : firstNonSystem;
     if (request.messages.slice(instructionCount).some((message) => message.role === "system")) {
         throw new Error("provider messages: system instructions must precede user and assistant messages");
     }
-    const instructions: LanguageModelPromptMessage[] = request.messages.slice(0, instructionCount).map(({ content }, index) => ({
+    const instructions: ModelPromptMessage[] = request.messages.slice(0, instructionCount).map(({ content }, index) => ({
         role: "system" as const,
         content: chatMessageText({ content }),
         providerOptions: systemProviderOptions !== undefined && index === instructionCount - 1
             ? systemProviderOptions
             : undefined,
     }));
-    // {§provider-interface} — user and assistant messages in the SDK's own shape: a user message
+    // {§provider-interface} — user and assistant messages in the transport's own shape: a user message
     // may be parts (text beside native files distinguished by media type); every other role is text.
-    const conversation: LanguageModelPromptMessage[] = request.messages.slice(instructionCount).map((message): LanguageModelPromptMessage => {
+    const conversation: ModelPromptMessage[] = request.messages.slice(instructionCount).map((message): ModelPromptMessage => {
         if (message.role === "user") {
             return {
                 role: "user",
@@ -483,16 +455,25 @@ const executeModelOnce = async (
             providerOptions: undefined,
         };
     });
-    const prompt: LanguageModelPromptMessage[] = [
+    const prompt: ModelPromptMessage[] = [
         ...instructions,
         ...(conversation.length > 0
             ? conversation
             : [{ role: "user" as const, content: [{ type: "text" as const, text: "" }], providerOptions: undefined }]),
     ];
+
+    const rawChunks: unknown[] = [];
+    let outputObserved = false;
+    let partialContent = "";
+    let partialReasoning = "";
+    let partialResponse: ProviderChargeEvidence["response"] | undefined;
+    let partialModelId: string | undefined;
+
     // {§provider-failure-normalization} — requests pass toolChoice: { type: "none" } ({§provider-interface}),
     // and raw wire tool_calls plus finishReason are preserved on the response without aborting the completed exchange.
-    const callOptions: LanguageModelCallOptions = {
+    const callOptions: ModelTransportCallOptions = {
         prompt,
+        streaming: request.streaming,
         toolChoice: { type: "none" },
         tools: undefined,
         abortSignal: request.signal,
@@ -507,160 +488,101 @@ const executeModelOnce = async (
         ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
         ...(reasoning === undefined ? {} : { reasoning }),
         ...(providerOptions === undefined ? {} : { providerOptions }),
+        observeText: (delta: string): void => {
+            if (delta.length > 0) {
+                outputObserved = true;
+                partialContent += delta;
+                request.observeText?.(delta);
+            }
+        },
+        observeReasoning: (delta: string): void => {
+            if (delta.length > 0) {
+                outputObserved = true;
+                partialReasoning += delta;
+                request.observeReasoning?.(delta);
+            }
+        },
+        observeRawChunk: (chunk: unknown): void => {
+            rawChunks.push(chunk);
+        },
+        observeResponse: (resp): void => {
+            if (resp.modelId !== undefined) partialModelId ??= resp.modelId;
+            const id = resp.id ?? partialResponse?.id;
+            const headers = resp.headers ?? partialResponse?.headers;
+            partialResponse = {
+                ...(id === undefined ? {} : { id }),
+                ...(headers === undefined ? {} : { headers }),
+            };
+        },
     };
 
-    if (!request.streaming) {
-        const generated = await resolvedModel.doGenerate(callOptions);
-        const contentParts = generated.content.filter((part) => part.type !== "tool-call");
-        const text = contentParts
-            .filter((part): part is Extract<LanguageModelContentPart, { type: "text" }> => part.type === "text")
-            .map((part) => part.text)
-            .join("");
-        const sdkReasoning = contentParts
-            .filter((part): part is Extract<LanguageModelContentPart, { type: "reasoning" }> => part.type === "reasoning")
-            .map((part) => part.text)
-            .join("");
-        const rawBody = generated.response?.body;
-        const values = rawBody === undefined ? [] : [rawBody];
+    try {
+        const executed = await resolvedModel.execute(callOptions);
+        if (request.streaming) {
+            request.signal?.throwIfAborted();
+        }
+        const values = request.streaming
+            ? (executed.rawChunks.length > 0 ? executed.rawChunks : rawChunks)
+            : (executed.response?.body === undefined ? [] : [executed.response.body]);
         const evidence = extractEvidence(values);
         const accountingUsage = wireUsageEvidenceOf(values);
-        const reasoningText = evidence.reasoning || sdkReasoning || "";
-        const rawFinishReason = generated.finishReason.raw;
-        const sdkUsage = toLanguageModelUsage(generated.usage);
+        const content = executed.content || partialContent;
+        const reasoningText = evidence.reasoning || executed.reasoning || partialReasoning || "";
+        const rawFinishReason = executed.finishReason.raw;
+        const unifiedFinishReason = executed.nativeToolCalls === true
+            ? "tool-calls"
+            : executed.finishReason.unified;
+        const metadata = metadataOf(values);
+        const finalId = executed.response?.id
+            ?? partialResponse?.id
+            ?? (typeof metadata.id === "string" ? metadata.id : undefined);
+        const finalHeaders = executed.response?.headers ?? partialResponse?.headers;
+        const finalModelId = executed.response?.modelId
+            ?? partialModelId
+            ?? (typeof metadata.model === "string" ? metadata.model : undefined)
+            ?? resolvedModel.modelId;
+        const rawBody = request.streaming ? values : executed.response?.body;
         return {
-            model: generated.response?.modelId ?? resolvedModel.modelId,
-            content: text,
+            model: finalModelId,
+            content,
             reasoning: reasoningText,
             reasoningProjected: evidence.reasoningProjected,
             wire: wireEmissionOf(values),
-            finishReason: finishReasonOf(generated.finishReason.unified, rawFinishReason),
+            finishReason: finishReasonOf(unifiedFinishReason, rawFinishReason),
             ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
-            ...settledUsage(values, sdkUsage),
-            metadata: metadataOf(values),
+            ...settledUsage(values, executed.usage),
+            metadata,
             logprobs: evidence.logprobs,
             chargeEvidence: {
                 ...(wireChargeEvidenceOf(values) === undefined
                     ? {}
                     : { charge: wireChargeEvidenceOf(values) }),
                 ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
-                ...(generated.providerMetadata === undefined
+                ...(executed.providerMetadata === undefined
                     ? {}
-                    : { providerMetadata: generated.providerMetadata }),
+                    : { providerMetadata: executed.providerMetadata }),
                 response: {
-                    ...(generated.response?.id === undefined ? {} : { id: generated.response.id }),
-                    ...(generated.response?.headers === undefined
-                        ? {}
-                        : { headers: generated.response.headers }),
+                    ...(finalId === undefined ? {} : { id: finalId }),
+                    ...(finalHeaders === undefined ? {} : { headers: finalHeaders }),
                 },
             },
             ...(request.captureRawBody ? { rawBody } : {}),
-            warnings: generated.warnings ?? [],
-        };
-    }
-
-    const rawChunks: unknown[] = [];
-    let streamError: unknown;
-    let outputObserved = false;
-    let partialContent = "";
-    let partialReasoning = "";
-    let partialResponse: ProviderChargeEvidence["response"] | undefined;
-    try {
-        const streamed = await resolvedModel.doStream(callOptions);
-        if (streamed.response?.headers !== undefined) {
-            partialResponse = { headers: streamed.response.headers };
-        }
-        let responseId: string | undefined;
-        let responseModelId: string | undefined;
-        let finishReason: LanguageModelFinishReason = { unified: "other", raw: undefined };
-        let v4Usage: LanguageModelV4Usage | undefined;
-        let providerMetadata: Record<string, Record<string, JSONValue>> | undefined;
-        const warnings: CallWarning[] = [];
-
-        for await (const part of streamed.stream) {
-            if (part.type === "stream-start" && part.warnings !== undefined) {
-                warnings.push(...part.warnings);
-            }
-            if (part.type === "raw") {
-                rawChunks.push(part.rawValue);
-            }
-            if (part.type === "response-metadata") {
-                if (part.id !== undefined) responseId ??= part.id;
-                if (part.modelId !== undefined) responseModelId ??= part.modelId;
-                partialResponse = {
-                    ...(responseId === undefined ? {} : { id: responseId }),
-                    ...(streamed.response?.headers === undefined ? {} : { headers: streamed.response.headers }),
-                };
-            }
-            if (part.type === "text-delta") {
-                const delta = part.delta;
-                if (delta.length > 0) {
-                    outputObserved = true;
-                    partialContent += delta;
-                    request.observeText?.(delta);
-                }
-            }
-            if (part.type === "reasoning-delta") {
-                const delta = part.delta;
-                if (delta.length > 0) {
-                    outputObserved = true;
-                    partialReasoning += delta;
-                    request.observeReasoning?.(delta);
-                }
-            }
-            if (part.type === "error") streamError ??= part.error;
-            if (part.type === "finish") {
-                finishReason = part.finishReason;
-                v4Usage = part.usage;
-                if (part.providerMetadata !== undefined) providerMetadata = part.providerMetadata;
-                partialResponse = {
-                    ...(responseId === undefined ? {} : { id: responseId }),
-                    ...(streamed.response?.headers === undefined ? {} : { headers: streamed.response.headers }),
-                };
-            }
-        }
-        if (streamError !== undefined) throw streamError;
-        request.signal?.throwIfAborted();
-        const evidence = extractEvidence(rawChunks);
-        const accountingUsage = wireUsageEvidenceOf(rawChunks);
-        const reasoningText = evidence.reasoning || partialReasoning || "";
-        const rawFinishReason = finishReason.raw;
-        const unifiedFinishReason = finishReason.unified;
-        const sdkUsage = toLanguageModelUsage(v4Usage);
-        const finalId = responseId ?? (typeof metadataOf(rawChunks).id === "string" ? String(metadataOf(rawChunks).id) : undefined);
-        const finalModelId = responseModelId
-            ?? (typeof metadataOf(rawChunks).model === "string" ? String(metadataOf(rawChunks).model) : undefined)
-            ?? resolvedModel.modelId;
-        return {
-            model: finalModelId,
-            content: partialContent,
-            reasoning: reasoningText,
-            reasoningProjected: evidence.reasoningProjected,
-            wire: wireEmissionOf(rawChunks),
-            finishReason: finishReasonOf(unifiedFinishReason, rawFinishReason),
-            ...(rawFinishReason === undefined ? {} : { rawFinishReason }),
-            ...settledUsage(rawChunks, sdkUsage),
-            metadata: metadataOf(rawChunks),
-            logprobs: evidence.logprobs,
-            chargeEvidence: {
-                ...(wireChargeEvidenceOf(rawChunks) === undefined
-                    ? {}
-                    : { charge: wireChargeEvidenceOf(rawChunks) }),
-                ...(accountingUsage === undefined ? {} : { usage: accountingUsage }),
-                ...(providerMetadata === undefined ? {} : { providerMetadata }),
-                response: {
-                    ...(finalId === undefined ? {} : { id: finalId }),
-                    ...(streamed.response?.headers === undefined ? {} : { headers: streamed.response.headers }),
-                },
-            },
-            ...(request.captureRawBody ? { rawBody: rawChunks } : {}),
-            warnings,
+            warnings: executed.warnings ?? [],
         };
     } catch (error) {
-        throw preserveStreamFailure(error, { rawBody: rawChunks, content: partialContent, reasoning: partialReasoning, response: partialResponse }, outputObserved, request.signal);
+        if (request.streaming) {
+            throw preserveStreamFailure(
+                error,
+                { rawBody: rawChunks, content: partialContent, reasoning: partialReasoning, response: partialResponse },
+                outputObserved,
+                request.signal,
+            );
+        }
+        throw error;
     }
 };
 
-export const executeAiSdkModel = executeModel;
+export const executeModelTransport = executeModel;
 
 export type OpenAICompatibleProviderSettings = {
     name?: string;
@@ -674,13 +596,13 @@ export type OpenAICompatibleProviderSettings = {
     transformRequestBody?: (body: Record<string, unknown>) => Record<string, unknown>;
 };
 
-export type OpenAICompatibleProvider = ((modelId: string, modelSettings?: Record<string, unknown>) => LanguageModel) & {
-    languageModel: (modelId: string, modelSettings?: Record<string, unknown>) => LanguageModel;
-    chat: (modelId: string, modelSettings?: Record<string, unknown>) => LanguageModel;
+export type OpenAICompatibleProvider = ((modelId: string, modelSettings?: Record<string, unknown>) => ModelTransport) & {
+    model: (modelId: string, modelSettings?: Record<string, unknown>) => ModelTransport;
+    chat: (modelId: string, modelSettings?: Record<string, unknown>) => ModelTransport;
 };
 
 const serializeCompatibleMessages = (
-    prompt: readonly LanguageModelPromptMessage[],
+    prompt: readonly ModelPromptMessage[],
     namespace: string,
     endpointUrl: string,
 ): unknown[] => {
@@ -783,7 +705,7 @@ const serializeCompatibleMessages = (
 
 const applyCompatiblePayloadOptions = (
     payload: Record<string, unknown>,
-    callOptions: LanguageModelCallOptions,
+    callOptions: ModelTransportCallOptions,
     settings: OpenAICompatibleProviderSettings,
     modelId: string,
     streaming: boolean,
@@ -1026,16 +948,20 @@ const inspectOpenAISseStream = (
     });
 };
 
-const toV4UsageFromPi = (
-    piUsage: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number },
+export const toModelUsageFromPi = (
+    piUsage: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number } | undefined,
     rawUsage: Record<string, unknown> | undefined,
-): LanguageModelV4Usage => {
+): ModelUsage => {
     const promptTokens = typeof rawUsage?.prompt_tokens === "number"
         ? rawUsage.prompt_tokens
-        : piUsage.input + piUsage.cacheRead + piUsage.cacheWrite;
+        : piUsage !== undefined
+            ? piUsage.input + piUsage.cacheRead + piUsage.cacheWrite
+            : 0;
     const completionTokens = typeof rawUsage?.completion_tokens === "number"
         ? rawUsage.completion_tokens
-        : piUsage.output;
+        : piUsage !== undefined
+            ? piUsage.output
+            : 0;
     const promptDetails = isRecord(rawUsage?.prompt_tokens_details) ? rawUsage.prompt_tokens_details : undefined;
     const completionDetails = isRecord(rawUsage?.completion_tokens_details) ? rawUsage.completion_tokens_details : undefined;
     const cachedTokens = typeof promptDetails?.cached_tokens === "number"
@@ -1054,16 +980,21 @@ const toV4UsageFromPi = (
         ? completionDetails.reasoning_tokens
         : undefined;
     return {
-        inputTokens: {
-            total: promptTokens,
-            noCache: cachedTokens !== undefined ? promptTokens - cachedTokens - (cacheWriteTokens ?? 0) : piUsage.input,
-            cacheRead: cachedTokens ?? piUsage.cacheRead,
-            cacheWrite: cacheWriteTokens ?? (piUsage.cacheWrite > 0 ? piUsage.cacheWrite : undefined),
+        inputTokens: promptTokens,
+        outputTokens: completionTokens,
+        totalTokens: promptTokens + completionTokens,
+        inputTokenDetails: {
+            noCacheTokens: cachedTokens !== undefined
+                ? promptTokens - cachedTokens - (cacheWriteTokens ?? 0)
+                : piUsage !== undefined
+                    ? piUsage.input
+                    : promptTokens,
+            cacheReadTokens: cachedTokens ?? (piUsage?.cacheRead ?? 0),
+            cacheWriteTokens: cacheWriteTokens ?? (piUsage !== undefined && piUsage.cacheWrite > 0 ? piUsage.cacheWrite : undefined),
         },
-        outputTokens: {
-            total: completionTokens,
-            text: reasoningTokens !== undefined ? completionTokens - reasoningTokens : completionTokens,
-            reasoning: reasoningTokens,
+        outputTokenDetails: {
+            textTokens: reasoningTokens !== undefined ? completionTokens - reasoningTokens : completionTokens,
+            reasoningTokens,
         },
     };
 };
@@ -1076,7 +1007,7 @@ export const createOpenAICompatible = (
     const endpointUrl = `${resolvedBaseUrl}/chat/completions`;
     const underlyingFetch = settings.fetch ?? outboundFetch;
 
-    const makeLanguageModel = (modelId: string, modelSettings?: Record<string, unknown>): LanguageModel => {
+    const makeModel = (modelId: string, modelSettings?: Record<string, unknown>): ModelTransport => {
         const buildPiModel = (callHeaders?: Record<string, string | undefined>): Model<"openai-completions"> => {
             const mergedHeaders: Record<string, string> = { ...settings.headers };
             if (callHeaders !== undefined) {
@@ -1111,19 +1042,6 @@ export const createOpenAICompatible = (
             messages: [{ role: "user", content: "", timestamp: 0 }],
         });
 
-        const stripStreamFieldsFromInit = (init: RequestInit | undefined): RequestInit | undefined => {
-            if (init === undefined || typeof init.body !== "string") return init;
-            try {
-                const parsed: unknown = JSON.parse(init.body);
-                if (!isRecord(parsed)) return init;
-                delete parsed.stream;
-                delete parsed.stream_options;
-                return { ...init, body: JSON.stringify(parsed) };
-            } catch {
-                return init;
-            }
-        };
-
         const awaitFetchWithAbort = async (
             fetchPromise: Promise<Response>,
             signal: AbortSignal | null | undefined,
@@ -1149,217 +1067,135 @@ export const createOpenAICompatible = (
         };
 
         return {
-            specificationVersion: "v4",
             provider: `${providerName}.chat`,
             modelId,
-            supportedUrls: {},
-            async doGenerate(callOptions: LanguageModelCallOptions): Promise<LanguageModelGenerateResult> {
+            async execute(callOptions: ModelTransportCallOptions): Promise<ModelTransportResult> {
                 callOptions.abortSignal?.throwIfAborted();
-                let capturedRequestBody: unknown = {};
-                let rawResponseBody: Record<string, unknown> | undefined;
-                let responseHeadersRecord: Record<string, string> | undefined;
-                let pendingFetch: Promise<Response> | undefined;
-                let settleHeaders!: () => void;
-                let failHeaders!: (error: unknown) => void;
-                const headersReady = new Promise<void>((resolve, reject) => {
-                    settleHeaders = resolve;
-                    failHeaders = reject;
-                });
-
-                const customFetch: typeof globalThis.fetch = async (input, init) => {
+                if (!callOptions.streaming) {
+                    const payload: Record<string, unknown> = { model: modelId, messages: [] };
+                    applyCompatiblePayloadOptions(payload, callOptions, settings, modelId, false, endpointUrl, modelSettings);
+                    const mergedHeaders = new Headers({ "Content-Type": "application/json" });
+                    if (settings.apiKey !== undefined && settings.apiKey.length > 0) {
+                        mergedHeaders.set("Authorization", `Bearer ${settings.apiKey}`);
+                    }
+                    if (settings.headers !== undefined) {
+                        for (const [key, value] of Object.entries(settings.headers)) {
+                            if (value !== undefined) mergedHeaders.set(key, value);
+                        }
+                    }
+                    if (callOptions.headers !== undefined) {
+                        for (const [key, value] of Object.entries(callOptions.headers)) {
+                            if (value !== undefined) mergedHeaders.set(key, value);
+                        }
+                    }
+                    const rawPromise = underlyingFetch(endpointUrl, {
+                        method: "POST",
+                        headers: headersToRecord(mergedHeaders),
+                        body: JSON.stringify(payload),
+                        ...(callOptions.abortSignal === undefined ? {} : { signal: callOptions.abortSignal }),
+                    });
+                    rawPromise.catch(() => {});
+                    const response = await awaitFetchWithAbort(rawPromise, callOptions.abortSignal);
+                    const responseHeadersRecord = headersToRecord(response.headers);
+                    if (!response.ok) {
+                        const text = await response.text().catch(() => "");
+                        const { message, data } = extractErrorMessage(text, response.statusText, response.status);
+                        throw new APICallError({
+                            message,
+                            url: endpointUrl,
+                            requestBodyValues: payload,
+                            statusCode: response.status,
+                            responseHeaders: responseHeadersRecord,
+                            responseBody: text,
+                            isRetryable: isResponseRetryable(response.status, response.headers),
+                            data,
+                        });
+                    }
+                    let text: string;
                     try {
-                        const rawPromise = underlyingFetch(input, stripStreamFieldsFromInit(init));
-                        rawPromise.catch(() => {});
-                        pendingFetch = rawPromise;
-                        const response = await awaitFetchWithAbort(rawPromise, callOptions.abortSignal);
-                        responseHeadersRecord = headersToRecord(response.headers);
-                        if (!response.ok) {
-                            const text = await response.text().catch(() => "");
-                            const { message, data } = extractErrorMessage(text, response.statusText, response.status);
-                            const apiError = new APICallError({
-                                message,
-                                url: typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url,
-                                requestBodyValues: capturedRequestBody,
-                                statusCode: response.status,
-                                responseHeaders: responseHeadersRecord,
-                                responseBody: text,
-                                isRetryable: isResponseRetryable(response.status, response.headers),
-                                data,
-                            });
-                            failHeaders(apiError);
-                            throw apiError;
-                        }
-                        let text: string;
-                        try {
-                            text = await response.text();
-                        } catch (cause) {
-                            const apiError = new APICallError({
-                                message: "Failed to process successful response",
-                                url: typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url,
-                                requestBodyValues: capturedRequestBody,
-                                statusCode: response.status,
-                                responseHeaders: responseHeadersRecord,
-                                cause,
-                                isRetryable: isResponseRetryable(response.status, response.headers),
-                            });
-                            failHeaders(apiError);
-                            throw apiError;
-                        }
-                        let parsed: unknown;
-                        try {
-                            parsed = JSON.parse(text);
-                        } catch (cause) {
-                            const apiError = new APICallError({
-                                message: "Failed to process successful response",
-                                url: typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url,
-                                requestBodyValues: capturedRequestBody,
-                                statusCode: response.status,
-                                responseHeaders: responseHeadersRecord,
-                                responseBody: text,
-                                cause: new JSONParseError({ text, cause }),
-                                isRetryable: isResponseRetryable(response.status, response.headers),
-                            });
-                            failHeaders(apiError);
-                            throw apiError;
-                        }
-                        if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
-                            const received = isRecord(parsed) ? typeof parsed.choices : typeof parsed;
-                            const apiError = new APICallError({
-                                message: "Failed to process successful response",
-                                url: typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url,
-                                requestBodyValues: capturedRequestBody,
-                                statusCode: response.status,
-                                responseHeaders: responseHeadersRecord,
-                                responseBody: text,
-                                cause: new TypeValidationError({
-                                    value: parsed,
-                                    cause: new Error(`Invalid input: expected array, received ${received}`),
-                                }),
-                                isRetryable: isResponseRetryable(response.status, response.headers),
-                            });
-                            failHeaders(apiError);
-                            throw apiError;
-                        }
-                        rawResponseBody = parsed;
-                        settleHeaders();
-                        const syntheticChoices = parsed.choices.map((choiceValue, index) => {
-                            if (!isRecord(choiceValue)) return { index, delta: {}, finish_reason: "stop" };
-                            const message = isRecord(choiceValue.message) ? choiceValue.message : isRecord(choiceValue.delta) ? choiceValue.delta : {};
-                            const delta: Record<string, unknown> = { ...message };
-                            let combinedReasoning = "";
-                            let sawReasoning = false;
-                            for (const field of ["reasoning_content", "reasoning", "thinking"]) {
-                                if (typeof delta[field] === "string" && delta[field].length > 0) {
-                                    sawReasoning = true;
-                                    combinedReasoning += delta[field];
-                                }
-                            }
-                            if (sawReasoning) {
-                                delta.reasoning_content = combinedReasoning;
-                                delete delta.reasoning;
-                                delete delta.thinking;
-                            }
-                            if (Array.isArray(delta.tool_calls)) {
-                                delta.tool_calls = delta.tool_calls.map((tc, tcIndex) =>
-                                    isRecord(tc) ? { index: typeof tc.index === "number" ? tc.index : tcIndex, ...tc } : tc);
-                            }
-                            return {
-                                index: typeof choiceValue.index === "number" ? choiceValue.index : index,
-                                delta,
-                                finish_reason: typeof choiceValue.finish_reason === "string" ? choiceValue.finish_reason : "stop",
-                            };
+                        text = await response.text();
+                    } catch (cause) {
+                        throw new APICallError({
+                            message: "Failed to process successful response",
+                            url: endpointUrl,
+                            requestBodyValues: payload,
+                            statusCode: response.status,
+                            responseHeaders: responseHeadersRecord,
+                            cause,
+                            isRetryable: isResponseRetryable(response.status, response.headers),
                         });
-                        const syntheticChunk = {
-                            id: typeof parsed.id === "string" ? parsed.id : "chatcmpl",
-                            object: "chat.completion.chunk",
-                            created: typeof parsed.created === "number" ? parsed.created : 0,
-                            model: typeof parsed.model === "string" ? parsed.model : modelId,
-                            choices: syntheticChoices,
-                            ...(isRecord(parsed.usage) ? { usage: parsed.usage } : {}),
-                        };
-                        return new Response(`data: ${JSON.stringify(syntheticChunk)}\n\ndata: [DONE]\n\n`, {
-                            status: 200,
-                            headers: { "content-type": "text/event-stream" },
-                        });
-                    } catch (error) {
-                        failHeaders(error);
-                        throw error;
                     }
-                };
+                    let parsed: unknown;
+                    try {
+                        parsed = JSON.parse(text);
+                    } catch (cause) {
+                        throw new APICallError({
+                            message: "Failed to process successful response",
+                            url: endpointUrl,
+                            requestBodyValues: payload,
+                            statusCode: response.status,
+                            responseHeaders: responseHeadersRecord,
+                            responseBody: text,
+                            cause: new JSONParseError({ text, cause }),
+                            isRetryable: isResponseRetryable(response.status, response.headers),
+                        });
+                    }
+                    if (!isRecord(parsed) || !Array.isArray(parsed.choices)) {
+                        const received = isRecord(parsed) ? typeof parsed.choices : typeof parsed;
+                        throw new APICallError({
+                            message: "Failed to process successful response",
+                            url: endpointUrl,
+                            requestBodyValues: payload,
+                            statusCode: response.status,
+                            responseHeaders: responseHeadersRecord,
+                            responseBody: text,
+                            cause: new TypeValidationError({
+                                value: parsed,
+                                cause: new Error(`Invalid input: expected array, received ${received}`),
+                            }),
+                            isRetryable: isResponseRetryable(response.status, response.headers),
+                        });
+                    }
+                    let content = "";
+                    let reasoning = "";
+                    let nativeToolCalls = false;
+                    for (const choiceValue of parsed.choices) {
+                        if (!isRecord(choiceValue)) continue;
+                        const message = isRecord(choiceValue.message) ? choiceValue.message : isRecord(choiceValue.delta) ? choiceValue.delta : undefined;
+                        if (message === undefined) continue;
+                        if (typeof message.content === "string") content += message.content;
+                        for (const field of ["reasoning_content", "reasoning", "thinking"]) {
+                            if (typeof message[field] === "string" && message[field].length > 0) {
+                                reasoning += message[field];
+                            }
+                        }
+                        if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+                            nativeToolCalls = true;
+                        }
+                    }
+                    const choice0 = isRecord(parsed.choices[0]) ? parsed.choices[0] : undefined;
+                    const rawFinish = typeof choice0?.finish_reason === "string" ? choice0.finish_reason : "stop";
+                    const rawUsage = isRecord(parsed.usage) ? parsed.usage : undefined;
+                    return {
+                        content,
+                        reasoning,
+                        ...(nativeToolCalls ? { nativeToolCalls: true } : {}),
+                        finishReason: {
+                            unified: toUnifiedFinishReason(rawFinish),
+                            raw: rawFinish,
+                        },
+                        usage: toModelUsageFromPi(undefined, rawUsage),
+                        rawChunks: [],
+                        response: {
+                            id: typeof parsed.id === "string" ? parsed.id : undefined,
+                            modelId: typeof parsed.model === "string" ? parsed.model : modelId,
+                            headers: responseHeadersRecord,
+                            body: parsed,
+                        },
+                        warnings: [],
+                    };
+                }
 
-                let payloadError: unknown;
-                const piModel = buildPiModel(callOptions.headers);
-                const piStream = streamOpenAICompletions(piModel, dummyContext, {
-                    apiKey: settings.apiKey ?? "plurnk-no-key",
-                    signal: callOptions.abortSignal,
-                    maxRetries: 0,
-                    fetch: customFetch,
-                    onPayload: (params) => {
-                        if (!isRecord(params)) return;
-                        try {
-                            applyCompatiblePayloadOptions(params, callOptions, settings, modelId, false, endpointUrl, modelSettings);
-                            capturedRequestBody = { ...params };
-                            params.stream = true;
-                        } catch (error) {
-                            payloadError = error;
-                            throw error;
-                        }
-                    },
-                });
-                const resultPromise = piStream.result();
-                try {
-                    await Promise.race([
-                        headersReady,
-                        resultPromise.then(() => {
-                            if (payloadError !== undefined) throw payloadError;
-                        }),
-                    ]);
-                    if (payloadError !== undefined) throw payloadError;
-                } catch (error) {
-                    if (pendingFetch !== undefined) {
-                        await pendingFetch.catch(() => {});
-                    }
-                    throw error;
-                }
-                const assistantMsg = await resultPromise;
-                const choice0 = Array.isArray(rawResponseBody?.choices) && isRecord(rawResponseBody.choices[0])
-                    ? rawResponseBody.choices[0]
-                    : undefined;
-                const rawFinish = typeof choice0?.finish_reason === "string"
-                    ? choice0.finish_reason
-                    : assistantMsg.rawStopReason;
-                const content: LanguageModelContentPart[] = [];
-                for (const block of assistantMsg.content) {
-                    if (block.type === "thinking") content.push({ type: "reasoning", text: block.thinking });
-                    else if (block.type === "text") content.push({ type: "text", text: block.text });
-                    else if (block.type === "toolCall") {
-                        content.push({
-                            type: "tool-call",
-                            toolCallId: block.id,
-                            toolName: block.name,
-                            input: JSON.stringify(block.arguments ?? {}),
-                        });
-                    }
-                }
-                const rawUsage = isRecord(rawResponseBody?.usage) ? rawResponseBody.usage : undefined;
-                return {
-                    content,
-                    finishReason: {
-                        unified: toUnifiedFinishReason(rawFinish),
-                        raw: rawFinish,
-                    },
-                    usage: toV4UsageFromPi(assistantMsg.usage, rawUsage),
-                    response: {
-                        id: typeof rawResponseBody?.id === "string" ? rawResponseBody.id : undefined,
-                        modelId: typeof rawResponseBody?.model === "string" ? rawResponseBody.model : modelId,
-                        headers: responseHeadersRecord,
-                        body: rawResponseBody,
-                    },
-                    warnings: [],
-                };
-            },
-            async doStream(callOptions: LanguageModelCallOptions): Promise<LanguageModelStreamResult> {
-                callOptions.abortSignal?.throwIfAborted();
                 let capturedRequestBody: unknown = {};
                 let responseHeadersRecord: Record<string, string> | undefined;
                 let pendingFetch: Promise<Response> | undefined;
@@ -1397,6 +1233,7 @@ export const createOpenAICompatible = (
                             failHeaders(apiError);
                             throw apiError;
                         }
+                        callOptions.observeResponse?.({ headers: responseHeadersRecord });
                         settleHeaders();
                         const headers = new Headers(response.headers);
                         headers.set("content-type", "text/event-stream");
@@ -1414,27 +1251,22 @@ export const createOpenAICompatible = (
                     }
                 };
 
-                let streamController!: ReadableStreamDefaultController<LanguageModelStreamPart>;
-                let streamClosed = false;
-                const safeEnqueue = (part: LanguageModelStreamPart): void => {
-                    if (streamClosed) return;
-                    streamController.enqueue(part);
-                };
-                const safeClose = (): void => {
-                    if (streamClosed) return;
-                    streamClosed = true;
-                    streamController.close();
-                };
-
-                const stream = new ReadableStream<LanguageModelStreamPart>({
-                    start(controller) {
-                        streamController = controller;
-                        controller.enqueue({ type: "stream-start", warnings: [] });
-                    },
-                });
-
                 let payloadError: unknown;
+                let streamError: unknown;
                 let emittedMetadata = false;
+                let content = "";
+                let reasoning = "";
+                let responseId: string | undefined;
+                let responseModelId: string | undefined;
+                let finishReason: ModelFinishReason = { unified: "other", raw: undefined };
+                let usage: ModelUsage | undefined;
+                const rawChunks: unknown[] = [];
+
+                const recordChunk = (chunk: unknown): void => {
+                    rawChunks.push(chunk);
+                    callOptions.observeRawChunk?.(chunk);
+                };
+
                 const piModel = buildPiModel(callOptions.headers);
                 const piStream = streamOpenAICompletions(piModel, dummyContext, {
                     apiKey: settings.apiKey ?? "plurnk-no-key",
@@ -1453,16 +1285,18 @@ export const createOpenAICompatible = (
                     },
                     onProviderStreamEvent: (chunk) => {
                         const rawChunk = sseState.originalChunksQueue.shift() ?? chunk;
-                        safeEnqueue({ type: "raw", rawValue: rawChunk });
+                        recordChunk(rawChunk);
                         if (!emittedMetadata && isRecord(rawChunk)) {
                             const id = typeof rawChunk.id === "string" ? rawChunk.id : undefined;
                             const chunkModel = typeof rawChunk.model === "string" ? rawChunk.model : undefined;
                             if (id !== undefined || chunkModel !== undefined) {
                                 emittedMetadata = true;
-                                safeEnqueue({
-                                    type: "response-metadata",
+                                if (id !== undefined) responseId ??= id;
+                                if (chunkModel !== undefined) responseModelId ??= chunkModel;
+                                callOptions.observeResponse?.({
                                     ...(id === undefined ? {} : { id }),
                                     ...(chunkModel === undefined ? {} : { modelId: chunkModel }),
+                                    ...(responseHeadersRecord === undefined ? {} : { headers: responseHeadersRecord }),
                                 });
                             }
                         }
@@ -1472,73 +1306,53 @@ export const createOpenAICompatible = (
                 const originalPush = piStream.push.bind(piStream);
                 piStream.push = (event: AssistantMessageEvent): void => {
                     if (event.type === "thinking_delta") {
-                        safeEnqueue({ type: "reasoning-delta", id: `reasoning-${event.contentIndex}`, delta: event.delta });
+                        reasoning += event.delta;
+                        callOptions.observeReasoning?.(event.delta);
                     } else if (event.type === "text_delta") {
-                        safeEnqueue({ type: "text-delta", id: `text-${event.contentIndex}`, delta: event.delta });
+                        content += event.delta;
+                        callOptions.observeText?.(event.delta);
                     } else if (event.type === "done" || event.type === "error") {
                         while (sseState.originalChunksQueue.length > 0) {
-                            safeEnqueue({ type: "raw", rawValue: sseState.originalChunksQueue.shift() });
+                            recordChunk(sseState.originalChunksQueue.shift());
                         }
                         if (sseState.sseErrorChunks.length > 0) {
                             for (const errChunk of sseState.sseErrorChunks) {
-                                safeEnqueue({ type: "raw", rawValue: errChunk });
-                                safeEnqueue({ type: "error", error: errChunk.error });
+                                recordChunk(errChunk);
+                                streamError ??= errChunk.error;
                             }
-                            safeClose();
                             originalPush(event);
                             return;
                         }
                         if (sseState.rawStreamReadError !== undefined) {
-                            safeEnqueue({ type: "error", error: sseState.rawStreamReadError });
-                            safeClose();
+                            streamError ??= sseState.rawStreamReadError;
                             originalPush(event);
                             return;
                         }
                         if (callOptions.abortSignal?.aborted) {
-                            safeEnqueue({
-                                type: "error",
-                                error: callOptions.abortSignal.reason ?? new Error("Request was aborted"),
-                            });
-                            safeClose();
+                            streamError ??= callOptions.abortSignal.reason ?? new Error("Request was aborted");
                             originalPush(event);
                             return;
                         }
                         if (event.type === "done") {
                             const rawFinish = event.message.rawStopReason;
-                            safeEnqueue({
-                                type: "finish",
-                                finishReason: {
-                                    unified: toUnifiedFinishReason(rawFinish),
-                                    raw: rawFinish,
-                                },
-                                usage: toV4UsageFromPi(event.message.usage, sseState.lastRawUsage),
-                            });
-                            safeClose();
+                            finishReason = {
+                                unified: toUnifiedFinishReason(rawFinish),
+                                raw: rawFinish,
+                            };
+                            usage = toModelUsageFromPi(event.message.usage, sseState.lastRawUsage);
                         } else {
                             const rawFinish = event.error.rawStopReason;
                             const msg = event.error.errorMessage ?? "";
                             if (rawFinish !== undefined && msg === `Provider finish_reason: ${rawFinish}`) {
-                                safeEnqueue({
-                                    type: "finish",
-                                    finishReason: {
-                                        unified: toUnifiedFinishReason(rawFinish),
-                                        raw: rawFinish,
-                                    },
-                                    usage: toV4UsageFromPi(event.error.usage, sseState.lastRawUsage),
-                                });
-                                safeClose();
+                                finishReason = {
+                                    unified: toUnifiedFinishReason(rawFinish),
+                                    raw: rawFinish,
+                                };
+                                usage = toModelUsageFromPi(event.error.usage, sseState.lastRawUsage);
                             } else if (msg === "Stream ended without finish_reason") {
-                                safeEnqueue({
-                                    type: "error",
-                                    error: new Error("Response stream ended without a finish reason."),
-                                });
-                                safeClose();
+                                streamError ??= new Error("Response stream ended without a finish reason.");
                             } else {
-                                safeEnqueue({
-                                    type: "error",
-                                    error: new Error(msg || "Provider stream error"),
-                                });
-                                safeClose();
+                                streamError ??= new Error(msg || "Provider stream error");
                             }
                         }
                     }
@@ -1560,21 +1374,30 @@ export const createOpenAICompatible = (
                     }
                     throw error;
                 }
+                await resultPromise;
+                if (streamError !== undefined) throw streamError;
                 return {
-                    stream,
+                    content,
+                    reasoning,
+                    finishReason,
+                    usage,
+                    rawChunks,
                     response: {
+                        ...(responseId ?? sseState.lastResponseId ? { id: responseId ?? sseState.lastResponseId } : {}),
+                        ...(responseModelId ?? sseState.lastModelId ? { modelId: responseModelId ?? sseState.lastModelId } : {}),
                         ...(responseHeadersRecord === undefined ? {} : { headers: responseHeadersRecord }),
                     },
+                    warnings: [],
                 };
             },
         };
     };
 
     return Object.assign(
-        (modelId: string, modelSettings?: Record<string, unknown>) => makeLanguageModel(modelId, modelSettings),
+        (modelId: string, modelSettings?: Record<string, unknown>) => makeModel(modelId, modelSettings),
         {
-            languageModel: makeLanguageModel,
-            chat: makeLanguageModel,
+            model: makeModel,
+            chat: makeModel,
         },
     );
 };
@@ -1582,8 +1405,8 @@ export const createOpenAICompatible = (
 const SDK_OWNED_BODY_KEYS = ["model", "messages", "stream", "stream_options", "tools", "tool_choice", "functions", "function_call", "parallel_tool_calls"] as const;
 
 export const executeOpenAICompatible = async (
-    request: AiSdkTransportRequest,
-): Promise<AiSdkTransportResponse> => {
+    request: ModelTransportRequest,
+): Promise<ModelTransportResponse> => {
     for (const key of SDK_OWNED_BODY_KEYS) {
         if (Object.hasOwn(request.body, key)) {
             throw new TypeError(`OpenAI-compatible request extensions may not override SDK-owned field ${JSON.stringify(key)}`);
@@ -1604,9 +1427,9 @@ export const executeOpenAICompatible = async (
                 : {}),
         }, "openai"),
     });
-    const model = provider.languageModel(request.model);
+    const model = provider.model(request.model);
     return executeModel({
-        languageModel: model,
+        modelTransport: model,
         headers: {},
         messages: request.messages,
         signal: request.signal,
@@ -1626,7 +1449,7 @@ const responseBodyValues = (error: APICallError): readonly unknown[] => {
     }
 };
 
-export type AiSdkTransportFailureEvidence = {
+export type ModelTransportFailureEvidence = {
     readonly usage?: ProviderUsage;
     readonly usageRefusal?: UsageRefusal;
     readonly chargeEvidence: ProviderChargeEvidence;
@@ -1653,7 +1476,7 @@ const failureRecord = (error: unknown, seen = new Set<unknown>()): unknown => {
 
 export const transportFailureEvidence = (
     error: unknown,
-): AiSdkTransportFailureEvidence => {
+): ModelTransportFailureEvidence => {
     const partial = typeof error === "object" && error !== null ? streamFailures.get(error) : undefined;
     const apiError = APICallError.isInstance(error) ? error : undefined;
     const values = [...(partial?.rawBody ?? (apiError === undefined ? [] : responseBodyValues(apiError))), error];
@@ -1754,7 +1577,7 @@ const wireEmissionOf = (values: readonly unknown[]): WireEmission => {
     };
 };
 
-const extractEvidence = (values: unknown[]): {
+const extractEvidence = (values: readonly unknown[]): {
     logprobs: TokenLogprob[];
     content: string;
     reasoning: string;

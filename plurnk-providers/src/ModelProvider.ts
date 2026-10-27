@@ -1,18 +1,18 @@
-// PLURNK adapter over an AI SDK language model. Implements the universal generate()
-// spine — signal merging, the SSE call, usage mapping, finishReason
-// normalization, response assembly.
+// PLURNK provider over a model transport or OpenAI-compatible endpoint. Implements
+// the universal generate() spine — signal merging, the SSE call, usage mapping,
+// finishReason normalization, response assembly.
 //
-// Composition, not inheritance: an official AI SDK language model supplies the
-// ordinary vendor protocol. The compatible URL path serves only PLURNK
-// extensions and local endpoint probes the SDK cannot represent.
+// Composition, not inheritance: a ModelTransport adapter supplies the vendor
+// protocol. The compatible URL path serves PLURNK extensions and local endpoint
+// probes.
 
 import type { CallWarning, ChatMessage, GrammarEvidence, JSONValue, PromptTokenMeasurement, Provider, ProviderAttempt, ProviderCostNormalizer, ProviderGenerateArgs, ProviderRequestAccounting, ProviderRequestCapacity, ProviderRequestSettlement, ProviderResponse, ProviderUsage, Effort, InputModality } from "./types.ts";
 import type { ProviderCost } from "@plurnk/plurnk-contracts";
 import { EFFORTS, MAX_TIMER_MS, isRecord, isSafeInteger } from "@plurnk/plurnk-contracts";
 import type { EffortSetting, ReasoningResponseStyle } from "./env.ts";
 import { UnsupportedEffortError } from "./types.ts";
-import { executeAiSdkModel, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./aiSdkTransport.ts";
-import type { LanguageModelSource } from "./aiSdkTransport.ts";
+import { executeModelTransport, executeOpenAICompatible, transportFailureOutputObserved, transportFailureEvidence } from "./modelTransport.ts";
+import type { ModelTransportSource } from "./modelTransport.ts";
 import { APICallError, RetryError, toProviderError, ProviderError, ProviderTimeoutError } from "./errors.ts";
 import type { ProviderNotice } from "./notices.ts";
 import { assertPromptTokenMeasurement, estimatePromptTokens } from "./promptTokens.ts";
@@ -23,7 +23,7 @@ import { validateProviderRequestAccounting } from "./accounting.ts";
 import { validateProviderUsage } from "./usage.ts";
 import { assessRequestCapacity, effectiveInputCapacity, effectiveInputWall, effectiveOutputBudget, effectiveOutputFloor, effectiveReasoningBudget } from "./capacity.ts";
 import { nativeFixedEffort } from "./reasoning-effort.ts";
-import AiSdkRequestBody from "./AiSdkRequestBody.ts";
+import ModelRequestBody from "./ModelRequestBody.ts";
 import LeadingReasoning from "./LeadingReasoning.ts";
 import type InferenceAdmission from "./InferenceAdmission.ts";
 import RequestCapture from "./RequestCapture.ts";
@@ -102,15 +102,15 @@ export type CacheAffinity =
     | { readonly target: "header" | "body"; readonly name: string }
     | { readonly target: "provider-option"; readonly provider: string; readonly name: string };
 
-export type AiSdkProviderOptions = Record<string, Record<string, JSONValue | undefined>>;
+export type ModelProviderOptions = Record<string, Record<string, JSONValue | undefined>>;
 
 
 
-export type AiSdkProviderConfig = {
+export type ModelProviderConfig = {
     inferenceAdmission?: InferenceAdmission;
     model: string;
     url?: string;                             // OpenAI-compatible chat-completions URL
-    languageModel?: LanguageModelSource;      // native model, or factory binding the request's fetch
+    modelTransport?: ModelTransportSource;    // native model transport, or factory binding the request's fetch
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
     fetchTimeoutMs: number;                    // discovery/tokenizer HTTP only; zero disables
     operationTimeoutMs: number;                // complete logical call across retries/backoff; zero disables
@@ -124,12 +124,12 @@ export type AiSdkProviderConfig = {
     outputFloor?: number | null;               // {§provider-capacity-admission} — the least response room any request keeps
     reasoningBudget?: number | null;
     supportedEfforts?: readonly Effort[];
-    // Native AI SDK projection for adaptive. Models.dev supplies the route's
+    // Native transport projection for adaptive. Models.dev supplies the route's
     // admissible values; provider-default is reserved for a documented native
     // dynamic option/default or a route with no caller-selectable effort.
     adaptiveEffort?: NativeEffort | "provider-default";
-    adaptiveEffortProviderOptions?: AiSdkProviderOptions;
-    // Native Anthropic and Bedrock SDKs interpret generic maxOutputTokens as
+    adaptiveEffortProviderOptions?: ModelProviderOptions;
+    // Native Anthropic and Bedrock transports interpret generic maxOutputTokens as
     // visible output and add an explicit provider reasoning budget. This marker lets the
     // adapter subtract that subset so the resulting wire cap remains PLURNK's
     // one total output budget.
@@ -137,7 +137,7 @@ export type AiSdkProviderConfig = {
     reasoningStyle?: ReasoningStyle;          // default "none"
     outputTokenField?: "max_tokens" | "max_completion_tokens";
     reasoningRequestBody?: (mode: Effort, reasoningBudget: number | null) => Record<string, unknown>;
-    reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => AiSdkProviderOptions | undefined;
+    reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => ModelProviderOptions | undefined;
     reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-interface}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     estimateCost?: (usage: ProviderUsage | undefined) => ProviderCost;
@@ -149,15 +149,15 @@ export type AiSdkProviderConfig = {
     cacheAffinity?: CacheAffinity;
     // {§provider-sdk-boundary} Already policy-gated by provider construction.
     // The transport attaches it to only the final leading system instruction.
-    systemCacheProviderOptions?: AiSdkProviderOptions;
+    systemCacheProviderOptions?: ModelProviderOptions;
     // {§provider-effort} Route-owned native option needed to expose
     // readable reasoning. Applied only when the effective posture is not off.
-    reasoningResponseProviderOptions?: AiSdkProviderOptions;
+    reasoningResponseProviderOptions?: ModelProviderOptions;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request; a native route
     // carries it only as {§provider-request-authority} allows.
     serviceTier?: string;
-    // {§provider-request-authority} — which global request controls a native route's SDK documents as
+    // {§provider-request-authority} — which global request controls a native route's adapter documents as
     // provider options, and under which namespace. Absent on a native route means none.
     requestControls?: NativeRequestControls;
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
@@ -217,7 +217,7 @@ export type AiSdkProviderConfig = {
     // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
     // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_TOP_LOGPROBS;
     // null = off); a native route carries it only as {§provider-request-authority}
-    // allows. `rawBody` retains SDK raw responses and dispatched request bodies
+    // allows. `rawBody` retains raw responses and dispatched request bodies
     // ({§provider-interface}). Both knobs are gated per-alias.
     topLogprobs?: number | null;
     rawBody?: boolean;
@@ -273,7 +273,7 @@ const providerWarningMessage = (warning: CallWarning): string => {
 };
 
 
-// {§provider-request-authority} — the global controls a native SDK documents as provider options.
+// {§provider-request-authority} — the global controls a native adapter documents as provider options.
 export interface NativeRequestControls {
     readonly namespace: string;
     readonly serviceTier: boolean;
@@ -281,14 +281,14 @@ export interface NativeRequestControls {
 }
 
 // {§provider-request-authority} — a native route forwards a configured control only through its
-// SDK's documented provider option; a control the SDK does not document is named once and not
+// adapter's documented provider option; a control the adapter does not document is named once and not
 // sent, never dropped in silence (#988).
 const nativeControlOptions = (
     source: string,
     controls: NativeRequestControls | undefined,
     serviceTier: string | undefined,
     topLogprobs: number | null,
-): AiSdkProviderOptions | undefined => {
+): ModelProviderOptions | undefined => {
     const options: Record<string, string | number | boolean> = {};
     const unsupported = (knob: string): void => emitWarningOnce(
         `${source}: ${knob} is not a provider option this route's SDK${controls === undefined ? "" : ` (${controls.namespace})`} documents, so it is not sent`,
@@ -305,11 +305,11 @@ const nativeControlOptions = (
     return controls === undefined || Object.keys(options).length === 0 ? undefined : { [controls.namespace]: options };
 };
 
-export default class AiSdkProvider implements Provider {
+export default class ModelProvider implements Provider {
     readonly #inferenceAdmission: InferenceAdmission | undefined;
     #model: string;
     #url: string | undefined;
-    #languageModel: LanguageModelSource | undefined;
+    #modelTransport: ModelTransportSource | undefined;
     #fetchTimeoutMs: number;
     #operationTimeoutMs: number;
     #headers: Record<string, string>;
@@ -328,7 +328,7 @@ export default class AiSdkProvider implements Provider {
     #effort: EffortSetting;
     #supportedEfforts: readonly Effort[];
     #adaptiveEffort: NativeEffort | "provider-default";
-    #adaptiveEffortProviderOptions: AiSdkProviderOptions | undefined;
+    #adaptiveEffortProviderOptions: ModelProviderOptions | undefined;
     readonly #samplingDefaults: Readonly<Record<string, number>>;
     #repeatPenalty: number | null;
     #dryMultiplier: number | undefined;
@@ -338,7 +338,7 @@ export default class AiSdkProvider implements Provider {
     #reasoningStyle: ReasoningStyle;
     readonly #outputTokenField: "max_tokens" | "max_completion_tokens";
     readonly #reasoningRequestBody: ((mode: Effort, reasoningBudget: number | null) => Record<string, unknown>) | undefined;
-    readonly #reasoningRequestProviderOptions: ((mode: Effort, reasoningBudget: number | null) => AiSdkProviderOptions | undefined) | undefined;
+    readonly #reasoningRequestProviderOptions: ((mode: Effort, reasoningBudget: number | null) => ModelProviderOptions | undefined) | undefined;
     #reasoningResponseStyle: ReasoningResponseStyle;
     #countPromptTokens: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     #promptTokensUrl: string | undefined;
@@ -347,10 +347,10 @@ export default class AiSdkProvider implements Provider {
     #source: string;
     #grammarStyle: GrammarStyle;
     #cacheAffinity: CacheAffinity | undefined;
-    #systemCacheProviderOptions: AiSdkProviderOptions | undefined;
-    #reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
+    #systemCacheProviderOptions: ModelProviderOptions | undefined;
+    #reasoningResponseProviderOptions: ModelProviderOptions | undefined;
     #serviceTier: string | undefined;
-    #controlOptions: AiSdkProviderOptions | undefined;
+    #controlOptions: ModelProviderOptions | undefined;
     #streaming: boolean;
     #supportsSlotPinning: boolean;
     #slotCount: number | null;
@@ -367,15 +367,15 @@ export default class AiSdkProvider implements Provider {
     // tokenizeUrl (llama-server), so `provider.tokenize === undefined` remains
     // the honest capability signal for every other backend.
     tokenize?: (text: string) => Promise<number[]>;
-    readonly #requestBody: AiSdkRequestBody;
-    constructor(config: AiSdkProviderConfig) {
+    readonly #requestBody: ModelRequestBody;
+    constructor(config: ModelProviderConfig) {
         this.#inferenceAdmission = config.inferenceAdmission;
         this.#model = config.model;
         this.#url = config.url;
-        this.#languageModel = config.languageModel;
+        this.#modelTransport = config.modelTransport;
         this.attributions = config.attributions;
-        if ((this.#url === undefined) === (this.#languageModel === undefined)) {
-            throw new Error(`${config.source ?? "provider"}: configure exactly one AI SDK model or OpenAI-compatible URL`);
+        if ((this.#url === undefined) === (this.#modelTransport === undefined)) {
+            throw new Error(`${config.source ?? "provider"}: configure exactly one model transport or OpenAI-compatible URL`);
         }
         for (const [name, value] of [
             ["fetchTimeoutMs", config.fetchTimeoutMs],
@@ -414,7 +414,7 @@ export default class AiSdkProvider implements Provider {
         // required tuning fields must fail at construction, not silently send
         // undefined sampling on every grammar request.
         if (config.temperature === undefined || config.repeatPenalty === undefined) {
-            throw new Error(`${config.source ?? "provider"}: AiSdkProviderConfig requires temperature + repeatPenalty declared (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY; null = provider default)`);
+            throw new Error(`${config.source ?? "provider"}: ModelProviderConfig requires temperature + repeatPenalty declared (PLURNK_PROVIDERS_TEMPERATURE / _REPEAT_PENALTY; null = provider default)`);
         }
         this.#samplingDefaults = Object.fromEntries(Object.entries({
             temperature: config.temperature ?? undefined,
@@ -432,11 +432,11 @@ export default class AiSdkProvider implements Provider {
         this.#retryAttempts = config.retryAttempts;
         this.#errorDetailLimit = config.errorDetailLimit;
         this.#reasoningStyle = config.reasoningStyle ?? "none";
-        if (this.#languageModel !== undefined && (config.outputTokenField !== undefined || config.reasoningRequestBody !== undefined)) {
+        if (this.#modelTransport !== undefined && (config.outputTokenField !== undefined || config.reasoningRequestBody !== undefined)) {
             throw new TypeError(`${config.source ?? "provider"}: compatible request body projections require an OpenAI-compatible URL`);
         }
-        if (this.#languageModel === undefined && config.reasoningRequestProviderOptions !== undefined) {
-            throw new TypeError(`${config.source ?? "provider"}: native reasoning provider options require an AI SDK model`);
+        if (this.#modelTransport === undefined && config.reasoningRequestProviderOptions !== undefined) {
+            throw new TypeError(`${config.source ?? "provider"}: native reasoning provider options require a model transport`);
         }
         this.#outputTokenField = config.outputTokenField ?? "max_tokens";
         this.#reasoningRequestBody = config.reasoningRequestBody;
@@ -458,20 +458,20 @@ export default class AiSdkProvider implements Provider {
         this.#cacheAffinity = config.cacheAffinity;
         this.#systemCacheProviderOptions = config.systemCacheProviderOptions;
         this.#reasoningResponseProviderOptions = config.reasoningResponseProviderOptions;
-        if (this.#languageModel === undefined && this.#cacheAffinity?.target === "provider-option") {
-            throw new Error(`${this.#source}: native provider-option cache affinity requires an AI SDK model`);
+        if (this.#modelTransport === undefined && this.#cacheAffinity?.target === "provider-option") {
+            throw new Error(`${this.#source}: native provider-option cache affinity requires a model transport`);
         }
-        if (this.#languageModel !== undefined && this.#cacheAffinity?.target === "body") {
+        if (this.#modelTransport !== undefined && this.#cacheAffinity?.target === "body") {
             throw new Error(`${this.#source}: body cache affinity requires an OpenAI-compatible URL`);
         }
-        if (this.#languageModel === undefined && this.#systemCacheProviderOptions !== undefined) {
-            throw new Error(`${this.#source}: system cache provider options require an AI SDK model`);
+        if (this.#modelTransport === undefined && this.#systemCacheProviderOptions !== undefined) {
+            throw new Error(`${this.#source}: system cache provider options require a model transport`);
         }
-        if (this.#languageModel === undefined && this.#reasoningResponseProviderOptions !== undefined) {
-            throw new Error(`${this.#source}: reasoning response provider options require an AI SDK model`);
+        if (this.#modelTransport === undefined && this.#reasoningResponseProviderOptions !== undefined) {
+            throw new Error(`${this.#source}: reasoning response provider options require a model transport`);
         }
-        if (this.#languageModel === undefined && this.#additiveReasoningProvider !== undefined) {
-            throw new Error(`${this.#source}: additive reasoning projection requires an AI SDK model`);
+        if (this.#modelTransport === undefined && this.#additiveReasoningProvider !== undefined) {
+            throw new Error(`${this.#source}: additive reasoning projection requires a model transport`);
         }
         if (this.#cacheAffinity?.target === "provider-option"
             && Object.hasOwn(
@@ -488,10 +488,10 @@ export default class AiSdkProvider implements Provider {
         this.#supportsSlotPinning = config.supportsSlotPinning ?? false;
         this.#slotCount = config.slotCount ?? null;
         this.#topLogprobs = config.topLogprobs ?? null;
-        if (this.#languageModel === undefined && config.requestControls !== undefined) {
-            throw new Error(`${this.#source}: native request controls require an AI SDK model`);
+        if (this.#modelTransport === undefined && config.requestControls !== undefined) {
+            throw new Error(`${this.#source}: native request controls require a model transport`);
         }
-        this.#controlOptions = this.#languageModel === undefined
+        this.#controlOptions = this.#modelTransport === undefined
             ? undefined
             : nativeControlOptions(this.#source, config.requestControls, this.#serviceTier, this.#topLogprobs);
         this.#rawBody = config.rawBody ?? false;
@@ -544,7 +544,7 @@ export default class AiSdkProvider implements Provider {
                 return tokens;
             };
         }
-        this.#requestBody = new AiSdkRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, adaptiveEffortProviderOptions: this.#adaptiveEffortProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, controlOptions: this.#controlOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
+        this.#requestBody = new ModelRequestBody({ reasoningBudget: this.#reasoningBudget, additiveReasoningProvider: this.#additiveReasoningProvider, effort: this.#effort, adaptiveEffortProviderOptions: this.#adaptiveEffortProviderOptions, repeatPenalty: this.#repeatPenalty, dryMultiplier: this.#dryMultiplier, dryBase: this.#dryBase, dryAllowedLength: this.#dryAllowedLength, repeatLastN: this.#repeatLastN, reasoningStyle: this.#reasoningStyle, source: this.#source, grammarStyle: this.#grammarStyle, cacheAffinity: this.#cacheAffinity, reasoningResponseProviderOptions: this.#reasoningResponseProviderOptions, controlOptions: this.#controlOptions, supportsSlotPinning: this.#supportsSlotPinning, slotCount: this.#slotCount });
     }
 
     get contextWindow(): number | null { return this.#contextWindow; }
@@ -857,7 +857,7 @@ export default class AiSdkProvider implements Provider {
             };
             let response;
             try {
-                response = this.#languageModel === undefined
+                response = this.#modelTransport === undefined
                     ? await executeOpenAICompatible({
                         url: this.#url!,
                         model: this.#model,
@@ -870,8 +870,8 @@ export default class AiSdkProvider implements Provider {
                         captureRawBody: this.#rawBody,
                         ...observers,
                     })
-                    : await executeAiSdkModel({
-                        languageModel: this.#languageModel,
+                    : await executeModelTransport({
+                        modelTransport: this.#modelTransport,
                         fetch,
                         headers: requestHeaders,
                         providerOptions: this.#requestBody.requestProviderOptions(
@@ -1173,7 +1173,7 @@ export default class AiSdkProvider implements Provider {
                 },
             );
         }
-        // {§provider-failure-normalization} The SDK classified the finish as an error: the attempt failed with
+        // {§provider-failure-normalization} The transport classified the finish as an error: the attempt failed with
         // its evidence, and nothing here is a completed exchange or a transport outage.
         if (raw.finishReason === "error") {
             const attempt: ProviderResponse<"error"> = {

@@ -1,8 +1,8 @@
-// The provider-specific request body and headers one generate call sends: reasoning, grammar, sampling, repetition, slots, metadata. Split out of AiSdkProvider; every knob it reads is injected.
+// The provider-specific request body and headers one generate call sends: reasoning, grammar, sampling, repetition, slots, metadata. Split out of ModelProvider; every knob it reads is injected.
 import type { Effort, JSONValue } from "./types.ts";
 import { type EffortSetting } from "./env.ts";
 import { fixedEffort } from "./reasoning-effort.ts";
-import type { ReasoningStyle, GrammarStyle, CacheAffinity, AiSdkProviderOptions } from "./AiSdkProvider.ts";
+import type { ReasoningStyle, GrammarStyle, CacheAffinity, ModelProviderOptions } from "./ModelProvider.ts";
 
 const isJsonObject = (value: JSONValue | undefined): value is Record<string, JSONValue> =>
     typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,12 +60,12 @@ const RESERVED_BODY_KEYS: ReadonlySet<string> = new Set([
     "prompt_cache_key",
 ]);
 
-export default class AiSdkRequestBody {
+export default class ModelRequestBody {
     readonly #reasoningBudget: number | null;
     readonly #additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
     readonly #effort: EffortSetting;
-    readonly #adaptiveEffortProviderOptions: AiSdkProviderOptions | undefined;
-    readonly #controlOptions: AiSdkProviderOptions | undefined;
+    readonly #adaptiveEffortProviderOptions: ModelProviderOptions | undefined;
+    readonly #controlOptions: ModelProviderOptions | undefined;
     readonly #repeatPenalty: number | null;
     readonly #dryMultiplier: number | undefined;
     readonly #dryBase: number | undefined;
@@ -75,7 +75,7 @@ export default class AiSdkRequestBody {
     readonly #source: string;
     readonly #grammarStyle: GrammarStyle;
     readonly #cacheAffinity: CacheAffinity | undefined;
-    readonly #reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
+    readonly #reasoningResponseProviderOptions: ModelProviderOptions | undefined;
     readonly #supportsSlotPinning: boolean;
     readonly #slotCount: number | null;
     #runSlots = new Map<string, number>();
@@ -85,7 +85,7 @@ export default class AiSdkRequestBody {
         reasoningBudget: number | null;
         additiveReasoningProvider: "anthropic" | "bedrock" | undefined;
         effort: EffortSetting;
-        adaptiveEffortProviderOptions: AiSdkProviderOptions | undefined;
+        adaptiveEffortProviderOptions: ModelProviderOptions | undefined;
         repeatPenalty: number | null;
         dryMultiplier: number | undefined;
         dryBase: number | undefined;
@@ -95,8 +95,8 @@ export default class AiSdkRequestBody {
         source: string;
         grammarStyle: GrammarStyle;
         cacheAffinity: CacheAffinity | undefined;
-        reasoningResponseProviderOptions: AiSdkProviderOptions | undefined;
-        controlOptions: AiSdkProviderOptions | undefined;
+        reasoningResponseProviderOptions: ModelProviderOptions | undefined;
+        controlOptions: ModelProviderOptions | undefined;
         supportsSlotPinning: boolean;
         slotCount: number | null;
     }) {
@@ -222,8 +222,8 @@ export default class AiSdkRequestBody {
     requestProviderOptions(
         sessionId: string,
         nativeReasoningBudget: number | null,
-        declaredOptions?: AiSdkProviderOptions,
-    ): AiSdkProviderOptions | undefined {
+        declaredOptions?: ModelProviderOptions,
+    ): ModelProviderOptions | undefined {
         const responseOptions = this.#effort.mode === "off"
             ? undefined
             : this.#reasoningResponseProviderOptions;
@@ -238,7 +238,7 @@ export default class AiSdkRequestBody {
                     ? { bedrock: { reasoningConfig: { type: "enabled", budgetTokens: nativeReasoningBudget } } }
                     : undefined
             : undefined;
-        const options: AiSdkProviderOptions = {};
+        const options: ModelProviderOptions = {};
         // {§provider-request-authority} — the deployment's controls ride every native request, beside
         // whatever reasoning shape the route or its declared fields chose.
         for (const part of [...(declaredOptions === undefined ? [responseOptions, adaptiveOptions, nativeReasoning] : [declaredOptions]), this.#controlOptions]) {
@@ -288,7 +288,4 @@ export default class AiSdkRequestBody {
             ? outputBudget - nativeReasoningBudget
             : outputBudget;
     }
-
-
-
 }

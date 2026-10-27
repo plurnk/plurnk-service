@@ -8,7 +8,7 @@ import { join, resolve, dirname } from "node:path";
 import { promisify } from "node:util";
 import { Digest, DigestRender } from "@plurnk/plurnk-digest";
 import EvidenceReader from "@plurnk/plurnk-service/evidence";
-import { Mock, AiSdkProvider, chatMessageText, assessRequestCapacity, type ProviderRequestAccounting, type ChatMessage, type ProviderAccounting } from "@plurnk/plurnk-providers";
+import { Mock, ModelProvider, chatMessageText, assessRequestCapacity, type ProviderRequestAccounting, type ChatMessage, type ProviderAccounting } from "@plurnk/plurnk-providers";
 import { openMigrated, insertLoop, insertSession, insertWorkspace, insertPacketTurn, insertTurn } from "./_db.ts";
 import Turn from "../../src/core/Turn.ts";
 import StoredPacket, { type DurablePacket } from "../../src/core/StoredPacket.ts";
@@ -707,7 +707,7 @@ for (const capture of [false, true]) {
         const failedContent = "````EDIT (workspace:///never.txt)\nMust not execute.\n````";
         let calls = 0;
         const bodies: string[] = [];
-        const provider = new AiSdkProvider({
+        const provider = new ModelProvider({
             model: "evidence", url: "https://example.test/v1/chat/completions", streaming: true,
             rawBody: capture, contextWindow: 100_000, fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null }, retryAttempts: 0,

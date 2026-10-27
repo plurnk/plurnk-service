@@ -68,13 +68,13 @@ test("{§provider-configuration} instantiateProvider: cataloged name resolves in
     mock.restoreAll();
 });
 
-test("{§provider-configuration} instantiateProvider: an installed AI SDK provider resolves through discovery", async () => {
+test("{§provider-configuration} instantiateProvider: an installed provider extension resolves through discovery", async () => {
     resetDiscoveryCache();
     const calls: unknown[] = [];
     const p = await instantiateProvider("acme", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" }, "model-a",
         async (specifier) => {
             calls.push(specifier);
-            return { default: { languageModel: (model: string) => { calls.push(model); return {} as never; } } };
+            return { default: { model: (model: string) => { calls.push(model); return {} as never; } } };
         },
         mapOf({ acme: "@acme/ai-provider" }));
     assert.equal(p.model, "model-a");
@@ -91,8 +91,8 @@ test("{§provider-configuration} instantiateProvider: a selected extension compo
         turn: 2,
         attempt: 1,
     };
-    const sdkProvider = {
-        languageModel: () => ({} as never),
+    const providerExtension = {
+        model: () => ({} as never),
         attributions: ({ attempt }: ExtensionAttributionContext) => attempt === 1
             ? ["runtime:provider", "static:provider"]
             : [],
@@ -101,7 +101,7 @@ test("{§provider-configuration} instantiateProvider: a selected extension compo
         "acme",
         { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192" },
         "model-a",
-        async () => ({ default: sdkProvider }),
+        async () => ({ default: providerExtension }),
         async () => ({
             registry: new Map([["acme", "@acme/ai-provider"]]),
             skipped: new Map(),
@@ -146,7 +146,7 @@ test("{§provider-configuration} instantiateProvider: a THIRD-PARTY scope is dis
     resetDiscoveryCache();
     const imports: string[] = [];
     const p = await instantiateProvider("foo", { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096" }, "m",
-        async (specifier) => { imports.push(specifier); return { default: { languageModel: () => ({} as never) } }; },
+        async (specifier) => { imports.push(specifier); return { default: { model: () => ({} as never) } }; },
         mapOf({ foo: "@acme/acme-provider-foo" }));
     assert.equal(p.model, "m");
     assert.deepEqual(imports, ["@acme/acme-provider-foo"]); // not an @plurnk/ specifier
@@ -187,13 +187,13 @@ test("{§provider-configuration} instantiateProvider: an untrusted (skipped) pro
     assert.deepEqual(imports, []); // never imported an untrusted package
 });
 
-test("{§provider-configuration} instantiateProvider: discovered package must export an AI SDK provider", async () => {
+test("{§provider-configuration} instantiateProvider: discovered package must export a provider extension", async () => {
     resetDiscoveryCache();
     await assert.rejects(
         () => instantiateProvider("broken", { ...fullEnv }, "m",
             async () => ({ default: {} }),
             mapOf({ broken: "@acme/acme-provider-broken" })),
-        /@acme\/acme-provider-broken default export is not an AI SDK provider/,
+        /@acme\/acme-provider-broken default export is not a provider extension/,
     );
 });
 
@@ -478,11 +478,11 @@ test("{§provider-configuration} two Fireworks aliases independently select defa
     mock.restoreAll();
 });
 
-test("{§provider-configuration} loadActiveProvider: resolves the alias cascade to an installed AI SDK provider", async () => {
+test("{§provider-configuration} loadActiveProvider: resolves the alias cascade to an installed provider extension", async () => {
     resetDiscoveryCache();
     const env = { ...fullEnv, PLURNK_PROVIDERS_CONTEXT_WINDOW: "4096", PLURNK_MODEL: "custom", PLURNK_MODEL_custom: "acme/model-a" } as NodeJS.ProcessEnv;
     const p = await loadActiveProvider(env,
-        async () => ({ default: { languageModel: () => ({} as never) } }),
+        async () => ({ default: { model: () => ({} as never) } }),
         mapOf({ acme: "@acme/ai-provider" }));
     assert.equal(p.model, "model-a");
 });

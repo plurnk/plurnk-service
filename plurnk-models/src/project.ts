@@ -4,20 +4,40 @@
 
 import type { ModelCost, ModelEffort, ModelInfo, ModelReasoningOption, ProviderInfo } from "./index.ts";
 
-const SUPPORTED_NPM = new Set([
-    "@ai-sdk/amazon-bedrock",
-    "@ai-sdk/anthropic",
-    "@ai-sdk/cerebras",
-    "@ai-sdk/deepinfra",
-    "@ai-sdk/google",
-    "@ai-sdk/groq",
-    "@ai-sdk/mistral",
-    "@ai-sdk/openai",
-    "@ai-sdk/openai-compatible",
-    "@ai-sdk/togetherai",
-    "@ai-sdk/xai",
-    "@openrouter/ai-sdk-provider",
-]);
+export const PROVIDER_ADAPTERS = [
+    "amazon-bedrock",
+    "anthropic",
+    "cerebras",
+    "deepinfra",
+    "google",
+    "groq",
+    "mistral",
+    "openai",
+    "openai-compatible",
+    "openrouter",
+    "togetherai",
+    "xai",
+] as const;
+
+export type ProviderAdapter = (typeof PROVIDER_ADAPTERS)[number];
+
+export const isProviderAdapter = (value: string): value is ProviderAdapter =>
+    (PROVIDER_ADAPTERS as readonly string[]).includes(value);
+
+const MODELS_DEV_ADAPTER_BY_NPM: Readonly<Record<string, ProviderAdapter>> = {
+    "@ai-sdk/amazon-bedrock": "amazon-bedrock",
+    "@ai-sdk/anthropic": "anthropic",
+    "@ai-sdk/cerebras": "cerebras",
+    "@ai-sdk/deepinfra": "deepinfra",
+    "@ai-sdk/google": "google",
+    "@ai-sdk/groq": "groq",
+    "@ai-sdk/mistral": "mistral",
+    "@ai-sdk/openai": "openai",
+    "@ai-sdk/openai-compatible": "openai-compatible",
+    "@ai-sdk/togetherai": "togetherai",
+    "@ai-sdk/xai": "xai",
+    "@openrouter/ai-sdk-provider": "openrouter",
+};
 
 const REASONING_EFFORTS: ReadonlySet<ModelEffort> = new Set<ModelEffort>([
     null, "none", "minimal", "low", "medium", "high", "xhigh", "max", "default",
@@ -149,7 +169,9 @@ export const projectCatalog = (db: unknown): {
     const catalog: Record<string, Record<string, ModelInfo>> = {};
     const providers: Record<string, ProviderInfo> = {};
     for (const [id, entry] of Object.entries(db)) {
-        if (!isRecord(entry) || typeof entry.npm !== "string" || !SUPPORTED_NPM.has(entry.npm)) continue;
+        if (!isRecord(entry) || typeof entry.npm !== "string") continue;
+        const adapter = MODELS_DEV_ADAPTER_BY_NPM[entry.npm];
+        if (adapter === undefined) continue;
         if (typeof entry.name !== "string" || entry.name.length === 0) {
             throw new Error(`Models.dev provider ${id} has no display name`);
         }
@@ -157,7 +179,7 @@ export const projectCatalog = (db: unknown): {
         providers[id] = {
             id: typeof entry.id === "string" ? entry.id : id,
             name: entry.name,
-            npm: entry.npm,
+            adapter,
             env,
             ...(typeof entry.api === "string" ? { api: entry.api } : {}),
         };

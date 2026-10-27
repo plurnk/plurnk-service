@@ -1,6 +1,6 @@
 import { EFFORTS, isRecord, type Effort } from "@plurnk/plurnk-contracts";
 import { outboundFetch } from "@plurnk/plurnk-meta";
-import AiSdkProvider, { type GrammarStyle, type ReasoningStyle } from "./AiSdkProvider.ts";
+import ModelProvider, { type GrammarStyle, type ReasoningStyle } from "./ModelProvider.ts";
 import {
     contextWindowFromEnv,
     declaredReasoningEfforts,
@@ -190,7 +190,7 @@ export const compatibleProviderFromEnv = async (
             ? `Declare each effort the served chat template distinguishes: PLURNK_PROVIDERS_REASONING_EFFORTS=${effort.mode} (comma-separated; an alias suffix scopes it to one alias).`
             : "This route sends no fixed-effort control.");
     }
-    return new AiSdkProvider({
+    return new ModelProvider({
         inferenceAdmission: inferenceAdmissionFromEnv(env, url.replace(/\/chat\/completions$/, "")),
         model,
         url,

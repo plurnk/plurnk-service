@@ -44,7 +44,7 @@ export type CallWarning =
         readonly message: string;
     };
 
-export interface LanguageModelUsage {
+export interface ModelUsage {
     readonly inputTokens: number | undefined;
     readonly inputTokenDetails: {
         readonly noCacheTokens: number | undefined;
@@ -59,26 +59,12 @@ export interface LanguageModelUsage {
     readonly totalTokens: number | undefined;
 }
 
-export interface LanguageModelV4Usage {
-    readonly inputTokens: {
-        readonly total: number | undefined;
-        readonly noCache: number | undefined;
-        readonly cacheRead: number | undefined;
-        readonly cacheWrite: number | undefined;
-    };
-    readonly outputTokens: {
-        readonly total: number | undefined;
-        readonly text: number | undefined;
-        readonly reasoning: number | undefined;
-    };
-}
-
-export interface LanguageModelFinishReason {
+export interface ModelFinishReason {
     readonly unified: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
     readonly raw: string | undefined;
 }
 
-export type LanguageModelPromptMessage =
+export type ModelPromptMessage =
     | {
         readonly role: "system";
         readonly content: string;
@@ -98,8 +84,9 @@ export type LanguageModelPromptMessage =
         readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
     };
 
-export interface LanguageModelCallOptions {
-    readonly prompt: readonly LanguageModelPromptMessage[];
+export interface ModelTransportCallOptions {
+    readonly prompt: readonly ModelPromptMessage[];
+    readonly streaming: boolean;
     readonly maxOutputTokens?: number;
     readonly temperature?: number;
     readonly stopSequences?: string[];
@@ -115,17 +102,23 @@ export interface LanguageModelCallOptions {
     readonly reasoning?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "none" | "provider-default";
     readonly providerOptions?: Record<string, Record<string, JSONValue | undefined>>;
     readonly includeRawChunks?: boolean;
+    readonly observeText?: (delta: string) => void;
+    readonly observeReasoning?: (delta: string) => void;
+    readonly observeRawChunk?: (chunk: unknown) => void;
+    readonly observeResponse?: (response: {
+        readonly id?: string;
+        readonly modelId?: string;
+        readonly headers?: Record<string, string>;
+    }) => void;
 }
 
-export type LanguageModelContentPart =
-    | { readonly type: "text"; readonly text: string }
-    | { readonly type: "reasoning"; readonly text: string }
-    | { readonly type: "tool-call"; readonly toolCallId?: string; readonly toolName?: string; readonly input?: string };
-
-export interface LanguageModelGenerateResult {
-    readonly content: readonly LanguageModelContentPart[];
-    readonly finishReason: LanguageModelFinishReason;
-    readonly usage: LanguageModelV4Usage;
+export interface ModelTransportResult {
+    readonly content: string;
+    readonly reasoning: string;
+    readonly nativeToolCalls?: boolean;
+    readonly finishReason: ModelFinishReason;
+    readonly usage?: ModelUsage;
+    readonly rawChunks: readonly unknown[];
     readonly providerMetadata?: Record<string, Record<string, JSONValue>>;
     readonly response?: {
         readonly id?: string;
@@ -137,42 +130,10 @@ export interface LanguageModelGenerateResult {
     readonly warnings: readonly CallWarning[];
 }
 
-export type LanguageModelStreamPart =
-    | { readonly type: "stream-start"; readonly warnings: readonly CallWarning[] }
-    | { readonly type: "response-metadata"; readonly id?: string; readonly timestamp?: Date; readonly modelId?: string }
-    | { readonly type: "text-start"; readonly id: string }
-    | { readonly type: "text-delta"; readonly id: string; readonly delta: string }
-    | { readonly type: "text-end"; readonly id: string }
-    | { readonly type: "reasoning-start"; readonly id: string }
-    | { readonly type: "reasoning-delta"; readonly id: string; readonly delta: string }
-    | { readonly type: "reasoning-end"; readonly id: string }
-    | { readonly type: "tool-input-start"; readonly id: string; readonly toolName: string }
-    | { readonly type: "tool-input-delta"; readonly id: string; readonly delta: string }
-    | { readonly type: "tool-input-end"; readonly id: string }
-    | { readonly type: "tool-call"; readonly toolCallId?: string; readonly toolName?: string; readonly input?: string }
-    | { readonly type: "raw"; readonly rawValue: unknown }
-    | { readonly type: "error"; readonly error: unknown }
-    | {
-        readonly type: "finish";
-        readonly finishReason: LanguageModelFinishReason;
-        readonly usage: LanguageModelV4Usage;
-        readonly providerMetadata?: Record<string, Record<string, JSONValue>>;
-    };
-
-export interface LanguageModelStreamResult {
-    readonly stream: ReadableStream<LanguageModelStreamPart>;
-    readonly response?: {
-        readonly headers?: Record<string, string>;
-    };
-}
-
-export interface LanguageModel {
-    readonly specificationVersion: "v4";
+export interface ModelTransport {
     readonly provider: string;
     readonly modelId: string;
-    readonly supportedUrls?: Record<string, RegExp[]>;
-    doGenerate(options: LanguageModelCallOptions): PromiseLike<LanguageModelGenerateResult>;
-    doStream(options: LanguageModelCallOptions): PromiseLike<LanguageModelStreamResult>;
+    execute(options: ModelTransportCallOptions): PromiseLike<ModelTransportResult>;
 }
 
 export type {
@@ -511,8 +472,8 @@ export interface ProviderOptions {
     readonly baseUrl?: string;
 }
 
-// A discovered provider extension default-exports an AI SDK provider. PLURNK owns
+// A discovered provider extension default-exports a provider factory. PLURNK owns
 // the adapter into Provider; the extension owns only its protocol binding.
-export interface AiSdkProviderExtension extends ExtensionAttributionSource {
-    languageModel(model: string): LanguageModel;
+export interface ProviderExtension extends ExtensionAttributionSource {
+    model(model: string): ModelTransport;
 }

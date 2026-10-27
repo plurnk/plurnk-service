@@ -85,11 +85,11 @@ const deepInfraCost: ProviderCostNormalizer = ({ usage }) => {
 };
 
 export const providerCostNormalizer = (
-    sdkPackage: string,
+    adapter: string,
 ): ProviderCostNormalizer | undefined => {
-    switch (sdkPackage) {
-        case "@ai-sdk/deepinfra": return deepInfraCost;
-        case "@openrouter/ai-sdk-provider": return openRouterCost;
+    switch (adapter) {
+        case "deepinfra": return deepInfraCost;
+        case "openrouter": return openRouterCost;
         default: return undefined;
     }
 };

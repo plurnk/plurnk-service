@@ -12,7 +12,7 @@ import ProviderInstantiate from "../../src/core/ProviderInstantiate.ts";
 import LogEntry from "../../src/server/logEntry.ts";
 import PacketBuilder from "../../src/core/PacketBuilder.ts";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { Mock, chatMessageText, AiSdkProvider } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText, ModelProvider } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { insertLoop, insertSession, insertWorkspace, openMigrated, rootWorkspace, sendingOperation, seedEntryWithChannel } from "./_db.ts";
 import { logEntries, packetSection } from "./_packet.ts";
@@ -879,7 +879,7 @@ test("{§op-shapes}: admission is unconditional and the language definition is t
         const note = "This came from reasoning.";
         const reasoning = `${frame("NOTE", note)}\n\n${frame("READ (workspace:///fact.txt)", null)}\n\nContinue thinking.\n`;
         const streamed: string[] = [];
-        const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
+        const provider = new ModelProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null },
             fetch: async () => new Response([
@@ -999,7 +999,7 @@ for (const tagged of [false, true]) test(`{§op-shapes}: ${tagged ? "tagged" : "
                 if (event.phase === "content") observed.resolve();
             },
         });
-        const provider = new AiSdkProvider({ model: "fixture", url: `http://127.0.0.1:${address.port}/v1/chat/completions`,
+        const provider = new ModelProvider({ model: "fixture", url: `http://127.0.0.1:${address.port}/v1/chat/completions`,
             contextWindow: 100_000, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "adaptive", budget: null }, rawBody: true,
             normalizeCost: ({ charge: value }) => value as typeof charge | undefined,

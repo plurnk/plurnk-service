@@ -2,15 +2,15 @@ import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { createOpenAI, createSdkModel } from "./sdkModels.ts";
-import { catalogProviderFromEnv, catalogEfforts, providerFromSdkModel } from "./catalogProvider.ts";
+import { createOpenAI, createProviderModel } from "./modelAdapters.ts";
+import { catalogProviderFromEnv, catalogEfforts, providerFromModelAdapter } from "./catalogProvider.ts";
 import { catalogSnapshot, lookupProvider, resolveModel } from "@plurnk/plurnk-models";
 import { calculateCostUsdDecimal } from "./usage.ts";
 import { withProviderDefaults } from "./defaults.ts";
 import { resetEmittedWarnings } from "./warnings.ts";
-import { UnsupportedEffortError, type LanguageModel, type LanguageModelCallOptions, type LanguageModelGenerateResult, type LanguageModelStreamResult } from "./types.ts";
+import { UnsupportedEffortError, type ModelTransport, type ModelTransportCallOptions, type ModelTransportResult } from "./types.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
-import { executeAiSdkModel, executeOpenAICompatible } from "./aiSdkTransport.ts";
+import { executeModelTransport, executeOpenAICompatible } from "./modelTransport.ts";
 import { withoutNativeTools } from "./native-tools.ts";
 import { ollamaProviderFromEnv } from "./ollama.ts";
 
@@ -190,11 +190,10 @@ test("{§provider-effort}: discovery never offers a fixed effort the installed t
     const catalog = lookupProvider("openai");
     assert.ok(catalog);
     assert.deepEqual(catalogEfforts(catalog, info, declared), ["off", "adaptive", "low", "medium", "high", "xhigh"]);
-    assert.throws(() => providerFromSdkModel({
+    assert.throws(() => providerFromModelAdapter({
         name: "openai", model: "fixture", contextWindow: 32_768, info,
         env: { ...declared, PLURNK_PROVIDERS_EFFORT: "max" },
-        languageModel: { specificationVersion: "v4" } as LanguageModel,
-        sdkPackage: catalog.npm,
+        modelTransport: { provider: "openai", modelId: "fixture", execute: async () => { throw new Error("unreachable"); } },
     }), UnsupportedEffortError);
 });
 
@@ -321,7 +320,7 @@ test("{§provider-effort} an operator context window caps catalog physics and pe
     assert.equal(oversized?.contextWindow, 1_047_576, "an operator ceiling cannot enlarge model physics");
 });
 
-test("{§provider-effort} official AI SDK provider owns the native request while PLURNK owns call settings", async () => {
+test("{§provider-effort} native OpenAI adapter owns the request while PLURNK owns call settings", async () => {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         calls.push({
@@ -373,7 +372,7 @@ test("{§provider-effort} official AI SDK provider owns the native request while
     assert.equal(calls[0]?.body.top_p, 0.8);
     assert.equal(calls[0]?.body.seed, 7);
     assert.equal(calls[0]?.body.max_tokens, 64);
-    assert.equal(calls[0]?.body.prompt_cache_key, "session", "the official OpenAI SDK projects the documented affinity key");
+    assert.equal(calls[0]?.body.prompt_cache_key, "session", "the OpenAI adapter projects the documented affinity key");
 });
 
 test("{§provider-effort} Cerebras explicit and adaptive reasoning do not invent a token budget", async () => {
@@ -493,9 +492,9 @@ test("{§provider-effort} native graded requests use only the supported configur
         [["high", "max"], "max", undefined],
         [["high", "xhigh"], "", undefined],
     ] as const) {
-        const provider = providerFromSdkModel({
-            name: "openai", model: "o3", languageModel: sdk.chat("o3"),
-            sdkPackage: "@ai-sdk/openai", contextWindow: 16_384,
+        const provider = providerFromModelAdapter({
+            name: "openai", model: "o3", modelTransport: sdk.chat("o3"),
+            contextWindow: 16_384,
             env: {
                 ...env,
                 PLURNK_PROVIDERS_EFFORT: "adaptive",
@@ -572,51 +571,30 @@ test("{§provider-effort} Google adaptive reasoning requests and preserves reada
 });
 
 test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinking rather than a fixed high effort", async () => {
-    let request: Record<string, unknown> | undefined;
-    const languageModel = {
-        specificationVersion: "v4",
+    let request: ModelTransportCallOptions | undefined;
+    const modelTransport: ModelTransport = {
         provider: "anthropic.messages",
         modelId: "claude-sonnet-4-6",
-        supportedUrls: {},
-        doGenerate: async (options: Record<string, unknown>) => {
+        execute: async (options) => {
             request = options;
             return {
-                content: [{ type: "text", text: "ok" }],
+                content: "ok",
+                reasoning: "",
                 finishReason: { unified: "stop", raw: "stop" },
                 usage: {
-                    inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                    outputTokens: { total: 1, text: 1, reasoning: 0 },
+                    inputTokens: 1,
+                    outputTokens: 1,
+                    totalTokens: 2,
+                    inputTokenDetails: { noCacheTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+                    outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
                 },
+                rawChunks: [],
                 response: { id: "response", modelId: "claude-sonnet-4-6" },
                 warnings: [],
             };
         },
-        doStream: async (options: Record<string, unknown>) => {
-            request = options;
-            return {
-                stream: new ReadableStream({
-                    start(controller) {
-                        controller.enqueue({ type: "stream-start", warnings: [] });
-                        controller.enqueue({ type: "response-metadata", id: "response", modelId: "claude-sonnet-4-6" });
-                        controller.enqueue({ type: "text-start", id: "text-1" });
-                        controller.enqueue({ type: "text-delta", id: "text-1", delta: "ok" });
-                        controller.enqueue({ type: "text-end", id: "text-1" });
-                        controller.enqueue({
-                            type: "finish",
-                            finishReason: { unified: "stop", raw: "stop" },
-                            usage: {
-                                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
-                                outputTokens: { total: 1, text: 1, reasoning: 0 },
-                            },
-                        });
-                        controller.close();
-                    },
-                }),
-                response: {},
-            };
-        },
-    } as unknown as LanguageModel;
-    const provider = providerFromSdkModel({
+    };
+    const provider = providerFromModelAdapter({
         name: "anthropic",
         env: {
             ...env,
@@ -624,8 +602,7 @@ test("{§provider-effort} native Anthropic adaptive policy uses adaptive thinkin
             PLURNK_PROVIDERS_STREAMING: "0",
         },
         model: "claude-sonnet-4-6",
-        languageModel,
-        sdkPackage: "@ai-sdk/anthropic",
+        modelTransport,
         additiveReasoningProvider: "anthropic",
         contextWindow: 16_384,
         info: {
@@ -1079,35 +1056,23 @@ for (const [name, usage, expected] of [
 }
 
 {
-class MockLanguageModelV4 implements LanguageModel {
-    readonly specificationVersion = "v4";
+class MockModelTransport implements ModelTransport {
     readonly provider = "mock.v4";
     readonly modelId = "mock-model";
-    readonly supportedUrls = {};
-    readonly doGenerateCalls: LanguageModelCallOptions[] = [];
-    readonly doStreamCalls: LanguageModelCallOptions[] = [];
-    readonly #doGenerateImpl: (options: LanguageModelCallOptions) => Promise<LanguageModelGenerateResult>;
-    readonly #doStreamImpl: (options: LanguageModelCallOptions) => Promise<LanguageModelStreamResult>;
+    readonly executeCalls: ModelTransportCallOptions[] = [];
+    readonly #executeImpl: (options: ModelTransportCallOptions) => Promise<ModelTransportResult>;
 
     constructor({
-        doGenerate,
-        doStream,
+        execute,
     }: {
-        doGenerate: (options: LanguageModelCallOptions) => Promise<LanguageModelGenerateResult>;
-        doStream: (options: LanguageModelCallOptions) => Promise<LanguageModelStreamResult>;
+        execute: (options: ModelTransportCallOptions) => Promise<ModelTransportResult>;
     }) {
-        this.#doGenerateImpl = doGenerate;
-        this.#doStreamImpl = doStream;
+        this.#executeImpl = execute;
     }
 
-    async doGenerate(options: LanguageModelCallOptions): Promise<LanguageModelGenerateResult> {
-        this.doGenerateCalls.push(options);
-        return this.#doGenerateImpl(options);
-    }
-
-    async doStream(options: LanguageModelCallOptions): Promise<LanguageModelStreamResult> {
-        this.doStreamCalls.push(options);
-        return this.#doStreamImpl(options);
+    async execute(options: ModelTransportCallOptions): Promise<ModelTransportResult> {
+        this.executeCalls.push(options);
+        return this.#executeImpl(options);
     }
 }
 
@@ -1242,36 +1207,28 @@ test("{§provider-interface} request extensions cannot override the managed opt-
     assert.equal(dispatched, false);
 });
 
-test("{§provider-interface} opaque SDK extensions receive portable none intent in both modes", async () => {
+test("{§provider-interface} opaque provider extensions receive portable none intent in both modes", async () => {
     const usage = {
-        inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
-        outputTokens: { total: 2, text: 2, reasoning: 0 },
+        inputTokens: 10,
+        outputTokens: 2,
+        totalTokens: 12,
+        inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        outputTokenDetails: { textTokens: 2, reasoningTokens: 0 },
     };
     const finishReason = { unified: "stop" as const, raw: "stop" };
-    const model = new MockLanguageModelV4({
-        doGenerate: async () => ({ content: [{ type: "text", text: "answer" }], finishReason, usage, warnings: [] }),
-        doStream: async () => ({ stream: new ReadableStream({
-            start(controller) {
-                controller.enqueue({ type: "stream-start", warnings: [] });
-                controller.enqueue({ type: "text-start", id: "text" });
-                controller.enqueue({ type: "text-delta", id: "text", delta: "answer" });
-                controller.enqueue({ type: "text-end", id: "text" });
-                controller.enqueue({ type: "finish", finishReason, usage });
-                controller.close();
-            },
-        }) }),
+    const model = new MockModelTransport({
+        execute: async () => ({ content: "answer", reasoning: "", finishReason, usage, rawChunks: [], warnings: [] }),
     });
     for (const streaming of [false, true]) {
-        const result = await executeAiSdkModel({ ...request, streaming, languageModel: model });
+        const result = await executeModelTransport({ ...request, streaming, modelTransport: model });
         assert.equal(result.content, "answer");
         assert.equal(result.usage?.totalTokens, 12);
     }
-    for (const call of [...model.doGenerateCalls, ...model.doStreamCalls]) {
+    for (const call of model.executeCalls) {
         assert.deepEqual(call.toolChoice, { type: "none" });
         assert.equal(call.tools, undefined);
     }
-    assert.equal(model.doGenerateCalls.length, 1);
-    assert.equal(model.doStreamCalls.length, 1);
+    assert.equal(model.executeCalls.length, 2);
 });
 
 test("{§provider-interface} Bedrock uses its valid no-tool configuration", async (t) => {
@@ -1284,13 +1241,13 @@ test("{§provider-interface} Bedrock uses its valid no-tool configuration", asyn
             metrics: { latencyMs: 1 },
         });
     });
-    const sdk = createSdkModel("fixture", "fixture", {
-        PLURNK_PROVIDERS_PROVIDER_FIXTURE_NPM: "@ai-sdk/amazon-bedrock",
+    const sdk = createProviderModel("fixture", "fixture", {
+        PLURNK_PROVIDERS_PROVIDER_FIXTURE_ADAPTER: "amazon-bedrock",
         PLURNK_PROVIDERS_PROVIDER_FIXTURE_BASE_URL: "https://fixture.test",
         AWS_BEARER_TOKEN_BEDROCK: "fixture-only", AWS_REGION: "us-east-1",
     });
-    assert.ok(sdk?.languageModel);
-    const result = await executeAiSdkModel({ ...request, streaming: false, languageModel: sdk.languageModel });
+    assert.ok(sdk?.modelTransport);
+    const result = await executeModelTransport({ ...request, streaming: false, modelTransport: sdk.modelTransport });
     assert.equal(result.content, "answer");
     assert.equal(result.usage?.totalTokens, 12);
     assert.ok(body);
@@ -1320,36 +1277,36 @@ test("{§provider-interface} Ollama keeps its probe unmodified and disables nati
     assert.equal(bodies.length, 6);
 });
 
-test("{§provider-interface} configured SDK families preserve the opt-out on the actual wire", async (t) => {
+test("{§provider-interface} configured adapter families preserve the opt-out on the actual wire", async (t) => {
     const families: readonly [string, Protocol][] = [
-        ["@ai-sdk/openai", "chat"],
-        ["@ai-sdk/groq", "chat"],
-        ["@ai-sdk/cerebras", "chat"],
-        ["@ai-sdk/mistral", "chat"],
-        ["@ai-sdk/togetherai", "chat"],
-        ["@ai-sdk/deepinfra", "chat"],
-        ["@openrouter/ai-sdk-provider", "chat"],
-        ["@ai-sdk/xai", "responses"],
-        ["@ai-sdk/anthropic", "messages"],
-        ["@ai-sdk/google", "generate-content"],
+        ["openai", "chat"],
+        ["groq", "chat"],
+        ["cerebras", "chat"],
+        ["mistral", "chat"],
+        ["togetherai", "chat"],
+        ["deepinfra", "chat"],
+        ["openrouter", "chat"],
+        ["xai", "responses"],
+        ["anthropic", "messages"],
+        ["google", "generate-content"],
     ];
-    for (const [npm, protocol] of families) {
+    for (const [adapter, protocol] of families) {
         for (const streaming of [false, true]) {
-            await t.test(`{§provider-interface} ${npm}, ${streaming ? "stream" : "buffered"}`, async (t) => {
+            await t.test(`{§provider-interface} ${adapter}, ${streaming ? "stream" : "buffered"}`, async (t) => {
                 const requests: Record<string, unknown>[] = [];
                 t.mock.method(globalThis, "fetch", async (_url: unknown, init?: RequestInit) => {
                     requests.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
                     assert.equal(new Headers(init?.headers).get("x-fixture"), "preserved");
                     return response(protocol, streaming);
                 });
-                const sdk = createSdkModel("fixture", "fixture", {
-                    PLURNK_PROVIDERS_PROVIDER_FIXTURE_NPM: npm,
+                const sdk = createProviderModel("fixture", "fixture", {
+                    PLURNK_PROVIDERS_PROVIDER_FIXTURE_ADAPTER: adapter,
                     PLURNK_PROVIDERS_PROVIDER_FIXTURE_API_KEY_ENV: "FIXTURE_API_KEY",
                     PLURNK_PROVIDERS_PROVIDER_FIXTURE_BASE_URL: "https://fixture.test/v1",
                     FIXTURE_API_KEY: "fixture-only",
                 });
-                assert.ok(sdk?.languageModel);
-                const result = await executeAiSdkModel({ ...request, streaming, languageModel: sdk.languageModel });
+                assert.ok(sdk?.modelTransport);
+                const result = await executeModelTransport({ ...request, streaming, modelTransport: sdk.modelTransport });
                 assert.equal(result.content, "answer");
                 assert.equal(result.usage?.totalTokens, 12);
                 assert.equal(requests.length, 1);

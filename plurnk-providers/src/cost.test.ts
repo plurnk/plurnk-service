@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import AiSdkProvider from "./AiSdkProvider.ts";
+import ModelProvider from "./ModelProvider.ts";
 import { addDecimals, estimateProviderCost, providerCostUsd, resolveProviderCost, sumProviderCostsUsd, validateChargedCost } from "./cost.ts";
 import { aggregateProviderAccounting, providerCostNormalizer } from "./accounting.ts";
 import { calculateCostUsdDecimal, normalizeUsage, UsageDetailError } from "./usage.ts";
-import { createOpenRouter } from "./sdkModels.ts";
+import { createOpenRouter } from "./modelAdapters.ts";
 import { ProviderError } from "./errors.ts";
 import { type ProviderUsage } from "./types.ts";
 
@@ -126,7 +126,7 @@ const evidence = ({ providerMetadata, usage, charge }: {
 });
 
 test("{§provider-monetary-evidence} OpenRouter response cost normalizes without rate reconstruction", () => {
-    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider");
+    const normalize = providerCostNormalizer("openrouter");
     assert.notEqual(normalize, undefined);
     assert.deepEqual(normalize!(evidence({ usage: { is_byok: false, cost: 3.2e-7 } })), {
         kind: "charged",
@@ -136,7 +136,7 @@ test("{§provider-monetary-evidence} OpenRouter response cost normalizes without
 });
 
 test("{§provider-monetary-evidence} router-paid inference is not counted twice", () => {
-    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    const normalize = providerCostNormalizer("openrouter")!;
     assert.deepEqual(normalize(evidence({ usage: {
         is_byok: false,
         cost: 0.0000274,
@@ -149,7 +149,7 @@ test("{§provider-monetary-evidence} router-paid inference is not counted twice"
 });
 
 test("{§provider-monetary-evidence} BYOK sums the router fee and upstream inference once", () => {
-    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    const normalize = providerCostNormalizer("openrouter")!;
     for (const [fee, upstream, expected] of [
         [0, 0.00000745, "0.00000745"],
         [0.00000032, 0.00000745, "0.00000777"],
@@ -169,7 +169,7 @@ test("{§provider-monetary-evidence} BYOK sums the router fee and upstream infer
 });
 
 test("{§provider-monetary-evidence} incomplete router charges remain unknown, never zero or a catalog guess", () => {
-    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    const normalize = providerCostNormalizer("openrouter")!;
     for (const [usage, reason] of [
         [{ cost: 0 }, "OpenRouter usage.is_byok is missing; total request cost is unknown"],
         [{ cost: 0, is_byok: null }, "OpenRouter usage.is_byok is missing; total request cost is unknown"],
@@ -186,7 +186,7 @@ test("{§provider-monetary-evidence} incomplete router charges remain unknown, n
 });
 
 test("{§provider-monetary-evidence} router monetary fields are validated without coercion", () => {
-    const normalize = providerCostNormalizer("@openrouter/ai-sdk-provider")!;
+    const normalize = providerCostNormalizer("openrouter")!;
     for (const cost of ["0", -1, NaN, Infinity]) {
         assert.throws(() => normalize(evidence({ usage: { is_byok: false, cost } })), {
             name: "TypeError",
@@ -209,7 +209,7 @@ test("{§provider-monetary-evidence} router monetary fields are validated withou
 });
 
 test("{§provider-monetary-evidence} DeepInfra's documented response estimate remains estimated", () => {
-    const normalize = providerCostNormalizer("@ai-sdk/deepinfra");
+    const normalize = providerCostNormalizer("deepinfra");
     assert.notEqual(normalize, undefined);
     assert.deepEqual(normalize!(evidence({ usage: { estimated_cost: 5.04e-5 } })), {
         kind: "estimated",
@@ -219,10 +219,10 @@ test("{§provider-monetary-evidence} DeepInfra's documented response estimate re
 });
 
 test("{§provider-monetary-evidence} response cost normalization is an explicit adapter capability", () => {
-    assert.equal(providerCostNormalizer("@ai-sdk/anthropic"), undefined);
-    assert.equal(providerCostNormalizer("@ai-sdk/deepinfra")!(evidence({ usage: {} })), undefined);
+    assert.equal(providerCostNormalizer("anthropic"), undefined);
+    assert.equal(providerCostNormalizer("deepinfra")!(evidence({ usage: {} })), undefined);
     assert.throws(
-        () => providerCostNormalizer("@ai-sdk/deepinfra")!(evidence({ usage: { estimated_cost: "1" } })),
+        () => providerCostNormalizer("deepinfra")!(evidence({ usage: { estimated_cost: "1" } })),
         /estimated_cost must be numeric/,
     );
 });
@@ -612,10 +612,10 @@ const fixture = (streaming: boolean, billing: Record<string, unknown>, failure =
             }, { status: failure ? 502 : 200 });
         },
     });
-    const provider = new AiSdkProvider({
+    const provider = new ModelProvider({
         model: "requested-model",
-        languageModel: sdk.chat("requested-model", { reasoning: { effort: "low" } }),
-        normalizeCost: providerCostNormalizer("@openrouter/ai-sdk-provider"),
+        modelTransport: sdk.chat("requested-model", { reasoning: { effort: "low" } }),
+        normalizeCost: providerCostNormalizer("openrouter"),
         estimateCost: () => ({ kind: "estimated", amount: { amount: "999", currency: "USD" }, source: "fixture catalog" }),
         source: "provider:openrouter",
         contextWindow: 8192,

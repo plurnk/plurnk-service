@@ -4,13 +4,13 @@
 // alias-or-route selector to a Provider.
 //
 // {§provider-configuration} Models.dev catalog → PLURNK provider declaration
-// → local protocol adapter → scope-agnostic AI SDK provider extension discovery. Generic
+// → local protocol adapter → scope-agnostic provider extension discovery. Generic
 // provider facts belong to models.dev or operator config; PLURNK owns only the
 // stable Provider contract and product-specific local behavior.
 
 import { isRecord } from "@plurnk/plurnk-contracts";
-import type { AiSdkProviderExtension, Provider } from "./types.ts";
-import { catalogProviderFromEnv, providerFromSdkModel } from "./catalogProvider.ts";
+import type { ProviderExtension, Provider } from "./types.ts";
+import { catalogProviderFromEnv, providerFromModelAdapter } from "./catalogProvider.ts";
 import { discover, type DiscoverOptions, type Discovery } from "./discover.ts";
 import { resolveActiveRoute } from "@plurnk/plurnk-aliases";
 import { scopeEnvToAlias, contextWindowFromEnv } from "./env.ts";
@@ -22,10 +22,10 @@ import Meta, {
     type ExtensionAttributionContext,
 } from "@plurnk/plurnk-meta";
 
-// An AI SDK provider: an object or a callable that constructs language models by name.
-const isAiSdkProvider = (value: unknown): value is AiSdkProviderExtension =>
+// A provider extension: an object or a callable that constructs model transports by name.
+const isProviderExtension = (value: unknown): value is ProviderExtension =>
     (typeof value === "object" || typeof value === "function") && value !== null
-    && "languageModel" in value && typeof value.languageModel === "function";
+    && "model" in value && typeof value.model === "function";
 
 // Two injectable seams, both defaulting to production behavior and never passed
 // by real callers: the module importer (tests exercise the bespoke path without
@@ -48,7 +48,7 @@ const providerPackages = async (discoverFn: DiscoverFn, env: NodeJS.ProcessEnv):
 };
 
 // Catalog and explicit declarations are authoritative. Discovery is the
-// extensibility seam for an AI SDK provider that neither source describes.
+// extensibility seam for a provider extension that neither source describes.
 export const instantiateProvider = async (
     name: string,
     env: NodeJS.ProcessEnv,
@@ -74,7 +74,7 @@ export const instantiateProvider = async (
         if (declined !== undefined) {
             throw new Error(`provider "${name}" resolves to ${declined}, but it is untrusted under PLURNK_EXTENSIONS_TRUSTED_ONLY — add it to the allowlist (or publish under @plurnk/)`);
         }
-        throw new Error(`unknown provider "${name}": absent from models.dev, operator declarations, local adapters, and installed AI SDK provider extensions`);
+        throw new Error(`unknown provider "${name}": absent from models.dev, operator declarations, local adapters, and installed provider extensions`);
     }
     let mod: unknown;
     try {
@@ -82,12 +82,12 @@ export const instantiateProvider = async (
     } catch (cause) {
         throw new Error(`provider "${name}" resolves to ${specifier}, but importing it failed`, { cause });
     }
-    const sdkProvider = isRecord(mod) ? mod.default : undefined;
-    if (!isAiSdkProvider(sdkProvider)) {
-        throw new Error(`${specifier} default export is not an AI SDK provider (missing languageModel)`);
+    const providerExtension = isRecord(mod) ? mod.default : undefined;
+    if (!isProviderExtension(providerExtension)) {
+        throw new Error(`${specifier} default export is not a provider extension (missing model)`);
     }
     if (baseUrl !== undefined) {
-        throw new Error(`${specifier}: PLURNK_BASEURL_${alias ?? "<alias>"} cannot reconfigure an installed AI SDK provider; declare the provider through PLURNK_PROVIDERS_PROVIDER_* instead`);
+        throw new Error(`${specifier}: PLURNK_BASEURL_${alias ?? "<alias>"} cannot reconfigure an installed provider extension; declare the provider through PLURNK_PROVIDERS_PROVIDER_* instead`);
     }
     const contextWindow = contextWindowFromEnv(env, name);
     if (contextWindow === null) {
@@ -96,13 +96,13 @@ export const instantiateProvider = async (
     const declared = packageAttributions.get(specifier) ?? [];
     const attributions = (context: ExtensionAttributionContext): ExtensionAttribution => Meta.composeAttributions(
         declared,
-        Meta.runtimeAttribution(sdkProvider, context, specifier),
+        Meta.runtimeAttribution(providerExtension, context, specifier),
     );
-    return providerFromSdkModel({
+    return providerFromModelAdapter({
         name,
         env,
         model,
-        languageModel: sdkProvider.languageModel(model),
+        modelTransport: providerExtension.model(model),
         contextWindow,
         attributions,
         ...(grammarStyles.get(name) === undefined ? {} : { grammarStyle: grammarStyles.get(name) }),

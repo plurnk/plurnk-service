@@ -12,7 +12,7 @@ The generated snapshot retains only the facts PLURNK consumes:
 
 | Lookup             | Snapshot facts                                                         |
 | ------------------ | ---------------------------------------------------------------------- |
-| `lookupProvider()` | Provider id, AI SDK package, credential names, and optional API URL.   |
+| `lookupProvider()` | Provider id, protocol adapter (`ProviderAdapter`), credential names, and optional API URL. |
 | `lookup()`         | Context window, optional output limit, reasoning flag, and USD prices. |
 
 Model entries without a positive context window are omitted. `reasoning: true`

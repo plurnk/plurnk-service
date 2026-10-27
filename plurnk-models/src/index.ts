@@ -7,9 +7,11 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import catalog from "./catalog.json" with { type: "json" };
 import providers from "./providers.json" with { type: "json" };
-import { projectCatalog } from "./project.ts";
+import { isProviderAdapter, projectCatalog, PROVIDER_ADAPTERS } from "./project.ts";
+import type { ProviderAdapter } from "./project.ts";
 
-export { projectCatalog };
+export { isProviderAdapter, projectCatalog, PROVIDER_ADAPTERS };
+export type { ProviderAdapter };
 
 export type ModelCost = {
     readonly inputPer1M: number;        // USD per 1M input tokens
@@ -65,7 +67,7 @@ export type ModelInfo = ModelInfoBase & (
 export type ProviderInfo = {
     readonly id: string;
     readonly name: string;
-    readonly npm: string;
+    readonly adapter: string;
     readonly env: readonly string[];
     readonly api?: string;
 };
@@ -133,6 +135,11 @@ const parseCachedCatalog = (raw: string): CachedCatalogFile | null => {
         const parsed: unknown = JSON.parse(raw);
         if (!isRecord(parsed) || typeof parsed.updatedAt !== "string") return null;
         if (!isRecord(parsed.catalog) || !isRecord(parsed.providers)) return null;
+        for (const entry of Object.values(parsed.providers)) {
+            if (!isRecord(entry) || typeof entry.adapter !== "string" || !isProviderAdapter(entry.adapter)) {
+                return null;
+            }
+        }
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- written by updateCatalogCache from projectCatalog
         const cachedCatalog = parsed.catalog as Record<string, Record<string, ModelInfo>>;
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- written by updateCatalogCache from projectCatalog

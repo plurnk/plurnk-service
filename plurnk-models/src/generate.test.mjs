@@ -33,7 +33,7 @@ test("{§model-catalog-projection} catalog projection preserves independent mode
     assert.deepEqual(projectCatalog(source()), {
         providers: {
             example: {
-                id: "example", name: "Example Provider", npm: "@ai-sdk/openai-compatible",
+                id: "example", name: "Example Provider", adapter: "openai-compatible",
                 api: "https://example.invalid/v1", env: ["EXAMPLE_API_KEY"],
             },
         },

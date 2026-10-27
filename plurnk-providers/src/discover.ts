@@ -4,9 +4,9 @@ import type {
     PackageAttributions,
     ExtensionAttribution,
 } from "@plurnk/plurnk-meta";
-import type { GrammarStyle } from "./AiSdkProvider.ts";
+import type { GrammarStyle } from "./ModelProvider.ts";
 
-// Scope-agnostic discovery of installed AI SDK provider packages
+// Scope-agnostic discovery of installed provider packages
 // ({§extension-discovery}).
 // Parallel to @plurnk/plurnk-execs' discover(): scan every installed package
 // under `<cwd>/node_modules` — scoped (`@scope/name`) and unscoped — and keep

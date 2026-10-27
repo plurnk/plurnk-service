@@ -12,7 +12,7 @@ import { once } from "node:events";
 import { promisify } from "node:util";
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { syncAmbientHttp } from "@plurnk/plurnk-meta";
-import { AiSdkProvider, Mock, chatMessageText } from "@plurnk/plurnk-providers";
+import { ModelProvider, Mock, chatMessageText } from "@plurnk/plurnk-providers";
 import { Http, WebFetcher, Ws } from "@plurnk/plurnk-schemes-http";
 import type { SchemeHandler } from "@plurnk/plurnk-schemes";
 import { buildPdf } from "../../../plurnk-mimetypes-application-pdf/src/buildPdf.ts";
@@ -262,7 +262,7 @@ const withCleanProxyEnv = async (fn: () => Promise<void>): Promise<void> => {
     }
 };
 
-test("{§ambient-http-transport}: WebFetcher, AiSdkProvider, and MCP streamable-http honor HTTPS_PROXY, NO_PROXY, and NODE_EXTRA_CA_CERTS", async () => {
+test("{§ambient-http-transport}: WebFetcher, ModelProvider, and MCP streamable-http honor HTTPS_PROXY, NO_PROXY, and NODE_EXTRA_CA_CERTS", async () => {
     await withCleanProxyEnv(async () => {
         const dir = mkdtempSync(join(tmpdir(), "plurnk-intg-ambient-http-"));
         const keyPath = join(dir, "key.pem");
@@ -364,7 +364,7 @@ test("{§ambient-http-transport}: WebFetcher, AiSdkProvider, and MCP streamable-
             assert.ok(proxyConnectCount >= 1, "WebFetcher routed through HTTPS_PROXY");
 
             const countBeforeProvider = proxyConnectCount;
-            const provider = new AiSdkProvider({
+            const provider = new ModelProvider({
                 model: "fixture",
                 url: `${originBase}/v1/chat/completions`,
                 contextWindow: 100_000,
@@ -381,7 +381,7 @@ test("{§ambient-http-transport}: WebFetcher, AiSdkProvider, and MCP streamable-
                 signal: new AbortController().signal,
             });
             assert.equal(gen.assistant.content, "provider-via-proxy");
-            assert.ok(proxyConnectCount > countBeforeProvider, "AiSdkProvider routed through HTTPS_PROXY");
+            assert.ok(proxyConnectCount > countBeforeProvider, "ModelProvider routed through HTTPS_PROXY");
 
             const countBeforeMcp = proxyConnectCount;
             const mcpConn = new ServerConnection({

@@ -26,7 +26,7 @@ import { namedModelSession } from "./_sessions.ts";
 import { Validator, type ApplicationActionContext, type PlurnkStatement, type ProblemDetails, Problems, type ApplicationGauge, type ApplicationStream } from "@plurnk/plurnk-contracts";
 import { type ApplicationPort } from "@plurnk/plurnk-contracts/port";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
-import { Mock, chatMessageText, AiSdkProvider, type ProviderRequestAccounting } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText, ModelProvider, type ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
 import { type Db } from "../../src/core/Db.ts";
 import { providerRequestSettlementParams } from "../../src/core/provider-accounting.ts";
@@ -2554,14 +2554,14 @@ const streamed = (frames: readonly object[], hold?: Promise<void>): Response => 
 }), { headers: { "content-type": "text/event-stream" } });
 
 // Turn 1 streams its reasoning, holds until released, then answers; turn 2 answers at once.
-const heldProvider = (): { provider: AiSdkProvider; release: () => void; calls: () => number } => {
+const heldProvider = (): { provider: ModelProvider; release: () => void; calls: () => number } => {
     const held = Promise.withResolvers<void>();
     let calls = 0;
     const frame = (delta: object, finish: string | null = null): object => ({
         id: `inbox-${calls}`, model: "inbox-witness", choices: [{ index: 0, delta, finish_reason: finish }],
         ...(finish === null ? {} : { usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } }),
     });
-    const provider = new AiSdkProvider({
+    const provider = new ModelProvider({
         model: "inbox-witness", url: "https://example.test/v1/chat/completions",
         contextWindow: 100_000, streaming: true, fetchTimeoutMs: 20_000, operationTimeoutMs: 20_000,
         temperature: null, repeatPenalty: null, effort: { mode: "adaptive", budget: null }, retryAttempts: 0,

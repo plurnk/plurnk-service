@@ -13,7 +13,7 @@ import { type EditStatement, type UrlPath, type PlurnkStatement } from "@plurnk/
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEntryWithChannel } from "./_db.ts";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { packetSection, logEntries } from "./_packet.ts";
-import { Mock, chatMessageText, ProviderError, validateProviderRequestAccounting, type ChatMessage, type MockResponse, AiSdkProvider, type ProviderCost } from "@plurnk/plurnk-providers";
+import { Mock, chatMessageText, ProviderError, validateProviderRequestAccounting, type ChatMessage, type MockResponse, ModelProvider, type ProviderCost } from "@plurnk/plurnk-providers";
 import { completeStmt, noteStmt, urlPath, editStmt, readStmt, findStmt, killStmt } from "./_dsl.ts";
 import { contentWeight } from "../../src/core/content-weight.ts";
 import { type Db } from "../../src/core/Db.ts";
@@ -784,7 +784,7 @@ for (const reported of [false, true]) {
                 kind: "charged", amount: { amount: "0.0123", currency: "USD" }, source: "fixture response",
             };
             let calls = 0;
-            const provider = new AiSdkProvider({
+            const provider = new ModelProvider({
                 model: "cancellation-witness", url: "https://example.test/v1/chat/completions",
                 contextWindow: 100_000, streaming: true,
                 fetchTimeoutMs: 5000, operationTimeoutMs: 5000,

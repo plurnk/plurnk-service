@@ -45,10 +45,10 @@ const assertRuntimeNeutralGraph = (entrypoint: string, allowed: ReadonlySet<stri
 test("{§provider-interface} the OpenAI-compatible entrypoint excludes Node-owned provider machinery", () => {
     assertRuntimeNeutralGraph("openai.ts", new Set([
         "accounting.ts",
-        "AiSdkProvider.ts",
-        "AiSdkRequestBody.ts",
+        "ModelProvider.ts",
+        "ModelRequestBody.ts",
         "RequestCapture.ts",
-        "aiSdkTransport.ts",
+        "modelTransport.ts",
         "capacity.ts",
         "cost.ts",
         "env.ts",

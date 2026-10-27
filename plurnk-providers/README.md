@@ -1,14 +1,14 @@
 # @plurnk/plurnk-providers
 
-PLURNK's stable model-provider contract and its adapter to the
-[AI SDK](https://ai-sdk.dev/).
+PLURNK's stable model-provider contract and its transport adapters over
+`@earendil-works/pi-ai` and OpenAI-compatible HTTP endpoints.
 
 Ordinary provider behavior is intentionally not reimplemented here:
 
-- A release-time Models.dev snapshot supplies provider package, endpoint, and
+- A release-time Models.dev snapshot supplies provider adapter, endpoint, and
   credential names, plus context-window, output-limit, reasoning-capability,
   and pricing metadata.
-- Official AI SDK providers own vendor request and response protocols.
+- Protocol adapters own vendor request and response protocols.
 - PLURNK owns aliases, generation envelopes, normalized usage and errors,
   evidence capture, first-party metadata, and local endpoint capabilities.
 
@@ -66,7 +66,7 @@ Cataloged providers need no endpoint declaration. To add an
 OpenAI-compatible provider that Models.dev does not describe:
 
 ```dotenv
-PLURNK_PROVIDERS_PROVIDER_ACME_NPM=@ai-sdk/openai-compatible
+PLURNK_PROVIDERS_PROVIDER_ACME_ADAPTER=openai-compatible
 PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL=https://api.acme.example/v1
 PLURNK_PROVIDERS_PROVIDER_ACME_API_KEY_ENV=ACME_API_KEY
 PLURNK_MODEL_acme=acme/model-id
@@ -141,14 +141,13 @@ It may use any npm scope. Its package manifest declares the PLURNK name:
     "name": "acme"
   },
   "peerDependencies": {
-    "@plurnk/plurnk-providers": "^1.2.0",
-    "ai": "^6.0.0"
+    "@plurnk/plurnk-providers": "^1.2.0"
   }
 }
 ```
 
-The default export is an AI SDK provider with
-`languageModel(modelId)`. PLURNK adapts that language model into its own
+The default export is a `ProviderExtension` with
+`model(modelId)`. PLURNK adapts that model transport into its own
 contract, so extensions do not reproduce retries, usage normalization, envelopes,
 notices, or RFC 9457 failure normalization.
 
@@ -205,7 +204,7 @@ opt-in for endpoints that emit a leading `<think>` envelope, not a reasoning swi
 | Service tier | Explicit route choice that may change price and availability. |
 | Cost | Provider monetary evidence wins; known usage and catalog rates yield an estimate, not a settled charge. |
 
-For uncataloged compatible endpoints, declare the SDK, URL, and credential-variable
+For uncataloged compatible endpoints, declare the adapter, URL, and credential-variable
 name together; the examples are in the defaults reference. A provider extension is
 needed only when the protocol cannot be expressed by the installed adapters.
 

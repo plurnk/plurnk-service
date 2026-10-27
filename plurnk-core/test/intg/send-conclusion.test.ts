@@ -12,7 +12,7 @@ import MessageAbandonment from "../../src/server/MessageAbandonment.ts";
 import SessionOverview from "../../src/server/SessionOverview.ts";
 import { type Notice, type ParsedPath, isExecutionOp } from "@plurnk/plurnk-contracts";
 import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
-import { Mock, type MockResponse, AiSdkProvider } from "@plurnk/plurnk-providers";
+import { Mock, type MockResponse, ModelProvider } from "@plurnk/plurnk-providers";
 import { DEFAULT_MIMETYPES } from "./_scheme.ts";
 import { holdChild, insertLoop, insertSession, insertWorkspace, openMigrated, seedEntryWithChannel, sendingOperation, seedEnvelope } from "./_db.ts";
 import { packetSection, lastReply, logEntries } from "./_packet.ts";
@@ -1384,7 +1384,7 @@ for (const transport of ["text", "wire"] as const) {
                 const content = transport === "text" ? `${operation}\n\n${markup}` : operation;
                 const notices: Notice[] = [];
                 let requests = 0;
-                const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
+                const provider = new ModelProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
                     fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
                     temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
                     fetch: async () => {
@@ -1434,7 +1434,7 @@ for (const finish of ["stop", "tool_calls"]) {
         await seedEntryWithChannel(db, { workspaceId, pathname: "/fact.txt", content: "The fact." });
         const tool = { index: 0, id: "call-extra", type: "function", function: { name: "READ", arguments: '{"path":"workspace:///fact.txt"}' } };
         let requests = 0;
-        const provider = new AiSdkProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
+        const provider = new ModelProvider({ model: "fixture", url: "http://example.test/v1/chat/completions", contextWindow: 100_000,
             fetchTimeoutMs: 1000, operationTimeoutMs: 3000,
             temperature: null, repeatPenalty: null, retryAttempts: 0, effort: { mode: "off", budget: null },
             fetch: async () => {
