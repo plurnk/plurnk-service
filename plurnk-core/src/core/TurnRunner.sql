@@ -24,7 +24,7 @@ WHERE id = $id AND accepted IS NULL;
 -- PREP: engine_scheme_catalog_summary
 -- Per-scheme entry tally plus one-level catalog-row count (direct entries and
 -- distinct first-segment `dir/**` summaries). The engine uses the latter to
--- encode a valid first-N catalog survey range ({§actor-boundary-catalog-preview}) without
+-- encode a valid first-N catalog survey range ({§session-initialization-entry}) without
 -- guessing how many rows the shallow projection will produce.
 SELECT e.scheme AS scheme,
     COUNT(DISTINCT e.id) AS entries,

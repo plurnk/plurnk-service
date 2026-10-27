@@ -56,7 +56,7 @@ export interface ApplicationSessionProjection {
     readonly parentSessionId: number | null;
     readonly kind: ApplicationSessionKind;
     readonly lifecycle: LoopLifecycle;
-    /** {§place-hiding} When the session was hidden, or null while it is shown. */
+    /** {§machine-processes} When the session was hidden, or null while it is shown. */
     readonly hidden_at: string | null;
 }
 
@@ -105,14 +105,14 @@ export interface ApplicationSessionOverview {
     readonly omitted: number;
 }
 
-/** {§place-hiding} A workspace's mark after a hide or a show. */
+/** {§machine-processes} A workspace's mark after a hide or a show. */
 export interface ApplicationWorkspaceHiding {
     readonly id: number;
     /** When the workspace was hidden, or null while it is shown. */
     readonly hidden_at: string | null;
 }
 
-/** {§place-hiding} A session's mark after a hide or a show. */
+/** {§machine-processes} A session's mark after a hide or a show. */
 export interface ApplicationSessionHiding {
     readonly id: number;
     /** When the session was hidden, or null while it is shown. */
@@ -125,7 +125,7 @@ export interface ApplicationSessionQuery {
     readonly origin?: ApplicationSessionOrigin;
     /** Omitted means every lineage position; null means roots only. */
     readonly parentSessionId?: number | null;
-    /** {§place-hiding} Omitted lists every session; true only hidden ones, false only shown ones. */
+    /** {§machine-processes} Omitted lists every session; true only hidden ones, false only shown ones. */
     readonly hidden?: boolean;
 }
 
@@ -242,7 +242,7 @@ export type ApplicationProviderAlias = ModelRoute & {
     readonly inputCapacity: number | null;
 };
 
-/** {§service-update} Result of an explicit operator-triggered catalog and package update. */
+/** {§startup-admission} Result of an explicit operator-triggered catalog and package update. */
 export interface ApplicationServiceUpdateResult {
     readonly catalog: {
         readonly status: "updated" | "unchanged";
@@ -295,7 +295,7 @@ export interface IssuedCredential {
  * {§credential-authority} The issuing face of the authority, published by the module that issues:
  * the issuer origin where a request's caller obtains credentials, or, asked with no request in hand,
  * the configured issuer or the listener's own origin; answered from the moment it is published
- * ({§http-request-origin}). Published, the daemon authenticates; absent, every mounted resource
+ * ({§http-host}). Published, the daemon authenticates; absent, every mounted resource
  * admits anonymously.
  */
 export interface CredentialFace {
@@ -303,7 +303,7 @@ export interface CredentialFace {
 }
 
 /**
- * {§credential-sessions} A live browser sign-in: the family every credential of that sign-in shares,
+ * {§credential-authority} A live browser sign-in: the family every credential of that sign-in shares,
  * which is its handle and never a credential; whose it is; when it was established; when the last
  * of its session credentials expires; and the clients holding credentials in it. Never a token.
  */
@@ -316,7 +316,7 @@ export interface CredentialSession {
 }
 
 /**
- * {§credential-module-client} The confidential client a module of this daemon registers for itself at
+ * {§credential-authority} The confidential client a module of this daemon registers for itself at
  * setup: its id, the absolute pathnames under its own mounts it may be answered at, the scopes it may
  * ask for and, optionally, the pathname of a stylesheet it serves for the authority's documents shown
  * to its requests ({§auth-oauth-documents}). The issuer supplies the origin of each. What others may
@@ -350,7 +350,7 @@ export interface CredentialAuthority {
     consume(token: string): { readonly claims: CredentialClaims } | { readonly reusedFamily: string | null };
     revokeFamily(family: string): void;
     onRevoked(listener: (family: string) => void): () => void;
-    /** {§credential-sessions} The live browser sign-ins of `subject`, oldest first; never a token. */
+    /** {§credential-authority} The live browser sign-ins of `subject`, oldest first; never a token. */
     sessions(subject: string): readonly CredentialSession[];
     /**
      * Registers the calling module's own confidential client and answers its secret, minted for

@@ -15,7 +15,7 @@ const releasedPort = (): Promise<number> => new Promise((resolve, reject) => {
     });
 });
 
-test("{§observability-genai-conventions} provider identity is independent of its configuration alias", () => {
+test("{§observability-boundary} provider identity is independent of its configuration alias", () => {
     for (const alias of [undefined, "potato"]) {
         const provider = new Mock({ contextWindow: 16_384, responses: [] });
         ProviderInstantiate.registerInstance(provider, { provider: "openai", model: "local", alias });

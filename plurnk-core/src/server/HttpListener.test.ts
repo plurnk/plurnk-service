@@ -102,7 +102,7 @@ test("{§http-host} an admitted listener with no mounts returns 404, not startup
     } finally { await listener.close(); }
 });
 
-test("{§startup-listener-admission} a lost bind race rejects with the socket's own error", async () => {
+test("{§startup-admission} a lost bind race rejects with the socket's own error", async () => {
     const holder = createServer();
     try {
         await new Promise<void>((resolvePromise, rejectPromise) => {

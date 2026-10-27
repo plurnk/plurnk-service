@@ -2105,7 +2105,7 @@ test("{§module-failure} a module that acquires resources during setup is closed
     }
 });
 
-test("{§actor-boundary-attached-functionality} {§connection-lifecycle} a person's client operations share workspace Functionality and journal in the runtime session", async () => {
+test("{§actor-boundary} {§connection-lifecycle} a person's client operations share workspace Functionality and journal in the runtime session", async () => {
     const db = await openMigrated();
     const owner = "attached Functionality test module";
     const tag = "attachedcap";

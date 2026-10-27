@@ -231,7 +231,7 @@ JOIN json_each(r.rx, '$.answers') answer
 JOIN message_sources m ON m.path = answer.value AND m.workspace_id = producer.workspace_id
 JOIN message_senders s ON s.message_id = m.id;
 
--- {§session-scheme-collect}: a child's answer to the first message its parent sent is its conclusion, not a reply.
+-- {§session-scheme}: a child's answer to the first message its parent sent is its conclusion, not a reply.
 CREATE VIEW IF NOT EXISTS delegated_task_answers AS
 SELECT r.id AS source_record_id, producer.parent_session_id AS recipient_session_id
 FROM log_responses r

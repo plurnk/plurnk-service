@@ -236,7 +236,7 @@ try {
         PLURNK_MCP_sourcecheck_ENABLED: "0",
         ...fixture.env,
     };
-    // {§daemon-launch} — the installed executable through the service's own launcher; the port is
+    // {§startup-admission} — the installed executable through the service's own launcher; the port is
     // the one the fixture chose, so the readiness line must name it.
     const boot = async (overrides = {}) => {
         daemonOutput = { stdout: "", stderr: "" };

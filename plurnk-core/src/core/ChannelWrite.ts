@@ -65,7 +65,7 @@ export interface MessageOpener {
 }
 
 // Start/deliver-to a sister session — the session:// op family's loop-start primitive
-// (spawn/fork/irc; SPEC {§machine-processes}, {§actor-boundary-two-doors} voice
+// (spawn/fork/irc; SPEC {§machine-processes}, {§actor-boundary} voice
 // door). The daemon wires this to Daemon.inject: an active sister incorporates the
 // prompt into its next turn; an idle sister enqueues a fresh loop and a drain
 // claims it. spawn/fork create/branch the session first, then call this to start

@@ -11,7 +11,7 @@ END;
 INSERT INTO _support_floor_probe (id) VALUES (1);
 DROP TABLE _support_floor_probe;
 
--- {§place-hiding} A hidden workspace or session is marked, never deleted. A session's hide marks it and every session
+-- {§machine-processes} A hidden workspace or session is marked, never deleted. A session's hide marks it and every session
 -- beneath it with the session that hid it (`hidden_by`), the group that comes back whole.
 ALTER TABLE workspaces ADD COLUMN hidden_at TEXT CHECK (hidden_at IS NULL OR length(hidden_at) > 0);
 ALTER TABLE sessions ADD COLUMN hidden_at TEXT CHECK (hidden_at IS NULL OR length(hidden_at) > 0);

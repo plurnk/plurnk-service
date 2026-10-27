@@ -53,7 +53,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
             // {§application-session-observation} — a root session with no loop yet (#523).
             kind: "root",
             lifecycle: "idle",
-            // {§place-hiding} — shown.
+            // {§machine-processes} — shown.
             hidden_at: null,
         });
         assert.equal(typeof projectedContext.created_at, "string");
@@ -139,7 +139,7 @@ test("{§notifications-loop-packet} {§application-loop-observation} {§methods-
     });
 });
 
-test("{§methods-session-read} {§session-name-minting}: an exact read resolves every name a listing returns, the runtime session's included", async () => {
+test("{§methods-session-read} {§session-scheme}: an exact read resolves every name a listing returns, the runtime session's included", async () => {
     await withDaemon(new Mock({ contextWindow: 16_384, responses: [] }), async (db, daemon) => {
         const workspace = await daemon.createWorkspace({ name: `session-read-${crypto.randomUUID()}`, projectRoot: null });
         const runtimeId = await RuntimeSession.ensure(db, workspace.workspaceId);

@@ -1,6 +1,6 @@
 // Fork a session — branch the log, share the workspace (SPEC {§machine-processes}).
 // The branch's claimed row is the fork: sessions_fork_copies_history copies the parent's
-// history inside that INSERT ({§session-fork-trigger}, fork.sql).
+// history inside that INSERT ({§machine-processes}, fork.sql).
 
 import type { Db } from "./Db.ts";
 import SessionName from "./SessionName.ts";

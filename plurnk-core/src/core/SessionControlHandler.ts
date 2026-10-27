@@ -23,13 +23,13 @@ export default class SessionControlHandler {
     }
 
     // WORK and FORK optionally name the child and carry its seed task in the body.
-    // Their distinct fresh/branched histories are specified by {§session-scheme-spawn} and {§session-scheme-fork}.
+    // Their distinct fresh/branched histories are specified by {§session-scheme} and {§session-scheme}.
     async handleSessionControl(statement: WorkStatement | ForkStatement, ctx: PlurnkSchemeContext): Promise<DispatchResult> {
         const address = statement.target === null ? null : SessionControlAddress.resolve(statement.target, statement.op);
         if (address !== null && !address.ok) return address.result;
         const name = address?.authority;
         try {
-            if (name !== undefined) SessionName.assert(name); // {§session-name-minting}
+            if (name !== undefined) SessionName.assert(name); // {§session-scheme}
         } catch (error) {
             if (!(error instanceof SessionNameError)) throw error;
             return this.#failure(
@@ -49,7 +49,7 @@ export default class SessionControlHandler {
         const denied = await SessionCap.deny(this.#db, ctx.workspaceId);
         if (denied !== null) return denied;
         const prompt = statement.body;
-        // {§session-spawn-prompt-resource} — the schema admits an empty body because a resource may
+        // {§session-scheme} — the schema admits an empty body because a resource may
         // carry the prompt; by the time the statement reaches here the resource is composed in, so
         // an empty prompt is a real absence.
         if (prompt.trim() === "") {
@@ -60,7 +60,7 @@ export default class SessionControlHandler {
             });
         }
 
-        // {§session-scheme-spawn} — WORK to a name a session holds is the voice door ({§session-scheme-irc}):
+        // {§session-scheme} — WORK to a name a session holds is the voice door ({§session-scheme}):
         // the body is that session's message and nothing is created.
         if (statement.op === "WORK" && name !== undefined) {
             const held = await this.#db.session_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
@@ -79,7 +79,7 @@ export default class SessionControlHandler {
                 const held = await this.#db.session_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name: error.sessionName });
                 if (held !== undefined) return this.#message(ctx, error.sessionName, held.id, prompt);
             }
-            // {§session-scheme-spawn}: a branch needs a name no session holds; the live session is addressed, not re-spawned.
+            // {§session-scheme}: a branch needs a name no session holds; the live session is addressed, not re-spawned.
             return this.#failure(
                 "session-name-conflict",
                 409,
@@ -114,7 +114,7 @@ export default class SessionControlHandler {
         return ctx.client === undefined && ctx.sequence !== undefined ? { turnId: ctx.turnId, sequence: ctx.sequence } : undefined;
     }
 
-    // {§session-scheme-irc} — the message takes the receiver as it is.
+    // {§session-scheme} — the message takes the receiver as it is.
     async #message(
         ctx: PlurnkSchemeContext,
         name: string,
@@ -133,7 +133,7 @@ export default class SessionControlHandler {
         return { status: 200, body: name, attrs: { session: SessionControlAddress.render(name), delivered: "message", ...(opener === undefined ? {} : { message }) } };
     }
 
-    // {§machine-processes-session-origin} Every session WORK or FORK creates is a model's. A model's is its child; a
+    // {§machine-processes} Every session WORK or FORK creates is a model's. A model's is its child; a
     // person's operation acts for them ({§actor-boundary-client-operations}): their WORK starts a root session they
     // own, and their FORK branches the session they act for.
     async #createSession(

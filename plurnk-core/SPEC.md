@@ -5,7 +5,7 @@ Canonical contracts plurnk-service exposes, architecture it implements, promises
 ## Contents
 
 - [Glossary](#glossary)
-- [Architecture](#arch-architecture)
+- [Architecture](#architecture)
 - [Sessions and workspace boundaries](#actor-boundary-sessions-and-workspace-boundaries)
 - [File membership and project roots](#membership-file-membership-and-project-roots)
 - [Loop scheduling and lifecycle](#session-loop-lifecycle-loop-scheduling-and-lifecycle)
@@ -43,9 +43,7 @@ Canonical contracts plurnk-service exposes, architecture it implements, promises
 
 ## Glossary
 
-Canonical meanings. When a doc, comment, test name, or commit message uses one of these words, it means exactly what's written here. Drift is a bug.
-
-### §lifecycle-terms Lifecycle terms
+### §lifecycle-terms Lifecycle, storage, execution, and packet vocabulary
 
 ```mermaid
 flowchart LR
@@ -58,378 +56,85 @@ flowchart LR
     R -. or executes .-> A["Management action<br/>no core loop required"]
 ```
 
-| Term              | Layer                 | Meaning |
-|-------------------|-----------------------|---------|
-| **agent**         | PLURNK                | The plurnk runtime. Acts in-workspace as the `_plurnk` session ({§actor-boundary} self-hosting), never a privileged singleton owning its own entries ({§entry-owner}, {§machine-processes}). |
-| **workspace**     | Core                  | Durable shared resources and configuration, with an optional project folder. Identity: `workspaces.id`; mutable label: unique `workspaces.name`. Persists across sessions and process restarts. |
-| **session**        | Core                  | Durable actor and history over one workspace. Owns its loops and log rows, may carry a `parent_session_id`, and has one process-local cancellation scope while active. |
-| **loop**          | Core                  | Queued-to-terminal unit of model or client work within a session. Status ∈ {100 pending · 102 running · 200 done · 202 waiting (blocked on a live obligation, {§send}) · 413 input-capacity failure · 429 model-turn ceiling · 499 cancelled · 500 failed · 504 execution timeout ({§operator-config-loop-timeout}) · 508 runaway}. Many loops may belong to one session. |
-| **turn**          | Core                  | One durable, producer-neutral batch of ordered operations. A turn may be authored by a model, client, or `_plurnk`; only a model turn assembles a packet and owns an emission call. Many turns may belong to one loop. Identity: `(loop_id, sequence)`. |
-| **model call**    | Core/provider         | One logical `provider.generate` invocation. Emission attempts and BARE inferences share this durable accounting owner; provider retries remain cardinal physical requests beneath it. Identity: `(turn_id, sequence)`. |
-| **op**            | Producer/core         | One DSL operation a producer submits, parsed into a `PlurnkStatement`. Admission follows {§turn-ops-admission-path}. |
-| **statement**     | Model/core            | A parsed op: the `PlurnkStatement` AST from `@plurnk/plurnk-contracts`. |
-| **action**        | Core                  | One executed op. Execution normally produces a `log_entries` row at `log:///<L>/<T>/<S>/<op>`; an engine rail may instead record an `op='error'` row ({§operation-results}). A source artifact carries no fabricated operation. |
-| **dispatch**      | Core                  | Routing a statement to its scheme's op handler. |
-| **ACP Run**       | ACP protocol          | A client request/stream envelope identified by the client's `runId`. A message or resume ACP Run binds to one core loop; a management-action ACP Run may complete without creating a core loop. |
-| **ACP thread**    | ACP protocol          | Message history identity. Within an explicitly selected workspace, `threadId` resolves to one model session. |
-
-### Storage terms
-
-| Term | Meaning |
-|---|---|
-| **entry** | The unit of canonical state. Identity: `(workspace_id, scheme, authority, pathname)` ({§entry-identity-no-null}). Holds one or more `channels` of content plus scheme-private `attributes`. |
-| **channel** | A named content buffer on an entry. Examples: `body`, `stdout`, `stderr`, `headers`, `symbols`. Each channel has `content`, `mimetype`, curation `weight`, and lifecycle `state`. |
-| **scheme** | An addressable namespace and its handler. Built-ins include `session`, `log`, `ops`, `reasoning`, and bare/file paths; discovered schemes and executor-runtime tags extend that set. Internal `exec` routes executions but is not an addressable model namespace. Consumption surface {§scheme-surface}; author contract: [plurnk-schemes](../plurnk-schemes/SPEC.md). |
-| **mimetype** | A channel's content type. Drives the handler that produces the structural projections (`symbols`, `deepJson`, `deepXml`). Consumption surface {§mimetype}; author contract: [plurnk-mimetypes](../plurnk-mimetypes/SPEC.md). |
-| **provider** | An LLM transport implementing the `@plurnk/plurnk-providers` `Provider` interface. Core supplies an assembled request and generation context; the provider owns endpoint adaptation and normalized response evidence. Consumption surface {§provider-surface}; author contract: [plurnk-providers](../plurnk-providers/SPEC.md). |
-
-### State / status
-
-Independent axes on entries and channels. Confusion across them is a recurring source of bugs.
-
-| Term | Type | Meaning |
+| Term | Layer | Meaning |
 |---|---|---|
-| **status** | HTTP int | Outcome of an operation. Carried on `log_entries.status_rx`, returned from op handlers. Per the catalogue ({§operation-results}). |
-| **channel state** | `static \| active \| closed \| errored` | Streaming lifecycle of a channel's content. Metadata, not gating — engine renders content regardless of state. |
-| **proposal state** | `proposed \| resolved \| failed \| cancelled` | Proposal lifecycle (`log_entries.state`) under {§proposal}; distinct from entry identity and channel state. |
-| **outcome** | `string \| null` | Short reason for `failed`/`cancelled` (`"permission:403"`, `"aborted"`, `"not_found"`). Opaque to most callers. |
-
-### Writer / authority
-
-| Term | Meaning |
-|---|---|
-| **writer** | The identity authoring a write. One of `model \| client \| _plurnk`. Carried on `ctx.writer` for schemes; engine enforces `manifest.writableBy`. |
-| **origin** | Synonym for writer in log_entries (`log_entries.origin`). Synonym for writer. |
-| **writable_by** | The set of writers a scheme accepts. Subset of `{model, client, _plurnk}`; empty means no operation writes the scheme. Engine rejects writes outside the set with 403; the rejection is logged as the action-entry ({§subscriptions} action-entry-as-outcome). |
-
-### Execution terms
-
-| Term                         | Meaning |
-|------------------------------|---|
-| **verdict**                  | The end-of-turn ruling from the strike rail and independent loop terminals ({§loop-terminals}). |
-| **strike**                   | One admitted turn matching at least one source under {§engine-rails}. |
-| **emission attempt**         | One completed provider exchange beneath an engine turn, admitted or rejected under {§emission-admission}. |
-| **BARE inference**           | One isolated child-provider model call whose response becomes an ordinary BARE log result. It has no session, packet, tools, output grammar, or persistent child state ({§bare-inference}). |
-| **cycle**                    | Repeated operational inputs and observed results under {§engine-cycle-evidence}. |
-| **capability policy**        | A purely subtractive `only`/`deny` selector layer over routed operation demands. Service and workspace layers compose without granting authority. |
-| **approval owner**           | One durable, workspace-scoped recipient for a session's approval requests ({§session-ownership}). |
-| **proposal**                 | A deferred side-effecting action. State machine: `proposed → resolved` (accept), `→ failed` (reject), or `→ cancelled` (cancel). Its core-owned disposition selects owner review or automatic settlement ({§proposal-disposition}). |
-| **resolution**               | A client decision delivered through a standard resume entry. Proposal resolutions accept, reject, or cancel ({§methods-proposal-resolve}); client-interaction resolutions return a payload or cancel ({§methods-client-interaction-resolve}, {§acp-proposal-resolve}). |
-
-### §packet-terms Packet terms
-
-| Term       | Meaning |
-| ---------- | ------- |
-| **packet** | A Turn's optional model-exchange record: measured request `sections`, extended with `assistant` and `assistantRaw` only when an emission is admitted. `NULL` means no model request was assembled. |
-| **log**    | The `log` section. Chronological list of `log_entries` in scope this turn. |
-| **render** | Computing the packet from current state under {§packet-assembly} and {§packet-markdown}. |
+| **agent** | PLURNK | The plurnk runtime acting in-workspace as the `_plurnk` session ({§actor-boundary}), never a privileged singleton owning entries ({§entry-owner}, {§machine-processes}). |
+| **workspace** | Core | Durable shared resources, configuration, and optional `project_root`. Identity: `workspaces.id`; mutable label: unique `workspaces.name`. |
+| **session** | Core | Durable actor and history over one workspace (`parent_session_id` optional, one process-local cancellation scope while active). |
+| **loop** | Core | Queued-to-terminal unit of work within a session (`100` pending · `102` running · `200` done · `202` waiting, {§send} · `413` input-capacity · `429` turn ceiling · `499` cancelled · `500` failed · `504` timeout, {§operator-config-loop-timeout} · `508` runaway). |
+| **turn** | Core | One durable, producer-neutral batch of ordered operations (`(loop_id, sequence)`) authored by `model`, `client`, or `_plurnk`; only a model turn assembles a packet and owns an emission call. |
+| **model call** | Core/provider | One logical `provider.generate` invocation (`(turn_id, sequence)`); emission attempts and BARE inferences share this owner while retries are physical requests beneath it. |
+| **op / statement / action / dispatch** | Core | An op is one submitted DSL operation ({§turn-ops-admission-path}), parsed into a `PlurnkStatement` AST, dispatched to its scheme handler, and recorded as a `log_entries` action row at `log:///<L>/<T>/<S>/<op>` (or `op='error'`, {§operation-results}). |
+| **ACP Run / ACP thread** | ACP | A client stream envelope (`runId`) bound to a core loop or management action; within a workspace, `threadId` resolves to one model session. |
+| **entry / channel** | Storage | Canonical state unit `(workspace_id, scheme, authority, pathname)` ({§entry-identity-no-null}) holding named `channels` (`body`, `stdout`, `stderr`, `headers`, `symbols` with `content`, `mimetype`, `weight`, and `state`: `static \| active \| closed \| errored`) plus scheme `attributes`. |
+| **scheme / mimetype / provider** | Extensions | Addressable namespace handler ({§scheme-surface}), content-type structural projector ({§mimetype}), and LLM transport adapter ({§provider-surface}). |
+| **status / proposal state / outcome** | Execution | Operation HTTP status on `log_entries.status_rx` ({§operation-results}); proposal lifecycle `proposed \| resolved \| failed \| cancelled` ({§proposal}); short terminal reason string (`outcome`). |
+| **writer / origin / writable_by** | Authority | Identity authoring a write (`model \| client \| _plurnk`, logged as `log_entries.origin`); engine enforces scheme `manifest.writableBy` with `403` ({§subscriptions}). |
+| **verdict / strike / emission attempt / cycle** | Engine | End-of-turn ruling ({§loop-terminals}); turn matching a rail ({§engine-rails}); provider exchange under {§emission-admission}; repeated operational inputs/results ({§engine-cycle-evidence}). |
+| **BARE inference** | Engine | Isolated child-provider model call whose response becomes an ordinary BARE log result without session, packet, tools, or output grammar ({§bare-inference}). |
+| **capability policy / approval owner / proposal / resolution** | Governance | Subtractive `only`/`deny` selector layers; workspace-scoped approval recipient ({§session-ownership}); deferred side-effecting action ({§proposal-disposition}); client decision settling a proposal ({§methods-proposal-resolve}) or interaction ({§methods-client-interaction-resolve}, {§acp-proposal-resolve}). |
+| **packet / log / render** | Packet | Turn's optional model-exchange record (`sections`, plus `assistant`/`assistantRaw` on admitted emission); chronological `log` section of in-scope `log_entries`; packet computation under {§packet-assembly} and {§packet-markdown}. |
 
 ---
 
-## §arch Architecture
+## Architecture
 
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§observability-boundary} | Observability boundary |
-| {§observability-genai-conventions} | GenAI convention projection. |
-| {§service-session-composition} | The service launcher composes no module: it and the live/demo workspace helper both discover ACP, MCP,… |
-| {§service-package-exports} | Package export surface |
-| {§startup-admission} | Startup admission |
-| {§service-runtime-floor} | Before any other module of the `plurnk-service` executable evaluates, it compares the running Node.js with… |
-| {§startup-listener-admission} | The production service binds its one listener ({§http-host}) before creating, opening, replacing, rotating,… |
-| {§http-host} | The HTTP host is the daemon's one transport. |
-| {§http-request-origin} | A request's origin is the address the caller used, and what the daemon advertises follows it. |
-| {§credential-authority} | The daemon is one credential authority. |
-| {§credential-module-client} | A module of this daemon is a confidential client by registration. |
-| {§credential-sessions} | Credential sessions: a browser sign-in is a family, and a subject's sign-ins are listed without a token. |
-| {§startup-admission-order} | After listener ownership, database admission completes before capability initialization can perform external… |
-| {§startup-readiness-line} | Readiness is one stdout line. |
-| {§daemon-launch} | The service ships its own launcher; launchers own policy. |
-| {§service-stop} | `plurnk-service stop` ends the service that holds the configured database. |
-| {§service-update} | Explicit operator-triggered model-catalog and package update (`PLURNK_SERVICE_UPDATEABLE`). |
-<!-- /map -->
+### §observability-boundary Observability and package boundaries
 
-Daemon composition and startup. Session attention and workspace state follow
-{§actor-boundary} and {§machine-processes}.
+OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on ACP. Reusable packages and the daemon depend on the OTel API only; `@plurnk/plurnk-otel` constructs configured trace and metric providers from standard `OTEL_*` variables ({§otel-module}, {§otel-contained}), while unconfigured or disabled processes keep no-op behavior and OTel Logs have no provider path. Telemetry shutdown runs at module `stop` ({§module-shutdown-order}); exporter failure never alters product results.
 
-### Ecosystem
+| Surface | Contract |
+|---|---|
+| HTTP & general spans | HTTP spans carry only an ACP-owned bounded route class (never pathname/query); other spans carry high-cardinality IDs while metric labels stay low-cardinality; prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads are never recorded by default. |
+| GenAI convention projection | Provider request spans follow the GenAI registry (`c88d504` on core v1.44.0): a `CLIENT` `chat {model}` span with `gen_ai.operation.name="chat"`, `gen_ai.provider.name` (constructed route provider ID, or `other`), `gen_ai.request.model`, settled `gen_ai.usage.input_tokens`/`output_tokens` ({§tokenomics-provider-usage}), `gen_ai.response.finish_reasons`, and failure `error.type` alongside Plurnk attempt/kind/status/loop/turn attributes. |
+| Service session composition | Both the service launcher and live/demo workspace helper discover ACP, MCP, Schedule, and command hooks ({§module-discovery}); management families and reference docs exist even with no enabled definitions, governed by workspace capability policy and {§operator-config-real-model-profile}. The launcher binds the one listener ({§http-host}); the helper binds none ({§module-http-mounts}). |
+| Package export surface | `@plurnk/plurnk-service` exports only `./launch` ({§startup-admission}), `./evidence` ({§digest-evidence-reader}), and `./package.json`. |
 
-The root [`ARCHITECTURE.md`](../ARCHITECTURE.md) owns the platform process and
-package map. The default installed composition is specified in {§bundled-set}.
-
-### §observability-boundary Observability boundary
-
-OpenTelemetry may observe PLURNK; it never becomes product state, failure transport, scheduler input, model teaching, or client protocol. Domain and client activity remain on ACP. Reusable packages and the daemon itself depend on the OTel API only; the `@plurnk/plurnk-otel` module, discovered like every other, constructs the explicitly configured trace and metric providers ({§otel-module}). A process without the module, unconfigured or standards-valid disabled loads no SDK or exporter implementation and keeps the API's no-op behavior with bounded overhead. OTel Logs have no provider or initialization path.
-
-Configuration is the standard `OTEL_*` environment, read and documented by the module ({§otel-module}); an unknown exporter name is that module's contained configuration ({§otel-contained}). Direct draft semantic-convention use is excluded. Exporter failure cannot change product results or client lifecycle. Telemetry shutdown is the module's `stop` under {§module-shutdown-order}; daemon and database teardown remain independent reverse-ownership phases, every phase runs, and aggregate failure preserves every cause.
-
-| Recorded | Rule |
-| --- | --- |
-| HTTP spans | carry only an ACP-owned bounded route class, never an input pathname or query |
-| Spans otherwise | carry high-cardinality identifiers; metric labels stay low-cardinality |
-| Never by default | prompts, reasoning, file bodies, arbitrary URLs, secrets, and extension payloads, as attributes or metric values |
-
-§observability-genai-conventions **GenAI convention projection.** Provider
-request spans follow the [GenAI registry at `c88d504`](https://github.com/open-telemetry/semantic-conventions-genai/tree/c88d504ab3d9879f8e50d3cc87e69775e11db234),
-which depends on core semantic conventions v1.44.0: a CLIENT-kind
-`chat {model}` span carrying `gen_ai.operation.name` (`chat`),
-`gen_ai.provider.name` (the constructed route's provider ID in the registry's
-spelling, never its tuning alias; unmatched IDs are preserved, `other` for an
-unregistered handle), and `gen_ai.request.model`;
-on settlement it gains `gen_ai.usage.input_tokens` and
-`gen_ai.usage.output_tokens` for quantities reported by every physical request in
-validated accounting ({§tokenomics-provider-usage}), plus
-`gen_ai.response.finish_reasons`; failures carry `error.type` as the class
-name only. Plurnk custom attributes (attempt, kind, status, loop/turn ids)
-ride alongside and never replace the convention attributes. The redaction
-boundary is unchanged — no prompts, reasoning, bodies, or URLs. This is the
-sanctioned exception to the blanket draft-convention exclusion; no other
-draft convention is projected.
-
-### In-process architecture
-
-The process and package map is ARCHITECTURE.md's; this package's AGENTS.md maps core's internal
-owners. Capability-specific behavior remains with the owning plug point.
-
-§service-session-composition The service launcher composes no module: it and the live/demo
-workspace helper both discover ACP, MCP, Schedule and command hooks ({§module-discovery}). The
-management families and readable reference documents are
-present even with no enabled definitions. Workspace capability policy controls every actor's
-surface; registering a family does not enable its definitions. The real-model
-profile ({§operator-config-real-model-profile}) leaves ambient MCP attachments and
-service schedules disabled by default; specimens may add their own through the
-ordinary management surface. The one listener is the launcher's ({§http-host}); the helper binds
-none, so its daemon leaves out ACP ({§module-http-mounts}).
-
-### §service-package-exports Package export surface
-
-| Export path                           | Current contract |
-|---------------------------------------|------------------|
-| `@plurnk/plurnk-service/launch`       | The daemon launcher ({§daemon-launch}). |
-| `@plurnk/plurnk-service/evidence`     | Canonical evidence reader consumed by the separate report package ({§digest-evidence-reader}). |
-| `@plurnk/plurnk-service/package.json` | Supported package metadata surface. |
-
-These are the package's only export paths. Clients use ACP; a new library contract belongs in its
-owning package or an explicitly specified subpath.
-
-### §startup-admission Startup admission
+### §startup-admission Startup, listener admission, and service commands
 
 ```mermaid
 flowchart LR
-    LISTENER["Bind the daemon's listener<br/>unadmitted: HTTP 503"] --> DB["Acquire daemon lock<br/>and admit SQLite schema"]
-    DB --> DAEMON["Start the daemon:<br/>discover and start modules"]
-    DAEMON --> CLIENT["Admit the listener"]
-    CLIENT --> SELECT["Session selects or first uses a model"]
+    LISTENER["Bind HTTP listener<br/>unadmitted: HTTP 503"] --> DB["Acquire lock and<br/>admit SQLite schema"]
+    DB --> DAEMON["Discover and<br/>start modules"]
+    DAEMON --> CLIENT["Admit listener<br/>print readiness line"]
+    CLIENT --> SELECT["Session selects or<br/>first uses a model"]
     SELECT --> PROVIDER["Construct and verify<br/>selected provider"]
     LISTENER -. failure .-> FAIL["Fail startup<br/>durable state untouched"]
     DB -. failure .-> CLOSE_LISTENER["Close listener"] --> FAIL
+    DAEMON -. failure .-> TEARDOWN["Close started owners<br/>in reverse order"] --> FAIL
     PROVIDER -. failure .-> REPAIR["Return selection failure<br/>client remains available"]
-    DAEMON -. failure .-> TEARDOWN["Close every started owner"] --> FAIL
 ```
 
-§service-runtime-floor Before any other module of the `plurnk-service` executable evaluates,
-it compares the running Node.js with the floor its package declares in `engines.node`. Below it,
-one stderr line names both versions and the process exits 1, before a listener is bound or
-anything durable is touched.
+- **Runtime floor**: Before any other module of `plurnk-service` evaluates, it checks `process.versions.node` against `engines.node`; below the floor it writes one stderr line naming both versions and exits `1` before binding a listener or touching durable state.
+- **Listener and admission order**: The production service binds its listener ({§http-host}) before creating, opening, migrating, or mutating anything in the durable data directory; losing the bind race leaves storage byte-identical. Core answers `503 service-starting` until database admission and all module starts complete ({§module-http-mounts}). Startup validates model selectors without provider I/O; provider construction and endpoint verification happen on session selection or first use. Any startup failure closes started resources in reverse order (`daemon`, `observability`, `database`, `listener`).
+- **Readiness line**: Once admitted, the service prints one stdout line `plurnk-service acp=<url> db=<json string> route=<json string>` (with IPv6 hosts bracketed and `db`/`route` JSON-encoded). After readiness, `discover` distinguishes this daemon from any other listener.
+- **Daemon launcher (`@plurnk/plurnk-service/launch`)**: Spawns a daemon argv with caller-supplied `readyTimeoutMs` and `stopGraceMs` ({§state-root}), resolving on the readiness line with `{ acpUrl, dbPath, route, logFile, stop }`. Failed starts stop and await the child before throwing with both output streams. `"private"` lifetime pipes streams to the parent and terminates with it; `"shared"` runs in its own process group, appends streams to `logFile` (default `<state dir>/service.log`), reads readiness from that file, and unrefs the child.
+- **`plurnk-service stop`**: Reads the owning PID from the database lock, sends `SIGTERM`, and returns `0` once the process exits ({§crash-only-stop}); an unlocked database reports not running and exits `0`.
+- **Explicit update (`PLURNK_SERVICE_UPDATEABLE`)**: Nothing phones a third party or installs packages automatically. Startup loads `$XDG_CACHE_HOME/plurnk/models.json` if present ({§model-catalog-cache}). When `PLURNK_SERVICE_UPDATEABLE=1` (default), `plurnk-service update`, `updateService()`, `service.update`, or `/update` atomically refreshes `models.json`, hot-swaps the active catalog, and updates installed `@plurnk/plurnk-service` (and co-installed `@plurnk/plurnk`) via `npm` (or reports `status: "source"` in a checkout). When `0`, update requests fail with `403 update-disabled`.
 
-§startup-listener-admission The production service binds its one listener
-({§http-host}) before creating, opening, replacing, rotating, migrating, or
-otherwise mutating anything in the durable data directory. A process that loses
-the listener race fails with the originating address error and byte-identical
-durable storage. Core owns the socket continuously; it answers 503 until daemon
-activation admits it after every module has started ({§module-http-mounts}), so
-early ownership introduces neither traffic nor a close/rebind race.
+### §http-host Shared HTTP host and request origin
 
-§http-host **The HTTP host is the daemon's one transport.** Core binds the HTTP listener on `PLURNK_HOST:PLURNK_PORT` and offers it to every exterior adapter as `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)` and `httpAddress()` on the application port ({§application-port}). The listener is bound before any module sets up, so the setup seam offers `httpAddress()` too ({§module-host-capabilities}); no adapter opens a socket of its own, and the standards address by URL, never by port (#641): ACP mounts `/acp` on that address.
+Core binds one HTTP listener on `PLURNK_HOST:PLURNK_PORT` and exposes `registerHttpRoute(prefix, handler)`, `registerHttpUpgrade(prefix, handler)`, and `httpAddress()` on the application port ({§application-port}, {§module-host-capabilities}).
 
-| Routing | Rule |
-| --- | --- |
-| A prefix | an absolute pathname; it claims itself and the subtree beneath it, never a longer sibling name; `/` is the root and receives whatever nothing more specific claimed when a module mounts it |
-| A request or upgrade | goes to the longest mounted prefix's corresponding handler (`registerHttpRoute` for HTTP requests, `registerHttpUpgrade` for HTTP `Upgrade` requests); a prefix without that handler never falls through to a shorter prefix |
-| No mounted handler | an admitted listener returns an HTTP `404 route-not-found` Problem; a root mount is not required |
-| A target it cannot parse | the listener answers `400 request-target-invalid` and routes nothing |
-| A failed handler | its request answers `500 route-failed`, or is cut where its response had begun; one already answered stands. The failure is reported with its request, and the listener serves on: a route's failure ends its own request, never the daemon |
-| Before activation | until daemon activation admits it the listener answers `503 service-starting` to every request: the service has not admitted its client interface |
-| Mounting | adapters claim their prefixes before setup and mount them at `start()`, after durable lifecycle recovery ({§module-http-mounts}) |
+| Aspect | Rule |
+|---|---|
+| Prefix matching | Absolute pathnames claiming themselves and their subtree (`/` is root); longest mounted prefix with the matching handler kind (`route` vs `upgrade`) wins without falling through to a shorter prefix. |
+| Admission & errors | Before activation every request gets `503 service-starting`; unparsable targets get `400 request-target-invalid`; unmatched paths get `404 route-not-found`; throwing handlers return `500 route-failed` (or abort in-flight streams) without crashing the listener ({§module-http-mounts}). |
+| Request origin | `requestOrigin` is the configured public origin, else the request's `Host` over HTTP, else the listener's own address. Every advertised URL (including OAuth issuer, {§auth-oauth-endpoints}) uses `requestOrigin`, and no request is refused for the hostname it used. |
 
-§http-request-origin **A request's origin is the address the caller used, and what the daemon advertises follows it.** A request's
-origin is the address its `Host` names, over http, or the listener's own for a request that names
-none (`requestOrigin`). Every address the daemon advertises to a caller, such as the authority's issuer
-({§auth-oauth-endpoints}), is its configured public origin or the origin
-of the request that asked, so a daemon bound to every interface answers each caller at the address
-that caller used; a module that asks with no request in hand, as one reading the issuer at its
-start does, is answered with the configured origin or the listener's own. A configured origin is for
-a front the daemon cannot see, such as a TLS proxy. No request is refused for the name it uses.
+### §credential-authority Credential authority
 
-§credential-authority **The daemon is one credential authority.** Every credential presented to its listener, whatever protocol is mounted there, was issued by the daemon's `credentials` authority on the application port ({§application-port}): an opaque random token held in memory with its kind (`access`, presented as a bearer; `refresh`, exchanged and never presented), its subject, its client, its scopes, its family and its expiry.
+Every credential presented to the listener is an opaque in-memory token (`access`, `refresh`, or browser `session`) issued by the daemon's `credentials` authority ({§application-port}) with subject, client, scopes, family, and expiry. Restart revokes all credentials; revoking a family revokes its access, refresh, and browser session tokens together, and replaying a consumed refresh token revokes its family. The issuing module publishes `{ issuer }` at setup ({§module-phases}, {§acp-http-authorization}, {§auth-oauth}).
 
-- A restart revokes every credential. Revocation is by family, so an access token and the refresh token that renews it fall together; a refresh token is consumed once, and a second presentation revokes its family and says so.
-- The authority has no HTTP face and no policy of its own: the issuing module publishes the one face (`publish({ issuer })`, at setup) that names where a request's caller obtains credentials ({§http-request-origin}) and answers from its publication, so any module may read the issuer from its own `start` on ({§module-phases}), an exterior adapter verifies through it ({§acp-http-authorization}), and the authorization server issues through it ({§auth-oauth}).
-- Credentials the daemon presents to others follow the remote party's declared scheme and are never minted here.
+| Surface | Rule |
+|---|---|
+| `PLURNK_AUTH` posture | When `1`, holds `PLURNK_SECRET` or mints a `0600` `secret` file beside the database before admitting mounts and requires a published auth face; when `0`, no secret file or face exists and mounts admit anonymously ({§operator-config-shared-keys}). |
+| Confidential module clients | At setup a module calls `registerClient({ id, redirectPaths, scopes, stylesheetPath })` (`id` matching `[A-Za-z0-9._-]+` except `operator`; pathnames under its own mounts without query/fragment, {§auth-oauth-documents}, {§auth-oauth-endpoints}). The authority mints an in-memory secret for the registrant and verifies it in constant time (`authenticateClient`, {§auth-oauth-clients}); duplicate or malformed registrations throw. |
+| Credential sessions | `sessions(subject)` lists families holding a live `session` credential ({§auth-oauth-session}), oldest first (family handle, subject, created timestamp, expiry, client IDs); `client_credentials` and code grants without a browser session are omitted. |
 
-The posture is the shared `PLURNK_AUTH` ({§operator-config-shared-keys}) and is never inferred from what else is set:
-
-| `PLURNK_AUTH` | Rule |
-| --- | --- |
-| `1` | The authority holds the operator's client secret, `PLURNK_SECRET` when set, else one minted for this boot and written to the file `secret` beside the database, 0600 and complete or absent, before any mount is admitted, where a tool running as the operator reads it; a configured secret and a daemon that does not authenticate leave no such file. A listening daemon refuses to start until a module publishes the face. |
-| `0` | No credential exists, no face is published and every mounted resource admits anonymously. |
-
-§credential-module-client **A module of this daemon is a confidential client by registration.** At setup a module registers its own client on the authority, `registerClient({ id, redirectPaths, scopes, stylesheetPath })`; nothing is configured, printed or persisted, so installing a module adds no operator step.
-
-| Field | Rule |
-| --- | --- |
-| `id` | letters, digits, `.`, `_` or `-`, other than `operator` |
-| `redirectPaths` | the absolute pathnames under the module's own mounts it may be answered at, each as a URL carries it, with no query and no fragment |
-| `scopes` | the scopes it may ask for |
-| `stylesheetPath` | optional: the pathname, in the same form, of a stylesheet under its own mounts, which the issuing face links on the documents it serves that client's requests ({§auth-oauth-documents}) |
-
-- A module states no origin: it serves only on the daemon's one listener ({§http-host}), so its address is its path on the issuer, and registration needs nothing from the listener, the issuer or another module. The issuing face answers the client at exactly the issuer followed by a registered path ({§auth-oauth-endpoints}), and the module forms the same address from `credentials.face().issuer()`, from its `start` on ({§credential-authority}).
-- The authority mints the client's secret for this boot, holds it in memory, answers it to the registrant and to nobody else, and checks it in constant time (`authenticateClient`); `client(id)` tells any module the registration without the secret. A second registration of one id and a malformed registration are faults and register nothing.
-- The issuing face authenticates such a client as it does any confidential one ({§auth-oauth-clients}).
-- A module's own browser session is a credential of this authority too: a `session` credential it issues in the family of the authorization grant it stands on, which is the family of the browser's sign-in that authorized it ({§auth-oauth-session}), so revoking that family from either side ends the module's session, its tokens and the browser's standing at the issuing face together.
-
-§credential-sessions **Credential sessions: a browser sign-in is a family, and a subject's sign-ins are listed without a
-token.** `sessions(subject)` answers every family of that subject that holds a live `session`
-credential, oldest first: the family, which is the sign-in's handle and is never admitted as a
-credential; the subject; when a credential was first issued into the family; when the last of its
-session credentials expires; and the clients holding credentials in it. A grant with no session
-credential, such as a client's `client_credentials` token or a consented client's code grant, is no
-sign-in and is not listed. Revoking a listed family ({§credential-authority}) is signing that browser
-out. Nothing records last activity or a device, and a restart ends every sign-in.
-
-§startup-admission-order After listener ownership, database admission completes
-before capability initialization can perform external work. Provider construction
-and endpoint verification occur on session selection or first use, never merely
-because a default selector is configured. Startup validates selectors without
-provider I/O and retains their configuration diagnostics. Every
-later startup failure closes resources in reverse ownership order while
-preserving the originating failure: daemon, observability, database, listener.
-
-§startup-readiness-line **Readiness is one stdout line.** After the client interface is mounted
-the service prints exactly one line, `plurnk-service acp=<url> db=<json string> route=<json string>`:
-the URL includes `/acp` and brackets an IPv6 host, and the database path and the route (the active model route or
-`no model`, or `invalid model configuration`) are JSON strings, so a path or route containing spaces is exact and a consumer parses
-the URL as a URL and the strings as JSON; nothing else the service prints on stdout before it has
-that prefix. Before the line the listener answers `503 service-starting`; after it,
-`discover` is the identity check a launcher uses to tell this daemon from any other listener. A bind
-failure is an exit with the originating address error and means *occupied*, not *foreign* — another
-plurnk-service may be starting there, and only `discover` says which.
-
-§daemon-launch **The service ships its own launcher; launchers own policy.** `@plurnk/plurnk-service/launch` spawns a daemon argv with the caller's environment, an optional {§state-root}, host and port, and resolves on the readiness line with the published address, database path, route and a `stop()` that is SIGTERM, a stated grace, then SIGKILL, resolving when the process has ended. Shell and container launchers consume the same contract by reading the line themselves.
-
-- The helper holds no timing of its own: the caller states the readiness timeout and the stop grace. It creates no state but a shared daemon's log, and never keeps or removes state.
-- A start that fails — spawn error, exit before readiness, or timeout — is stopped and awaited before the failure is thrown with its kind and both output streams.
-- Until readiness the launcher owns the daemon either way, and `stop()` ends it while the launcher lives.
-
-| `lifetime` | The daemon |
-| --- | --- |
-| `"private"` (the default) | is its launcher's child and ends with it under managed shutdown; both streams pipe to the launcher |
-| `"shared"` | survives the launcher that started it (scheduled deliveries and other clients depend on it): its own process group, both streams appended to the caller's `logFile`, else to the service's `<state dir>/service.log`, which the result names as `logFile`; readiness read from that file, the process released once ready, so the launcher may exit while the daemon runs on and no output accumulates in a launcher that has left |
-
-§service-stop **`plurnk-service stop` ends the service that holds the configured database.** It reads the owning process from the database's lock, sends it SIGTERM, and returns once that process has exited; the service bounds its own shutdown (`PLURNK_SERVICE_STOP_TIMEOUT_MS`, {§crash-only-stop}). A database that no live process holds is reported as not running, and that is success. A clean stop exits 0, so the systemd unit's `Restart=on-failure` leaves it stopped.
-
-§service-update **Explicit operator-triggered model-catalog and package update (`PLURNK_SERVICE_UPDATEABLE`).** Nothing phones a third party or installs packages automatically on startup, model miss, or a background timer. On startup the service and daemon load `$XDG_CACHE_HOME/plurnk/models.json` if present (`HostPaths.modelsCacheFile`, {§model-catalog-cache}). When `PLURNK_SERVICE_UPDATEABLE=1` (the shipped default), an explicit update triggered via `plurnk-service update`, the application port's `updateService()`, `_plurnk/action` `service.update`, or `/update` fetches and atomically writes `$XDG_CACHE_HOME/plurnk/models.json`, hot-swaps the active in-memory catalog immediately, and updates installed `@plurnk/plurnk-service` (and `@plurnk/plurnk` when co-installed) via `npm` (reporting `status: "source"` without invoking `npm` in a source checkout). When `PLURNK_SERVICE_UPDATEABLE=0`, update commands and actions are refused with 403 `update-disabled`, leaving package upgrades to external package management and uncataloged model tuning to provider environment knobs.
+---
 
 ## §actor-boundary Sessions and workspace boundaries
-
-<!-- map -->
-| Tag | Promise |
-| --- | --- |
-| {§session-ownership} | Approval ownership |
-| {§session-owner-creation} | Ownership, inheritance, and runtime-owner creation are database invariants. |
-| {§session-owner-resolution} | A proposal names its session's owner and one disposition: `review`, `accept`, or `reject`. |
-| {§client-interaction-routing} | A client interaction routes to the session's owner. |
-| {§actor-boundary-isolation} | Isolation: packet membership is by session, and the model is not privileged. |
-| {§actor-boundary-origin-not-filter} | `origin` (the writer, {§scheme-surface-writableby-403}) is **attribution** — the delta's provenance… |
-| {§actor-boundary-attached-functionality} | Attached Functionality: attachment selects a session, not an environment owner. |
-| {§actor-boundary-two-doors} | Cross-session arrival is limited to two doors. |
-| {§actor-boundary-lineage-attention} | Addressability is workspace-wide; attention is lineage-scoped. |
-| {§actor-boundary-commons-broadcast} | The commons broadcast: `workspace:///` is the explicit global attention surface. |
-| {§actor-boundary-no-mutex} | Sessions hold no mutex. |
-| {§actor-boundary-passive-wake} | Passive wake follows ownership. |
-| {§actor-boundary-self-hosting} | Use the actor path when the work has an operation; retain irreducible rails in the kernel. |
-| {§turn0-agents-stunt} | The project AGENTS.md is a turn-0 stunt. |
-| {§turn0-local-instructions} | The project AGENTS.md's local override rides turn 0 after it. |
-| {§actor-boundary-doc-injection} | Generated documents use the actor path. |
-| {§actor-boundary-catalog-preview} | Catalog preview. |
-| {§session-initialization-entry} | Model-session initialization is a real `_plurnk` operation turn. |
-| {§machine-processes} | Machine processes: workspace and session state |
-| {§machine-processes-one-filesystem} | Each workspace has one project filesystem. |
-| {§machine-processes-one-overlay} | Each workspace has one membership overlay. |
-| {§machine-processes-fork-copies-the-log} | A fork copies the parent's log as terminal history. |
-| {§machine-processes-fork-cost} | **Fork cost: provider evidence and accounting** — Session |
-| {§machine-processes-entry-inheritance} | **Entry inheritance: named scratch and evidence** — Workspace |
-| {§session-fork-trigger} | The branch's claimed row is the fork. |
-| {§machine-processes-session-is-its-log} | A session's memory of the shared workspace is its log, with no hidden per-session snapshot beside it. |
-| {§machine-processes-fork-pending-activity} | A fork is a closed snapshot of the parent's view. |
-| {§machine-processes-model-session-readable} | Packet membership is per-session, not an access policy. |
-| {§machine-processes-session-origin} | A session carries its actor. |
-| {§session-provider-identity} | A session owns a durable provider identity distinct from its database id. |
-| {§machine-processes-fork-shares-workspace} | A fork copies history and named scratch while sharing the workspace. |
-| {§machine-processes-no-fork-workspace} | A workspace cannot be forked. |
-| {§place-hiding} | A hidden place leaves the directories and the overview; nothing else about it changes. |
-| {§session-scheme} | Session resources and control |
-| {§session-authority-carving} | Authority is a literal namespace, not a principal. |
-| {§session-name-minting} | URI ingestion is permissive; session minting is not. |
-| {§session-read-scope} | Scratch is workspace-readable. |
-| {§session-write-scoping} | Write scoping: scratch is workspace-writable. |
-| {§session-generated-subtree} | Generated documents share `workspace:///_plurnk/`. |
-| {§session-control-addressing} | Explicit session control addresses are authority-only. |
-| {§session-scheme-spawn} | Spawn |
-| {§session-spawn-prompt-resource} | The spawn slot is overloaded by scheme. |
-| {§session-scheme-irc} | irc |
-| {§session-scheme-fork} | Fork |
-| {§session-scheme-fork-scratch} | Forked scratch. |
-| {§session-lifecycle-wake-requeue-not-terminal} | A wake re-queue is not a terminal. |
-| {§session-scheme-collect} | Collect |
-| {§session-loop-result} | `ops://<name>/<sequence>` selects one session-local positive safe-integer loop sequence ({§loop-answer}; one… |
-| {§child-orientation} | Child orientation: the packet's Open Work section is the current inventory of what this session holds open. |
-| {§packet-empty-sections} | Empty sections are stated where the model decides on them. |
-| {§packet-current-turn} | The packet says who, which turn and who attends, below the log. |
-<!-- /map -->
-
-### §session-ownership Approval ownership
-
-Every session has one workspace-scoped approval owner. Ownership is independent of
-origin, parentage, messages and connection presence. It controls approval routing,
-not access to workspace resources ({§actor-boundary-no-mutex}).
-
-| Event | Ownership |
-| --- | --- |
-| Root creation | Explicit owner, otherwise the runtime `_plurnk`. |
-| WORK, FORK, or a fresh child | Inherit the parent's owner. |
-| SEND, schedule occurrence, or other incoming message | Preserve the recipient's owner. |
-| Explicit client control attachment | Claim a model session and its model descendants (updating any pending interaction recipients in that subtree); never claim the runtime actor. |
-| Observation or disconnect | No change. |
-
-An owner declares its capability set: the client tool names it implements, and whether it
-is interactive, that is, whether a person attends it. The declaration remains durable while it
-is disconnected. A proposal requiring review waits for that owner; unsupported review fails at
-the request boundary. Approval needs no person: a client that accepts automatically still
-implements `request_approval`. Clarification and a park only a person can end need an
-interactive owner. `_plurnk` implements no client tools and is never interactive. Server
-approval policy may settle a proposal automatically; it cannot fabricate an interaction answer.
-Kernel maintenance remains kernel work ({§actor-boundary-self-hosting}).
-
-§session-owner-creation Ownership, inheritance, and runtime-owner creation are
-database invariants. A newly created session cannot be left without an owner;
-an unknown explicit owner is an error. Existing sessions migrate to runtime ownership.
-
-§session-owner-resolution A proposal names its session's owner and one disposition:
-`review`, `accept`, or `reject`. Review routes to that owner, not to the sender,
-the current observer, or whichever ancestor has a live Run. A decision is accepted
-only for that owner and the still-pending gate. Disconnect does not substitute a
-different owner. Capability admission remains independent and precedes approval.
-
-§client-interaction-routing **A client interaction routes to the session's owner.** Clarification goes to the session's owner, like approval, but
-only a person can answer it. The owner receives it while it is interactive and declares
-the requested tool; otherwise the request fails at once as unsupported and never parks.
-The pending interaction records that recipient and accepts a response only from it,
-through the ordinary response-schema validation and settlement path. A non-interactive owner
-converses by message and is never a recipient.
-
-### Session boundaries
 
 ```mermaid
 flowchart LR
@@ -440,378 +145,63 @@ flowchart LR
     client["User / client"] -->|"loop.inject<br/>voice door"| log
 ```
 
-§actor-boundary-isolation **Isolation: packet membership is by session, and the model is not privileged.** A packet renders the assembling session's log alongside current
-shared workspace state ({§packet}, {§membership}). Other journals are not
-automatically injected. This follows "one packet, one session," not an access
-filter over workspace resources.
+- **Session isolation & attribution**: A packet renders only the assembling session's log alongside shared workspace state ({§packet}, {§membership}). `origin` (`model \| client \| _plurnk`, {§scheme-surface-writableby-403}) records provenance ({§env-delta}) and never filters rows. Client management commands mutate workspace Functionality ({§module-workspace-capabilities}) while client ops journal in `_plurnk` ({§connection-lifecycle}).
+- **Two cross-session doors**:
+  1. *Environment door*: Direct child durable activity ({§env-delta-child-activity}) enters only the direct parent's log (never republished to grandparents), and successful mutations of `workspace:///` emit one broadcast occurrence to every existing session (unioned with parent lineage so a parent never gets duplicate rows). Intermediate child activity and commons broadcasts never wake; only a child's terminal disposition wakes a parked parent ({§session-loop-lifecycle}, {§env-delta}).
+  2. *Voice door*: Directed `loop.inject`, `SEND (session://name)`, or exact-message replies ({§message-reply-delivery}) enter the addressed session's log and wake idle or waiting work.
+- **No mutex & self-hosting**: Sessions share workspace state without session locks; stale writes reject at anchor or revision boundaries ({§line-anchors}, {§membership-edit-write-revision}, {§file-commit-serialization}). Work with an operation runs as the unmintable `_plurnk` session (`DispatchAsPlurnk` for reference materialization), while git membership ingestion, disk-divergence `source=file` narration, search derivation, and packet/budget rails stay in the kernel.
 
-§actor-boundary-origin-not-filter `origin` (the writer, {§scheme-surface-writableby-403}) is
-**attribution** — the delta's provenance ({§env-delta}) — and is never read to
-filter a row.
+### §session-ownership Session ownership and client interaction routing
 
-§actor-boundary-attached-functionality **Attached Functionality: attachment selects a session,
-not an environment owner.** Client management commands mutate workspace
-Functionality ({§module-workspace-capabilities}); runtimes, runtime
-schemes, and tools resolve by `workspaceId`. A model's operations journal in its
-session, and a person's client operations in the workspace's runtime session
-({§connection-lifecycle}). Runtime and policy resolution require no second session identity.
-Attachment remains many-to-one and unrelated to parentage. Explicit control
-attachment may claim approval ownership under {§session-ownership}.
+Every session has one durable workspace-scoped approval owner (`session_owners`), enforced by database invariant. Root sessions take an explicit owner or default to `_plurnk`; `WORK`/`FORK` children inherit their parent's owner; `SEND` and scheduled messages preserve the recipient's owner; explicit client control attachment claims a model session and its model descendants (including pending interaction recipients) without ever claiming `_plurnk`.
 
-§actor-boundary-two-doors **Cross-session arrival is limited to two doors.**
-An explicit READ is not an arrival: the reading session deliberately addresses a
-file or entry through its ordinary read-authority boundary ({§session-read-scope}).
+- **Owner capabilities & proposals**: An owner declares its implemented client tools and whether it is `interactive` (attended by a person); `_plurnk` implements no tools and is non-interactive. Proposals record their session's owner and disposition (`review`, `accept`, or `reject`); `review` waits only for that owner, and capability policy precedes approval.
+- **Client interactions**: Clarifications and questions route to the session's owner only when it is `interactive` and declares the tool; otherwise the request fails immediately with `501` without parking. Only the recorded recipient may resolve the pending interaction.
 
-| Door        | Carries                                                                                                                                      | Wake behavior                                                                                 |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Environment | A direct child's durable activity to its parent, plus a successful mutation of the deliberately global `workspace:///` commons to every session. | Intermediate activity and commons never wake; a child's terminal disposition wakes its parent. |
-| Voice       | A directed `loop.inject` or ```` ```SEND (session://name) ```` request, or an exact-message reply ({§message-reply-delivery}). | Requests enter the next packet or start queued work; replies wake existing assigned/native-sender work without creating a request. |
+### §session-initialization-entry Turn-0 orientation and reference materialization
 
-§actor-boundary-lineage-attention **Addressability is workspace-wide; attention
-is lineage-scoped.** Project files, registered resources, and named scratch
-entries remain addressable throughout the workspace, but ordinary changes do
-not enter unrelated sessions' logs. Eligible child actions ({§env-delta-child-activity})
-reach only the direct parent; exploration and local curation do not. That
-observer row carries the source occurrence identity and never
-republishes, so grandparents observe what their own direct children do without
-receiving an automatic recursive mirror of every descendant.
+Workspace reference documents and projected instructions are materialized into `workspace:///_plurnk/` through `_plurnk` maintenance turns whose loops are excluded from `work_loops` ({§application-session-observation}, {§application-loop-observation}) and emit no ambient broadcasts.
 
-§actor-boundary-commons-broadcast **The commons broadcast: `workspace:///` is the explicit global
-attention surface.** A successful mutation whose landed effects touch the
-commons emits one occurrence to every session that existed when it landed.
-Lineage and commons audiences are a union over that one identity: when a child
-mutates the commons, its parent receives one observer row, never a parent copy
-plus a broadcast duplicate. Runtime maintenance turns produce no broadcast ({§actor-boundary-doc-injection}). Ordinary project files, named scratch entries,
-and remote resources do not acquire ambient attention merely because they are
-workspace-addressable.
+- **Project instructions**: When `<projectRoot>/AGENTS.md` exists, LoopDocs materializes `workspace:///_plurnk/AGENTS.md` and turn 0 foists a `READ` of it (global XDG `AGENTS.md` stays in the system prompt, {§policy-sections}). When root `<projectRoot>/AGENTS.local.md` exists (regardless of git ignore status, unless excluded), LoopDocs materializes `workspace:///_plurnk/AGENTS.local.md` and turn 0 foists its `READ` immediately after. Absent files produce no entry and no `404`.
+- **Catalog preview (`PLURNK_SERVICE_FILES_ITEMS`)**: When non-zero (`-1` for markerless page, positive `N` to cap `*`), turn 0 foists bodyless `FIND` surveys in order: `skill://*/SKILL.md` (`<1,-1>`, {§skills-resources}), `workspace:///_plurnk/plurnk/*.md` (`<1,-1>`), `workspace:///_plurnk/tools/*.md` (`<1,-1>`, {§tools-resource-materialization}), `workspace:///_plurnk/members/*.md` (`<1,-1>`, {§members-projection}), `*` (`project root member files`), `workspace:///*` (`workspace knowledgebase entries`), and `session://<session>/*` (`session knowledgebase entries`). Unregistered schemes and surveys selecting zero items are omitted before recording.
+- **Turn-0 execution**: A model session's first loop starts with one packetless `{ producer="_plurnk", kind="initialization" }` turn (`init` rows) submitted through {§turn-ops-admission-path} and {§op-execution-order}, framed by opening and closing `<!-- plan -->` `NOTE`s when any survey runs, with no fabricated emission row ({§emission-row}). Initial messages arrive in the first model turn (sequence `2`, {§message-arrival}).
 
-§actor-boundary-no-mutex **Sessions hold no mutex.** They share workspace state without session-owned locks or reservations. Coordination is cooperative; membership bounds their visible surface uniformly ({§machine-processes}). Stale writes reject at their anchor or commit boundary ({§line-anchors}, {§membership-edit-write-revision}). Internal storage serialization does not confer ownership: {§file-commit-serialization} holds no file across reasoning, operation selection, or approval.
-
-§actor-boundary-passive-wake **Passive wake follows ownership.** A directed
-voice wakes an idle session. A parked continuation resumes when an obligation it
-owns — a child or stream — reaches an observable terminal transition
-({§session-loop-lifecycle}). Intermediate child activity and commons broadcasts
-never wake; they queue until another cause produces a turn ({§env-delta}). The
-obligation edge is continuation control, not a third door through which
-arbitrary workspace state can enter.
-
-§actor-boundary-self-hosting **Use the actor path when the work has an operation; retain irreducible rails in the kernel.** The workspace has one runtime Session, `_plurnk` (origin `_plurnk`), a name `SESSION_NAME` never admits, so no model or client can mint or resume it ({§session-name-minting}). `DispatchAsPlurnk` opens ordinary administrative loops and turns for its work. Generated references are shared entries; the runtime actor has no privileged scratch access.
-
-| Work                                    | Owning path                                                         | Why                                                                                 |
-| --------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Workspace reference documents | Runtime actor; `_plurnk` EDIT through engine dispatch. | Maintaining generated workspace scratch is an ordinary operation. |
-| Git membership and disk materialization | Kernel `GitMembership` / entry CRUD.                                | Ingesting existing disk state is not a model-authored EDIT.                         |
-| Disk-divergence narration               | Kernel writes an EDIT-shaped `source=file` row to the `_plurnk` log. | It reports an environment event honestly; no operation is fabricated as having run. |
-| Search derivation and catalog render    | Kernel.                                                             | They are indexes and read-only projections, not entry operations.                   |
-| Packet assembly and budget rails        | Kernel.                                                             | They are the execution substrate on which actor operations depend.                  |
-
-Git membership is the repository's tracked files and nothing else ({§membership-baseline});
-Plurnk never stages a file or runs `git add`.
-
-§turn0-agents-stunt **The project AGENTS.md is a turn-0 stunt.** When
-`<projectRoot>/AGENTS.md` exists, LoopDocs materializes it as the workspace's shared
-`workspace:///_plurnk/AGENTS.md` entry and the engine foists one READ of it into
-that model session's first turn — visible, logged, line-addressable. The entry
-keeps the standard's own name, as a nested instruction file does: that name is
-in the model's prior, and no other generated document is called it. Absent
-file: no entry, no stunt, nothing 404s. The global XDG configuration `AGENTS.md`
-remains system-prompt policy ({§policy-sections}); the stunt carries only
-local repo guidance.
-
-§turn0-local-instructions **The project AGENTS.md's local override rides turn 0 after it.** When
-`<projectRoot>/AGENTS.local.md` exists, LoopDocs materializes it as
-`workspace:///_plurnk/AGENTS.local.md`, read from disk whatever its git status, since the
-convention ignores it, and the engine foists its READ into the model session's first turn
-after the AGENTS.md READ. Only an exclusion hides it. Root only: a nested
-`AGENTS.local.md` is not projected. Absent file: no entry, no READ, nothing 404s.
-
-§actor-boundary-doc-injection **Generated documents use the actor path.** Workspace references and projected project instructions are materialized in `workspace:///_plurnk/` through the runtime actor's ordinary maintenance turns. Their exact programs and operation evidence remain durable in that actor's log; generation is not a hidden database write.
-
-Maintenance turns create neither lineage nor commons broadcasts. Their loops are not work-lifecycle observations ({§application-session-observation}, {§application-loop-observation}); `work_loops` excludes loops whose turns are all maintenance, but retains empty queued loops and loops containing any other purpose. Scheduling and forensic history remain intact.
-
-§actor-boundary-catalog-preview **Catalog preview.** `PLURNK_SERVICE_FILES_ITEMS`
-foists turn-0 discovery into the session's first turn, so a session opens with a
-navigable map instead of blank. Its baseline surveys are bodyless FINDs in this
-order; unregistered schemes contribute no survey, a survey that would select nothing is left out, and workspace
-capabilities may narrow or omit the reference catalogs under {§capability-admission}.
-
-| Surface | Target | Scope / aside |
-| --- | --- | --- |
-| Agent Skills | FIND `skill://*/SKILL.md` | `<1,-1>`; {§skills-resources} |
-| Plurnk references: executors and schemes | `workspace:///_plurnk/plurnk/*.md` | `<1,-1>` |
-| Enabled tools | `workspace:///_plurnk/tools/*.md` | `<1,-1>`; configured expansions follow under {§tools-resource-materialization} |
-| Enabled members | `workspace:///_plurnk/members/*.md` | `<1,-1>`; {§members-projection} |
-| Project filesystem | `*` | File cap below; `project root member files` |
-| Workspace entries | `workspace:///*` | Markerless; `workspace knowledgebase entries` |
-| Named scratch entries | `session://<session>/*` | Markerless; `session knowledgebase entries` |
-
-Only the three namespace surveys carry asides; the other targets name their surface. The word `skills` names Agent Skills and nothing else. `log://` is absent because the current session's log already renders in present mode.
-
-| Fact | Rule |
-| --- | --- |
-| Catalogs | select documents independently of their authored bodies; ordinary READ supplies examples and complete instructions on demand |
-| A shallow result | renders direct entries normally and every deeper first-segment directory as an actionable `dir/**` summary with its recursive `items` and `tokens`; runtime rows also carry the concise `{§scheme-catalog-aside}` that drives on-demand capability discovery |
-| Ordinary surveys | FIND without a scope ({§markerless-first-page}), whose range metadata reports the returned set against the complete result total; only the small capability-reference surfaces explicitly select all; the opening survey demonstrates both `*` and `**` without normalizing an all-results override |
-| A survey that would select nothing | is left out of the program: before it is recorded, each FIND runs through the scheme context and owner its dispatch would use, writing no row, and only those that select something remain |
-| A positive `N` | explicitly caps only the file map's rendered rows, using the map's actual direct-entry-plus-directory count |
-| `-1` | enables the ordinary markerless page |
-| Unset / `0` | disables previews |
-
-§session-initialization-entry **Model-session initialization is a real `_plurnk` operation turn.** A model session's first loop begins with one packetless `{ producer="_plurnk", kind="initialization" }` turn submitted through {§turn-ops-admission-path}; every orienting row is structurally classified `_plurnk` and `init`, and the namespace surveys and their asides follow {§actor-boundary-catalog-preview}.
-
-- Its program — the instruction READs and the surveys that select something, opened by one NOTE and closed by another when a survey runs — is recorded as the turn's `ops://` source and executed through {§op-execution-order} exactly as a model's program is; it authors no reasoning, reads none back, and never READs its own `ops://` program, whose operations its rows already show.
-- The two NOTEs show the card's NOTE practice in the example turn, both carrying the aside of the card's plan example, `<!-- plan -->`: the opening one is the session's plan in numbered steps, `1. Survey the environment.` and `2. Evaluate and react to the Open Message.`; the closing one names the next step in the plan's words, `Evaluate and react to the Open Message.`
-- No emission row is fabricated ({§emission-row}): the first request sees the NOTEs and the surveys' ordinary results, never an assistant-content copy of the program.
-- The initial message arrives as an inbound SEND in the first model turn ({§message-arrival}); initialization never READs it, and neither initialization nor later turns manufacture a task inventory.
-
-Incoming messages publish once as inbound SEND rows in the first model turn
-({§message-arrival}); initialization neither READs nor archives them. The turn
-continues without a lifecycle declaration. The first model
-request occupies database/log turn sequence 2; “turn zero” names the
-initialization phase, not a zero-based database coordinate. Client and
-`_plurnk` administrative sessions execute operation turns without model initialization.
-
-### §machine-processes Machine processes: workspace and session state
-
-A workspace owns every entry; a session owns its history and active work.
+### §machine-processes Session topology, fork, and hiding
 
 ```mermaid
 flowchart TB
-    workspace["Workspace"] --> files["Project files"]
-    workspace --> commons["Shared session entries<br/>workspace:///..."]
-    workspace --> overlay["One membership overlay"]
-    workspace --> parent["Session A"]
-    parent --> parentLog["Session A log"]
-    workspace --> parentEntries["Named scratch<br/>session://a/..."]
-    parent --> parentWork["Loops, turns, cancellation scope"]
-    parent -->|FORK| child["Session B"]
-    parentLog -.->|"copy rows and visibility state"| childLog["Session B log"]
-    parentEntries -.->|"snapshot under new name"| childEntries["Named scratch<br/>session://b/..."]
-    workspace --> childEntries
-    child --> childLog
+    workspace["Workspace"] --> files["Project files & membership overlay"]
+    workspace --> commons["Shared entries (workspace:///...)"]
+    workspace --> parent["Session A (log, loops, session://a/...)"]
+    parent -->|FORK| child["Session B (copied terminal log & session://b/... snapshot)"]
     files -->|"shared live"| child
     commons -->|"shared live"| child
-    overlay -->|"shared policy"| child
 ```
 
-§machine-processes-one-filesystem **Each workspace has one project filesystem.**
+| State | Owner & Fork Behavior |
+|---|---|
+| Project filesystem, membership overlay, `workspace:///`, `sh://`, `http://` | Workspace-owned and shared live; never copied on fork. Workspaces themselves cannot be forked. |
+| Named scratch (`session://<name>/...`) | Workspace-owned under literal namespace `<name>`. When the `sessions` row with `parent_session_id` and `forked_from_turn_id` is inserted, `sessions_fork_copies_history` ({§db-process-triggers}) snapshots quiescent `session://<parent>/...` entries into `session://<child>/...` without rewriting body text. |
+| Log, loops, turns, curation, and accounting | Session-owned. Fork copies the parent's loops, turns, and `log_entries` up to `forked_from_turn_id` as settled terminal history (`100`/`102`/`202` clamped to `200`, open turns to `499`, pending proposals to `cancelled`, stream subscriptions omitted), preserving `weight`, `forget_The_Past`, and observation cursor while copying zero provider cost ({§tokenomics-turn-summary}). |
+| Session identity & origin | Each session carries `origin` (`model` or `_plurnk`; `WORK`/`FORK` create `model` sessions regardless of operation producer, {§actor-boundary-client-operations}) and an immutable unique 128-bit hex `provider_identity` (`sessions.provider_identity`, {§provider-cache-identity}). |
+| Place hiding (`hidden_at`) | Hiding a workspace marks the workspace alone; hiding a session marks it and its subtree (`hidden_by` naming the root of the hide group; `409 live-work` if any covered session holds a live loop, {§session-lifecycle-live}, open stream, pending proposal, or pending question). Starting a live loop or selecting a workspace by its default folder name ({§workspace-name}) shows it; `listWorkspaces`, `listSessions`, and `overview` ({§methods-session-overview}) filter by `hidden_at` and emit `workspace/hidden` / `session/hidden`. |
 
-§machine-processes-one-overlay **Each workspace has one membership overlay.**
+### §session-scheme Session scheme addressing, delegation, and collection
 
-§machine-processes-fork-copies-the-log **A fork copies the parent's log as
-terminal history.**
+- **Authority & scratch scope**: `session://<name>/<path>` keys workspace entries by literal `authority = <name>` (`workspace:///<path>` has `authority = ""`; `session:///<path>` is refused with `400 named-session-required` pointing to `workspace:///`). Any session in the workspace can `READ`, `FIND`, `EDIT`, `COPY`, `MOVE`, or `KILL` any `session://<name>/<path>` entry without ancestry checks ({§entry-owner}, {§scheme-entry-matrix}), and entries outlive their namesake session. `workspace:///_plurnk/` is ordinary shared workspace scratch reconciled by `_plurnk` ({§tools-resource-materialization}, {§skills-resources}).
+- **Minting & control addressing**: Minted session names must match `SESSION_NAME` ({§session-name}, `^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$`, case-sensitive; `_plurnk` is unmintable, though readable by `readLog` / {§methods-session-read}). Session control addresses (`WORK`, `FORK`, `SEND`, `READ`, `KILL`) must be authority-only `session://<name>` with no userinfo, port, pathname, query, or fragment (`400 control-address-invalid`), `~` is never an alias, and `EDIT (session://<name>)` fails with `400 session-entity-not-editable`.
+- **Delegation (`WORK`, `FORK`) and messaging (`SEND`, `KILL`)**:
+  - `WORK (session://<name>)` spawns a fresh child if `<name>` is unused ({§actor-boundary-client-operations}), or delivers its non-empty body as a message to the existing session `<name>` (`attrs.delivered = "message"`). Omitting `(session://<name>)` auto-allocates an 8-hex-character name ({§session-auto-name}). Passing a non-`session://` resource path on `WORK (<path>)` reads that resource whole (`<1,-1>`) as the prompt (composed with any inline body, {§bare-prompt-composition}) and auto-names the child.
+  - `FORK (session://<name>)` (or addressless `FORK`) branches the calling session into a fresh name; if `<name>` already exists, `FORK` fails with `409 session-name-conflict` naming `WORK or SEND (session://<name>)`. Inherited loops are terminal so {§send-premature-terminate} sees only the branch's new loop. Both `WORK` and `FORK` enforce `PLURNK_SERVICE_WORKSPACE_SESSIONS_MAX_ACTIVE` (`508`) and require a non-empty prompt (`422 spawn-prompt-empty`).
+  - `SEND (session://<name>)` delivers a non-empty message or attachment ({§send-resource-attachments}; `422 message-empty` when blank, `404` when absent) to `<name>`, folded into a running loop or queued as a new loop (`202` parked loops re-queue to `100` without firing terminal hooks). `KILL (session://<name>)` cancels the session's active tree (`404` when absent).
+- **Collection (`READ (session://<name>)` and `ops://<name>/<L>`)**: Each concluded child loop reaches its direct parent as an `_plurnk` `READ` of `ops://<name>/<L>` ({§loop-answer}, {§message-reply-delivery}, {§env-delta-child-termination}), and `READ (session://<name>)` (or `ops://<name>/<L>`) collects that same terminal result on demand without `lineAnchors` ({§join-blocking-collect}): `404` if absent, `425 loop-running` (`resource: "ops://<name>/<L>"`) while unresolved, `200` with answer content on completion, or the child's exact failure status and Problem on error.
 
-| State                                                 | Owner             | Fork behavior                                                                                                      |
-| ----------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Project files ({§machine-processes-one-filesystem})   | Workspace         | Shared live; a fork does not create another checkout.                                                              |
-| Shared session entries (`workspace:///...`)               | Workspace commons | Shared live.                                                                                                       |
-| Membership overlay ({§machine-processes-one-overlay}) | Workspace         | Shared unchanged; divergent membership requires another workspace.                                                 |
-| Log items ({§machine-processes-fork-copies-the-log})  | Session            | Durable events, curation effects, current active/body-suppression projection, and the matching observation cursor are copied as terminal history. Parent-audience occurrences still pending at the fork boundary belong to the snapshot; later sibling activity does not. |
-| §machine-processes-fork-cost **Fork cost: provider evidence and accounting** | Session | Turns and their model-facing log history are copied, but turn-attached inference calls, their specializations, admission rows, and physical provider requests are not: one issued call or request has one causal branch. Parent and fork accounting therefore includes only work issued in that branch, while workspace accounting never double-counts copied history. |
-| §machine-processes-entry-inheritance **Entry inheritance: named scratch and evidence** | Workspace | FORK snapshots quiescent `session` entries whose authority is the source Session name into the child name. Bytes, attributes, and channel results remain exact; embedded addresses are not rewritten. Other resources, including `workspace:///_plurnk/**`, stay shared. |
-| Active loops, turns, and cancellation                 | Session            | Never copied as live work; inherited structure is terminal history, then a new loop starts.                        |
+### §child-orientation Open-work orientation and Session footer
 
-§session-fork-trigger **The branch's claimed row is the fork.** `session_name_claim` with a fork
-snapshot inserts the branch session with its parent's generation policy, ambient cursor, and event
-boundary, and `sessions_fork_copies_history` (an `INIT` process trigger in `fork.sql`,
-{§db-process-triggers}) copies the parent's history inside that INSERT: loops as terminal history,
-turns and their sources, log rows with their attribution and current projection, curation effects,
-and quiescent named scratch with its channels. Ids are remapped by natural key — `(session, sequence)`
-for a loop, `(loop, sequence)` for a turn, `(turn, sequence)` for a log row — so no id map exists
-outside the database, every copied row passes the same table triggers the original did, and a fork
-either lands whole or not at all. Nothing else runs: `Fork.fork` is the claim.
+Every model packet includes two orienting blocks in the status clump below `## Log` ({§packet-cache-monotone}), carrying no date, time, or timezone anywhere:
 
-§machine-processes-session-is-its-log **A session's memory of
-the shared workspace is its log, with no hidden per-session snapshot beside it.**
-A scoped KILL suppresses canonical body intervals on that session's rows ({§log-kill-scope});
-lineage activity and explicit commons broadcasts arrive as attributed log
-entries ({§env-delta}). Named scratch and evidence follow {§machine-processes-entry-inheritance}. They are not an invisible mirror of shared state. Workspace
-addressability does not imply packet membership or ambient notification
-({§actor-boundary-lineage-attention}).
-
-§machine-processes-fork-pending-activity **A fork is a closed snapshot of the
-parent's view.** It copies rows already materialized in the parent and inherits
-parent-audience occurrences newer than the copied observation cursor through
-the occurrence high-water captured by session creation. Activity addressed to
-the parent after that boundary is sibling activity, not fork history. Global
-commons broadcasts remain live after the fork because the branch is then an
-existing workspace session in its own right.
-
-§machine-processes-model-session-readable **Packet membership is per-session, not an access policy.** A packet contains its session's log plus explicitly delivered activity ({§actor-boundary}). `readLog({ workspaceId, sessionId })` may inspect any session belonging to that workspace, and `listSessions` enumerates them. A client-interface module chooses its session binding. Inspection does not inject another log into a model's packet.
-
-§machine-processes-session-origin **A session carries its actor.** Each session records its `origin`, set once at creation: `model` (a model's identity) or `_plurnk` (the workspace's runtime session, where the daemon's own work and a person's client operations journal, {§connection-lifecycle}). Every session WORK or FORK creates is a model session: a model's is its child, and a person's operation starts a root session or branches the session it acts for ({§actor-boundary-client-operations}). `listSessions` returns actor class without interpreting names; a retained session's name is immutable ({§machine-processes-session-is-its-log}).
-
-§session-provider-identity **A session owns a durable provider identity distinct
-from its database id.** Creation mints a globally unique, opaque 128-bit value;
-forks mint their own value. Core supplies it as the provider `sessionId` for every
-emission ({§provider-cache-identity}). Database ids remain the internal relational and
-client coordinate. BARE calls use isolated per-call provider identities rather
-than either session value.
-
-§machine-processes-fork-shares-workspace **A fork copies history and named
-scratch while sharing the workspace.** It is a new session in the
-same workspace (`sessions.parent_session_id`, {§lifecycle-terms}); project files,
-shared entries, and membership remain live and uncopied.
-
-§machine-processes-no-fork-workspace **A workspace cannot be forked.**
-`sessions` carries `parent_session_id`; `workspaces` carries no parent. Parallel
-histories over one workspace are session forks. A divergent project filesystem
-or membership overlay requires a new workspace.
-
-§place-hiding **A hidden place leaves the directories and the overview; nothing else about it changes.** A workspace or
-session is hidden by a durable mark, `hidden_at`, and never deleted: its id, its claimed name, its folder and the files in
-it, its `session://` address, its log, its accounting and its share stay as they were, and a direct read or attach finds it.
-
-```mermaid
-stateDiagram-v2
-    direction LR
-    Shown --> Hidden: hide, while nothing it covers is live
-    Hidden --> Shown: show, or a live loop starts in it, or creation by its folder
-```
-
-| Fact | Rule |
-| --- | --- |
-| A session's hide | marks the session and every session beneath it as one group, named by the session hidden (`hidden_by`); a group already hidden inside it joins it, and so does a session created beneath a hidden session; hiding a hidden session changes nothing |
-| A workspace's hide | marks the workspace alone; its sessions keep their own marks |
-| Live work | a hide is `409 live-work` while any session it covers holds a live loop ({§session-lifecycle-live}), an open stream (detached or not), a pending proposal or a pending question, the Problem counting each as `loops`, `streams`, `proposals` and `questions`; nothing is cancelled and nothing is marked |
-| Showing | showing any session of a group shows the whole group; showing a workspace shows it alone; showing a shown place changes nothing |
-| New work | a loop starting live on a session shows its group and its workspace, so nothing runs out of sight; the history a fork copies is never live and shows nothing |
-| Creation | creating a workspace by its folder's default name selects it and shows it ({§workspace-name}); an explicit name a hidden workspace holds is `409 name-conflict`, its detail saying the holder is hidden |
-| Where it is left out | `listWorkspaces` and `listSessions` filter by the mark only when `hidden` is present: `false` lists shown places, `true` hidden ones; the overview leaves out hidden sessions, and in the daemon's scope every session of a hidden workspace ({§methods-session-overview}) |
-| Announced | a change announces `workspace/hidden` or `session/hidden` in its workspace's scope; a call that changes nothing announces nothing, and a place new work shows is announced by that work's own events |
-
-### §session-scheme Session resources and control
-
-§session-authority-carving **Authority is a literal namespace, not a principal.** `workspace:///notes.md` is shared scratch; `session://alice/draft.md` is named scratch. Both belong directly to the workspace ({§entry-owner}). Entry addresses require no namesake Session row and survive its deletion; only pathless session controls resolve an actor. The caller never alters an address, and `~` has no alias semantics.
-
-§session-name-minting **URI ingestion is permissive; session minting is not.**
-Every model session-creation door applies the contracts-owned
-`SESSION_NAME` predicate ({§session-name}) through one core admission path. Generic URL parsing
-continues to decompose other authorities without treating them as mintable, and an exact read by
-name ({§methods-session-read}) is no creation door: it resolves `_plurnk` like any listed name.
-
-| Candidate                                      | Minting result                                                        |
-| ---------------------------------------------- | --------------------------------------------------------------------- |
-| `SESSION_NAME` match                            | Admitted as the exact literal session name; `plurnk` is one.           |
-| `_plurnk`, or any other spelling               | Refused as `name-invalid` before lookup, insertion, or child startup. |
-| Automatic name                                 | Generated, then admitted through the same predicate.                  |
-
-§session-read-scope **Scratch is workspace-readable.** Any actor reads and searches any named or shared scratch address. Parentage and writer identity do not change resolution. Scratch namespaces do not require a namesake Session. A pathless actor address requires a named Session; an unknown actor returns 404.
-
-§session-write-scoping **Write scoping: scratch is workspace-writable.** All workspace actors may EDIT, COPY, MOVE, or KILL entries in any named or shared scratch namespace, including generated documents. Workspace admission remains uniform. Intrinsically immutable evidence in other schemes retains its own contract ({§scheme-entry-matrix}); operation provenance and delegation lifecycle do not grant or restrict scratch access.
-
-§session-generated-subtree **Generated documents share `workspace:///_plurnk/`.** Project instructions (`AGENTS.md` and subtree-scoped `instructions/**`), scheme/runtime references (`plurnk/**`), tool details (`tools/**`), and family catalogs are workspace resources. Agent Skills retain their own trees at `skill://<name>/` ({§skills-resources}).
-
-The subtree has ordinary scratch access, not an ACL. Runtime maintenance reconciles it from workspace Functionality through the runtime actor's ordinary turns ({§actor-boundary-doc-injection}); reconciliation may replace manual edits. There are no per-Session copies or fork rederivation. A runtime's `resourcesPath` is relative to this root ({§tools-resource-materialization}).
-
-§session-control-addressing **Explicit session control addresses are authority-only.**
-WORK and FORK may omit their address to allocate one ({§session-auto-name}).
-Control is same-workspace only ({§actor-boundary}). Generic URI
-parsing remains tolerant, but session control admits no component it cannot
-interpret and never silently normalizes one away.
-
-| URI component     | Control requirement                                                          |
-|-------------------|------------------------------------------------------------------------------|
-| Scheme            | `session`                                                                     |
-| Authority         | Exactly one non-empty session authority                                       |
-| Path              | Absent; a trailing `/` is a path, not a control alias                        |
-| Userinfo or port  | Absent                                                                         |
-| Query or fragment | Absent, including an empty delimiter                                          |
-| Request metadata  | Absent                                                                         |
-
-Every admitted authority is a literal `sessions.name`; self-addressing uses the caller's actual name.
-
-| Operation | Accepted pathless authority | Effect                                  |
-|-----------|-----------------------------|-----------------------------------------|
-| `WORK`    | new literal name, or omitted | Spawn a fresh session.                   |
-| `FORK`    | new literal name, or omitted | Branch the caller into a new session.    |
-| `SEND`    | existing literal name  | Message the named session or caller.     |
-| `READ`    | existing literal name       | Collect the named session's deliverable. |
-| `KILL`    | existing literal name  | Terminate the named session or caller.   |
-
-- §session-scheme-spawn **Spawn** — ```` ```WORK (session://<name>)? ```` with a task body creates a new child session (empty log) and starts it with that task on its first loop; a person's operation starts a root session that person owns instead ({§actor-boundary-client-operations}). WORK/FORK are the session-creation verbs: EDIT is file/entry only, so EDIT on the bare session entity is a **400** steering to WORK/FORK — the entity is not an entry. Names remain unique within a workspace for the lifetime of retained Session rows, including after termination.
-
-  | A name a session already holds | Result |
-  | --- | --- |
-  | WORK | the voice door ({§session-scheme-irc}): its body is delivered to that session as a message, nothing is created, the receipt names the session and `delivered: message`, and an `env` option is refused by name since a message takes none |
-  | FORK | `409 session-name-conflict`, whose recovery names the working forms — WORK or `SEND (session://<name>)` to message the live session, or a name no session holds to branch; concurrent claims cannot redirect a published address or expose a raw uniqueness failure |
-
-- §session-spawn-prompt-resource **The spawn slot is overloaded by scheme.** A `session://` path is
-  the child's address and keeps the address rules ({§session-control-addressing}). A path of any
-  other scheme is the child's prompt resource: it is read whole (`<1,-1>`) under the caller's read capabilities, composed with
-  the body as BARE's combined form (resource first, then the authored text), and the child is
-  auto-named exactly as when the slot is empty ({§session-auto-name}). The durable row keeps the
-  authored statement. A read failure is the operation's failure and spawns nothing; an empty
-  resource with no body is `422 spawn-prompt-empty`. Naming the child and giving a resource in one
-  statement is not expressible; the body can READ the resource instead. Taught in the deep
-  reference only.
-- §session-scheme-irc **irc** — ```` ```SEND (session://<name>) ```` with a message body or attachments delivers it to an existing session, the **voice door** ({§actor-boundary-two-doors}): an active session folds it into its next turn, an idle one wakes ({§actor-boundary-passive-wake}). No text beyond whitespace and no attachments is 422 `message-empty`, before message admission or recipient loop creation. Nonempty text is delivered verbatim; attachment-only delivery uses {§send-resource-attachments}. A fresh receiving loop retains that session's durable model, spawn override, and effort; the sender and daemon default do not re-select it. The caller addresses itself by its literal name; a literal name with no session in the workspace is 404.
-- §session-scheme-fork **Fork** — ```` ```FORK (session://<name>)? ```` with a task body branches the
-  current session into a **named** child: its log is deep-copied
-  ({§machine-processes-fork-copies-the-log}), which continues with `task`; the
-  workspace is shared, never copied ({§machine-processes-fork-shares-workspace}). A
-  person's operation branches the session it acts for ({§actor-boundary-client-operations}).
-  WORK and FORK are distinct verbs — WORK spawns a fresh session, FORK branches
-  the log. Both report the resulting `session://name` address in receipt
-  metadata `session`, whether named explicitly or allocated automatically.
-  The submitted operation retains its authored target, including absence.
-  Inherited loops are
-  copied as **terminal history** (a non-terminal status is clamped): a fork's
-  own work is a fresh loop, so an inherited mid-flight loop never makes the
-  branch look forever-live to the {§send-premature-terminate} gate.
-- §session-scheme-fork-scratch **Forked scratch.** Named scratch and evidence are copied under the new name through {§machine-processes-entry-inheritance}. Parent and branch can edit either scratch namespace; their copies diverge independently.
-- §session-lifecycle-wake-requeue-not-terminal **A wake re-queue is not a terminal.** A conclusion-wake resumes a 202-blocked loop by re-queueing it (202 → 100); when that lands while the loop's own live drain is between turns, the drain **re-claims and continues** (atomic 100 → 102; the injected prompt is already the next turn). The internal re-queue is never reported as an outward terminal.
-
-- §session-scheme-collect **Collect** — each concluded child loop reaches its direct parent as an `_plurnk` READ of `ops://<name>/<sequence>` ({§loop-answer}), not a message, and that row carries what the child said. The occurrence retains that loop's exact terminal result; the READ uses ordinary bounded projection of {§loop-answer}. The model therefore reads the session itself for its outcome or a wait rather than guessing a scratch path to "check on" it.
-
-  | Fact | Rule |
-  | --- | --- |
-  | Delivery | the original delegated answer reaches the parent here, not as a duplicate reply ({§message-reply-delivery}); other message replies remain independent deliveries |
-  | Failures and cancellations | retain their exact status, Problem, and visible explanation, including a spawn that fails before its first turn |
-  | Observation and wake-up | follow {§env-delta-child-termination}; a later child loop cannot replace the retained result |
-  | The pull side | mirrors the push: a path-absent ```` ```READ (session://<name>) ```` collects that same result on demand for a concluded session and names its canonical loop URI in `resource` |
-  | An unfinished loop | has not concluded, so the READ returns **425** (Too Early); an explicit lifecycle declaration chooses whether to continue or wait for that session ({§join-blocking-collect}) |
-  | A missing name | 404 |
-
-- §session-loop-result `ops://<name>/<sequence>` selects one session-local positive safe-integer
-  loop sequence ({§loop-answer}; one address serves both what a loop said and how it ended). It is a read-only resource, not an actor control
-  address: READ, FIND and COPY use ordinary projections; EDIT, MOVE-source, and KILL cannot change
-  it. No query, userinfo, or port is accepted. A coordinate that is not a positive safe integer is
-  400; a missing loop 404; a loop that has not answered and has not concluded 425. A concluded
-  loop remains readable after newer loops, log curation, or a reply to its originating message.
-  A failure reports its problem even when the loop answered earlier: the failure is the news.
-  READs and completion observations use the same resolution, representation and projector.
-- §child-orientation **Child orientation: the packet's Open Work section is the current inventory of what this session holds open.** Beyond the conclusion delta, every turn the packet's status clump surfaces the work this session currently holds open, beside the messages it owes: `## Open Work` is one JSON object, `{"sessions": [...], "streams": [...], "messages": [...]}`, its unconcluded child sessions, its open streams and the messages it sent that await completion ({§session-obligations}) as `{status, path}` pointers (the same shape as the errors section); a message pointer carries the recipient loop's status. Body-suppressed child activity is durable history; this section is the current inventory that keeps an active obligation visible even when no new activity arrived. It is orienting state, never advice: the model sees its live subtree (`{"status":102,"path":"session://session-x"}`) and reasons for itself — READ, SEND, or KILL via the path. Workspace schedules are not held work: an occurrence arrives as a message ({§schedule-delivery}).
-
-  | Open stream pointer `detail` | Rule |
-  | --- | --- |
-  | Shape | elapsed runtime, output inactivity, and its channels' sizes and growth since the last packet (`{"status":"active","path":"sh:///ab3d5678","detail":"elapsed 300s; output unchanged 120s; stdout 340 lines (+2048 bytes)"}`); both durations are whole seconds at packet assembly, floored and bounded below by zero |
-  | Runtime | starts at subscription opening |
-  | Output inactivity | starts there too, then resets atomically when any published channel's content changes, including replacement or clearing; identical writes, empty appends, READs, publication acknowledgements, metadata, and channel-state changes do not reset it |
-  | The clock | durable; a stream lacking that evidence reports `output timing unknown` until its next content change, never a guessed timestamp |
-  | Observations only | not new timeouts or wake conditions ({§exec-stream}) |
-
-- §packet-empty-sections **Empty sections are stated where the model decides on them.**
-  `## Open Work` renders every turn, each of its lists `[]` when empty: the
-  model decides whether to wait or complete on exactly these facts, so their
-  emptiness is stated rather than inferred from a missing heading. This is the
-  deliberate exception to the wire rule that empty content is absent; errors,
-  notices, and the rest keep that rule. The parent is not a section: the
-  `## Session` identity block carries `"parent": "session://<name>"`, or
-  `"parent": null` at a root, so a session never infers its rank from silence.
-- §packet-current-turn **The packet says who, which turn and who attends, below the log.** The
-  `## Session` block, in the status clump below the log ({§packet-cache-monotone}), carries
-  `{"path": "session://<name>", "parent": <address or null>, "loop": L, "turn": T, "owner":
-  {"address": "<owner>", "interactive": <boolean>}}`: the actor, whose child it is, the coordinate
-  this packet's response becomes, so `reasoning://<session>/L/T` and `ops://<session>/L/T` are the
-  model's own and `log:///L/T/*` its rows, and its approval owner ({§session-ownership}) with whether
-  a person attends that owner; a model never infers the present from the last row's coordinate,
-  which may or may not be its own turn, and never infers from a missing tool alone that nobody can
-  answer. The block changes every turn, so nothing of it precedes the log, and the packet carries no
-  date, time or zone anywhere. The coordinate only; the source addresses stay documented, not
-  taught.
-
-Session control rides the daemon's inject seam (active→fold, idle→enqueue+drain), so the handler creates/branches the session and hands off; the daemon owns provider + system prompt. FORK/WORK carry the seed task in the body and are their own ops, dispatched to session control — never the entry-copy path.
+- **`## Session`**: Renders `{"path": "session://<name>", "parent": <"session://..." | null>, "loop": L, "turn": T, "owner": {"address": "<owner>", "interactive": <boolean>}}`, naming the actor, its parent, the `(L, T)` coordinate this packet's response will occupy (`reasoning://<session>/L/T`, `ops://<session>/L/T`, `log:///L/T/*`), and its owner's attendance ({§session-ownership}).
+- **`## Open Work`**: Always renders (even when all lists are `[]`, as the deliberate exception to empty-section omission) as `{"sessions": [...], "streams": [...], "messages": [...]}`, listing unconcluded child sessions, active stream subscriptions, and sent messages awaiting completion ({§session-obligations}, {§schedule-delivery}). Each active stream pointer carries `detail: "elapsed <E>s; output unchanged <U>s; <channel> <lines> lines (+<growth> bytes)"` (or `output timing unknown` when `output_changed_at` is null); `opened_at` is fixed at subscription open, while `output_changed_at` resets atomically only when a published channel's content actually changes ({§exec-stream}).
 
 ## §membership File membership and project roots
 
@@ -903,7 +293,7 @@ and never re-fetch a match.
   | Admitted | As | The exceptions |
   | --- | --- | --- |
   | By exact creation records (`source: "create"`, origin `constraint`), never staged | members | (1) a file an accepted EDIT creates; (2) a COPY/MOVE destination ({§membership-create-parents}) |
-  | By a published standard | projected instruction documents — never as members | (3) the project's `AGENTS.md` and nested `AGENTS.md` files ({§turn0-agents-stunt}, #346), read from disk regardless of git status and materialized as `workspace:///_plurnk/AGENTS.md` and `workspace:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member only when tracked or added, and the standard never overrides the operator's exclusions — an `AGENTS.md` the repository ignores or an exclusion matches is not projected; the root `AGENTS.local.md`, which the convention ignores, is projected whatever its git status unless an exclusion matches ({§turn0-local-instructions}) |
+  | By a published standard | projected instruction documents — never as members | (3) the project's `AGENTS.md` and nested `AGENTS.md` files ({§session-initialization-entry}, #346), read from disk regardless of git status and materialized as `workspace:///_plurnk/AGENTS.md` and `workspace:///_plurnk/instructions/<subtree>/AGENTS.md`; the file itself is a member only when tracked or added, and the standard never overrides the operator's exclusions — an `AGENTS.md` the repository ignores or an exclusion matches is not projected; the root `AGENTS.local.md`, which the convention ignores, is projected whatever its git status unless an exclusion matches ({§session-initialization-entry}) |
   | By the model's own proposal | a `members` definition projected with source `model` | (4) a definition the model proposes through the `members` family ({§members-functionality}), admitted only under the operator's ceiling `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` ({§members-model-scope}) and never past the repository's ignore rules or an exclusion; (5) under `PLURNK_MEMBERS_AUTO_ADD=1`, the file a model's READ reaches for, or whose text its FIND pattern matches, admitted as that same model definition of the exact path once the read's admission proposal is accepted ({§membership-auto-add}) |
 
 - §membership-git-membership The workspace owns the Git repository containing
@@ -1414,7 +804,7 @@ their absence never makes a client or `_plurnk` turn exceptional.
 | Field | Contract |
 |---|---|
 | `producer` | Required actor class: `model`, `client`, or `_plurnk`. |
-| `kind` | Required purpose: `inference`, `initialization`, `operation`, or `maintenance`. Model iff inference; initialization and maintenance require `_plurnk`. Producer and kind are immutable. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§actor-boundary-doc-injection}). |
+| `kind` | Required purpose: `inference`, `initialization`, `operation`, or `maintenance`. Model iff inference; initialization and maintenance require `_plurnk`. Producer and kind are immutable. A maintenance turn's successful rows are packet-suppressed — a receipt answers an asker, and maintenance has none ({§session-initialization-entry}). |
 | `status`, `completed_at` | A new turn is open at status 102 with `completed_at=NULL`. Completion records the program outcome and timestamp; a completed 102 is distinct from an open 102. A successful administrative program completes at 200 without concluding its host model loop. |
 | Operations | Ordered by `(turn_id, sequence)` on one exact session/loop/turn chain. Each row's `origin` is the turn producer or `_plurnk` making a system observation; the observation does not impersonate the producer. |
 | Program source | Every admitted source-backed turn preserves its exact program before dispatch in `turn_sources`, independently of log receipts, under {§turn-ops-entry}. |
@@ -1503,7 +893,7 @@ other violations in the same turn still strike normally.
 3. It re-issues the same call against the exact frozen model messages whose response is still outstanding. Each reissue remains a distinct logical model call with complete physical-request accounting, but the active turn's newly recorded provider Problems do not recursively enter that request; they surface normally only in a later genuinely new packet. No emission attempt is consumed and no strike is scored.
 4. Every recovery checkpoint broadcasts live, while the model-facing Notice buffer retains only the current provider state; the next completed exchange notices `provider_recovered`.
 
-Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it is spent the turn completes as `202` and the loop parks exactly like a WAIT ({§session-lifecycle-wake-requeue-not-terminal}), resuming on the next prompt or wake with its log intact — **unless the session's owner is not interactive ({§session-ownership}); then the loop concludes on the provider's exact failure because no person attends to wake that park.** Only a client cancel, the execution allowance ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal, authorization, quota, an invalid response) settles a loop on a provider failure.
+Recovery is bounded by `PLURNK_SERVICE_PROVIDER_RECOVERY`; when it is spent the turn completes as `202` and the loop parks exactly like a WAIT ({§session-scheme}), resuming on the next prompt or wake with its log intact — **unless the session's owner is not interactive ({§session-ownership}); then the loop concludes on the provider's exact failure because no person attends to wake that park.** Only a client cancel, the execution allowance ({§operator-config-loop-timeout}), or a non-recoverable provider Problem (refusal, authorization, quota, an invalid response) settles a loop on a provider failure.
 
 **Contract Strikes**: every turn with one or more contract violations earns a
 strike; a turn without any contract violations clears the strikes.
@@ -1909,7 +1299,7 @@ The read resolves through the registered scheme's {§entry-address-resolution} a
 | `skill://recipe/...` | Installed skill name | Skill resource contract | Shared installation |
 | HTTP, WebSocket, executor/MCP resources | Scheme's canonical namespace | Scheme contract and workspace policy | Shared live; no copied connection |
 
-Copied bodies and log references remain verbatim. Explicit source addresses continue to name the source; only copied scratch/evidence resources' own authority becomes the child's name ({§machine-processes-entry-inheritance}).
+Copied bodies and log references remain verbatim. Explicit source addresses continue to name the source; only copied scratch/evidence resources' own authority becomes the child's name ({§machine-processes}).
 
 The scheme identifies the resource kind, the authority names its namespace, and
 the path identifies the resource within it. History uses session-local loop/turn/item
@@ -3030,7 +2420,7 @@ reads what the model thought and where its content program can be found
 
 §rejected-emission-entry A rejected provider response is not `turnOps`: it never became an admitted turn program, and no emission row announces it ({§emission-row}). The one bounded invalid-emission recovery item under {§emission-admission} has `attrs.kind="emissionAttempt"`, `origin="model"`, the canonical model-facing `/attempt` leaf, and the exact latest rejected response. The packet does not duplicate that identity as `kind` metadata. It is born durably body-suppressed and projected visibly only in the informed recovery packet; every other rejected attempt remains forensic-only.
 
-- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional.** A coordinate is `loop/turn/sequence`; a full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix that selects its descendants, and the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (workspace:///docs/) ````. Within a turn, sequence is arrival order: inbound SEND rows publish before the program runs ({§message-arrival}), so a turn receiving messages holds the first at `log:///L/T/1/SEND`, followed by further arrivals oldest first, then its emission's announcement, then the model's operations ({§packet-current-turn} names `L/T`).
+- §log-coordinate-hierarchy **Log coordinates are a hierarchical prefix; the trailing slash is optional.** A coordinate is `loop/turn/sequence`; a full coordinate is always three parts, so a one- or two-part path is unambiguously a prefix that selects its descendants, and the trailing slash is an optional alias (`log:///1/2` ≡ `log:///1/2/`), uniform with ```` ```READ (workspace:///docs/) ````. Within a turn, sequence is arrival order: inbound SEND rows publish before the program runs ({§message-arrival}), so a turn receiving messages holds the first at `log:///L/T/1/SEND`, followed by further arrivals oldest first, then its emission's announcement, then the model's operations ({§child-orientation} names `L/T`).
 
   | Target | Selects |
   | --- | --- |
@@ -3479,7 +2869,7 @@ The numeric modifier belongs to SEND's reply metadata, not its text scope; it co
 | Outcome | failed delivery resolves nothing; the latest explicit completion reply determines each message's outcome, and ordinary progress replies never reopen a completed message; curation changes neither delivery nor completion |
 
 §session-finished-reply **A session's latest finished reply is its newest delivered completion.** It is the session's newest
-log row that is a model-authored SEND, resolved, delivered, not copied history ({§machine-processes-fork-copies-the-log}), whose receipt
+log row that is a model-authored SEND, resolved, delivered, not copied history ({§machine-processes}), whose receipt
 records a message completion: `completion` `200` or `499`. A progress reply, a failed delivery and speech that completed no
 message record none, and never count. The daemon's own `499` answers to abandoned messages ({§message-abandonment}) are not
 the model's, so a cancellation without a model `[499]` leaves the latest finished reply as it was. A child's reply is the
@@ -4134,7 +3524,7 @@ A scheme or executor may pause its current operation on one
 pending-only `client_interactions` row bound to one exact
 workspace/session/loop/turn ownership chain, then publishes the same validated
 `ClientInteractionProjection` through `loop/interaction` and reconnect
-discovery. The projection names its recipient ({§client-interaction-routing}) but
+discovery. The projection names its recipient ({§session-ownership}) but
 contains no workspace id or private upstream
 continuation state; those remain respectively in the event envelope and the
 awaiting operation owner.
@@ -4353,7 +3743,7 @@ No generator. SQLite-optimal: STRICT (3.37+), `INTEGER PRIMARY KEY` aliasing, ex
 | Concern | Rule |
 |---|---|
 | §db-schema-baseline Baseline | Versions 1–8 of `migrations/` are the released baseline, as domain chapters — `001_workspaces`, `002_sessions`, `003_loops`, `004_inference`, `005_entries`, `006_log`, `007_subscriptions`, `008_interactions` — each one `MIGRATE` block whose version is the file's numeric prefix. They create the 4.0.0 support-floor shape: tables, indexes, views, the constraint triggers that are a table's invariants (guards that only `RAISE`), and a view's `INSTEAD OF` write path. No migration holds an `INIT` block or a trigger that writes a row. |
-| §db-migrations Migrations | A released version is frozen within its support envelope: only its comments may change. Every shape change is one new file at the next version, applied by sqlrite above the database's `PRAGMA user_version`, ascending, each in its own transaction with its version bump. A fresh database takes the same path as an existing one. Forward migration is supported from the previous major's floor (4.0.0) and within the current major; each major may squash pre-floor steps into the 8 baseline chapters, and opening a pre-floor database refuses naming its intermediate stepping-stone release (`@plurnk/plurnk-service@4.3.3`). Each post-floor migration carries upgrade coverage: `test/intg/schema-baseline.test.ts` pins the released shapes from the support floor forward and migrates a released database, asserting its rows survive. A process trigger's change needs no migration: its `INIT` block re-declares it on the next open ({§db-process-triggers}). Foreign keys stay enforced. Prefer column changes or guard-trigger replacement; rebuilding a referenced table requires copying its complete referencing subgraph first and replacing children before parents, with retained-row and foreign-key coverage. Dropping a parent alone would cascade away its children. |
+| §db-migrations Migrations | A released version is frozen within its support envelope: only its comments may change. Every shape change is one new file at the next version, applied by sqlrite above the database's `PRAGMA user_version`, ascending, each in its own transaction with its version bump. A fresh database takes the same path as an existing one. Forward migration is supported from the previous major's floor (4.0.0) and within the current major; each major may squash pre-floor steps into the 8 baseline chapters, and opening a pre-floor database refuses naming its intermediate stepping-stone release (`@plurnk/plurnk-service@4.3.3`). Each post-floor migration carries upgrade coverage: `test/intg/machine-process.test.ts` pins the released shapes from the support floor forward and migrates a released database, asserting its rows survive. A process trigger's change needs no migration: its `INIT` block re-declares it on the next open ({§db-process-triggers}). Foreign keys stay enforced. Prefer column changes or guard-trigger replacement; rebuilding a referenced table requires copying its complete referencing subgraph first and replacing children before parents, with retained-row and foreign-key coverage. Dropping a parent alone would cascade away its children. |
 | §validation-topology Validation topology: where an invariant is enforced | The SQL core owns each invariant: a chapter's CHECK constraints and guard triggers are its one statement, and a rule two tables share is the same expression over each column (`entry_channel_producer_result_contract` in `005_entries` and `subscriptions_result_contract_update` in `007_subscriptions` hold the settled-result rule as one text). Contracts (JSON Schema) are enforced at the gates: a scheme's result entering core (`Results` in plurnk-schemes) and the wire leaving to clients (plurnk-acp's `Validator` calls). Everything between trusts core and the gates and carries no defensive re-validation: a result read back from a row is parsed, never re-asserted. Witness: `test/intg/validation-topology.test.ts` applies one corpus of settled results to the gate, to chapter 5 and to chapter 7 and asserts the three agree on every row. |
 | Open failure | A database from before the support floor is refused naming its stepping-stone release. A missing table or column after migration means the file's shape disagrees with its version: a database from a newer release, or one from an unreleased development build. The daemon refuses to open it and names the remedies. |
 | §db-process-triggers Processes beside their owners | A trigger that writes rows — a cascade, a capture, an ambient event, a publication cursor, a landed curation — is a process, not shape. It is declared as an `-- INIT: <trigger name>` block in the `.sql` file beside the statements that fire it (`ambient.sql` for the ambient feed, `LoopLifecycle.sql`, `Turn.sql`, `Engine.sql` for model calls, `_entry-crud.sql`, `Log.sql`, `ChannelWrite.sql`), as `DROP TRIGGER IF EXISTS` then `CREATE TRIGGER`, so the definition is current on every open of a database whose shape is current. `MIGRATE` always precedes `INIT` and `INIT` runs on the writer only, so a process may reference any table regardless of file order and never runs on the read pool. `test/intg/schema-composition.test.ts` fails on a baseline trigger that writes, an `INIT` trigger that only guards, a block not named after its trigger or not dropping first, and a live trigger set that differs from the declared set after a first and a second open. |
@@ -4588,7 +3978,7 @@ base directories replace any ambient values they supersede, and an absent
 | Configuration | `$XDG_CONFIG_HOME` (default `~/.config`) | `plurnk/.env`, `plurnk/AGENTS.md`, plurnk-only MCP definitions `plurnk/mcp.json`, Agent Skills `plurnk/skills/<name>/SKILL.md`, and Agent Plugins `plurnk/plugins/<plugin>/` |
 | Durable user data | `$XDG_DATA_HOME` (default `~/.local/share`) | `plurnk/plurnk.db` and SQLite sidecars |
 | Persistent operational state | `$XDG_STATE_HOME` (default `~/.local/state`) | On-demand workspace/module directories ({§module-workspace-directory}). |
-| Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§service-update}); no directory is created until an explicit update writes it. |
+| Reproducible cache | `$XDG_CACHE_HOME` (default `~/.cache`) | `plurnk/models.json` cached model catalog ({§model-catalog-cache}, {§startup-admission}); no directory is created until an explicit update writes it. |
 | Shared global Agent Skills | User home | `.agents/skills/<name>/SKILL.md` |
 | Shared global MCP definitions | User home | `.agents/mcp.json` |
 | Shared global Agent Plugins | User home | `.agents/plugins/<plugin>/` ({§agent-plugins-hosting}) |
@@ -4721,7 +4111,7 @@ and environment adjustments instead of introducing a service-management command.
 §nginx-example The service package ships `plurnk.nginx.conf`, an example nginx front, beside
 the unit and under the same terms. Hardening belongs there, not in the daemon: TLS, security
 headers, sign-in throttling by real client address and an optional network allow-list. The
-daemon answers every caller at the address it used ({§http-request-origin}); behind TLS it is
+daemon answers every caller at the address it used ({§http-host}); behind TLS it is
 told the public origin (`PLURNK_AUTH_ISSUER`),
 which it cannot see.
 
@@ -4751,7 +4141,7 @@ Each knob's value lives on its panel and nowhere else (`plurnk-service config de
 | `PLURNK_SERVICE_EDIT_RECEIPT_CONTEXT_LINES` | Surrounding and landed lines shown at each EDIT result boundary ({§edit-result-receipt-projection}). |
 | `PLURNK_SERVICE_MIN_CYCLES` | Min repetitions before cycle detection fires ({§engine-rails}). |
 | `PLURNK_SERVICE_MAX_CYCLE_PERIOD` | Max period length cycle detection examines ({§engine-rails}). |
-| `PLURNK_SERVICE_FILES_ITEMS` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§actor-boundary-catalog-preview}). |
+| `PLURNK_SERVICE_FILES_ITEMS` | Turn-0 catalog preview. Folder-capable schemes render a one-level `*` map with `dir/**` rollups; kernel docs remain recursive and explicitly complete. `-1` = markerless first pages; positive `N` explicitly caps only file-map rows; `0` / unset = off ({§session-initialization-entry}). |
 | `PLURNK_SERVICE_MEMBERS_MODEL_SCOPE` | Ceiling for a model's `members` definitions in the lattice `none < root < namespace`; `none` refuses every model definition ({§members-model-scope}). |
 | `PLURNK_SERVICE_EXEC_CONCURRENCY` | Executions admitted at once per workspace; the rest queue FIFO with `202 queued` receipts; `-1` unbounded ({§exec-concurrency}). |
 | `PLURNK_SERVICE_EXEC_SCRATCH` | Directory a standalone execution source is written to for its run; empty derives `$XDG_RUNTIME_DIR/plurnk`, else the platform temporary directory ({§exec-scratch-directory}). |
@@ -4857,7 +4247,7 @@ construction.
 - automatic Git membership when the operator ceiling permits Git;
 - ambient operator-file docs/packet notes cleared;
 - the operator's installed skills and plugins left unread ({§agent-roots});
-- server approval set to accept ({§session-owner-resolution});
+- server approval set to accept ({§session-ownership});
 - ambient MCP and schedules default disabled; the drivers also project per-alias `ENABLED=0` overrides for named MCP, schedule, membership, and skill resources in the operator's config file, and Mock-tier bootstrap clears these ambient families before loading its fixture floor.
 
 Configuration with a narrower or variable owner stays outside it:
@@ -4954,7 +4344,7 @@ Every registered module's `setup` runs in registration order before any module's
 
 | Fact | Rule |
 | --- | --- |
-| The listener | bound before durable admission ({§startup-listener-admission}) and admitted once every module has started ({§module-http-mounts}); requests on it remain unavailable until it is admitted, and a module opens any other exterior ingress only after recovery |
+| The listener | bound before durable admission ({§startup-admission}) and admitted once every module has started ({§module-http-mounts}); requests on it remain unavailable until it is admitted, and a module opens any other exterior ingress only after recovery |
 | Persisted workspaces with no durable work | stay passive until first demand; activation publishes their complete capabilities and documentation before the demanding operation proceeds; an owner's arrival is such a demand ({§methods-workspace-activate}), so a first prompt waits only for what remains of it |
 
 A module, and any distinct lifetime object returned by `start`, may implement the following phases:
@@ -5454,7 +4844,7 @@ defaults; one workspace snapshot is effective authority.
 
 §functionality-documents **Generated documents describe the shared snapshot.**
 Documents are projected through the existing session generated subtree
-({§session-generated-subtree}); the projection does not confer ownership, and it
+({§session-scheme}); the projection does not confer ownership, and it
 follows the family's admission ({§schemes-directory}): a denied family projects none.
 Enabled, active definitions are discoverable. Disabled or unavailable
 definitions add no hot-path teaching. Their exact state and Problem remain
@@ -5579,7 +4969,7 @@ Core's behavior behind them.
 | Area                                              | Function | Core contract |
 |---------------------------------------------------|----------|---------------|
 | §methods-event-subscribe Events                   | `subscribeToEvents(handler) -> unsubscribe` | Subscribes to the raw event source in {§notifications}. A subscriber failure is logged and cannot re-enter engine control flow. |
-| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily`, `onRevoked` and the sign-ins of a subject by `sessions` ({§credential-sessions}), and a module's own client by `registerClient`, `client` and `authenticateClient` ({§credential-module-client}); one in-memory authority per daemon, offered to every module on the seam. |
+| §methods-credentials Credentials                  | `credentials` | The {§credential-authority}: `issue`, `verify`, `consume`, `revokeFamily`, `onRevoked` and the sign-ins of a subject by `sessions` ({§credential-authority}), and a module's own client by `registerClient`, `client` and `authenticateClient` ({§credential-authority}); one in-memory authority per daemon, offered to every module on the seam. |
 | §proposal-list Proposals                          | `pendingProposals(workspaceId)` | Intersects durable proposed rows with the lifecycle owner's live resolution waiters, then returns their validated {§proposal-projection}; persistence alone cannot advertise an unresolvable client interrupt. |
 | §methods-proposal-resolve Proposals               | `resolveProposal(logEntryId, resolution, owner)` | Validates the workspace-scoped owner before delivering one accept, reject, or cancel decision. Unknown, mismatched, and already-resolved identities fail without consuming the gate; the adapter authenticates its owner identity. |
 | §client-interaction-list Client interactions      | `pendingClientInteractions(workspaceId)` | Intersects durable interaction rows with their live operation waiters and returns the contracts-owned projection; a row alone is not a resumable interaction. |
@@ -5589,30 +4979,30 @@ Core's behavior behind them.
 | §methods-session-inbox Reads                       | `readInbox({ workspaceId, sessionId })` | The accepted messages the session has not yet observed at a turn boundary ({§message-arrival}), in acceptance order, each by its immutable source address (`path`), causal `source`, `body`, `loopId` and the `lifecycle` of that loop ({§loop-lifecycle-vocabulary}); a message leaves it when its arrival row lands, and one whose loop concluded first stays, with that terminal lifecycle, since nothing will observe it ({§message-loop-containment}). |
 | §methods-session-streams Reads | `readStreams({ workspaceId, sessionId })` | The streams the session holds open ({§subscriptions}), in opening order, each its subscription's facts as `stream/event` names them: `entryId`, the initiating `sessionId`, the canonical `target`, `lifetime` (`loop`, `turn` or `detached`, as {§exec-lifetime} names what ends it besides its own exit; a duration is loop-bound and reads `loop`, its deadline unreported), the causal `loop_seq`, `turn_seq` and `sequence` read from the `source` it recorded when it began in a turn ({§subscriptions-causal-resource}), and every channel of its entry, written or not, as `{ channel, state, mimetype }` ({§channel-state}). Content stays the resource's ({§methods-entry-read}); a closed stream is gone, its conclusion already published ({§notifications-stream-concluded}). The session must belong to the workspace. |
 | §methods-loop-cancel Loops                        | `cancelDrain(sessionId, reason?)`; `cancelSession({ workspaceId, sessionId, reason? })`; `cancelLoop({ workspaceId, loopId, reason? })` | `cancelDrain` begins durable structured cancellation and reports whether process-local work existed when called; queued or parked durable work is still terminalized when it is `false`. The ownership-bounded `cancelSession` awaits that same tree cancellation and stream reap, so an exterior protocol can project the settled durable result without polling or fabricating state. `cancelLoop` cancels exactly one client operation ({§connection-lifecycle}): its dispatch while that runs, and every attached execution its rows started that still runs, then reports whether any of it was running; nothing else in the runtime session shares its scope. |
-| §methods-op-mirror Op mirror: client dispatch               | `dispatchClientAction({ workspaceId, actor, contextSessionId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary-attached-functionality}), reading `log:///` in `contextSessionId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
+| §methods-op-mirror Op mirror: client dispatch               | `dispatchClientAction({ workspaceId, actor, contextSessionId?, statements, onLoop? })` | Dispatches already-parsed grammar statements as one client operation of `actor` ({§connection-lifecycle}), in the workspace's Functionality ({§actor-boundary}), reading `log:///` in `contextSessionId`'s log ({§actor-boundary-client-operations}). `onLoop` hears the operation's loop before any statement runs. Every statement is an ordered client/operation turn, and every committed `log/entry` is emitted before the promise resolves. Core exposes no per-op method family. |
 | §methods-log-read Reads                           | `readLog({ workspaceId, sessionId, ...coordinate })` | Ownership-checks the session, then reads by ids, recency, or the complete `loopSeq`/`turnSeq`/`sequence` display coordinate, newest first. `sinceId` keeps rows after an id and `beforeId` rows before one, so a reader pages back through the whole log one page at a time. An omitted `limit` is `PLURNK_SERVICE_LOG_READ_PAGE`, and any `limit` is capped at `PLURNK_SERVICE_LOG_READ_MAX`. |
 | §methods-entry-read Reads                         | `readEntry({ workspaceId, sessionId, target, channel?, offset? })` | Acquires the selector from that session's perspective ({§client-entry-address}) and returns {§entry-read-result}, either complete or as one channel suffix, without creating action evidence. |
 | §methods-entry-channel-read Reads                 | `readEntryChannel({ workspaceId, sessionId, target })` | The channel `target` selects, its fragment's or else its scheme's default there, read as `readEntry` reads it and returned complete as {§entry-read-result}: what the HTTP form of an address answers with. |
 | Providers                                         | `listProviders()` | Lists configured aliases with provider/model identity, active state, and the effective provider-derived `inputCapacity` when known. |
 | Model catalog                                     | `listModels(query)` | Returns one validated bounded {§model-catalog-wire} page under {§model-catalog}; performs no provider request or selection. |
 | Client capabilities                               | `listClientDisplayCapabilities()` | Composes sorted scheme declarations ({§manifest-client-display}) followed by sorted MIME declarations ({§mimetype-client-display}) into the validated shared wire ({§client-display-capabilities}). The internal `exec` operation handler is excluded; its addressable runtime-tag scheme faces remain included. |
-| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the workspace and returns its client envelope, minting no session, and emits global `workspace/created`; with a project root and no name it names and selects the workspace under {§workspace-name}, showing a hidden one ({§place-hiding}), emitting `workspace/created` only for a workspace it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
+| §methods-workspace-create Workspace lifecycle     | `createWorkspace({ name?, projectRoot?, settings? })` | Validates `settings` through {§operator-config-workspace-settings}, creates the workspace and returns its client envelope, minting no session, and emits global `workspace/created`; with a project root and no name it names and selects the workspace under {§workspace-name}, showing a hidden one ({§machine-processes}), emitting `workspace/created` only for a workspace it created. Creation and attachment are passive: neither starts derivation nor activates workspace Functionality. `projectRoot` is established here or the workspace remains headless. |
 | §methods-workspace-attach Workspace lifecycle     | `attachWorkspace({ workspaceId } \| { name } \| { projectRoot })` | Exactly one selector returns an existing workspace's client envelope, minting and activating nothing. Names are literal lookups, including previously admitted names. An absolute project root selects its folder-derived default name ({§workspace-name}), not a workspace by its stored folder. An absent target is `404 workspace-not-found`; ambiguous or absent selectors are `400 identity-invalid`. It retains no caller or transport binding state. |
 | §methods-workspace-activate Workspace lifecycle   | `activateWorkspace({ workspaceId })` | Makes the demand a turn makes, without a turn: a cold workspace activates and publishes its complete capabilities; a concurrent demand shares that one activation; it resolves once the workspace is active and leaves it warm under `PLURNK_SERVICE_WORKSPACE_WARM_MS`. Creation and attachment stay passive; an owner's arrival calls it ({§acp-owner-activation}). |
-| §methods-session-create Workspace lifecycle  | `createSession({ workspaceId, name?, parentSessionId?, owner? })` | Creates a distinct model-origin session with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§session-owner-creation}). |
+| §methods-session-create Workspace lifecycle  | `createSession({ workspaceId, name?, parentSessionId?, owner? })` | Creates a distinct model-origin session with empty history. A root may name a registered owner; a child names its parent and inherits ownership. Supplying both parent and owner is invalid ({§session-ownership}). |
 | Session ownership | `registerSessionOwner(workspaceId, { address, tools, interactive })` | Declares or replaces an owner's supported client-tool names and whether a person attends it, in that workspace; `_plurnk` is reserved. |
 | Session ownership | `claimSessionOwner({ workspaceId, sessionId, owner })` | Claims a model session and its model descendants under {§session-ownership}, returning its effective owner. The owner must already be registered. |
 | Runtime actor | `ensureRuntimeSession(workspaceId)` | Returns the workspace's `_plurnk` actor, creating it if absent; it always retains runtime ownership. |
-| Workspace lifecycle                               | `forkSession({ workspaceId, sessionId, name? })` | Creates a child session that branches the source session's history while sharing workspace state. The source is a model session, else `409 model-session-required` ({§machine-processes-session-origin}). |
+| Workspace lifecycle                               | `forkSession({ workspaceId, sessionId, name? })` | Creates a child session that branches the source session's history while sharing workspace state. The source is a model session, else `409 model-session-required` ({§machine-processes}). |
 | §methods-workspace-rename Workspace metadata      | `renameWorkspace(workspaceId, name)` | Changes only the workspace's unique mutable name, under the admission of {§workspace-name}; sessions, log, and membership remain intact, and a refused name changes nothing. |
-| §methods-workspace-hide Workspace metadata | `setWorkspaceHidden({ workspaceId, hidden })` | Hides or shows the workspace under {§place-hiding} and returns `{ id, hidden_at }`, the mark it now holds. An absent workspace is `404 workspace-not-found`, a hide over live work `409 live-work`, and a `hidden` that is not boolean `400 flag-invalid`. |
-| §methods-session-hide Session topology | `setSessionHidden({ workspaceId, sessionId, hidden })` | Hides or shows the session's group under {§place-hiding} and returns `{ id, hidden_at, sessionIds }`: the session's mark now and the sessions whose mark the call changed, none when nothing changed. A session outside the workspace is `404 session-not-found` and a hide over live work `409 live-work`. |
+| §methods-workspace-hide Workspace metadata | `setWorkspaceHidden({ workspaceId, hidden })` | Hides or shows the workspace under {§machine-processes} and returns `{ id, hidden_at }`, the mark it now holds. An absent workspace is `404 workspace-not-found`, a hide over live work `409 live-work`, and a `hidden` that is not boolean `400 flag-invalid`. |
+| §methods-session-hide Session topology | `setSessionHidden({ workspaceId, sessionId, hidden })` | Hides or shows the session's group under {§machine-processes} and returns `{ id, hidden_at, sessionIds }`: the session's mark now and the sessions whose mark the call changed, none when nothing changed. A session outside the workspace is `404 session-not-found` and a hide over live work `409 live-work`. |
 | §methods-workspace-rollback Workspace files      | `rollback({ workspaceId, sessionId, actor, to })` | Reverses `sessionId`'s settled file mutations after its coordinate `to` as one client operation of `actor` ({§rollback}, {§connection-lifecycle}); answers a `RollbackReport`. |
 | §methods-workspace-prompts Workspace metadata     | `listPrompts(workspaceId, limit?, sessionId?)` | Returns nonempty loop-seed prompts a client addressed to the workspace's model sessions, newest-first; `sessionId` narrows to one session. Authorship is the seed message's address ({§message-arrival}): a session-issued seed (WORK, FORK, SEND to a session) has none and is never history, whichever session it seeded; a client prompt at a forked model session is. An omitted limit is `PLURNK_SERVICE_PROMPTS_PAGE`. |
-| Workspace metadata                                | `listWorkspaces({ hidden? })`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder, its label ({§workspace-label}) and its `hidden_at` mark, filtered by the mark when `hidden` is present ({§place-hiding}), and derivation progress. |
-| §methods-session-read Session topology              | `readSession({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Session projection or `null` under {§application-session-observation}. Supplying both identities or neither is invalid. Any non-empty name is looked up, the runtime session's `_plurnk` included: the lookup is no minting door ({§session-name-minting}). |
-| §methods-session-list Session topology              | `listSessions(workspaceId, query?)` | Returns the workspace's durable Session projections under {§application-session-observation}. The origin filter is exact; an explicitly present `parentSessionId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position, and a present `hidden` filters by the mark each projection carries as `hidden_at` ({§place-hiding}). Each projection carries `kind` (`root` for a session with no parent, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound session's own status gauge shows; clients infer neither (#523). |
-| §methods-session-overview Session overview | `readSessionOverview({ workspaceId?, limit, excerptChars })` | Returns `{ sessions, workspaces, omitted }`, the places of the daemon or of one workspace with what waits there, under {§application-session-overview}: each place's lifecycle, the gates it waits on and its latest finished reply ({§session-finished-reply}) with its excerpt ({§list-excerpt}) of at most `excerptChars` characters, most recently finished first; every place waiting on a gate and the first `limit` in that order, `omitted` counting the rest. Hidden places are out of scope ({§place-hiding}). An unknown `workspaceId` is 404 `workspace-not-found`. |
+| Workspace metadata                                | `listWorkspaces({ hidden? })`, `workspaceDerivationStatus(...)` | Reads current workspace identity, with each folder, its label ({§workspace-label}) and its `hidden_at` mark, filtered by the mark when `hidden` is present ({§machine-processes}), and derivation progress. |
+| §methods-session-read Session topology              | `readSession({ workspaceId, identity })` | Ownership-bounds an exact id-or-name lookup and returns one durable Session projection or `null` under {§application-session-observation}. Supplying both identities or neither is invalid. Any non-empty name is looked up, the runtime session's `_plurnk` included: the lookup is no minting door ({§session-scheme}). |
+| §methods-session-list Session topology              | `listSessions(workspaceId, query?)` | Returns the workspace's durable Session projections under {§application-session-observation}. The origin filter is exact; an explicitly present `parentSessionId` filters roots (`null`) or one immediate parent (id), while omission returns every lineage position, and a present `hidden` filters by the mark each projection carries as `hidden_at` ({§machine-processes}). Each projection carries `kind` (`root` for a session with no parent, `fork` for a child with a fork boundary, `work` for any other child) and `lifecycle`, the representative work loop's status through {§loop-lifecycle-vocabulary} (`idle` with no work loop), so a directory row shows the same lifecycle glyph the bound session's own status gauge shows; clients infer neither (#523). |
+| §methods-session-overview Session overview | `readSessionOverview({ workspaceId?, limit, excerptChars })` | Returns `{ sessions, workspaces, omitted }`, the places of the daemon or of one workspace with what waits there, under {§application-session-overview}: each place's lifecycle, the gates it waits on and its latest finished reply ({§session-finished-reply}) with its excerpt ({§list-excerpt}) of at most `excerptChars` characters, most recently finished first; every place waiting on a gate and the first `limit` in that order, `omitted` counting the rest. Hidden places are out of scope ({§machine-processes}). An unknown `workspaceId` is 404 `workspace-not-found`. |
 | §methods-session-loops Loop lifecycle              | `listSessionLoops({ workspaceId, sessionId })` | Ownership-checks the Session and returns its Loops in sequence order under {§application-loop-observation}, including the validated exact terminal result when one exists, and each Loop's `invocation`: `{ sessionId, address }`, the Session and the log address ({§methods-invocation}) of the operation that sent the Loop's first message ({§session-obligations}), or null when a person, a client, a peer or the daemon sent it. It performs no scheduling or event replay. |
 | §methods-session-accounting Session spend       | `sessionAccounting({ workspaceId, sessionId })` | Ownership-checks the Session and returns the {§provider-accounting} projection of every settled request on any loop the Session or a descendant of it (`parent_session_id`, to any depth) ran, since the Session began: its own spend and its delegations', the same tree the turn cap counts ({§turn-cap-counts-the-tree}). Nothing spent is explicit zero. One loop's own accounting stays {§notifications-loop-terminated}'s. Derived from the request ledger on every read ({§tokenomics-provider-usage}); no rollup, no second store. |
 | §methods-session-gauge Session gauge | `sessionGauge({ workspaceId, sessionId })` | Ownership-checks the Session and returns the four {§tokenomics-client-gauge} facts its latest packet reported in `loop/packet.gauge`, read from durable evidence: each `null` when unknown, all `null` before the Session's first packet. A client attaching later starts from the gauge a live one holds. |
@@ -5659,7 +5049,7 @@ without requiring a new transport; it resolves the bound session separately, whi
 each client operation allocates its own administrative loop under {§connection-lifecycle}.
 
 §methods-session-name-admission **Session-name admission.** Session
-creation and fork apply {§session-name-minting} before lookup or creation. A client therefore cannot forge or resume the runtime actor (its
+creation and fork apply {§session-scheme} before lookup or creation. A client therefore cannot forge or resume the runtime actor (its
 name lies outside `SESSION_NAME`) or create a session under a spelling model session control
 could not mint.
 
@@ -5671,7 +5061,7 @@ could not mint.
 | MOVE | additionally mutation of its source |
 | A resource-backed execution | its runtime plus source observation |
 | Unknown schemes, runtimes and tools | continue to their ordinary resolver, so capability policy cannot turn absence into a misleading restriction; the same resolver shapes generated scheme references, session tool documents, and Turn0 surveys |
-| NOTE, lifecycle declarations, log KILL, and label or targetless SEND | log/program control rather than routed external demands, so outside capability selectors; runtime mutations of owned generated entries ({§session-generated-subtree}) likewise maintain intrinsic state |
+| NOTE, lifecycle declarations, log KILL, and label or targetless SEND | log/program control rather than routed external demands, so outside capability selectors; runtime mutations of owned generated entries ({§session-scheme}) likewise maintain intrinsic state |
 | Producer identity | grants no exemption: source observations and other effects in the same operation retain their independent demands, and harness-authored initialization obeys workspace policy |
 
 §workspace-capability-policy **The workspace is the access boundary.**
@@ -5713,7 +5103,7 @@ registration; there is no separate per-tool availability system.
 §owner-interaction-ring **An interaction tool is offered only where an answer can come
 from.** An asking session adds one ring inside that cascade, derived live from its owner
 and never stored. It denies each interaction tool or runtime whose tool the owner would not
-receive under {§client-interaction-routing}; an interaction tool asks under its own
+receive under {§session-ownership}; an interaction tool asks under its own
 tool name (such as `question` on `plurnk`), or its runtime tag for a standalone interaction runtime.
 
 | Surface | With the ring |
@@ -5810,7 +5200,7 @@ coordinate without fetching all rows and matching locally.
 
 §methods-log-entry-wire **Log entry wire fidelity.** `readLog` and `log/entry`
 name the row's session by its id and its immutable name (`session_id`, `session_name`,
-{§machine-processes-session-origin}), preserve causal `source` and the row's lifecycle `state` (`proposed` while a
+{§machine-processes}), preserve causal `source` and the row's lifecycle `state` (`proposed` while a
 proposal awaits its decision, then `resolved`, `failed` or `cancelled`), and parse the row's JSON `attrs` into
 structured data. Client interfaces do not reconstruct these fields from operation or origin.
 
@@ -5904,13 +5294,13 @@ bounded by its workspace. New workspace creation emits the ordinary `workspace/c
 A session is a model's identity. A person's client operations (an execution, typed
 statements, a rollback's compensations) are the workspace's, so each journals in the
 workspace's runtime session `_plurnk`, created when absent, and executes in the workspace's
-Functionality ({§actor-boundary-attached-functionality}). Binding a workspace mints nothing.
+Functionality ({§actor-boundary}). Binding a workspace mints nothing.
 
 | | A model session | A client operation in `_plurnk` |
 |---|---|---|
 | Who acted | the session | the person its loop names ({§actor-boundary-client-operations}) |
 | Who answers its proposals | the session's owner reviews them | nobody: it is that person's decision already ({§proposal-disposition}) |
-| Who answers its clarifications | its owner, while it can ({§client-interaction-routing}) | nobody: the runtime's owner receives no client tool, so an interaction the operation needs fails at once as unsupported |
+| Who answers its clarifications | its owner, while it can ({§session-ownership}) | nobody: the runtime's owner receives no client tool, so an interaction the operation needs fails at once as unsupported |
 | What is cancelled and observed together | the session's loops | the operation's own administrative loop |
 | What its `env:///` means | its own layer, above the workspace's | the workspace's layer; `_plurnk` keeps none ({§env-scheme}) |
 | Whose voice its messages carry | its own | the person's, as a thread message's is |
@@ -5927,7 +5317,7 @@ running. Shutdown cancels every operation the same way.
 
 `runLoop` targets a model session with `origin="model"`. A packet renders only that
 session's private log, so a client operation's rows are structurally absent from every
-model's packet ({§actor-boundary-isolation}); a person reaches a model through a message.
+model's packet ({§actor-boundary}); a person reaches a model through a message.
 
 §actor-boundary-client-operations **A client operation acts on workspace resources, attributes messages
 to its person, and reads a log in the context of one session.** Its loop's `promptSource`
@@ -6068,8 +5458,8 @@ Conditional absence never reorders the surviving default sections.
 |   4–5 | user / assistant | `log` and `emission-history` segments | Append-mostly chronological history: each replayed turn's operations immediately precede that turn's results ({§emission-history}). |
 |     6 | user   | `git`                 | Per-turn workspace status; empty content is omitted. |
 |     7 | user   | `budget`              | `Context Curation`; omitted when capacity is unknown. |
-|     8 | user   | `session`              | `Session`: `{"path": "session://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§packet-current-turn}). |
-|     9 | user   | `work`                | `Open Work`: per-turn `{sessions, streams, messages}` pointers; always present, each list `[]` when empty ({§packet-empty-sections}). |
+|     8 | user   | `session`              | `Session`: `{"path": "session://alice", "parent": <address or null>, "loop": L, "turn": T}`, the actor and the coordinate this packet's response becomes ({§child-orientation}). |
+|     9 | user   | `work`                | `Open Work`: per-turn `{sessions, streams, messages}` pointers; always present, each list `[]` when empty ({§child-orientation}). |
 |    10 | user   | `messages`            | `Open Messages`: immutable message addresses and causal sources ({§message-arrival}). |
 |    11 | user   | `notices`             | Per-turn observations; empty content is omitted. |
 |    12 | user   | `errors`              | Per-turn failure pointers; empty content is omitted. |
@@ -6240,7 +5630,7 @@ fresh session captures the current high-water when its session row is created, s
 pre-existing broadcast history stays out while later occurrences remain
 deliverable even before its first packet. A fork instead copies the parent's
 cursor and captures its own fork high-water atomically with session creation
-({§machine-processes-fork-pending-activity}). Observer rows retain the source
+({§machine-processes}). Observer rows retain the source
 identity and never publish another occurrence. Newly materialized ambient and
 terminal-stream rows emit the ordinary client notification
 ({§notifications-log-entry-notify}) before the next inference; an idempotent
@@ -6257,7 +5647,7 @@ ordinary operation evidence still reaches that child's direct parent.
 | Producer / event                                      | Durable occurrence                                                                                     | Observer projection                                                                                                                |
 | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | §env-delta-child-activity Direct-child activity       | Child-authored final EDIT, COPY, MOVE, SEND, executor invocation, WORK, FORK, and targeted non-log KILL receipts, including failures. `_plurnk` initialization, maintenance, and operation turns stay with the session. A reply already delivered to the parent uses its reply occurrence instead ({§message-reply-delivery}). | Direct parent only; one exact attributed row born body-suppressed. Incoming message projections ({§message-arrival}), NOTE, READ (including executor-output READs), FIND, BARE, WAIT, and log KILL never create activity occurrences. Provider reasoning, calls, rejected emissions, and turn sources do not cross automatically. |
-| §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§loop-answer}). | Direct parent only; bounded, initially visible READ under {§session-scheme-collect}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
+| §env-delta-child-termination Direct-child termination | The child's exact terminal loop result, except loops containing only `_plurnk` operation or maintenance turns. A conclusion before the first turn still reports, including failed spawns. `source` names the actor; the READ selects the exact loop ({§loop-answer}). | Direct parent only; bounded, initially visible READ under {§session-scheme}, never the child's potentially newer loop. Excluded administrative loops create no pending child-result edge. |
 | §env-delta-commons-mutation Commons mutation          | One successful resolved operation whose landed effects touch `workspace:///...`.                         | Every existing session; one body-suppressed row per observer, deduplicated with any lineage audience.                               |
 | §env-delta-filesystem-narration Filesystem narration: project-file divergence | Runtime-owned reconciliation evidence remains in the runtime actor's own log.                        | No ambient observer row. Current content remains addressable and stale hash edits reject at their owned boundary.                 |
 | §env-delta-entry-materialization Executor `entry()` sink | The runtime records typed materialization evidence under its owning actor.                           | No ambient observer row unless the resulting operation itself is direct-child activity or a commons mutation ({§exec-entry-sink}). |
@@ -6278,7 +5668,7 @@ comparison.
 §env-delta-passive **Passive observation never forces a turn.** Deltas materialize only
 while a packet is already assembling. Intermediate child activity and commons
 broadcasts therefore cannot wake an idle session. Urgent directed communication
-uses the voice door ({§actor-boundary-two-doors}); child conclusions and addressed
+uses the voice door ({§actor-boundary}); child conclusions and addressed
 replies use {§session-lifecycle-child-wake} and {§message-reply-delivery}.
 Stream progress remains owned by {§exec-stream}.
 
@@ -6349,7 +5739,7 @@ Stream progress remains owned by {§exec-stream}.
 | --- | --- |
 | Nonempty, with a header | an H2 immediately followed by its JSON object/array content; non-JSON content has one blank line after the header |
 | A null header | only its content |
-| Empty content | omitted: any node whose content is empty is absent from the wire, except the child-orientation sections, which state emptiness as `[]` ({§packet-empty-sections}) |
+| Empty content | omitted: any node whose content is empty is absent from the wire, except the child-orientation sections, which state emptiness as `[]` ({§child-orientation}) |
 | Between sections | trailing newlines are removed from each section, and rendered sections are separated by one blank line |
 
 The projection preserves the evidence section owners supply: paths, URI fragments, log coordinates, scopes and coordinate-prefixed body lines remain usable without translation; curation and log-row measurements stay attached to what they measure ({§tokenomics-agnostic-ruler}); statuses, Problems, body visibility and bodyless rows render as produced, never upgraded or suppressed; operation examples remain typed fences and log records keep their boundaries ({§log-wire-format}).
@@ -6360,7 +5750,7 @@ The projection preserves the evidence section owners supply: paths, URI fragment
 | `system-policy` | system | Authored Markdown                                                                             | {§policy-sections}              |
 | `inject`        | system | Authored Markdown                                                                             | {§packet-inject}                |
 | `log`, `log/<coordinate>` | user | Chronological Markdown H3 records with JSON metadata | {§log-wire-format} |
-| `session`        | user   | JSON `path` with the literal Session address, `parent` (address or `null`), `loop`, `turn`     | {§packet-current-turn}          |
+| `session`        | user   | JSON `path` with the literal Session address, `parent` (address or `null`), `loop`, `turn`     | {§child-orientation}          |
 | `delegation`    | user   | JSON `{sessions, streams}`                                                                    | {§child-orientation}            |
 | `errors`        | user   | JSON status/log-path pointers                                                                 | {§operation-results}            |
 | `notices`       | user   | One alert callout per notice, directive first                                                 | {§notice-callout}               |
@@ -6389,7 +5779,7 @@ leaves the request-only record, while rejected exchanges remain in their
 - A section's content is its items joined by one blank line, so a log row whose rendering did not change between turns hashes to the same item and a turn's durable cost is its new and changed items — the copied prefix of the previous packet is transient data and is never written. A packet transformed by an extension, or any non-log section, is one item.
 - The write is one statement: an INSERT into the `turn_inference_evidence` view, whose INSTEAD OF trigger refuses a turn that is not an open model inference turn and lands the items, the composition, the bag, and the provider metadata together.
 - Readers of a whole packet select from `turn_packets`, which assembles `sections` back into the bag byte for byte (the digest, and every test that inspects a stored packet); statements that need one field read the bag directly with `json_extract`.
-- Items no composition references are transient data: `retention_collect_packet_items` collects them under the retention policy ({§retention-policy}), which is how a deleted session's or workspace's packets release their space while shared items survive. A fork copies the composition and shares the items ({§session-fork-trigger}).
+- Items no composition references are transient data: `retention_collect_packet_items` collects them under the retention policy ({§retention-policy}), which is how a deleted session's or workspace's packets release their space while shared items survive. A fork copies the composition and shares the items ({§machine-processes}).
 
 | Field                   | Presence                         | Contract                                                                                                                                                                      |
 | ----------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -6465,7 +5855,7 @@ another admission is a 409 conflict, not a second message or an implicit content
 | Audience | Delivery | Effect |
 |---|---|---|
 | Assigned session | Its own log, even when another actor answered | Visible reply; wakes eligible parked work without a new Open Message or loop. |
-| Original native sender | That session, if distinct from the assigned session; original delegated-task answers use {§session-scheme-collect} instead | Other replies use the same wake and observation path. |
+| Original native sender | That session, if distinct from the assigned session; original delegated-task answers use {§session-scheme} instead | Other replies use the same wake and observation path. |
 | Exterior sender | The assigned session's protocol adapter | The adapter delivers the answer through its standard message channel. |
 | Replying actor | Its own executed SEND | No duplicate ambient occurrence. |
 
@@ -6473,7 +5863,7 @@ The successful SEND and its addressed occurrences commit together. Reply occurre
 the ordinary durable ambient cursor and wake revision; curation cannot revoke delivery or
 replay it. An addressed reply replaces the same parent's generic activity observation.
 The child's reply to its original parent-delegated message reaches that parent once,
-through the conclusion READ under {§session-scheme-collect}; it is not a separate reply
+through the conclusion READ under {§session-scheme}; it is not a separate reply
 occurrence. Other replies remain ordinary messages. The exact loop remains addressable
 under {§loop-answer}.
 Unobserved replies prevent conclusion just as unobserved child results do. All operation
@@ -6671,7 +6061,7 @@ flowchart LR
 §tools-resource-materialization **Tool resources materialize from one workspace snapshot.** The runtime registry, workspace capability policy, tool resources, and dispatch use one effective workspace snapshot; attached tools are capabilities like every other runtime, and the model never learns an origin.
 
 - A disabled, unavailable, detached, replaced, or removed runtime has no tool resource; an exact registry's empty set publishes no runtime and admits no invocation. Reconciliation deletes stale documents before upserting the current set. `PLURNK_SERVICE_DOCS_EXCLUDE` does not hide an enabled executable; executor enablement is the sole user-configured filter shared by discovery and dispatch.
-- A runtime declaration may carry `resourcesPath`, its generated-doc root relative to the workspace's generated subtree ({§session-generated-subtree}). Absent, its docs live in the internal `_plurnk/plurnk` namespace; present (`plurnk` and attached MCP servers: `/tools`), the runtime document materializes at `_plurnk` + that root in the shared scratch.
+- A runtime declaration may carry `resourcesPath`, its generated-doc root relative to the workspace's generated subtree ({§session-scheme}). Absent, its docs live in the internal `_plurnk/plurnk` namespace; present (`plurnk` and attached MCP servers: `/tools`), the runtime document materializes at `_plurnk` + that root in the shared scratch.
 - Turn 0 surveys the runtimes (`FIND (workspace:///_plurnk/tools/*.md)`, one row per runtime carrying its summary) and, for each runtime with `expandTools` (`plurnk` by default, plus each MCP server named in `PLURNK_MCP_EXPANDED`), adds one FIND over its runtime document matching the complete executable blocks (`FIND (workspace:///_plurnk/tools/<runtime>.md)` with a multiline regex over matching fences), so turn 0 names every tool with its aside and signature — one row per tool, paged like every survey. Capability attenuation restricts that matcher to the admitted exact tools. No document is delivered unasked.
 - When the registry supplies {§executor-tool-catalog} definitions, the runtime document links to its sibling `<runtime>.json`. The catalog contains exactly the effective tools and is an ordinary `application/json` resource for READ, FIND, and JSONPath selection. It follows the same reconciliation as the runtime document and per-tool schemas; neither the catalog nor its definitions are automatically included in turn 0 or expanded-tool surveys.
 
@@ -6724,7 +6114,7 @@ so the family bounds the model without a second grammar; an admission a read ear
 | Source | human-authored definitions project with source `members`, model-proposed ones with source `model`; the same pattern from both keeps `members`; a `model` inclusion is a pattern scan like a human one but never admits a path the repository ignores ({§membership-model-universe}) |
 | Creation records | the engine's (`source: "create"`, {§fs-create-record}) are not definitions: the projection never overwrites or retires them |
 | When | at the family's publication commit, re-resolving membership; workspace cooling changes nothing, because desired state is durable |
-| Documents | each enabled definition is one generated document at `workspace:///_plurnk/members/<glob>.md` ({§functionality-documents}), the glob percent-encoded as one path segment (RFC 3986 unreserved characters and parentheses stay literal) — its glob, origin, provenance, and what it resolved to — surveyed at turn 0 like every family's enabled definitions ({§actor-boundary-catalog-preview}), so the model sees why a file is or is not a member before it asks |
+| Documents | each enabled definition is one generated document at `workspace:///_plurnk/members/<glob>.md` ({§functionality-documents}), the glob percent-encoded as one path segment (RFC 3986 unreserved characters and parentheses stay literal) — its glob, origin, provenance, and what it resolved to — surveyed at turn 0 like every family's enabled definitions ({§session-initialization-entry}), so the model sees why a file is or is not a member before it asks |
 
 The skills module owns the Agent Skills family ({§skills-functionality}) and its resource trees
 ({§skills-resources}); core supplies the Plurnk reference through {§provided-skills-module-slice}.
@@ -6765,7 +6155,7 @@ section because they are language extensions rather than executable tools.
 
 ### §policy system.policy — the client's policy injection
 
-§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (unset resolves to the policy member in {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `workspace:///_plurnk/AGENTS.md` entry ({§turn0-agents-stunt}); references and skills use native discovery ({§skills-functionality}).
+§policy-sections One section rides the system slot **after the definition**: the contents of `PLURNK_SERVICE_POLICY` (unset resolves to the policy member in {§host-path-layout}), with no engine-generated heading. The policy document owns its Markdown structure. Policy is the client's authoritative rules promoted into the privileged zone — NOT a log entry; the model cannot READ or KILL it. A default-absent path is silent (the section is omitted); an explicit override (env set) that fails to read fails the turn hard — a deliberate setting with a broken path is a misconfig, surfaced not hidden. Read per-turn so edits take effect live. The PROJECT `AGENTS.md` is local guidance, not policy: it rides turn 0 as the foisted `workspace:///_plurnk/AGENTS.md` entry ({§session-initialization-entry}); references and skills use native discovery ({§skills-functionality}).
 
 On first run, and only when `$XDG_CONFIG_HOME/plurnk` itself is absent, the service seeds
 `AGENTS.md` from `@plurnk/plurnk-meta/POLICY.md` ({§teaching-corpus}).
@@ -6774,7 +6164,7 @@ surfaces with its cause and leaves no apparently initialized home.
 After that bootstrap the file is user-owned: edits and deletion persist, and a
 later boot never refreshes or recreates it.
 
-§schemes-self-doc-materialization **Self-documentation materializes one generated reference tree per workspace.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Each reference carries an H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries` applies workspace capabilities to that source. One workspace materializer deletes vanished contributions and upserts current documents. Concurrent readers share the same reconciliation and outcome; independent workspaces do not serialize together. Ordinary runtime turns maintain {§session-generated-subtree}, including under read-only workspace policy.
+§schemes-self-doc-materialization **Self-documentation materializes one generated reference tree per workspace.** `@plurnk/plurnk-schemes` owns `SchemeManifest.documentation` ({§manifest-self-doc}). Each reference carries an H2 `Summary` for ordinary catalog projection. `SchemeRegistry.docs(workspaceId)` resolves corpus-or-manifest documentation, and `referenceEntries` applies workspace capabilities to that source. One workspace materializer deletes vanished contributions and upserts current documents. Concurrent readers share the same reconciliation and outcome; independent workspaces do not serialize together. Ordinary runtime turns maintain {§session-scheme}, including under read-only workspace policy.
 
 ### §packet-git-status The Git status section — compact repository state
 
@@ -7232,7 +6622,7 @@ Every Problem code core mints is named here under its family ({§problem-error-c
 | `channel-required` | 400 | The '*scheme*' scheme has no default channel. Recovery: Address a named channel with a URI fragment. |
 | `binary-source-unsupported` | 415 | Channel #*name* is binary and its scheme keeps no bytes to transfer. |
 | `fork-unaddressed` | 404 | This client operation acts for no session, so FORK has no log to branch ({§actor-boundary-client-operations}). |
-| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: WORK or SEND (session://*name*) delivers a message to the live session; FORK with a name no session holds. ({§session-scheme-spawn}) |
+| `session-name-conflict` | 409 | Session '*name*' already exists in this workspace. Recovery: WORK or SEND (session://*name*) delivers a message to the live session; FORK with a name no session holds. ({§session-scheme}) |
 | `no-operation` | 422 | The turn performed no operation ({§empty-turn}). |
 | `send-target-not-a-recipient` | 400 | The addressed scheme is not a SEND recipient. Recovery: Name a message address or a recipient that implements SEND. |
 | `invalid-operation-syntax` | 400 | The parser's diagnostic for an invalid operation in an admitted turn. |
@@ -7416,7 +6806,7 @@ lists the schemes the workspace registers, and rebuilds the address into nothing
 | YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE. | a continuing or parked model turn without a NOTE ({§continued-without-note}) |
 | Each directive in the notice table | a notice of the model's own output ({§notice-directive}) |
 | Context window overflow: the packet exceeds the model's window. | the wall ({§context-wall}) |
-| No recipient implements the requested interaction. | The session's owner is not interactive or does not declare the required client tool ({§client-interaction-routing}). |
+| No recipient implements the requested interaction. | The session's owner is not interactive or does not declare the required client tool ({§session-ownership}). |
 | Nobody is present to answer. Decide from what you already have, or conclude stating what you could not resolve. | dispatch of an interaction tool the session's owner would not receive ({§owner-interaction-ring}) |
 | Session name '*name*' must match `[A-Za-z0-9][A-Za-z0-9_-]{0,62}`. Recovery: Use 1–63 ASCII letters, digits, '_' or '-', starting with a letter or digit. | an invalid session name |
 | Provide the client identifier. / Provide an absolute project path. / Use a positive integer limit. / prompt is not a non-empty string. | client input validation on the daemon's methods |

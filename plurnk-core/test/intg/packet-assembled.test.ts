@@ -167,14 +167,14 @@ test("{§workspace-capability-policy}: packet assembly surfaces invalid workspac
     } finally { await db.close(); }
 });
 
-test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
+test("{§session-initialization-entry} assembled packet: the turn-0 catalog foist renders its entries into the log", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1"; // foist markerless shallow maps at turn 0
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-backbone-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId, null, "subject");
-        const loopId = await insertLoop(db, sessionId, 1, "what do I have?"); // {§actor-boundary-catalog-preview}: first loop foists
+        const loopId = await insertLoop(db, sessionId, 1, "what do I have?"); // {§session-initialization-entry}: first loop foists
         await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/note.md", channel: "body", content: "the answer is 42", mimetype: "text/markdown" });
         await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/nested/deep.md", channel: "body", content: "nested", mimetype: "text/markdown" });
         await seedEntryWithChannel(db, { workspaceId, scheme: "workspace", pathname: "/.env.defaults", channel: "body", content: "KNOB=1", mimetype: "text/plain" });
@@ -238,7 +238,7 @@ test("{§actor-boundary-catalog-preview} assembled packet: the turn-0 catalog fo
         assert.deepEqual(
             initializationOutcomes.filter(({ path: target }) => target !== undefined).map(({ path: target }) => target),
             ["workspace:///*"],
-            "only the survey with entries runs: no reference is materialized and the session's own space is new ({§actor-boundary-catalog-preview})",
+            "only the survey with entries runs: no reference is materialized and the session's own space is new ({§session-initialization-entry})",
         );
         assert.doesNotMatch(log, /workspace:\/\/\/_plurnk\/plurnk\/sh\.md/, "turn-0 never privileges the sh skill with an orientation READ");
 
@@ -438,7 +438,7 @@ test("{§schemes-directory} assembled packet: the skills foist surfaces the Sess
     }
 });
 
-test("{§actor-boundary-catalog-preview} assembled packet: a reference catalog with nothing materialized is left out of turn 0, which still completes", async () => {
+test("{§session-initialization-entry} assembled packet: a reference catalog with nothing materialized is left out of turn 0, which still completes", async () => {
     const prev = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "2";
     const db = await openMigrated();
@@ -494,7 +494,7 @@ test("{§operator-config-real-model-profile}: the provider packet excludes perso
     assert.equal(await readFile(path, "utf8"), personal, "daily-driving policy remains untouched");
 });
 
-test("{§turn0-agents-stunt} assembled packet: PLURNK_SERVICE_POLICY renders the single privileged system-slot policy section", async () => {
+test("{§session-initialization-entry} assembled packet: PLURNK_SERVICE_POLICY renders the single privileged system-slot policy section", async () => {
     const priorPolicy = process.env.PLURNK_SERVICE_POLICY;
     const dir = await mkdtemp(join(tmpdir(), "plurnk-policy-"));
     const db = await openMigrated();
@@ -513,7 +513,7 @@ test("{§turn0-agents-stunt} assembled packet: PLURNK_SERVICE_POLICY renders the
 
         // Policy is the client's foot in the privileged zone — the system slot
         // carries the operator's authoritative rules. Project guidance
-        // rides turn 0 as the foisted AGENTS.md entry ({§turn0-agents-stunt}).
+        // rides turn 0 as the foisted AGENTS.md entry ({§session-initialization-entry}).
         const slot = (s: string): string[] => packet.sections.filter((x) => x.slot === s).map((x) => x.name);
         assert.deepEqual(slot("system"), ["definition", "system-policy"], "PLURNK_SERVICE_POLICY rides the system slot — privileged, not a READable entry");
         assert.equal(packetSection(packet, "system-policy"), "# House rules\nNEVER guess a file path.", "the authored policy content is preserved");
@@ -550,7 +550,7 @@ test("{§child-orientation} the live things a session holds — child sessions �
     } finally { await db.close(); }
 });
 
-test("{§packet-empty-sections} no live children or streams → Open Work states every list as empty", async () => {
+test("{§child-orientation} no live children or streams → Open Work states every list as empty", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `child-orient-empty-${crypto.randomUUID()}`);
@@ -559,7 +559,7 @@ test("{§packet-empty-sections} no live children or streams → Open Work states
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });
         const provider = new Mock({ contextWindow: 100000, responses: [{ assistant: { content: "", reasoning: null, ops: [completeStmt()] } }] });
         const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "system", content: "SD" }, { role: "user", content: "go" }] });
-        // {§packet-empty-sections} — Open Work states emptiness as `[]` for every list: the model
+        // {§child-orientation} — Open Work states emptiness as `[]` for every list: the model
         // decides wait-or-complete on them, so it never infers "none" from a missing heading.
         const packet = await getPacket(db, result.turnId);
         assert.equal(packetSection(packet, "work"), '{"sessions":[],\n"streams":[],\n"messages":[]}', "no live children, no open streams, no sent messages awaiting → all three lists state []");

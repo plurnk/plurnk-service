@@ -509,7 +509,7 @@ for (const built of [false, true]) {
 }
 
 for (const built of [false, true]) {
-    test(`{§startup-admission-order} ${built ? "built" : "source"} provider verification is lazy; a broken alias catalog cannot block direct selection`, async (t) => {
+    test(`{§startup-admission} ${built ? "built" : "source"} provider verification is lazy; a broken alias catalog cannot block direct selection`, async (t) => {
         const fx = await fixture();
         t.after(() => rm(fx.root, { recursive: true, force: true }));
         const requests: string[] = [];

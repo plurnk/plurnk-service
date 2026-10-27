@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { declaredFloor, floorOf, refusal } from "./runtime-floor.ts";
 
-test("{§service-runtime-floor} a runtime below the declared floor is refused, naming both versions", () => {
+test("{§startup-admission} a runtime below the declared floor is refused, naming both versions", () => {
     for (const [range, version] of [[">=26", "24.22.0"], [">=26", "25.9.1"], [">=26.1", "26.0.5"], [">=26.1.2", "26.1.1"]]) {
         const message = refusal("plurnk-service", range, version);
         assert.ok(message !== null, `${version} under ${range} is refused`);
@@ -12,13 +12,13 @@ test("{§service-runtime-floor} a runtime below the declared floor is refused, n
     }
 });
 
-test("{§service-runtime-floor} a runtime at or above the floor runs, prereleases included", () => {
+test("{§startup-admission} a runtime at or above the floor runs, prereleases included", () => {
     for (const [range, version] of [[">=26", "26.0.0"], [">=26", "26.12.0"], [">=26", "27.0.0-pre"], [">=26.1", "26.1.0"], [">=26.1.2", "26.2.0"]]) {
         assert.equal(refusal("plurnk-service", range, version), null, `${version} under ${range}`);
     }
 });
 
-test("{§service-runtime-floor} the package declares a floor the check can read, and the executable checks it first", () => {
+test("{§startup-admission} the package declares a floor the check can read, and the executable checks it first", () => {
     assert.doesNotThrow(() => floorOf(declaredFloor()));
     assert.throws(() => floorOf("^26"), /engines\.node must be a ">=" floor/u);
     const entry = readFileSync(new URL("../service.ts", import.meta.url), "utf8");

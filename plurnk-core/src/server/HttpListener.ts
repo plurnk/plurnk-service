@@ -1,5 +1,5 @@
 // {§http-host} — the daemon's one HTTP listener. Core binds it before it admits durable state
-// ({§startup-listener-admission}); exterior adapters mount routes on it at start() and never open
+// ({§startup-admission}); exterior adapters mount routes on it at start() and never open
 // a socket of their own (#641). Until the daemon admits it, after every module has started
 // ({§module-http-mounts}), every request is answered 503; after that each request goes to the
 // longest mounted prefix, or receives 404 when no mounted prefix claims it.
@@ -27,7 +27,7 @@ export default class HttpListener implements HttpHost {
         this.#server.on("upgrade", (req, socket, head) => { void this.#upgrade(req, socket, head); });
     }
 
-    // {§startup-listener-admission} — a lost bind race rejects with the socket's own error, before
+    // {§startup-admission} — a lost bind race rejects with the socket's own error, before
     // anything durable has been touched.
     static async bind(options: { readonly host: string; readonly port: number }): Promise<HttpListener> {
         const listener = new HttpListener(options.host);

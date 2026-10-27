@@ -1,5 +1,5 @@
 -- PREP: runtime_session_get
--- {§actor-boundary-self-hosting} The workspace's runtime actor is its one session of origin
+-- {§actor-boundary} The workspace's runtime actor is its one session of origin
 -- `_plurnk`, found by that origin.
 SELECT id FROM sessions WHERE workspace_id = $workspace_id AND origin = '_plurnk';
 

@@ -1,4 +1,4 @@
-// {§service-runtime-floor} — the Node.js floor this package declares in `engines.node`, checked before the
+// {§startup-admission} — the Node.js floor this package declares in `engines.node`, checked before the
 // executable loads anything else, so an older runtime is named instead of failing in some later module.
 import { readFileSync } from "node:fs";
 

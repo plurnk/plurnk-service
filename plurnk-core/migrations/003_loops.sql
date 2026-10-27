@@ -253,7 +253,7 @@ FROM loop_messages m
 JOIN turns opened ON opened.id = m.opened_turn_id
 JOIN loops sender ON sender.id = opened.loop_id;
 
--- {§actor-boundary-doc-injection}: derived observation only; no durable row is rewritten.
+-- {§session-initialization-entry}: derived observation only; no durable row is rewritten.
 CREATE VIEW IF NOT EXISTS work_loops AS
 SELECT l.* FROM loops l
 WHERE NOT EXISTS (SELECT 1 FROM turns t WHERE t.loop_id = l.id AND t.kind = 'maintenance')

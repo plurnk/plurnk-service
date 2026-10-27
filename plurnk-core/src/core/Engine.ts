@@ -453,7 +453,7 @@ export default class Engine {
     }
 
     // The session's durable opaque identity for provider calls; fail hard when a
-    // session has none. {§session-provider-identity}
+    // session has none. {§machine-processes}
     async resolveSessionProviderIdentity(sessionId: number): Promise<{ sessionId: string }> {
         const identity = await this.#db.engine_session_provider_identity.get<{
             session_id: string;

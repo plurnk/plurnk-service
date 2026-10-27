@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS model_routes (
 CREATE UNIQUE INDEX IF NOT EXISTS model_routes_identity
 ON model_routes (coalesce(alias, ''), provider, model, coalesce(base_url, ''));
 
--- {§session-owner-creation} {§session-ownership}: ownership is durable; an owner states whether
+-- {§session-ownership} {§session-ownership}: ownership is durable; an owner states whether
 -- a person attends it. The runtime owner (`_plurnk`) holds no client tools and is never interactive.
 CREATE TABLE IF NOT EXISTS session_owners (
     workspace_id INTEGER NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     wake_revision   INTEGER NOT NULL DEFAULT 0 CHECK (wake_revision >= 0),
     name            TEXT    NOT NULL CHECK (length(name) > 0),
     created_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    -- {§session-provider-identity}: provider affinity must not collide when
+    -- {§machine-processes}: provider affinity must not collide when
     -- independent databases reuse local integer ids.
     provider_identity TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))
         CHECK (length(provider_identity) = 32 AND provider_identity NOT GLOB '*[^0-9a-f]*'),
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     effort          TEXT CHECK (effort IS NULL OR length(effort) > 0),
     -- {§session-effort-source}: whether effort was explicitly selected or defaulted.
     effort_source   TEXT NOT NULL DEFAULT 'default' CHECK (effort_source IN ('default', 'explicit')),
-    -- sessions fork via parent_session_id; workspaces carry no parent — {§machine-processes-no-fork-workspace}
+    -- sessions fork via parent_session_id; workspaces carry no parent — {§machine-processes}
     parent_session_id INTEGER          CHECK (parent_session_id IS NULL OR parent_session_id != id),
     origin          TEXT    NOT NULL DEFAULT 'client' CHECK (origin IN ('model', 'client', '_plurnk')),
     default_session INTEGER NOT NULL DEFAULT 0 CHECK (default_session IN (0, 1)),
@@ -80,7 +80,7 @@ CREATE        INDEX IF NOT EXISTS sessions_parent_session_id       ON sessions (
 
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_provider_identity       ON sessions (provider_identity);
 
--- {§session-scheme-spawn}: a retained name cannot be rebound to another actor.
+-- {§session-scheme}: a retained name cannot be rebound to another actor.
 CREATE UNIQUE INDEX IF NOT EXISTS sessions_workspace_name          ON sessions (workspace_id, name);
 
 -- {§db-fk-indexes} Foreign-key check paths: without these, updating or replacing a route scans every session.

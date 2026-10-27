@@ -46,7 +46,7 @@ export default class DaemonLock {
         }
     }
 
-    // {§service-stop} The live process holding `dbPath`'s lock, or null when none does.
+    // {§startup-admission} The live process holding `dbPath`'s lock, or null when none does.
     static async owner(dbPath: string): Promise<number | null> {
         const owner = await DaemonLock.#read(`${dbPath}.lock`);
         return owner !== null && DaemonLock.#isAlive(owner.pid) ? owner.pid : null;

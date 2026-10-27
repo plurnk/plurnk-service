@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// oxlint-disable-next-line import/no-unassigned-import -- {§service-runtime-floor}: it must evaluate before every later import
+// oxlint-disable-next-line import/no-unassigned-import -- {§startup-admission}: it must evaluate before every later import
 import "./core/runtime-guard.ts";
 import { parseArgs } from "node:util";
 import { spawn } from "node:child_process";
@@ -239,7 +239,7 @@ export default class Service {
         await configuration.capture("model-aliases", () => parseAliasesFromEnv());
         const route = await configuration.capture("model", () => resolveActiveRoute());
         await configuration.capture("model-child", () => resolveChildRoute());
-        // {§startup-listener-admission}: the daemon's one listener wins the configured
+        // {§startup-admission}: the daemon's one listener wins the configured
         // address before anything may mutate durable state ({§http-host}). It answers 503
         // until daemon activation admits it, after every module has started.
         const listener = await HttpListener.bind({ host, port });
@@ -251,7 +251,7 @@ export default class Service {
             ["HTTP listener close", async () => { await listener.close(); }],
         );
         try {
-            // {§startup-admission-order}: after listener ownership, persistence
+            // {§startup-admission}: after listener ownership, persistence
             // and its exclusive owner precede capability activation.
             db = await Service.#openDb(dbPath, true);
             // {§observability-boundary} — the SDK is the plurnk-otel module's, discovered and set up with every
@@ -276,7 +276,7 @@ export default class Service {
                 );
             }
             const routeText = invalidModel ? "invalid model configuration" : route === null ? "no model" : Service.#formatModelRoute(route);
-            // {§startup-readiness-line} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
+            // {§startup-admission} — a URL (IPv6 in brackets), then two JSON strings: exact under spaces.
             const acpUrl = `http://${isIPv6(acpAddr.host) ? `[${acpAddr.host}]` : acpAddr.host}:${acpAddr.port}/acp`;
             process.stdout.write(`plurnk-service acp=${acpUrl} db=${JSON.stringify(dbPath)} route=${JSON.stringify(routeText)}\n`);
 
@@ -301,7 +301,7 @@ export default class Service {
         }
     }
 
-    // {§service-stop} SIGTERM to the process that holds the configured database, then wait for it to
+    // {§startup-admission} SIGTERM to the process that holds the configured database, then wait for it to
     // exit: its own shutdown is bounded by PLURNK_SERVICE_STOP_TIMEOUT_MS ({§crash-only-stop}).
     static async #stop(): Promise<void> {
         const dbPath = Service.#hostPaths.configuredDatabasePath();

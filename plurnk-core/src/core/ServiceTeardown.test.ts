@@ -39,7 +39,7 @@ test("{§module-shutdown-order} service teardown runs observability and database
     assert.deepEqual(calls, ["daemon.stop", "observability.shutdown", "db.close"]);
 });
 
-test("{§startup-admission-order} failed startup preserves the originating failure and every teardown failure", async () => {
+test("{§startup-admission} failed startup preserves the originating failure and every teardown failure", async () => {
     const startupFailure = new Error("daemon start failed");
     const daemonFailure = new Error("daemon stop failed");
     const observabilityFailure = new Error("observability shutdown failed");
@@ -61,7 +61,7 @@ test("{§startup-admission-order} failed startup preserves the originating failu
     );
 });
 
-test("{§startup-admission-order} failed startup rethrows its exact failure when teardown succeeds", async () => {
+test("{§startup-admission} failed startup rethrows its exact failure when teardown succeeds", async () => {
     const startupFailure = new Error("daemon start failed");
     const teardown = new ServiceTeardown(async () => {});
 

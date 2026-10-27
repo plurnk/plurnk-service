@@ -145,7 +145,7 @@ test("{§problems-functionality} run.fork branches the model session into a name
             assert.notEqual(r.sessionId, r.parentSessionId, "the fork is a distinct session");
             assert.match(r.sessionName ?? "", /^[a-f0-9]{8}$/, "an unnamed fork gets the ordinary opaque session identity");
 
-            // {§session-scheme-fork} — an explicit branch name is immutable after instantiation.
+            // {§session-scheme} — an explicit branch name is immutable after instantiation.
             const named = await rpcCall(ws, 5, "run.fork", { name: "harvest" });
             assert.equal((named.result as { sessionName: string | null }).sessionName, "harvest", "an explicit name names the branch");
 

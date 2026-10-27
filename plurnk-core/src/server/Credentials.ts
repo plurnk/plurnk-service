@@ -28,9 +28,9 @@ export default class Credentials implements CredentialAuthority {
     // presentation is recognized as reuse and ends its family ({§auth-oauth-tokens}).
     readonly #retired = new Map<string, { readonly family: string; readonly expiresAt: number }>();
     readonly #listeners = new Set<(family: string) => void>();
-    // {§credential-sessions} — when each family holding a live credential was first issued into.
+    // {§credential-authority} — when each family holding a live credential was first issued into.
     readonly #established = new Map<string, number>();
-    // {§credential-module-client} — the clients this daemon's own modules registered, each with the
+    // {§credential-authority} — the clients this daemon's own modules registered, each with the
     // secret minted for it at this boot.
     readonly #clients = new Map<string, { readonly client: ModuleClient; readonly secret: string }>();
     readonly #now: () => number;
@@ -122,7 +122,7 @@ export default class Credentials implements CredentialAuthority {
         return () => { this.#listeners.delete(listener); };
     }
 
-    // {§credential-sessions} — a browser sign-in is a family holding a live session credential. Its
+    // {§credential-authority} — a browser sign-in is a family holding a live session credential. Its
     // family is its handle: nothing admits a family as a credential, and no token is told here.
     sessions(subject: string): readonly CredentialSession[] {
         const now = this.#now();
@@ -179,7 +179,7 @@ export default class Credentials implements CredentialAuthority {
         return timingSafeEqual(digest(secret), digest(held.secret));
     }
 
-    // {§credential-module-client} — a pathname exactly as a URL carries it: one leading slash, nothing
+    // {§credential-authority} — a pathname exactly as a URL carries it: one leading slash, nothing
     // a parser would rewrite, no query and no fragment, so `issuer + path` is the address itself.
     static #pathname(value: unknown): boolean {
         if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return false;

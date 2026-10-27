@@ -1,5 +1,5 @@
 /**
- * {§http-request-origin} A request as far as its headers, which is all an origin is read from. A Node request
+ * {§http-host} A request as far as its headers, which is all an origin is read from. A Node request
  * satisfies it, and naming it keeps the package root runtime-neutral ({§runtime-neutral-root}).
  */
 export interface RequestHeaders {
@@ -7,7 +7,7 @@ export interface RequestHeaders {
 }
 
 /**
- * {§http-request-origin} The origin a request reached this daemon at: the address its `Host` names,
+ * {§http-host} The origin a request reached this daemon at: the address its `Host` names,
  * over http, or the listener's own for a request that names none.
  */
 export const requestOrigin = (req: RequestHeaders, listener: { readonly host: string; readonly port: number }): string => {

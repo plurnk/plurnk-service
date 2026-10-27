@@ -138,7 +138,7 @@ export default class Session extends CoreSchemeAdapterBase {
             "scheme:session", "session-not-found", 404,
             `Session '${authority}' has no loop in this workspace.`, {}, { retryable: false },
         );
-        // {§session-scheme-collect} the pull mirrors the push: both name the loop's own address.
+        // {§session-scheme} the pull mirrors the push: both name the loop's own address.
         const outcome = await loopOutcome(core.db, core.workspaceId, row.name, row.sequence);
         if (outcome === null) return Results.failure(
             "scheme:session", "session-not-found", 404,
@@ -237,7 +237,7 @@ export default class Session extends CoreSchemeAdapterBase {
         return EntryOps.deleteWorkspaceEntry(statement, core, Session.manifest);
     }
 
-    // {§session-read-scope} The requested namespace scopes discovery, not access.
+    // {§session-scheme} The requested namespace scopes discovery, not access.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const authority = Session.#authority(statement.target);

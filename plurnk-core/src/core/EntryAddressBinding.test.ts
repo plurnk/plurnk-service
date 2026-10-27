@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ParsedPath } from "@plurnk/plurnk-contracts";
+import { parsePath } from "@plurnk/plurnk-parser";
 import type { SchemeAddressCtx, SchemeHandler } from "@plurnk/plurnk-schemes";
 import { Results } from "@plurnk/plurnk-schemes";
 import type { Db } from "./Db.ts";
@@ -95,3 +96,15 @@ for (const invalid of [{ authority: "", pathname: "/item", owner: "session" }, {
         }), /invalid entry coordinate/);
     });
 }
+
+test("{§session-scheme} workspace:///x and session://x distinguish empty-authority entry path from session authority", () => {
+    const workspaceTarget = parsePath("workspace:///config.json");
+    assert.equal(workspaceTarget?.kind, "url");
+    assert.equal(workspaceTarget.hostname, null);
+    assert.equal(workspaceTarget.pathname, "/config.json");
+
+    const sessionTarget = parsePath("session://config.json");
+    assert.equal(sessionTarget?.kind, "url");
+    assert.equal(sessionTarget.hostname, "config.json");
+    assert.equal(sessionTarget.pathname, "");
+});

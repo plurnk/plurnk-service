@@ -368,7 +368,7 @@ test("{§session-wait-timing} wake-on-completion: a slept (202) loop resumes IN 
     serverProposals(approvalContext, "accept");
     // First loop: execution echo + WAIT — the loop SLEEPS while the
     // spawn runs on. When the spawn concludes (a stream-status transition to terminal,
-    // {§actor-boundary-passive-wake}), the daemon AWAKENS that same loop in place —
+    // {§actor-boundary}), the daemon AWAKENS that same loop in place —
     // never a fresh loop with a synthetic summary prompt. The resumed loop reads
     // the concluded stream's own state and finishes on its own.
     const mock = new Mock({

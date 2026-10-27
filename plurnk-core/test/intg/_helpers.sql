@@ -758,11 +758,11 @@ WHERE w.workspace_id = $workspace_id AND w.name = $name AND t.packet IS NOT NULL
 ORDER BY t.id LIMIT 1;
 
 -- PREP: test_children_of_session
--- {§session-spawn-prompt-resource} tests: every child of a session, live or concluded, by name.
+-- {§session-scheme} tests: every child of a session, live or concluded, by name.
 SELECT id, name FROM sessions WHERE parent_session_id = $session_id ORDER BY id;
 
 -- PREP: test_fork_loops
--- A session's loops as a fork copies them ({§session-fork-trigger}).
+-- A session's loops as a fork copies them ({§machine-processes}).
 SELECT id, sequence, status, prompt, model_route_id, spawn_model_route_id,
        effort, max_turns, terminal_result
 FROM loops WHERE session_id = $session_id ORDER BY id;

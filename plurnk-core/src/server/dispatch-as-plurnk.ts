@@ -1,4 +1,4 @@
-// Producer-neutral runtime entry point ({§actor-boundary-doc-injection}). The
+// Producer-neutral runtime entry point ({§session-initialization-entry}). The
 // harness opens an administrative loop and durable `_plurnk` turn in the
 // addressed session, then admits a real operation program through the same turn
 // executor used by model and recovery programs. Generated state and its causal

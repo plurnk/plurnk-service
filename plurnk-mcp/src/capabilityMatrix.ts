@@ -66,7 +66,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-model-projection}", "plurnk-core/test/intg/mcp-resource-owners.test.ts", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
+        evidence: ["{§mcp-core-matrix}", "{§mcp-model-projection}", "plurnk-core/test/intg/mcp-resource-owners.test.ts", "plurnk-core/test/intg/actor-boundary.test.ts"],
         note: "Published through the server's resource authority into Plurnk entries; not a raw client surface.",
     },
     {
@@ -114,7 +114,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "{§mcp-catalog-refresh-in-place}", "plurnk-core/test/intg/mcp-cache-composition.test.ts", "plurnk-core/test/intg/mcp-catalog-composition.test.ts", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
+        evidence: ["{§mcp-core-matrix}", "{§mcp-catalog-refresh-in-place}", "plurnk-core/test/intg/mcp-cache-composition.test.ts", "plurnk-core/test/intg/actor-boundary.test.ts"],
         note: "SDK freshness and invalidation compose with version-aware host publication. Real daemon tests exercise overlapping catalog notifications, failed/aborted refresh, workspace authorization isolation, shared-session caching, and credential rotation through attachment restart.",
     },
     {
@@ -126,7 +126,7 @@ export const CAPABILITY_MATRIX: readonly CapabilityRow[] = [
         interactive: false,
         disposition: "supported",
         composed: true,
-        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'a remotely ended unified subscription is re-established with a fresh request'", "plurnk-core/test/intg/mcp-subscription-composition.test.ts"],
+        evidence: ["{§mcp-core-matrix}", "plurnk-mcp subscriptions 'a remotely ended unified subscription is re-established with a fresh request'", "plurnk-core/test/intg/actor-boundary.test.ts"],
         note: "One current filter for list changes, cached resource URIs, and active Task IDs; overlap replacement and re-listen after loss. Resource changes invalidate cache, not session history or attention.",
     },
     {

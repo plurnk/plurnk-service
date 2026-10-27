@@ -258,7 +258,7 @@ test("{§membership} resolveOverlay reports members and the files an exclusion r
     });
 });
 
-test("{§machine-processes-one-overlay} membership is the workspace's — one overlay, identical for every session", async () => {
+test("{§machine-processes} membership is the workspace's — one overlay, identical for every session", async () => {
     await withGitWorkspace(async (_root, ctx, db, trackedPath) => {
         // ctx.sessionId is session A. Create a second session on the same workspace.
         const sessionB = await insertSession(db, ctx.workspaceId);

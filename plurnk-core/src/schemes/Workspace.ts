@@ -174,7 +174,7 @@ export default class Workspace extends CoreSchemeAdapterBase {
         return EntryOps.deleteWorkspaceEntry(statement, core, Workspace.manifest);
     }
 
-    // {§session-read-scope} The requested namespace scopes discovery, not access.
+    // {§session-scheme} The requested namespace scopes discovery, not access.
     async find(statement: FindStatement, ctx: CoreSchemeCallContext): Promise<FindResult> {
         const core = this.coreContext(ctx);
         const authority = Workspace.#authority(statement.target);

@@ -28,7 +28,7 @@ export interface WorkspaceRow {
     name: string;
     project_root: string | null;
     created_at: string;
-    // {§place-hiding}
+    // {§machine-processes}
     hidden_at: string | null;
 }
 
@@ -42,7 +42,7 @@ export interface SessionRow {
     origin: "model" | "_plurnk";
     owner: string;
     parentSessionId: number | null;
-    // {§place-hiding}
+    // {§machine-processes}
     hidden_at: string | null;
     // {§application-session-observation}
     kind: ApplicationSessionKind;
@@ -83,7 +83,7 @@ export default class Envelope {
         while (workspace === undefined && opts.name === undefined) workspace = await insert(Envelope.generateWorkspaceName());
         if (workspace === undefined) {
             const name = opts.name!;
-            // {§place-hiding} A hidden workspace still holds its name.
+            // {§machine-processes} A hidden workspace still holds its name.
             const holder = await db.envelope_get_workspace_by_name.get<{ hidden_at: string | null }>({ name });
             throw envelopeFailure(
                 "daemon:workspace",

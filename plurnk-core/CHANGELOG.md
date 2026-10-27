@@ -86,7 +86,7 @@
   another scheme's entry reads as stored, never prepared, so a client read never
   fetches ({§client-entry-address}). A channel name may be empty, a log row's
   unnamed default ({§entry-read-result}).
-- 0cee49c: Workspaces and workers hide and show by a durable mark ({§place-hiding}):
+- 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
   `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
   {§methods-session-hide}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group
@@ -102,7 +102,7 @@
 - 92270b9: The project's root `AGENTS.local.md` is projected as
   `worker:///_plurnk/AGENTS.local.md`, read from disk whatever its git status and
   hidden only by an exclusion, and read at turn 0 after `AGENTS.md`
-  ({§turn0-local-instructions}).
+  ({§session-initialization-entry}).
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
   the loop's number among its worker's loops, beside `loopId`
   ({§notifications-loop-packet}, {§notifications-loop-terminated},
@@ -139,9 +139,9 @@
   that operation ({§paired-receipt}).
 - b3864d5: `plurnk-service stop` ends the service that holds the configured database
   and returns once it has exited; a database nobody holds is not running, and
-  that is success ({§service-stop}). A `shared` launch without a log file
+  that is success ({§startup-admission}). A `shared` launch without a log file
   writes to the service's `<state dir>/service.log`, which the result names as
-  `logFile` ({§daemon-launch}).
+  `logFile` ({§startup-admission}).
 - de9ce8f: `status.streams` lists the streams the bound Worker holds open, each with its
   identity, lifetime, the row that opened it, and every channel's state, written
   or not, so a client attaching mid-execution finds a silent one; it is
@@ -186,7 +186,7 @@
   ({§exec-conclusion-summary}).
 - 65028a4: `plurnk-service` refuses a Node.js below its `engines.node` floor with one
   line naming both versions, exit 1, before any other module loads
-  ({§service-runtime-floor}). `daemon/provider/not-configured` recovers with
+  ({§startup-admission}). `daemon/provider/not-configured` recovers with
   "Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as
   the service default; that provider's API key must be in the service's
   environment." ({§problems-functionality}). The generated
@@ -198,7 +198,7 @@
 - 6c197b2: A model worker's initialization opens with the plan `1. Survey the environment.`
   `2. Evaluate and react to the Open Message.` and closes with its second step. A
   survey that would select nothing is left out of the program, and the program no
-  longer READs its own `ops://` source ({§actor-boundary-catalog-preview},
+  longer READs its own `ops://` source ({§session-initialization-entry},
   {§session-initialization-entry}).
 - 70b19d7: A loop's terminal reaps every loop-bound stream, one spawned before a park
   included, and is announced once those streams have concluded
@@ -560,7 +560,7 @@ waterfall, composer and web approval presentation remain separate work.
   miss recovery names the `members (add)` body the family accepts.
 - 89def41: The packet's `## Worker` block carries the worker's approval owner and whether a
   person attends it (`"owner": {"address", "interactive"}`), so a model knows up
-  front when nobody can answer a question ({§packet-current-turn}).
+  front when nobody can answer a question ({§child-orientation}).
 - a8df72c: Rollback reverses a worker's settled file mutations after a log coordinate,
   latest first, as the acting client's own operations:
   `rollback({ workspaceId, workerId, clientWorkerId, to })` on the application

@@ -153,7 +153,7 @@ export default class OAuthServer {
         });
     }
 
-    // {§http-request-origin} — every address this server advertises is answered for the request that asks.
+    // {§http-host} — every address this server advertises is answered for the request that asks.
     resources(req: Pick<IncomingMessage, "headers">): readonly string[] {
         const issuer = this.#issuer(req);
         return [issuer, ...SCOPES.map((scope) => `${issuer}/${scope}`)];
@@ -242,7 +242,7 @@ export default class OAuthServer {
         res.setHeader("set-cookie", `${SESSION_COOKIE}=; Path=/oauth; Max-Age=0; HttpOnly; SameSite=Lax`);
     }
 
-    // {§auth-oauth-clients} {§credential-module-client} — a module's own client is the authority's to know; every other client is
+    // {§auth-oauth-clients} {§credential-authority} — a module's own client is the authority's to know; every other client is
     // this server's. A module client naming a scope this server does not issue is a fault of the module.
     // Its redirect addresses are its registered paths on the issuer, formed when asked.
     #client(id: string, req: Pick<IncomingMessage, "headers">): Client | undefined {

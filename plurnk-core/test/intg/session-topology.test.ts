@@ -393,7 +393,7 @@ test("{§session-loop-lifecycle} an empty wait continues through the real loop u
     });
 });
 
-test("{§session-owner-resolution} server auto-approval settles both WORK and FORK child edits", async (approvalContext) => {
+test("{§session-ownership} server auto-approval settles both WORK and FORK child edits", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         // Parent turn 1: spawn a session AND fork self, then park awaiting them.

@@ -332,7 +332,7 @@ test("{§session-lifecycle-total-reap} shutdown cancels a person's operation sti
     assert.equal(await new LoopLifecycle(db).status((await loop.promise).loopId), 499, "the operation still dispatching settles cancelled");
 });
 
-test("{§actor-boundary-client-operations} {§machine-processes-session-origin} a person's operation speaks and delegates as that person: messages arrive from them, WORK starts a root session they own, FORK branches the session they act for", async (t) => {
+test("{§actor-boundary-client-operations} {§machine-processes} a person's operation speaks and delegates as that person: messages arrive from them, WORK starts a root session they own, FORK branches the session they act for", async (t) => {
     serverProposals(t, "accept");
     const provider = new Mock({ contextWindow: viableWindow(), responses: Array.from({ length: 8 }, () => makeMockResponse("````SEND [200]\nnoted\n````")) });
     const { daemon } = await boot(t, { provider });

@@ -1,29 +1,9 @@
-// session:// scheme — spawn + fork (COPY), irc (SEND), terminate (KILL). Same-workspace sisters
-// (SPEC {§machine-processes}, {§actor-boundary}). injectSession is the daemon's
-// loop-start seam; here it's a recording stub (Daemon.inject's drain has its own
-// tests), so these assert the session scheme's own work: the session-table effect + the
-// exact inject call. The dispatch gates (#checkWritable session-control branch and
-// #handleSessionControl routing) are exercised end-to-end.
-
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
-import { Mock } from "@plurnk/plurnk-providers";
-import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
-import { ownSession, TEST_OWNER } from "./_approval.ts";
 import SessionOwners from "../../src/core/SessionOwners.ts";
-import type {
-    ParsedPath,
-    PlurnkStatement,
-    WorkStatement,
-    ForkStatement,
-    KillStatement,
-    ReadStatement,
-    FindStatement,
-} from "@plurnk/plurnk-contracts";
 import Turn from "../../src/core/Turn.ts";
 import Engine from "../../src/core/Engine.ts";
 import RuntimeSession from "../../src/core/RuntimeSession.ts";
-import type { InjectSessionNotify } from "../../src/core/ChannelWrite.ts";
 import LoopLifecycle from "../../src/core/LoopLifecycle.ts";
 import Results from "../../src/core/results.ts";
 import SchemeRegistry from "../../src/core/SchemeRegistry.ts";
@@ -31,11 +11,59 @@ import Session from "../../src/schemes/Session.ts";
 import Workspace from "../../src/schemes/Workspace.ts";
 import Fork from "../../src/core/fork.ts";
 import SessionName from "../../src/core/SessionName.ts";
+import LoopDocs from "../../src/server/loopDocs.ts";
+import { Mock } from "@plurnk/plurnk-providers";
+import { PlurnkParser, parsePath } from "@plurnk/plurnk-parser";
+import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
+import { type ParsedPath, type PlurnkStatement, type WorkStatement, type ForkStatement, type KillStatement, type ReadStatement, type FindStatement } from "@plurnk/plurnk-contracts";
+import { type InjectSessionNotify } from "../../src/core/ChannelWrite.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, insertOperationTurn } from "./_db.ts";
 import { readThroughScheme, makeSchemeCtx } from "./_scheme.ts";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse } from "./_mock.ts";
 import { resourcePaths } from "./_find.ts";
 import { copyStmt, editStmt, sendStmt, dispositionStmt, readStmt, fullReplace, noteStmt } from "./_dsl.ts";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { hermeticGitEnv } from "../../src/core/git-env.ts";
+import { rpcCall, connect, withDaemon, runLoopToTerminal, subscribeNotifications, waitFor } from "./_rpc.ts";
+import { logEntries, packetSection } from "./_packet.ts";
+import { modelOperation } from "./_sessions.ts";
+import { type Db } from "../../src/core/Db.ts";
+
+describe("session-scheme", () => {
+// session:// scheme — spawn + fork (COPY), irc (SEND), terminate (KILL). Same-workspace sisters
+// (SPEC {§machine-processes}, {§actor-boundary}). injectSession is the daemon's
+// loop-start seam; here it's a recording stub (Daemon.inject's drain has its own
+// tests), so these assert the session scheme's own work: the session-table effect + the
+// exact inject call. The dispatch gates (#checkWritable session-control branch and
+// #handleSessionControl routing) are exercised end-to-end.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const PAGE = Number(process.env.PLURNK_SERVICE_PREVIEW_LINES); // {§markerless-first-page} — the first page a markerless retrieval is
 
 // {§session-scheme} — the authority is a literal Session name.
@@ -111,7 +139,7 @@ const killEntry = (owner: string, path: string): KillStatement => ({
     lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 },
 });
 
-test("{§session-scheme-fork-scratch} {§machine-processes-entry-inheritance}: a fork copies named scratch without changing literal references", async () => {
+test("{§session-scheme} {§machine-processes}: a fork copies named scratch without changing literal references", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, crypto.randomUUID());
@@ -132,7 +160,7 @@ test("{§session-scheme-fork-scratch} {§machine-processes-entry-inheritance}: a
     } finally { await db.close(); }
 });
 
-test("{§session-read-scope}: FIND addresses literal namespaces identically from unrelated Sessions", async () => {
+test("{§session-scheme}: FIND addresses literal namespaces identically from unrelated Sessions", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, crypto.randomUUID());
@@ -177,7 +205,7 @@ test("{§machine-processes} WORK(session://name):task spawns a same-workspace si
     } finally { await db.close(); }
 });
 
-test("{§session-scheme-spawn}: concurrent WORK and FORK cannot claim the same literal address", async () => {
+test("{§session-scheme}: concurrent WORK and FORK cannot claim the same literal address", async () => {
     await using db = await openMigrated();
     const { calls, injectSession } = recordingInjectSession();
     const engine = new Engine({ db, schemes: new SchemeRegistry(), injectSession, weigh });
@@ -207,7 +235,7 @@ test("{§session-scheme-spawn}: concurrent WORK and FORK cannot claim the same l
 });
 
 for (const origin of ["model", "client", "_plurnk"] as const) {
-    test(`{§machine-processes-session-origin}: a ${origin} turn delegates within its actor's lineage`, async () => {
+    test(`{§machine-processes}: a ${origin} turn delegates within its actor's lineage`, async () => {
         await using db = await openMigrated();
         const { calls, injectSession } = recordingInjectSession();
         const engine = new Engine({ db, schemes: new SchemeRegistry(), injectSession, weigh });
@@ -328,7 +356,7 @@ for (const op of ["WORK", "FORK"] as const) test(`{§workspace-capability-policy
     } finally { await db.close(); }
 });
 
-// {§session-control-addressing} Parser tolerance does not grant semantics to
+// {§session-scheme} Parser tolerance does not grant semantics to
 // components outside the exact authority-only session control address.
 test("{§machine-processes} session control rejects every non-authority URI component before spawning (#160)", async () => {
     const db = await openMigrated();
@@ -430,7 +458,7 @@ test("{§machine-processes} the exact session control address is enforced before
     } finally { await db.close(); }
 });
 
-test("{§session-control-addressing}: all Session names are literal; tilde is not an alias", async () => {
+test("{§session-scheme}: all Session names are literal; tilde is not an alias", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -461,7 +489,7 @@ test("{§session-control-addressing}: all Session names are literal; tilde is no
     } finally { await db.close(); }
 });
 
-test("{§session-scheme-spawn}: WORK naming a RUNNING sister delivers its body to her as a message, never a raw UNIQUE 500", async () => {
+test("{§session-scheme}: WORK naming a RUNNING sister delivers its body to her as a message, never a raw UNIQUE 500", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -487,7 +515,7 @@ test("{§session-scheme-spawn}: WORK naming a RUNNING sister delivers its body t
     } finally { await db.close(); }
 });
 
-test("{§session-scheme-spawn}: WORK naming a PARKED sister delivers its body to her as a message", async () => {
+test("{§session-scheme}: WORK naming a PARKED sister delivers its body to her as a message", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -597,7 +625,7 @@ test("{§op-execution-order}: one model program creates sessions before cancelli
     } finally { await db.close(); }
 });
 
-test("{§session-scheme-spawn}: a completed Session retains its name and scratch identity", async () => {
+test("{§session-scheme}: a completed Session retains its name and scratch identity", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -724,7 +752,7 @@ test("{§problems-entries} EDIT on the bare session entity is rejected — WORK 
     } finally { await db.close(); }
 });
 
-test("{§session-scheme-irc} SEND(session://name):msg delivers to a sister; a missing sister is 404", async () => {
+test("{§session-scheme} SEND(session://name):msg delivers to a sister; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -752,7 +780,7 @@ test("{§session-scheme-irc} SEND(session://name):msg delivers to a sister; a mi
     } finally { await db.close(); }
 });
 
-test("{§session-scheme-irc}: empty and whitespace-only messages never reach session injection", async () => {
+test("{§session-scheme}: empty and whitespace-only messages never reach session injection", async () => {
     const db = await openMigrated();
     try {
         const { calls, injectSession } = recordingInjectSession();
@@ -804,7 +832,7 @@ test("{§session-ownership}: SEND between unrelated sessions cannot transfer app
     assert.equal((await SessionOwners.read(db, sessionId)).address, TEST_OWNER);
 });
 
-test("{§session-write-scoping}: entry KILL works upward, downward and on self without cancelling actors", async () => {
+test("{§session-scheme}: entry KILL works upward, downward and on self without cancelling actors", async () => {
     const db = await openMigrated();
     try {
         const killed: number[] = [];
@@ -894,7 +922,7 @@ test("{§machine-processes} spawn AND fork past PLURNK_SERVICE_WORKSPACE_SESSION
     }
 });
 
-test("{§session-read-scope} KILL(session://name) aborts a sister by address; a missing sister is 404", async () => {
+test("{§session-scheme} KILL(session://name) aborts a sister by address; a missing sister is 404", async () => {
     const db = await openMigrated();
     try {
         const killed: number[] = [];
@@ -918,7 +946,7 @@ test("{§session-read-scope} KILL(session://name) aborts a sister by address; a 
     } finally { await db.close(); }
 });
 
-for (const related of [true, false]) test(`{§session-read-scope}: ${related ? "parent" : "unrelated session"} reads and writes a named entry`, async () => {
+for (const related of [true, false]) test(`{§session-scheme}: ${related ? "parent" : "unrelated session"} reads and writes a named entry`, async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -941,7 +969,7 @@ for (const related of [true, false]) test(`{§session-read-scope}: ${related ? "
         assert.equal(readCross.status, 200, "a named READ reaches another session's entry without ancestry");
         assert.equal(readCross.content, "scratch");
 
-        // {§session-write-scoping} applies independently to the destination.
+        // {§session-scheme} applies independently to the destination.
         const writeCross = await engine.dispatch({ statement: editStmt(sessionEntry("author", "note.md"), "updated", fullReplace), workspaceId, sessionId: meId, loopId, turnId, sequence: 2, origin: "model" });
         assert.equal(writeCross.status, 200);
         assert.equal((await engine.dispatch({ statement: readOf(sessionEntry("author", "note.md")), workspaceId, sessionId: meId, loopId, turnId, sequence: 3, origin: "model" })).content, "updated");
@@ -1172,7 +1200,7 @@ test("{§machine-processes} an empty waiting inventory stays runnable in the sam
     } finally { await db.close(); }
 });
 
-test("{§session-generated-subtree}: generated documents are ordinary editable workspace scratch", async () => {
+test("{§session-scheme}: generated documents are ordinary editable workspace scratch", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), weigh });
@@ -1197,7 +1225,7 @@ test("{§session-generated-subtree}: generated documents are ordinary editable w
     } finally { await db.close(); }
 });
 
-test("{§session-generated-subtree}: shared docs are not forked; every named scratch path is copied", async () => {
+test("{§session-scheme}: shared docs are not forked; every named scratch path is copied", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, crypto.randomUUID());
@@ -1212,4 +1240,410 @@ test("{§session-generated-subtree}: shared docs are not forked; every named scr
         assert.deepEqual(resourcePaths(await scheme.find(findEntry("alpha-fork", "**"), forkCtx)), ["session://alpha-fork/_plurnk/note.md"]);
         assert.equal((await readThroughScheme("workspace", null, readEntry("", "_plurnk/example.md"), forkCtx)).content, "# Shared");
     } finally { await db.close(); }
+});
+});
+
+describe("child-file-visibility", () => {
+// {§membership} {§session-scheme} — a child session's admitted file write is a workspace
+// member for every session at once: after the child's `EDIT count.txt` (200) is observed, the
+// parent's own `READ count.txt` answers the content, never `entry-not-found` (#373) — scoped
+// or not, inside a git repository or in a bare directory.
+
+
+
+
+
+
+
+
+
+
+
+
+const execFileP = promisify(execFile);
+
+const gitRoot = async (): Promise<string> => {
+    const root = await mkdtemp(join(tmpdir(), "plurnk-child-file-"));
+    await execFileP("git", ["init", "-q"], { cwd: root, env: hermeticGitEnv() });
+    await execFileP("git", ["config", "user.email", "fixture@plurnk.invalid"], { cwd: root, env: hermeticGitEnv() });
+    await execFileP("git", ["config", "user.name", "t"], { cwd: root, env: hermeticGitEnv() });
+    return root;
+};
+
+const bareRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "plurnk-child-file-bare-"));
+
+const CASES: Array<{ name: string; root: () => Promise<string>; read: string }> = [
+    { name: "git root, unscoped READ", root: gitRoot, read: "````READ (count.txt)````" },
+    { name: "git root, scoped READ <1,-1>", root: gitRoot, read: "````READ (count.txt) <1,-1>````" },
+    { name: "bare directory, scoped READ <1,-1>", root: bareRoot, read: "````READ (count.txt) <1,-1>````" },
+];
+
+for (const c of CASES) {
+    test(`{§machine-processes} a child's new file is readable by its parent by bare path right after child completion (${c.name})`, async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+        const root = await c.root();
+        const mock = new Mock({ contextWindow: 32768, responses: [
+            makeMockResponse("````WORK (session://counter)\nWrite the number 3 to count.txt and conclude.\n````\n\n````WAIT\nwaiting\n````", 10),
+            makeMockResponse("````EDIT (count.txt)\n3\n````\n\n````NOTE\nwrote\n````", 10),
+            makeMockResponse("````SEND [200]\nwritten\n````", 10),
+            makeMockResponse(`${c.read}
+
+\`\`\`\`NOTE
+reading
+\`\`\`\``, 10),
+            makeMockResponse("````SEND [200]\ndone\n````", 10),
+        ] });
+        try {
+            await withDaemon(mock, async (db, _daemon, addr) => {
+                const ws = await connect(addr);
+                try {
+                    await rpcCall(ws, 1, "workspace.create", { name: "child-file-visibility", projectRoot: root });
+                    const { finalStatus, loopId } = await runLoopToTerminal(ws, 2, { prompt: "delegate the count" }, { timeoutMs: 20000 });
+                    const all = await db.test_log_entries_by_loop.all<{ op: string; origin: string; source: string | null; signal: string | null; status_rx: number; rx: string }>({ loop_id: loopId });
+                    const edit = all.find((r) => r.op === "EDIT");
+                    assert.ok(edit && edit.status_rx < 300, `the child's write was admitted, got ${edit?.status_rx}: ${edit?.rx.slice(0, 200)}`);
+                    // {§env-delta-child-activity} — the child's model activity crossed, its
+                    // runtime-private initialization never did.
+                    const crossed = all.filter((r) => r.source === "session://counter");
+                    assert.ok(crossed.some((r) => r.op === "EDIT"), "the child's EDIT crossed to the parent");
+                    assert.deepEqual(crossed.filter((r) => /"init"/.test(String(r.signal))).map((r) => r.op), [], "no turn-0 initialization row of the child reached the parent");
+                    const read = all.find((r) => r.op === "READ" && r.origin === "model");
+                    assert.ok(read, "the parent's READ was dispatched");
+                    assert.equal(read.status_rx, 200, `the parent reads the child's file by bare path, got ${read.status_rx}: ${read.rx.slice(0, 220)}`);
+                    assert.match(read.rx, /"content":"3"/, "the parent sees the child's content");
+                    assert.equal(finalStatus, 200);
+                    // {§message-reply-delivery} {§env-delta-child-termination}
+                    const turns = await db.test_list_turns_in_loop.all<{ sequence: number; packet: string | null }>({ loop_id: loopId });
+                    const observations = turns.flatMap(({ packet }) => (packet === null ? [] : logEntries(JSON.parse(packet)))
+                        .filter((entry) => entry.source === "session://counter" && entry.origin === "_plurnk"));
+                    const replies = observations.filter((entry) => entry.logPath.endsWith("/SEND") && entry.status === 200 && Array.isArray(entry.answers));
+                    const conclusions = observations.filter((entry) => entry.logPath.endsWith("/READ") && entry.path === "ops://counter/1");
+                    // {§loop-answer}: the child's answer to its parent's own task arrives once, as the
+                    // conclusion at the child's loop address.
+                    assert.equal(new Set(conclusions.map(({ logPath: path }) => path)).size, 1, "one terminal observation");
+                    assert.deepEqual(replies, [], "the answer is not delivered a second time as a reply");
+                    assert.match(conclusions[0].body ?? "", /written/, "the conclusion carries what the child said");
+                } finally { ws.close(); }
+            });
+        } finally { await rm(root, { recursive: true, force: true }); }
+    });
+}
+
+// {§child-orientation} {§session-scheme} — a child is told whose child it is (#394): its packet
+// carries a Parent Session pointer naming the parent, so it can address the parent's streams and
+// space by name. The root session has no such section.
+test("{§child-orientation} a child's packet names its parent session; the root's packet does not", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({ contextWindow: 32768, responses: [
+        makeMockResponse("````WORK (session://counter)\nReply with the number 3.\n````\n\n````WAIT\nwaiting\n````", 10),
+        makeMockResponse("````SEND [200]\n3\n````", 10),
+        makeMockResponse("````SEND [200]\ndone\n````", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "parent-pointer" });
+            const workspaceId = 1;
+            const { finalStatus, turnIds, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
+            assert.equal(finalStatus, 200);
+            const childTurn = await db.test_first_packet_turn_by_session_name.get<{ id: number }>({ workspace_id: workspaceId, name: "counter" });
+            assert.ok(childTurn, "the child ran a model turn");
+            const childPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: childTurn.id }))!.packet);
+            assert.ok(modelSessionId !== undefined);
+            const parent = await db.session_get.get<{ name: string }>({ id: modelSessionId });
+            assert.ok(parent !== undefined);
+            // {§child-orientation} — the parent rides the Session identity block, never a separate section.
+            const identity = JSON.parse(packetSection(childPacket, "session"));
+            assert.equal(identity.parent, `session://${parent.name}`, "the child is told its actual parent's address");
+            assert.equal(packetSection(childPacket, "parent-session"), "", "no Parent Session section exists");
+            const rootPacket = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: turnIds![turnIds!.length - 1] }))!.packet);
+            assert.equal(JSON.parse(packetSection(rootPacket, "session")).parent, null, "a root session states parent: null rather than omitting it");
+        } finally { ws.close(); }
+    });
+});
+});
+
+describe("session-pingpong", () => {
+// {§session-scheme} ping/pong between a parent and the session it names: the first WORK creates the
+// session and the parent parks on it; the child's answer wakes the parent; a second WORK to the same name is
+// a message to the live session, not a second session and not a refusal; its answer wakes the parent again.
+
+
+
+
+
+
+
+
+const parseOne = (input: string): PlurnkStatement => {
+    const parsed = PlurnkParser.parseStatements(input, { executors: fixtureExecutors(input) });
+    const item = parsed.items.find((x) => x.kind === "statement");
+    if (item?.kind !== "statement") throw new Error(`no statement parsed from ${input}`);
+    return item.statement;
+};
+
+test("{§session-scheme} ping/pong: WORK spawns a session once, then WORK to the same name messages it; both answers reach the parent", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    // Causality orders the queue: the child cannot run before the parent names it, and the parent cannot
+    // resume before the child answers, so one Mock serves both sessions deterministically.
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("````WORK (session://pong)\nping 1\n````\n\n````WAIT\nawaiting pong\n````", 10),
+        makeMockResponse("````SEND [200]\npong 1\n````", 10),
+        makeMockResponse("````WORK (session://pong)\nping 2\n````\n\n````WAIT\nawaiting pong again\n````", 10),
+        makeMockResponse("````SEND [200]\npong 2\n````", 10),
+        makeMockResponse("````SEND [200]\nheard pong 1 and pong 2\n````", 10),
+    ] });
+    await withDaemon(mock, async (db, _daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            await rpcCall(ws, 1, "workspace.create", { name: "ping-pong" });
+            const terminated = subscribeNotifications(ws, "loop/terminated");
+            const { finalStatus, modelSessionId, turnIds } = await runLoopToTerminal(ws, 2, { prompt: "play ping pong with a session named pong, twice" });
+            assert.equal(finalStatus, 200, "the parent concluded after both answers");
+            assert.equal(mock.remaining, 0, "every scripted turn ran, in causal order");
+            const sessions = ((await rpcCall(ws, 3, "workspace.sessions", {})).result as { sessions: Array<{ id: number; name: string; origin: string }> }).sessions;
+            const pong = sessions.filter((session) => session.name === "pong");
+            assert.equal(pong.length, 1, "the second WORK addressed the existing session and created no second one");
+            assert.equal(sessions.filter((session) => session.origin === "model").length, 2, "exactly the parent and pong");
+            const childLoops = (await db.test_count_loops_by_session.get<{ n: number }>({ session_id: pong[0].id }))!.n;
+            assert.equal(childLoops, 2, "the message woke pong as a second loop");
+            const rows = await db.engine_render_log.all<{ op: string; status_rx: number; rx: string }>({ session_id: modelSessionId! });
+            const works = rows.filter((row) => row.op === "WORK");
+            assert.deepEqual(works.map((row) => row.status_rx), [200, 200], "both WORKs succeeded: one spawn, one message");
+            assert.doesNotMatch(works[0].rx, /"delivered":"message"/u, "the first WORK's receipt is a spawn");
+            assert.match(works[1].rx, /"delivered":"message"/u, "the second WORK's receipt says it was a message");
+            const last = await db.test_get_packet.get<{ packet: string }>({ id: turnIds!.at(-1)! });
+            assert.match(last!.packet, /pong 1/u, "the parent's final packet carries the first answer");
+            assert.match(last!.packet, /pong 2/u, "and the second");
+            const pongEnded = await waitFor(
+                () => (terminated() as Array<{ sessionId: number; result: { status: number } }>).filter((event) => event.sessionId === pong[0].id),
+                (events) => events.length >= 2,
+            );
+            assert.deepEqual(pongEnded.map(({ result }) => result.status), [200, 200], "both of pong's loops concluded 200");
+        } finally { ws.close(); }
+    });
+});
+
+test("{§session-scheme} a held name: FORK is 409 naming the working forms, WORK with no body is the empty-prompt refusal", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const mock = new Mock({ contextWindow: 16384, responses: [
+        makeMockResponse("````WORK (session://pong)\nping\n````\n\n````WAIT\nawaiting pong\n````", 10),
+        makeMockResponse("````SEND [200]\npong\n````", 10),
+        makeMockResponse("````SEND [200]\ndone\n````", 10),
+    ] });
+    await withDaemon(mock, async (db, daemon, addr) => {
+        const ws = await connect(addr);
+        try {
+            const created = await rpcCall(ws, 1, "workspace.create", { name: "held-name" });
+            const workspaceId = (created.result as { id: number }).id;
+            const { finalStatus, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "spawn pong and wait" });
+            assert.equal(finalStatus, 200);
+            const problemOf = (result: { status: number }): { type?: string; recovery?: string; session?: string } =>
+                ((result as { problem?: { type?: string; recovery?: string; session?: string } }).problem ?? {});
+            // The model's own operations after its loop concluded.
+            const dispatch = (statement: string) => modelOperation(daemon, db, { workspaceId, sessionId: modelSessionId!, statement: parseOne(statement) });
+
+            const fork = await dispatch("````FORK (session://pong)\nbranch it\n````");
+            assert.equal(fork.status, 409, "a branch needs a name no session holds");
+            assert.match(problemOf(fork).type ?? "", /session-name-conflict$/u);
+            assert.equal(problemOf(fork).session, "pong");
+            assert.match(problemOf(fork).recovery ?? "", /WORK or SEND \(session:\/\/pong\)/u, "the receipt names the working forms");
+
+            const empty = await dispatch("````WORK (session://pong)\n\n````");
+            assert.equal(empty.status, 422, "no body, no message");
+            assert.match(problemOf(empty).type ?? "", /spawn-prompt-empty$/u);
+
+            const loops = (await db.test_count_loops_by_session.get<{ n: number }>({ session_id: (await db.session_resolve_by_name.get<{ id: number }>({ workspace_id: workspaceId, name: "pong" }))!.id }))!.n;
+            assert.equal(loops, 1, "none of the refusals delivered anything to pong");
+            const sessions = ((await rpcCall(ws, 3, "workspace.sessions", {})).result as { sessions: Array<{ name: string }> }).sessions;
+            assert.equal(sessions.filter((session) => session.name === "pong").length, 1, "and none created a session");
+        } finally { ws.close(); }
+    });
+});
+});
+
+describe("session-spawn-prompt-resource", () => {
+// {§session-scheme} — WORK's slot is overloaded by scheme: a session:// path names
+// the child; a path of any other scheme is read whole as the child's prompt, composed with the
+// body as BARE's combined form, and the child is auto-named.
+
+
+
+
+
+
+
+
+
+// The brief is created by the parent in the same turn (a creation is a member), then handed to the child by path.
+const parentThenChild = (brief: string, work: string) => new Mock({ contextWindow: 16384, responses: [
+    makeMockResponse(`\`\`\`\`EDIT (brief.md)\n${brief}\`\`\`\`\n\n${work}
+
+\`\`\`\`WAIT
+delegated
+\`\`\`\``, 10),
+    makeMockResponse("````SEND [200]\nchild done\n````", 10),
+    makeMockResponse("````SEND [200]\nparent done\n````", 10),
+] });
+
+const childPrompts = async (db: Db, parentSessionId: number) => {
+    const children = await db.test_children_of_session.all<{ id: number; name: string }>({ session_id: parentSessionId });
+    assert.equal(children.length, 1, "exactly one child session exists");
+    const child = children[0];
+    const prompts = ((await db.test_messages_by_session.all({ session_id: child.id })) as Array<{ body: string }>)
+        .map(({ body }) => ({ content: body }));
+    return { child, prompts };
+};
+
+test("{§session-scheme}: a file path on WORK is the child's prompt, and the child is auto-named", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
+    try {
+        const mock = parentThenChild("Count the lines in every file.\n", "````WORK (brief.md)\n````");
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-file", projectRoot: root });
+                const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
+                assert.equal(finalStatus, 200);
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string; tx: string }>({ loop_id: loopId });
+                const work = rows.find((r) => r.op === "WORK" && r.origin === "model");
+                assert.equal(work?.status_rx, 200, work?.rx ?? "no WORK row");
+                assert.match((JSON.parse(work.tx) as { target: { raw: string } }).target.raw, /brief\.md$/, "the durable row keeps the authored path");
+                assert.match(JSON.parse(work.rx).attrs?.session ?? "", /^session:\/\/[a-f0-9]{8}$/, "the child is auto-named");
+                const { prompts } = await childPrompts(db, modelSessionId!);
+                assert.equal(prompts.length, 1);
+                assert.equal(prompts[0].content, "Count the lines in every file.", "the file's complete READ text is the child's prompt");
+            } finally { ws.close(); }
+        });
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§session-scheme}: resource then body, joined by a blank line, as BARE composes them", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
+    try {
+        const mock = parentThenChild("The brief.\n", "````WORK (brief.md)\nAlso report the total.\n````");
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-combined", projectRoot: root });
+                const { finalStatus, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
+                assert.equal(finalStatus, 200);
+                const { prompts } = await childPrompts(db, modelSessionId!);
+                assert.equal(prompts[0].content, "The brief.\n\nAlso report the total.");
+            } finally { ws.close(); }
+        });
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("{§session-scheme}: a missing resource is the operation's failure and spawns nothing; a session:// path keeps the address rules", async (approvalContext) => {
+    serverProposals(approvalContext, "accept");
+    const root = await mkdtemp(join(tmpdir(), "spawn-prompt-"));
+    try {
+        const mock = new Mock({ contextWindow: 16384, responses: [
+            makeMockResponse("````WORK (missing.md)\n````\n\n````WORK (session://bad/path)\nx\n````\n\n````NOTE\ntried\n````", 10),
+            makeMockResponse("````SEND [200]\ngiving up\n````", 10),
+        ] });
+        await withDaemon(mock, async (db, _daemon, addr) => {
+            const ws = await connect(addr);
+            try {
+                await rpcCall(ws, 1, "workspace.create", { name: "spawn-prompt-missing", projectRoot: root });
+                const { finalStatus, loopId, modelSessionId } = await runLoopToTerminal(ws, 2, { prompt: "delegate" }, { timeoutMs: 20000 });
+                assert.equal(finalStatus, 200);
+                const rows = await db.test_log_entries_by_loop.all<{ op: string; origin: string; status_rx: number; rx: string }>({ loop_id: loopId });
+                const works = rows.filter((r) => r.op === "WORK" && r.origin === "model");
+                assert.equal(works.length, 2);
+                assert.equal(works[0].status_rx, 404, "the missing resource's own read failure");
+                assert.equal(works[1].status_rx, 400);
+                assert.equal(JSON.parse(works[1].rx).problem?.type, "https://problems.plurnk.xyz/scheme/session/control-address-invalid", "a session:// path is still an address attempt");
+                const children = await db.test_children_of_session.all<{ id: number; name: string }>({ session_id: modelSessionId! });
+                assert.deepEqual(children, [], "nothing was spawned");
+            } finally { ws.close(); }
+        });
+    } finally { await rm(root, { recursive: true, force: true }); }
+});
+});
+
+describe("workspace-addresses", () => {
+for (const origin of ["model", "client", "_plurnk"] as const) {
+    test(`{§session-scheme}: ${origin} composes operations across explicit Session namespaces`, async () => {
+        await using db = await openMigrated();
+        const workspaceId = await insertWorkspace(db, `addresses-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId, null, "alice");
+        await insertSession(db, workspaceId, null, "bob");
+        const loopId = await insertLoop(db, sessionId, 1);
+        const turnId = origin === "model" ? await insertTurn(db, loopId, 1) : await insertOperationTurn(db, loopId, 1, origin);
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        let sequence = 0;
+        const run = (header: string, body: string | null = null) => {
+            const parsed = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) });
+            const item = parsed.items[0];
+            assert.equal(item?.kind, "statement");
+            if (item?.kind !== "statement") throw new Error("Expected one operation");
+            return engine.dispatch({ workspaceId, sessionId, loopId, turnId, origin,
+                sequence: ++sequence, statement: item.statement });
+        };
+        for (const name of ["alice", "bob", "unallocated", ""]) {
+            const path = name === "" ? "workspace:///notes.md" : `session://${name}/notes.md`;
+            const glob = name === "" ? "workspace:///*.md" : `session://${name}/*.md`;
+            assert.equal((await run(`EDIT (${path})`, "first\nsecond")).status, 201);
+            assert.equal((await run(`READ (${path}) <1,-1>`)).content, "first\nsecond");
+            assert.equal((await run(`FIND (${glob})`)).status, 200);
+            assert.equal((await run(`EDIT (${path}) <2>`, "updated")).status, 200);
+        }
+        assert.equal((await run("COPY (session://alice/notes.md) (session://bob/copy.md)")).status, 201);
+        assert.equal((await run("MOVE (session://bob/copy.md) (workspace:///moved.md)")).status, 201);
+        assert.equal((await run("READ (workspace:///moved.md) <1,-1>")).content, "first\nupdated");
+        assert.equal((await run("READ (session://bob/copy.md)")).status, 404);
+        assert.equal((await run("KILL (session://bob/notes.md)")).status, 200);
+        assert.equal((await run("READ (session://bob/notes.md)")).status, 404);
+        assert.equal((await run("EDIT (session://bob/_plurnk/example.md)", "ordinary generated area")).status, 201);
+        assert.equal((await run("READ (session://bob/_plurnk/example.md) <1,-1>")).content, "ordinary generated area");
+        assert.equal((await run("READ (session://missing/notes.md)")).status, 404, "an absent namespace does not resolve through the calling session");
+    });
+}
+
+test("{§session-initialization-entry}: shared reference maintenance does not broadcast into model histories", async () => {
+    await using db = await openMigrated();
+    const workspaceId = await insertWorkspace(db, "shared-doc-maintenance");
+    const sessionId = await insertSession(db, workspaceId, null, "alice");
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    await LoopDocs.materialize(engine, db, workspaceId);
+    const observations = await db.engine_pull_ambient_events.all<{ event_id: number | null }>({ workspace_id: workspaceId, session_id: sessionId });
+    assert.deepEqual(observations.filter(({ event_id }) => event_id !== null), [], "background document maintenance is not model activity");
+    const entries = await db.loop_docs_materialized.all({ workspace_id: workspaceId });
+    assert.ok(entries.length > 0, "the actual reference tree was materialized");
+});
+
+test("{§entry-owner}: scratch survives its namesake actor and remains workspace-local", async () => {
+    await using db = await openMigrated();
+    const engine = new Engine({ db, schemes: new SchemeRegistry() });
+    const spaces = await Promise.all(["one", "two"].map(async (name) => {
+        const workspaceId = await insertWorkspace(db, name);
+        const sessionId = await insertSession(db, workspaceId, null, "reader");
+        const loopId = await insertLoop(db, sessionId, 1);
+        const turnId = await insertOperationTurn(db, loopId, 1, "client");
+        let sequence = 0;
+        return { workspaceId, run: (header: string, body: string | null = null) => {
+            const item = PlurnkParser.parseStatements(PlurnkParser.frame(header, body), { executors: fixtureExecutors(PlurnkParser.frame(header, body)) }).items[0];
+            assert.ok(item?.kind === "statement");
+            return engine.dispatch({ workspaceId, sessionId, loopId, turnId, origin: "client", sequence: ++sequence,
+                statement: item.statement });
+        } };
+    }));
+    const author = await insertSession(db, spaces[0].workspaceId, null, "author");
+    assert.equal((await spaces[0].run("EDIT (session://author/note.md)", "first workspace")).status, 201);
+    await db.test_delete_session.run({ id: author });
+    assert.equal((await spaces[0].run("READ (session://author/note.md)")).content, "first workspace");
+    const catalog = await spaces[0].run("FIND (session://author/*.md)");
+    assert.match(JSON.stringify(catalog.results), /session:\/\/author\/note\.md/);
+    assert.equal((await spaces[1].run("READ (session://author/note.md)")).status, 404);
+    assert.equal((await spaces[1].run("COPY (session://author/note.md) (workspace:///copy.md)")).status, 404);
+    assert.equal((await spaces[1].run("READ (workspace:///copy.md)")).status, 404);
+    assert.equal((await spaces[1].run("EDIT (session://author/note.md)", "second workspace")).status, 201);
+    assert.equal((await spaces[1].run("MOVE (session://author/note.md) (workspace:///copy.md)")).status, 201);
+    assert.equal((await spaces[1].run("READ (workspace:///copy.md)")).content, "second workspace");
+    assert.equal((await spaces[0].run("READ (session://author/note.md)")).content, "first workspace");
+});
 });

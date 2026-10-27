@@ -1,4 +1,4 @@
--- {§session-authority-carving}: stable literal names within one workspace.
+-- {§session-scheme}: stable literal names within one workspace.
 
 -- PREP: session_resolve_by_name
 SELECT id FROM sessions WHERE workspace_id = $workspace_id AND name = $name;
@@ -7,7 +7,7 @@ SELECT id FROM sessions WHERE workspace_id = $workspace_id AND name = $name;
 SELECT name FROM sessions WHERE id = $session_id;
 
 -- PREP: session_collect_loop
--- The session's live loop, otherwise its latest conclusion ({§session-scheme-collect}).
+-- The session's live loop, otherwise its latest conclusion ({§session-scheme}).
 SELECT r.name, l.sequence, l.status, l.terminal_result, l.terminated_by
 FROM sessions r
 JOIN loops l ON l.session_id = r.id

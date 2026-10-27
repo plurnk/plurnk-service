@@ -772,7 +772,7 @@ workspace attachment. The host does not reproduce SDK protocol machinery.
 | Task input | Routes through the operation's client interaction, then sends `tasks/update`; it never asks the model to manufacture protocol state. |
 | Task cancellation | The owning execution's cancellation invokes `tasks/cancel` before settling the ordinary stream cancellation. |
 | List invalidation | Invalidates SDK catalogs and atomically refreshes the attachment snapshot. |
-| Selected resource update | Invalidates that URI's SDK cache entry; a subsequent READ acquires current content. Private entries remain authorization-partitioned. Earlier READ receipts stay unchanged; ordinary remote changes neither broadcast nor wake sessions ({§actor-boundary-lineage-attention}). |
+| Selected resource update | Invalidates that URI's SDK cache entry; a subsequent READ acquires current content. Private entries remain authorization-partitioned. Earlier READ receipts stay unchanged; ordinary remote changes neither broadcast nor wake sessions ({§actor-boundary}). |
 | Prompt get / completion | Serves ordinary resource-authority reads and host interactions from negotiated prompt/template definitions; no prompt becomes an executable tool. |
 
 The general executor interaction contract, not this package, owns client

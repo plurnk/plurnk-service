@@ -1,4 +1,4 @@
--- Engine SQL. SPEC {§arch} (architecture), {§scheme} (op dispatch + log).
+-- Engine SQL. SPEC {§observability-boundary} (architecture), {§scheme} (op dispatch + log).
 
 -- PREP: engine_count_active_loops_for_session
 -- Wake-on-completion uses this to decide whether to open a new loop or
@@ -80,7 +80,7 @@ ORDER BY attribution;
 -- PREP: engine_session_provider_identity
 -- Provider routing uses globally unique opaque identities, while all relational
 -- ownership and client coordinates retain the local integer session id.
--- {§session-provider-identity}
+-- {§machine-processes}
 SELECT provider_identity AS session_id FROM sessions WHERE id = $session_id;
 
 -- PREP: engine_session_provider_requests

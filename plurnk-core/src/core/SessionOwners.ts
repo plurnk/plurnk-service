@@ -41,7 +41,7 @@ export default class SessionOwners {
         return (await SessionOwners.forLoop(db, loopId)).interactive;
     }
 
-    // {§client-interaction-routing} Only a person answers: the owner must be attended and declare the tool.
+    // {§session-ownership} Only a person answers: the owner must be attended and declare the tool.
     static receives(owner: SessionOwner, toolName: string): boolean {
         return owner.interactive && owner.tools.includes(toolName);
     }

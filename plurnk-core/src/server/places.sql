@@ -1,4 +1,4 @@
--- {§place-hiding} A hidden workspace or session leaves the directories and the overview; every row stays. A session's
+-- {§machine-processes} A hidden workspace or session leaves the directories and the overview; every row stays. A session's
 -- hide marks it and every session beneath it with the session that hid it (`hidden_by`): one group, which returns whole.
 
 -- INIT: loops_unhide_place

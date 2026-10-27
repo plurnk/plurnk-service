@@ -1,9 +1,9 @@
 -- Fork a session: branch the log, share the workspace (SPEC {§machine-processes}). The branch's row
 -- is claimed by session_name_claim with fork_snapshot = 1, and that INSERT is the fork: the trigger
 -- below copies the parent's history into the branch inside the same statement
--- ({§session-fork-trigger}). Only session, loop, turn and log ids are remapped, by natural key —
+-- ({§machine-processes}). Only session, loop, turn and log ids are remapped, by natural key —
 -- (session, sequence) for a loop, (loop, sequence) for a turn, (turn, sequence) for a log row.
--- Nothing of the workspace is copied ({§machine-processes-fork-shares-workspace}).
+-- Nothing of the workspace is copied ({§machine-processes}).
 
 -- INIT: sessions_fork_copies_history
 DROP TRIGGER IF EXISTS sessions_fork_copies_history;
@@ -12,7 +12,7 @@ AFTER INSERT ON sessions
 WHEN NEW.fork_event_boundary IS NOT NULL
 BEGIN
     -- Loops: inherited history, never live work — a non-terminal status is clamped to 200 and
-    -- given a plain success result ({§machine-processes-fork-copies-the-log}).
+    -- given a plain success result ({§machine-processes}).
     INSERT INTO loops (
         session_id, sequence, status, prompt, model_route_id,
         spawn_model_route_id, effort, max_turns, terminal_result
@@ -33,7 +33,7 @@ BEGIN
           'ops://' || (SELECT name FROM sessions WHERE id = NEW.parent_session_id) || '/' || sequence;
 
     -- Turns, loop remapped. Model calls, admission rows and provider requests stay with the
-    -- source ({§machine-processes-fork-cost}).
+    -- source ({§machine-processes}).
     INSERT INTO turns (
         loop_id, sequence, timestamp, producer, kind, status, completed_at,
         usage_curation_budget, packet, finish_reason, model, meta
@@ -134,7 +134,7 @@ BEGIN
     ORDER BY ef.operation_log_entry_id, ef.target_log_entry_id;
 
     -- Named scratch under the source's authority becomes the branch's; a live producer cannot be
-    -- cloned ({§machine-processes-entry-inheritance}). Version defaults to 0.
+    -- cloned ({§machine-processes}). Version defaults to 0.
     INSERT INTO entries (workspace_id, scheme, authority, pathname, attributes)
     SELECT NEW.workspace_id, e.scheme, NEW.name, e.pathname, e.attributes
     FROM entries e

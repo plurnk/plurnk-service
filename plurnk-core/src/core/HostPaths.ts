@@ -96,7 +96,7 @@ export default class HostPaths {
         this.configFile = join(this.configDir, ".env");
         this.policyFile = join(this.configDir, "AGENTS.md");
         this.databaseFile = join(this.dataDir, "plurnk.db");
-        // {§model-catalog-cache} {§service-update} — cached models.dev snapshot under the cache home.
+        // {§model-catalog-cache} {§startup-admission} — cached models.dev snapshot under the cache home.
         this.modelsCacheFile = join(this.cacheDir, "models.json");
         // {§skills-functionality} — plurnk-only skills are configuration; the global
         // root is shared across agents and rooted independently of application

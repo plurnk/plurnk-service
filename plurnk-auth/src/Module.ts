@@ -71,7 +71,7 @@ export default class Module implements DaemonModule<AuthSetupSeam, AuthPort> {
         this.#stopping = false;
     }
 
-    // {§http-request-origin} — the configured public origin when one is set, else the origin the
+    // {§http-host} — the configured public origin when one is set, else the origin the
     // request reached, else the listener's own when asked with no request in hand.
     #origin(req: RequestHeaders = { headers: {} }): string {
         return this.#opts.issuer.length > 0 ? this.#opts.issuer : requestOrigin(req, this.#listener());

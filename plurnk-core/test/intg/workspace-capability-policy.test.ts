@@ -209,7 +209,7 @@ for (const layer of ["service", "workspace"] as const) test(`{§schemes-director
     } finally { await db.close(); }
 });
 
-test("{§session-generated-subtree}: runtime maintenance preserves external policy and writer boundaries", async () => {
+test("{§session-scheme}: runtime maintenance preserves external policy and writer boundaries", async () => {
     const db = await openMigrated();
     try {
         const engine = new Engine({ db, schemes: new SchemeRegistry(), mimetypes: DEFAULT_MIMETYPES });

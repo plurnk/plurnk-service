@@ -266,7 +266,7 @@ export default class MutationEffects {
             }, selection.projectRoot)
             : renderAddress({
                 scheme: selection.scheme,
-                // {§session-authority-carving} — storage keys the owner, so the
+                // {§session-scheme} — storage keys the owner, so the
                 // address the model typed (`~`) is re-applied for it to recognize.
                 authority: selection.scheme === "session" && selection.target.kind === "url"
                     ? selection.target.hostname ?? ""

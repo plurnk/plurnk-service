@@ -8,7 +8,7 @@ import HostPaths from "./HostPaths.ts";
 import { OperationFailureError } from "./results.ts";
 import ServiceUpdater from "./ServiceUpdater.ts";
 
-test("{§service-update} refuses update with 403 update-disabled when PLURNK_SERVICE_UPDATEABLE=0", async () => {
+test("{§startup-admission} refuses update with 403 update-disabled when PLURNK_SERVICE_UPDATEABLE=0", async () => {
     const dir = mkdtempSync(join(tmpdir(), "plurnk-service-update-disabled-"));
     try {
         const hostPaths = new HostPaths({ home: dir, env: { PLURNK_SERVICE_STATE_ROOT: dir } });
@@ -30,7 +30,7 @@ test("{§service-update} refuses update with 403 update-disabled when PLURNK_SER
     }
 });
 
-test("{§service-update} updates cached model catalog and reports source checkout or npm install status", async () => {
+test("{§startup-admission} updates cached model catalog and reports source checkout or npm install status", async () => {
     const dir = mkdtempSync(join(tmpdir(), "plurnk-service-update-run-"));
     try {
         const hostPaths = new HostPaths({ home: dir, env: { PLURNK_SERVICE_STATE_ROOT: dir } });

@@ -145,7 +145,7 @@ export interface ApplicationPort extends HttpHost {
     /** {§acp-provider-routes} Each alias is the route a session seeded from it gets, its configured effort included. */
     listProviders(): { readonly aliases: Array<ApplicationProviderAlias> };
     listModels(query: ModelCatalogQuery): ModelCatalogPage;
-    /** {§service-update} Explicitly refresh the Models.dev catalog cache and installed npm package when `PLURNK_SERVICE_UPDATEABLE=1`. */
+    /** {§startup-admission} Explicitly refresh the Models.dev catalog cache and installed npm package when `PLURNK_SERVICE_UPDATEABLE=1`. */
     updateService?(): Promise<ApplicationServiceUpdateResult>;
     createWorkspace(args: {
         readonly name?: string;
@@ -164,7 +164,7 @@ export interface ApplicationPort extends HttpHost {
     ensureSessionReference(args: { readonly namespace: string; readonly reference: string }): Promise<{ readonly workspaceId: number; readonly sessionId: number }>;
     /** {§session-external-reference} Inspect the adapter's retained references to this session. */
     listSessionReferences(args: { readonly workspaceId: number; readonly sessionId: number; readonly namespace: string }): Promise<string[]>;
-    /** {§place-hiding} Omitted `hidden` lists every workspace; true only hidden ones, false only shown ones. */
+    /** {§machine-processes} Omitted `hidden` lists every workspace; true only hidden ones, false only shown ones. */
     listWorkspaces(query?: { readonly hidden?: boolean }): Promise<Array<{
         readonly id: number;
         readonly name: string;
@@ -172,7 +172,7 @@ export interface ApplicationPort extends HttpHost {
         /** {§workspace-label} */
         readonly project_label: string | null;
         readonly created_at: string;
-        /** {§place-hiding} When the workspace was hidden, or null while it is shown. */
+        /** {§machine-processes} When the workspace was hidden, or null while it is shown. */
         readonly hidden_at: string | null;
     }>>;
     listSessions(

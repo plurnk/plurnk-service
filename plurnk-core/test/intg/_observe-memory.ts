@@ -14,6 +14,8 @@ export interface MemoryTracing {
 export const mountMemoryTracing = async (onStart?: SpanProcessor["onStart"]): Promise<MemoryTracing> => {
     // The SDK installs its context manager at start();
     // the deterministic mount must mirror it or context never crosses `await`.
+    trace.disable();
+    context.disable();
     const contextManager = new AsyncLocalStorageContextManager();
     contextManager.enable();
     context.setGlobalContextManager(contextManager);
@@ -27,6 +29,8 @@ export const mountMemoryTracing = async (onStart?: SpanProcessor["onStart"]): Pr
         shutdown: async (): Promise<void> => {
             await provider.shutdown();
             contextManager.disable();
+            trace.disable();
+            context.disable();
         },
     };
 };

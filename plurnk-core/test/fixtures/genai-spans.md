@@ -20,7 +20,7 @@ Against this pinned registry, the 33 spans produce these findings:
 
 | Finding | Count | Interpretation |
 |---|---:|---|
-| `missing_attribute`, `missing_namespace` for `model`, `attempt`, `kind`, `status` | 110 each | Existing custom attributes, not claimed as standard attributes ({§observability-genai-conventions}). |
+| `missing_attribute`, `missing_namespace` for `model`, `attempt`, `kind`, `status` | 110 each | Existing custom attributes, not claimed as standard attributes ({§observability-boundary}). |
 | `not_stable` on `gen_ai.*` | 165 | The approved GenAI projection uses development conventions. |
 | `undefined_enum_variant` for `custom-endpoint` and `other` | 6 | Open-ended provider identities; custom and unknown are not misreported as a known vendor. |
 | `missing_attribute` for `error.type` | 11 | The split GenAI registry's live-check projection omits this core-registry attribute. |

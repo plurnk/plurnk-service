@@ -32,7 +32,7 @@ introduces no parallel lifecycle dialect or custom `sessionUpdate` variants.
   checks its whole source graph that way (`tsconfig.browser.json`). The package root is the server
   module.
 - §acp-listener-admission **Bound is not ready.** The socket is core's
-  ({§startup-listener-admission}): bound before durable-state admission and answering a retryable
+  ({§startup-admission}): bound before durable-state admission and answering a retryable
   `503 service-starting` until daemon activation admits it after every module has started
   ({§module-http-mounts}). This module mounts `/acp` at `start`, so no request reaches it before its
   port is installed; from `stop` it answers `503 service-stopping`.
@@ -467,7 +467,7 @@ plane.**
 | `ping` | Daemon | Liveness check; returns `{}`. |
 | `discover` | Daemon | Returns the complete `AcpDiscovery` manifest ({§discovery}). |
 | `models.list` | Daemon | `ApplicationPort.listModels` ({§model-catalog}). |
-| `service.update` (`/update`) | Daemon | `ApplicationPort.updateService` ({§service-update}). |
+| `service.update` (`/update`) | Daemon | `ApplicationPort.updateService` ({§startup-admission}). |
 | `workspace.list` / `workspace.create` / `workspace.attach` / `workspace.rename` / `workspace.hide` | Daemon / Workspace | Workspace lifecycle on `ApplicationPort` ({§acp-place-hiding}). |
 | §acp-session-loops `session.loops` | Workspace | `ApplicationPort.listSessionLoops`, each loop in sequence order as `{ id, sequence, lifecycle, source, opening, continued }` with `opening` bounded to `PLURNK_ACP_EXCERPT_CHARS`. |
 | `log.read` / `entry.read` / `workspace.prompts` | Workspace | `ApplicationPort.readLog`, `readEntry`, and `listPrompts`. |
@@ -550,7 +550,7 @@ the bound session's own events are streamed.
 
 §acp-subagents **Observed subagent updates carry their child session's coordinate namespace.** Child
 updates carry coordinates in `session://<name>#L/T/S` and `_meta.plurnk.subagentRunId`
-(`ops://<session>/<loop>`, {§session-loop-result}) in both live streaming and replay. A child's
+(`ops://<session>/<loop>`, {§session-scheme}) in both live streaming and replay. A child's
 termination never settles the parent session's `session/prompt`.
 
 ## 11. Event Fan, Revocation, Configuration, and HTTP Boundary

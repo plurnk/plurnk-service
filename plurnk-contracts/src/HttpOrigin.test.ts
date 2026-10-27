@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { requestOrigin } from "./index.ts";
 
-test("{§http-request-origin} a request's origin is the address its Host names, over http, else the listener's own", () => {
+test("{§http-host} a request's origin is the address its Host names, over http, else the listener's own", () => {
     const listener = { host: "0.0.0.0", port: 1066 };
     for (const [named, origin] of [
         ["192.168.1.88:1066", "http://192.168.1.88:1066"],

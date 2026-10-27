@@ -908,7 +908,7 @@ test("{§reasoning-history} Engine.dispatch: model EDIT of reasoning is rejected
     } finally { await db.close(); }
 });
 
-test("{§session-write-scoping} Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
+test("{§session-scheme} Engine.dispatch: an unrelated model writes named runtime scratch through ordinary EDIT", async () => {
     const { db, engine, env } = await setup();
     try {
         await RuntimeSession.ensure(db, env.workspaceId);

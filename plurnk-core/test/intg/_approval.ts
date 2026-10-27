@@ -11,7 +11,7 @@ export const ownSession = async (db: Db, workspaceId: number, sessionId: number,
     await SessionOwners.claim(db, workspaceId, sessionId, TEST_OWNER);
 };
 
-// {§session-owner-resolution} Fixtures without a reviewing client declare server
+// {§session-ownership} Fixtures without a reviewing client declare server
 // disposition explicitly; message submission cannot carry approval authority.
 export const serverProposals = (t: Pick<TestContext, "after">, value: ProposalPolicy): void => {
     const previous = process.env.PLURNK_SERVICE_PROPOSALS;

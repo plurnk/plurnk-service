@@ -1,4 +1,4 @@
-// {§place-hiding} Hiding and showing workspaces and sessions: a durable mark, never a deletion.
+// {§machine-processes} Hiding and showing workspaces and sessions: a durable mark, never a deletion.
 import type { ApplicationSessionHiding, ApplicationWorkspaceHiding } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";
 import { daemonFailure } from "./daemon-results.ts";

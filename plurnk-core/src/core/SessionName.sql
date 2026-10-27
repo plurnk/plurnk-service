@@ -2,7 +2,7 @@
 
 -- PREP: session_name_claim
 -- Claiming the literal and creating its session are one SQLite write statement. Every session it mints is a
--- model's ({§machine-processes-session-origin}).
+-- model's ({§machine-processes}).
 INSERT INTO sessions (
     workspace_id, name, parent_session_id, origin, owner,
     ambient_event_cursor, fork_event_boundary,
@@ -15,7 +15,7 @@ SELECT $workspace_id, $name, $parent_session_id, 'model', $owner,
        CASE WHEN $fork_snapshot = 1 THEN COALESCE((
            SELECT MAX(ae.id) FROM ambient_events ae WHERE ae.workspace_id = $workspace_id
        ), 0) ELSE NULL END,
-       -- {§session-fork-trigger}: a branch copies durable generation policy by value, then diverges.
+       -- {§machine-processes}: a branch copies durable generation policy by value, then diverges.
        CASE WHEN $fork_snapshot = 1 THEN (SELECT model_route_id FROM sessions WHERE id = $parent_session_id) END,
        CASE WHEN $fork_snapshot = 1 THEN (SELECT spawn_model_route_id FROM sessions WHERE id = $parent_session_id) END,
        CASE WHEN $fork_snapshot = 1 THEN (SELECT effort FROM sessions WHERE id = $parent_session_id) END

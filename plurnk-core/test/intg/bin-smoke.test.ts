@@ -434,7 +434,7 @@ test("{§operator-config-precedence} a working directory's .env configures nothi
     }
 });
 
-test("{§startup-admission-order} bin: a failed DB open names the path and any stale sidecars — never a bare 'disk I/O error'", async () => {
+test("{§startup-admission} bin: a failed DB open names the path and any stale sidecars — never a bare 'disk I/O error'", async () => {
     // The classic footgun: the main DB deleted while -wal/-shm sidecars survive (often held by a
     // still-running daemon) — SQLite reports only "disk I/O error". Repro deterministically by
     // squatting a DIRECTORY on the -wal path; assert the boot error is legible: path + sidecar hint.
@@ -443,7 +443,7 @@ test("{§startup-admission-order} bin: a failed DB open names the path and any s
         const dbPath = join(dir, "plurnk.db");
         await mkdir(`${dbPath}-wal`);
         const result = await new Promise<{ code: number | null; stderr: string }>((resolvePromise, rejectPromise) => {
-            // {§startup-admission-order}: the independently broken provider is a
+            // {§startup-admission}: the independently broken provider is a
             // witness that database admission fails before provider initialization.
             const env: NodeJS.ProcessEnv = {
                 ...process.env,
@@ -539,7 +539,7 @@ test("{§acp-daemon-client} bin: an occupied client port fails before durable st
     }
 });
 
-test("{§startup-admission-order} bin: an unavailable provider is not constructed during startup", async () => {
+test("{§startup-admission} bin: an unavailable provider is not constructed during startup", async () => {
     const booted = await bootDaemon(async () => ({
         PLURNK_MODEL: "broken",
         PLURNK_MODEL_broken: "missing/model",

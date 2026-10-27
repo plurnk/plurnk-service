@@ -4,7 +4,7 @@ import { trace } from "@opentelemetry/api";
 import { Mock, type ProviderRequestAccounting } from "@plurnk/plurnk-providers";
 import { settleGenAiResponse } from "./genai.ts";
 
-test("{§observability-genai-conventions} telemetry publishes only complete request totals", async (t) => {
+test("{§observability-boundary} telemetry publishes only complete request totals", async (t) => {
     const response = await new Mock({ contextWindow: 16_384, responses: [{
         assistant: { content: "answer", reasoning: null },
         usage: { inputTokens: 5, outputTokens: 3, totalTokens: 8 },

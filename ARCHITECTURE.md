@@ -395,7 +395,7 @@ own specifications. Approval routes through the session's durable owner
 ({§session-ownership}), independently of messages and connections. Core's server
 policy may settle proposals automatically. Clarification goes to the same owner, but
 only a person can answer it: the owner must be interactive and declare the tool
-({§client-interaction-routing}). Client convenience and daemon authority are not
+({§session-ownership}). Client convenience and daemon authority are not
 interchangeable.
 
 ## How an execution outcome is observed

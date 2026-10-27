@@ -1,7 +1,7 @@
 import { configuredDefinitions, validateConfiguration as validateMcp } from "@plurnk/plurnk-mcp";
 import { validateConfiguration as validateSchedule } from "@plurnk/plurnk-schedule";
 
-// {§service-session-composition} — the offline check validates the default modules' own settings; the
+// {§observability-boundary} — the offline check validates the default modules' own settings; the
 // modules themselves load by discovery ({§module-discovery}).
 export default class ServiceModules {
     static async validateConfiguration(directories: readonly string[]): Promise<void> {

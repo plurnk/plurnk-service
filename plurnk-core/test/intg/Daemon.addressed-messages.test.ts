@@ -39,7 +39,7 @@ test("{§message-idempotency}: a client message's address is its idempotency key
     });
 });
 
-test("{§session-scheme-irc}: an empty directed SEND refuses before admission and the model can recover", async () => {
+test("{§session-scheme}: an empty directed SEND refuses before admission and the model can recover", async () => {
     const provider = new Mock({ contextWindow: 100_000, responses: [
         makeMockResponse([
             PlurnkParser.frame("SEND (session://receiver)", null),

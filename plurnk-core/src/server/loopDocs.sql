@@ -1,4 +1,4 @@
--- Session generated-document reconciliation: the whole {§session-generated-subtree}
+-- Session generated-document reconciliation: the whole {§session-scheme}
 -- — scheme and tool references, AGENTS.md, and every Functionality family's
 -- documents ({§schemes-self-doc-materialization}, {§tools-resource-materialization},
 -- {§functionality-documents}).

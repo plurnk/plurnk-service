@@ -760,7 +760,7 @@ export default class TurnRunner {
         const initializationStatements: Array<FindStatement | ReadStatement> = [];
         // {§session-initialization-entry} — the session's first turn is the worked
         // example itself: the actual orienting operations.
-        // {§turn0-agents-stunt} {§turn0-local-instructions} — the project AGENTS.md, then its AGENTS.local.md (materialized
+        // {§session-initialization-entry} {§session-initialization-entry} — the project AGENTS.md, then its AGENTS.local.md (materialized
         // by LoopDocs under workspace:///_plurnk/), each get one foisted READ on the session's first loop, so local repo
         // guidance is visible turn-0 content. Global policy stays in the system prompt; nothing else is force-read.
         if (initializationTurn !== null) {
@@ -848,11 +848,11 @@ export default class TurnRunner {
     async #runInitializationTurn(args: TurnArgs, container: TurnContainer, initializationTurn: TurnRow, gitStatus: GitStatusSnapshot | null): Promise<void> {
         const { workspaceId, sessionId, loopId, onDispatch, onSettled } = args;
         const { initializationStatements, initializationPolicies } = container;
-        // {§actor-boundary-catalog-preview}: `init` lets the model curate the opening surveys as one set.
+        // {§session-initialization-entry}: `init` lets the model curate the opening surveys as one set.
         // {§operator-config-workspace-files-items} — workspace filesItems replaces the env default.
         const { filesItems: workspaceMI } = await WorkspaceSettings.read(this.#db, workspaceId);
         const filesItems = workspaceMI !== null ? normalizeFilesItems(workspaceMI) : readFilesItems();
-        if (filesItems !== null) { // {§actor-boundary-catalog-preview} — once per session
+        if (filesItems !== null) { // {§session-initialization-entry} — once per session
             initializationStatements.push(...await this.#catalogSurveys(args, container, filesItems));
         }
         // {§session-initialization-entry} — the survey is an ordinary operation program: recorded as the
@@ -863,7 +863,7 @@ export default class TurnRunner {
         const admittedInitializationStatements: Array<FindStatement | ReadStatement> = [];
         for (const statement of initializationStatements) {
             if (!this.#capabilities.allowsAcross(statement, workspaceId, initializationPolicies)) continue;
-            // {§actor-boundary-catalog-preview} — a survey that would select nothing is left out of the program.
+            // {§session-initialization-entry} — a survey that would select nothing is left out of the program.
             if (statement.op === "FIND" && !await this.#dispatcher.selects(statement, {
                 workspaceId, sessionId, loopId, turnId: initializationTurn.id, origin: "_plurnk",
             })) continue;
@@ -907,7 +907,7 @@ export default class TurnRunner {
         }
     }
 
-    // {§actor-boundary-catalog-preview} — the opening surveys, each admitted only when
+    // {§session-initialization-entry} — the opening surveys, each admitted only when
     // its scheme is registered for the workspace. A positive filesItems caps the
     // project rows.
     async #catalogSurveys({ workspaceId }: TurnArgs, { sessionName, initializationPolicies }: TurnContainer, filesItems: number): Promise<FindStatement[]> {

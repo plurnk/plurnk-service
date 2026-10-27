@@ -36,8 +36,8 @@ export class SessionNameError extends Error {
     }
 }
 
-// {§session-name-minting} Model-session minting only; the runtime actor
-// ({§actor-boundary-self-hosting}) and generic URI ingestion have their own contracts.
+// {§session-scheme} Model-session minting only; the runtime actor
+// ({§actor-boundary}) and generic URI ingestion have their own contracts.
 export default class SessionName {
     static async forId(db: Db, sessionId: number): Promise<string> {
         const row = await db.session_name_by_id.get<{ name: string }>({ session_id: sessionId });

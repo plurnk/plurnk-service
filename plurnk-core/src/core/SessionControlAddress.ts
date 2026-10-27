@@ -8,14 +8,14 @@ type SessionControlAddressResolution =
     | { readonly ok: true; readonly authority: string }
     | { readonly ok: false; readonly result: SchemeResultBase };
 
-// {§session-control-addressing} Generic URI parsing remains permissive, but a
+// {§session-scheme} Generic URI parsing remains permissive, but a
 // session-as-actor address is exactly an authority with no other URI component.
 export default class SessionControlAddress {
     static render(authority: string): string {
         return `session://${authority}`;
     }
 
-    // {§session-spawn-prompt-resource} — a `session://` path is always an address attempt on WORK and
+    // {§session-scheme} — a `session://` path is always an address attempt on WORK and
     // FORK; a path of any other scheme is their prompt resource.
     static isSessionScheme(target: ParsedPath | null): boolean {
         return target !== null && target.kind === "url" && target.scheme === "session";

@@ -153,7 +153,7 @@ export default class LoopDriver {
                 if (row.status === 100) {
                     // NOT a terminal — a wake re-queued this loop while its own live drain was
                     // between turns (a child concluded in the gap between our 202 write and this
-                    // check, {§session-lifecycle-wake-requeue-not-terminal}). The wake's intent is KEEP
+                    // check, {§session-scheme}). The wake's intent is KEEP
                     // RUNNING: re-claim atomically and continue — the injected prompt is already
                     // this loop's next turn. Returning it as "external" broadcast a QUEUED loop
                     // as a terminal result with status 100 — the delegation-policy race.

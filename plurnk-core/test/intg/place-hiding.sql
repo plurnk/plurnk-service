@@ -1,4 +1,4 @@
--- {§place-hiding} witnesses: the marks a workspace and its sessions carry.
+-- {§machine-processes} witnesses: the marks a workspace and its sessions carry.
 
 -- PREP: test_place_marks
 SELECT 'workspace' AS place, id, hidden_at, NULL AS hidden_by FROM workspaces WHERE id = $workspace_id

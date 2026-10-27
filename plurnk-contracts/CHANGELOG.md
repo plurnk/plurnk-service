@@ -36,7 +36,7 @@
   `FunctionalityServiceDefinition`, `FunctionalityPreparedDefinition` and
   `FunctionalityDefinitionSource` carry them; each defaults to the previous type.
   `registerFunctionalityAdapter` infers both from the adapter it registers.
-- 0cee49c: Workspaces and workers hide and show by a durable mark ({§place-hiding}):
+- 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
   `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
   {§methods-session-hide}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group

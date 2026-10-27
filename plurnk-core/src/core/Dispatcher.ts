@@ -774,7 +774,7 @@ export default class Dispatcher {
                     result = curation.result;
                     curationPlan = curation.plan;
                 } else if (statement.op === "FORK" || statement.op === "WORK") {
-                    // {§session-spawn-prompt-resource} — a non-address path is the child's prompt resource.
+                    // {§session-scheme} — a non-address path is the child's prompt resource.
                     const seeded = await this.#seedSpawnPrompt(statement, schemeCtx);
                     result = "result" in seeded ? seeded.result : await this.#sessionControl.handleSessionControl(seeded.statement, schemeCtx);
                 } else if (statement.op === "COPY") {
@@ -955,7 +955,7 @@ export default class Dispatcher {
         await this.#notify.operationSettledNotify?.(context.workspaceId, logEntryId);
     }
 
-    // {§actor-boundary-catalog-preview} Whether a survey selects anything: its FIND run through the scheme context and
+    // {§session-initialization-entry} Whether a survey selects anything: its FIND run through the scheme context and
     // owner its dispatch would use, writing no row. A survey the FIND refuses counts as selecting, so its dispatch reports it.
     async selects(survey: FindStatement, ids: { workspaceId: number; sessionId: number; loopId: number; turnId: number; origin: WriterTier }): Promise<boolean> {
         const found = await ResourceBindings.using(this.#schemes, this.#buildSchemeCtx(ids),
@@ -1188,7 +1188,7 @@ export default class Dispatcher {
     }
 
     // The one place per-dispatch coordinates are built. Functionality resolves by workspace
-    // ({§actor-boundary-attached-functionality}); consumers read the built PlurnkSchemeContext
+    // ({§actor-boundary}); consumers read the built PlurnkSchemeContext
     // and never re-derive.
     #buildSchemeCtx(ids: {
         workspaceId: number; sessionId: number; loopId: number; turnId: number; sequence?: number; origin: WriterTier;
@@ -1504,7 +1504,7 @@ export default class Dispatcher {
         return row.id;
     }
 
-    // {§session-spawn-prompt-resource} WORK and FORK overload their slot by scheme: a `session://`
+    // {§session-scheme} WORK and FORK overload their slot by scheme: a `session://`
     // path is always the child's address (and keeps the address rules); a path of any other scheme
     // is read whole and becomes the child's prompt, composed with the body as BARE's combined form.
     // The durable row keeps the authored statement; only the handler sees the composed one, with no

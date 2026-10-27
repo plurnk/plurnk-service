@@ -340,7 +340,7 @@ test("{§auth-oauth} an authority without an operator secret still authenticates
     } finally { await mod.close(); }
 });
 
-test("{§credential-authority} {§http-request-origin} the face answers its issuer from publication, before the module starts: the configured one, else the address the request reached, else the listener's", async () => {
+test("{§credential-authority} {§http-host} the face answers its issuer from publication, before the module starts: the configured one, else the address the request reached, else the listener's", async () => {
     for (const [issuer, viaLan, unnamed] of [
         ["", "http://192.168.1.88:1066", "http://127.0.0.1:4321"],
         ["https://plurnk.example", "https://plurnk.example", "https://plurnk.example"],
@@ -440,7 +440,7 @@ test("{§auth-oauth-session} a client elsewhere is shown consent: allowing with 
     } finally { await mod.close(); }
 });
 
-test("{§http-request-origin} {§auth-oauth-endpoints} the authorization server answers at whatever address a request reached it by; a configured issuer is the one answer", async () => {
+test("{§http-host} {§auth-oauth-endpoints} the authorization server answers at whatever address a request reached it by; a configured issuer is the one answer", async () => {
     const mod = await boot();
     try {
         for (const named of ["192.168.1.88:1066", "desktop.lan:1066", "localhost:1066"]) {
@@ -542,7 +542,7 @@ test("{§auth-oauth-documents} a module client's registered stylesheet replaces 
     }
 });
 
-// {§auth-oauth-clients} {§credential-module-client} — a daemon module's own confidential client (#1119):
+// {§auth-oauth-clients} {§credential-authority} — a daemon module's own confidential client (#1119):
 // the token-mediating backend of RFC 10017 §6.2 authenticates at the token endpoint and brings PKCE.
 const moduleBoot = async (env: Record<string, string> = {}, scopes: readonly string[] = ["acp"]) => {
     let secret = "";
@@ -632,7 +632,7 @@ test("{§auth-oauth-clients} a module's client is refused without its secret, wi
     } finally { await mod.close(); }
 });
 
-test("{§credential-module-client} a module's redirect is its path on the issuer: the address the request reached by default, the configured public origin when one is set", async () => {
+test("{§credential-authority} a module's redirect is its path on the issuer: the address the request reached by default, the configured public origin when one is set", async () => {
     const local = await moduleBoot();
     try {
         assert.equal(local.redirect, `${local.mod.base}/web/callback`);

@@ -213,7 +213,7 @@ accepted on canonical `main`, with npm and GitHub publication authority.
 accepted cannot be reused: move a collision to the next patch by hand (the version,
 every range naming it, the changelog heading), then `npm install --package-lock-only`.
 A release that ships migrations adds its version, release and shape to
-`plurnk-core/test/intg/schema-baseline.test.ts` in the same landing and heads each
+`plurnk-core/test/intg/machine-process.test.ts` in the same landing and heads each
 shipped migration `-- Released in <version> and frozen ({§db-migrations})`.
 
 `release:check` builds and gates source, projects archives, and tests a fresh
@@ -262,7 +262,7 @@ Existing signed tags and published release records are verified and preserved
 **The per-major sweep** — the release-window checklist, executed in order:
 
 1. **Retired-forms grep clean**: no code, specification, doc, test, migration, comment, or diagnostic names a retired form (`AGENTS.md` § Changes).
-2. **Migration baseline flattened**: baseline squashed to the previous major's terminal schema, shape hashes re-frozen, and `plurnk-core/test/intg/schema-baseline.test.ts` scoped to the new floor ({§db-migrations}).
+2. **Migration baseline flattened**: baseline squashed to the previous major's terminal schema, shape hashes re-frozen, and `plurnk-core/test/intg/machine-process.test.ts` scoped to the new floor ({§db-migrations}).
 3. **Clients migrated**: the drill's `test:client-conformance` phase (`scripts/test-client-conformance.mjs`) is green at the release commits ({§acp-first-party-client-conformance}).
 4. **Bench lanes relocked**: `../plurnk-bench` lanes relocked to the release commits (`relock.sh`).
 5. **Operator migration notes**: `CHANGELOG.md` (`npm run changelog -- --write`) and the release notes carry the operator migration section (old database path, old client path, renamed or removed configuration keys).

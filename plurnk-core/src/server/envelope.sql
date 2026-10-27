@@ -11,7 +11,7 @@ SELECT id, name, project_root FROM workspaces WHERE id = $id;
 
 
 -- PREP: envelope_get_workspace_by_name
--- workspace.rename collision check — workspaces.name is UNIQUE. {§place-hiding} a hidden one still holds its name.
+-- workspace.rename collision check — workspaces.name is UNIQUE. {§machine-processes} a hidden one still holds its name.
 SELECT id, hidden_at FROM workspaces WHERE name = $name;
 
 -- PREP: envelope_set_workspace_name
@@ -51,7 +51,7 @@ FROM sessions
 WHERE workspace_id = $workspace_id AND name = $name;
 
 -- PREP: envelope_list_sessions_for_workspace
--- {§place-hiding} $hidden: null lists every session, 1 only hidden ones, 0 only shown ones.
+-- {§machine-processes} $hidden: null lists every session, 1 only hidden ones, 0 only shown ones.
 SELECT id, name, created_at, origin, owner, parent_session_id AS parentSessionId, hidden_at,
        CASE WHEN fork_event_boundary IS NOT NULL THEN 'fork'
             WHEN parent_session_id IS NOT NULL THEN 'work'
@@ -149,7 +149,7 @@ SET status = $status,
 WHERE id = $loop_id AND status = 102;
 
 -- PREP: envelope_list_workspaces
--- {§place-hiding} $hidden: null lists every workspace, 1 only hidden ones, 0 only shown ones.
+-- {§machine-processes} $hidden: null lists every workspace, 1 only hidden ones, 0 only shown ones.
 SELECT id, name, project_root, created_at, hidden_at
 FROM workspaces
 WHERE $hidden IS NULL OR (hidden_at IS NOT NULL) = $hidden

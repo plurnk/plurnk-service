@@ -1,6 +1,6 @@
 import SessionOwners from "../../src/core/SessionOwners.ts";
 import { ownSession, TEST_OWNER, serverProposals } from "./_approval.ts";
-// Daemon-level drain + inject + cancel contract ({§actor-boundary-passive-wake}).
+// Daemon-level drain + inject + cancel contract ({§actor-boundary}).
 // Engine-level inject mechanics are covered in Engine.inject.test.ts;
 // this file exercises the application seam and durable lifecycle.
 
@@ -172,7 +172,7 @@ test("{§executor-cancellation} loop.cancel terminates a backgrounded exec; the 
     });
 });
 
-test("{§actor-boundary-passive-wake} loop.cancel: no active drain → cancelled=false", async () => {
+test("{§actor-boundary} loop.cancel: no active drain → cancelled=false", async () => {
     const mock = new Mock({ contextWindow: 16384, responses: [sendOnly("````SEND [200]\ndone\n````")] });
     await withDaemon(mock, async (_db, _daemon, addr) => {
         const ws = await connect(addr);
@@ -185,7 +185,7 @@ test("{§actor-boundary-passive-wake} loop.cancel: no active drain → cancelled
     });
 });
 
-test("{§actor-boundary-passive-wake} loop.run: post-cancel, a fresh loop.run starts a new drain", async (approvalContext) => {
+test("{§actor-boundary} loop.run: post-cancel, a fresh loop.run starts a new drain", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // Generous response queue so neither loop exhausts Mock regardless
     // of how many turns each runs before cancel/termination.
@@ -565,7 +565,7 @@ test("{§message-loop-containment}: every orphaned message is recovered in order
     });
 });
 
-test("{§actor-boundary-passive-wake} loop.cancel reaps the session's open streams by the subscription registry (closed 499)", async (approvalContext) => {
+test("{§actor-boundary} loop.cancel reaps the session's open streams by the subscription registry (closed 499)", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     // A backgrounded sleep registers an active exec subscription; loop.cancel must reap
     // it THROUGH the registry — the open row closes with the exact 499 Problem — not

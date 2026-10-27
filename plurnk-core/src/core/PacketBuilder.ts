@@ -231,14 +231,14 @@ export default class PacketBuilder {
         // after trusted whole-list transforms establish the packet being measured.
         const inject = await readPacketInject(this.#hostPaths); // {§packet-inject} — per-turn; a broken configured path fails hard
         const systemPolicy = await readSystemPolicy(this.#hostPaths); // XDG config AGENTS.md (or PLURNK_SERVICE_POLICY)
-        // {§turn0-agents-stunt} — the PROJECT AGENTS.md rides turn 0 as a foisted
+        // {§session-initialization-entry} — the PROJECT AGENTS.md rides turn 0 as a foisted
         // READ (LoopDocs → workspace:///_plurnk/AGENTS.md), not the system prompt.
         // Child-orientation ({§child-orientation}): the live things this session holds — open streams +
         // unconcluded child sessions — surfaced every turn as `{status, path}` JSON pointers (same shape
         // as errors) just above the errors section. Orienting STATE so the model never loses track of
         // what it's holding (the premature-terminate trap), never advice on what to do. These two
         // sections always render, `[]` when empty: the model decides wait-or-complete on them, so
-        // emptiness is stated rather than inferred from a missing heading ({§packet-empty-sections}).
+        // emptiness is stated rather than inferred from a missing heading ({§child-orientation}).
         const openChannels = await this.#db.engine_child_streams_open.all<{
             scheme: string; authority: string; pathname: string; publication_id: number; channel: string;
             lines: number; bytes: number; reported: number; opened_at: string; output_changed_at: string | null;
@@ -262,7 +262,7 @@ export default class PacketBuilder {
         const sentMessages = (await this.#db.engine_sent_messages_open.all<{ path: string; status: number }>({ session_id: sessionId }))
             .map((r) => ({ status: r.status, path: r.path }));
         // {§child-orientation} — a child is told whose child it is, so it can name the parent's
-        // streams and space ({§session-read-scope}, #394). The parent rides the `## Session` identity
+        // streams and space ({§session-scheme}, #394). The parent rides the `## Session` identity
         // block; a root session states `"parent": null` rather than omitting it.
         const parentRow = await this.#db.engine_parent_session.get<{ name: string; status: number }>({ session_id: sessionId });
         const parentPath = parentRow === undefined ? null : `session://${parentRow.name}`;
@@ -328,11 +328,11 @@ export default class PacketBuilder {
             { name: "git", slot: "user", header: "Git Status", content: PacketWire.renderGit(gitStatus) },
             // {§context-gauge} — the model's word for curation weight is tokens; this is never provider admission.
             { name: "budget", slot: "user", header: "Context", content: budgetReadout },
-            // {§packet-current-turn} — the Session block names who the actor is, whose child it is, and the
+            // {§child-orientation} — the Session block names who the actor is, whose child it is, and the
             // coordinate this packet's response becomes — the one fact the sources cannot state about
             // themselves (which `reasoning://<session>/L/T` is the model's own). It changes every turn, so it
             // never precedes the log.
-            // {§packet-current-turn} — and whose session it is: the approval owner, with whether a person
+            // {§child-orientation} — and whose session it is: the approval owner, with whether a person
             // attends it, so nobody-can-answer is a stated fact rather than an inference from a missing tool.
             { name: "session", slot: "user", header: "Session", content: JSON.stringify({
                 path: `session://${sessionName}`, parent: parentPath, loop: loopSeqRow?.sequence ?? loopId, turn: currentTurnSeq,
@@ -515,7 +515,7 @@ export default class PacketBuilder {
     // reflects "what has happened before this turn." Each row carries a
     // log:///<loop_seq>/<turn_seq>/<sequence> coordinate the model can READ.
     async #buildLog(sessionId: number, transientOpenLogEntryId: number | null, turnId: number | null) {
-        // SPEC {§packet-terms}: sessions own log entries — log is the session's history,
+        // SPEC {§lifecycle-terms}: sessions own log entries — log is the session's history,
         // not the loop's. Span all loops in the session so the model sees
         // earlier loops' work as its own memory.
         //

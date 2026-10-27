@@ -1,9 +1,9 @@
 // Session documentation projections of the shared workspace environment.
 // Reconcile on reader demand and after workspace Functionality changes. Two private sets run through
-// an ordinary `_plurnk` turn in the addressed session ({§actor-boundary-doc-injection}):
+// an ordinary `_plurnk` turn in the addressed session ({§session-initialization-entry}):
 //   1. the project AGENTS.md at workspace:///_plurnk/AGENTS.md and AGENTS.local.md at
 //      workspace:///_plurnk/AGENTS.local.md — Engine.runTurn foists their READs at turn 0
-//      ({§turn0-agents-stunt}, {§turn0-local-instructions});
+//      ({§session-initialization-entry}, {§session-initialization-entry});
 //   2. the exact current scheme and executable-tool reference set under
 //      workspace:///_plurnk/plurnk/ and workspace:///_plurnk/tools/ — discovered by the
 //      turn-0 FIND surveys ({§schemes-self-doc-materialization},
@@ -87,7 +87,7 @@ export default class LoopDocs {
     }
 
     static async #materialize(engine: Engine, db: Db, workspaceId: number): Promise<void> {
-        // {§turn0-agents-stunt} — the project's AGENTS.md becomes one
+        // {§session-initialization-entry} — the project's AGENTS.md becomes one
         // shared workspace:///_plurnk/AGENTS.md entry, read at turn 0.
         const workspace = await db.envelope_get_workspace.get<{ project_root: string | null }>({
             id: workspaceId,
@@ -102,7 +102,7 @@ export default class LoopDocs {
             (await engine.referenceEntries(workspaceId)).map(({ pathname, content }) => [pathname, content]),
         );
         if (agentsContent !== null) desired.set(generatedPathname("/AGENTS.md"), agentsContent);
-        // {§turn0-local-instructions} — the root AGENTS.local.md, read whatever its git status (the convention ignores
+        // {§session-initialization-entry} — the root AGENTS.local.md, read whatever its git status (the convention ignores
         // it); only an exclusion hides it.
         const localContent = workspace?.project_root === null || workspace?.project_root === undefined
             || await GitMembership.exclusionOf(db, workspaceId, "AGENTS.local.md") !== null

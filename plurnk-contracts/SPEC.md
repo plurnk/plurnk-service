@@ -846,7 +846,7 @@ governed by {§canonical-statement}; runtime conditions remain explicit below.
 | MOVE | required source and destination              | optional region after each path | empty                          |
 | execution | the fence name is the runtime; optional program/tool path ({§exec-executor-slot}) | none ({§exec-lifetime}) | optional program input |
 | BARE | optional prompt resource                     | none                            | prompt; optional with a path   |
-| WORK | optional fresh `session://name`, or a prompt resource ({§session-spawn-prompt-resource}) | none | prompt; optional with a resource |
+| WORK | optional fresh `session://name`, or a prompt resource ({§session-scheme}) | none | prompt; optional with a resource |
 | FORK | optional context-inheriting `session://name`, or a prompt resource | none            | prompt; optional with a resource |
 | KILL | required target | optional text region on a target ({§kill-scope}) | the distillation of what a `log:///` target retires ({§kill-scope}); none for other targets |
 | SEND | optional recipient | recipient-defined; none for sessions ({§send-directed-scope}) | message |
@@ -1521,7 +1521,7 @@ among them: the parser is `@plurnk/plurnk-parser`'s ({§parser-consumers}).
 
 The remaining values are small pure helpers over those contracts (`isExecution`, `isLogEntryNotification`, `writtenOp`,
 `lifecycleOfLoopStatus`, `selectSessionLoop`, `renderJsonResult`, `formatJsonDocument`,
-`acpConformanceReport`, `requestOrigin` for {§http-request-origin}, `withoutBodies`, `addressOf`) and the closed name patterns
+`acpConformanceReport`, `requestOrigin` for {§http-host}, `withoutBodies`, `addressOf`) and the closed name patterns
 and vocabularies (`RUNTIME_TAG`, `SKILL_NAME`, `EFFORTS`, `APPLICATION_NOTIFICATIONS`).
 
 §parser-construction-boundary Parser construction components are internal rather
@@ -1805,7 +1805,7 @@ each reply's `answers` addresses (empty for incoming messages).
 `resolveClientInteraction` may carry the accepted answer's message evidence;
 Core validates the resolution, retains the arrival, then resumes the operation.
 
-§application-session-observation **Session observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a permission grant.** It exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a session with no parent; `fork` for a child carrying a fork boundary; `work` for any other child), and `lifecycle`, the session's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle` when it has none), and `hidden_at`, when the session was hidden ({§place-hiding}), null while it is shown. A client renders kind and lifecycle, it never infers them.
+§application-session-observation **Session observation exposes identity, lineage, kind and lifecycle; it is neither a client binding nor a permission grant.** It exposes durable identity, origin, immediate parent identity, minted `kind` (`root` for a session with no parent; `fork` for a child carrying a fork boundary; `work` for any other child), and `lifecycle`, the session's representative work loop projected through {§loop-lifecycle-vocabulary} (`idle` when it has none), and `hidden_at`, when the session was hidden ({§machine-processes}), null while it is shown. A client renders kind and lifecycle, it never infers them.
 
 | Fact | Rule |
 | --- | --- |
@@ -1829,7 +1829,7 @@ owner, for a loop's opening in a session's loop list ({§acp-session-loops}) and
 
 §application-session-overview **The session overview is the places in a scope with what waits there.** A place is a
 model-origin session; bookkeeping sessions are not places. The scope is the daemon or one workspace; hidden places are out
-of it ({§place-hiding}).
+of it ({§machine-processes}).
 
 | Fact | Rule |
 | --- | --- |

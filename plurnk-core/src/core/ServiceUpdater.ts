@@ -41,7 +41,7 @@ const defaultNpmInstall = async (info: BuildInfo): Promise<string> => {
     return info.version;
 };
 
-// {§service-update} Explicit operator-triggered model-catalog and package update.
+// {§startup-admission} Explicit operator-triggered model-catalog and package update.
 export default class ServiceUpdater {
     static validateConfiguration(env: NodeJS.ProcessEnv = process.env): boolean {
         return Knob.flag("PLURNK_SERVICE_UPDATEABLE", env);

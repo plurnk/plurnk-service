@@ -154,7 +154,7 @@ export default class KillHandler {
             }
             const address = SessionControlAddress.resolve(path, "KILL");
             if (!address.ok) return address.result;
-            // An idle session is a no-op 200; a missing named session is 404. {§session-control-addressing}
+            // An idle session is a no-op 200; a missing named session is 404. {§session-scheme}
             const name = address.authority;
                 const row = await this.#db.session_resolve_by_name.get<{ id: number }>({ workspace_id: ctx.workspaceId, name });
                 if (row === undefined) {

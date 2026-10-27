@@ -1,4 +1,4 @@
-// GenAI semantic-convention projection ({§observability-genai-conventions}).
+// GenAI semantic-convention projection ({§observability-boundary}).
 // The provider request span uses the OpenTelemetry GenAI conventions so
 // standard vendor dashboards compose with Plurnk traces; custom
 // attributes ride alongside and never replace the convention attributes.
@@ -8,7 +8,7 @@ import { aggregateProviderAccounting } from "@plurnk/plurnk-providers/accounting
 
 export const genAiRequestName = (model: string): string => `chat ${model}`;
 
-// Registry spellings differ from the models.dev route IDs ({§observability-genai-conventions}).
+// Registry spellings differ from the models.dev route IDs ({§observability-boundary}).
 const PROVIDER_NAMES: ReadonlyMap<string, string> = new Map([
     ["google", "gcp.gemini"],
     ["amazon-bedrock", "aws.bedrock"],

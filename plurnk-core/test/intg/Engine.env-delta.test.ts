@@ -657,7 +657,7 @@ test("{§membership-change-gated-sync}: deletion removes stale content and recor
     }
 });
 
-// {§session-scheme-collect} / {§env-delta-child-termination}
+// {§session-scheme} / {§env-delta-child-termination}
 test("{§env-delta-child-termination} administrative loops stay private without hiding real model-free or pre-turn conclusions", async (t) => {
     type Authorship = { producer: TurnProducer; kind: TurnKind };
     const maintenance: Authorship = { producer: "_plurnk", kind: "maintenance" };
@@ -715,7 +715,7 @@ test("{§env-delta-child-termination} administrative loops stay private without 
     }
 });
 
-test("{§session-scheme-collect} a child's loop termination reaches only its parent with success, failure, and cancellation bodies visible", async () => {
+test("{§session-scheme} a child's loop termination reaches only its parent with success, failure, and cancellation bodies visible", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `loopterm-${crypto.randomUUID()}`);
@@ -760,7 +760,7 @@ test("{§session-scheme-collect} a child's loop termination reaches only its par
         );
 
         // A's turn 2 pulls every termination from the shared log: each conclusion born
-        // visible, a failure with its Problem beside its message ({§session-scheme-collect}).
+        // visible, a failure with its Problem beside its message ({§session-scheme}).
         await eng.runTurn({ provider, workspaceId, sessionId: sessionA, loopId: loopA, messages: MESSAGES, turnNumber: 2 });
         await eng.runTurn({ provider, workspaceId, sessionId: independent, loopId: independentLoop, messages: MESSAGES, turnNumber: 2 });
         const rows = await db.engine_render_log.all<{ scheme: string | null; origin: string; op: string; pathname: string | null; source: string | null; status_rx: number | null; rx: string; initial_folded: string; folded: string; attrs: string }>({ session_id: sessionA });

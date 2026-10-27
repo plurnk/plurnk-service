@@ -132,7 +132,7 @@ SELECT
     l.sequence  AS loop_seq,
     t.sequence  AS turn_seq,
     le.sequence,
-    -- le.origin is attribution, never a render filter; the session's actor — {§actor-boundary-origin-not-filter} {§machine-processes-session-origin}
+    -- le.origin is attribution, never a render filter; the session's actor — {§actor-boundary} {§machine-processes}
     le.origin,
     le.op, le.signal,
     le.scheme, le.username, le.password,
@@ -147,7 +147,7 @@ SELECT
 FROM active_log_entries le
 JOIN turns t ON t.id = le.turn_id
 JOIN loops l ON l.id = le.loop_id
--- WHERE renders exactly one session's log — {§actor-boundary-isolation} {§machine-processes-session-is-its-log}
+-- WHERE renders exactly one session's log — {§actor-boundary} {§machine-processes}
 -- Proposed rows wait for resolution ({§proposal-proposed-hidden}); a log-KILL that worked
 -- stays out of the packet ({§log-kill-meta-operation}).
 -- Every failed operation remains visible ({§operation-result-uniform-error-channel}).

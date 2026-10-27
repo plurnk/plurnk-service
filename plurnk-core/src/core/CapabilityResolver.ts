@@ -65,7 +65,7 @@ export default class CapabilityResolver {
                 return manifest === undefined ? null : [{ operation, access, scheme, traits: [...(manifest.traits ?? [])].toSorted() }];
             }
             if (scheme === null || !this.#schemes.has(scheme, workspaceId)) return null;
-            // {§session-generated-subtree}: owned-state mutation is intrinsic;
+            // {§session-scheme}: owned-state mutation is intrinsic;
             // observation and unrelated effects retain their independent demands.
             if (writer === "_plurnk" && access !== "observe" && scheme === "workspace"
                 && target?.kind === "url" && isGeneratedPathname(target.pathname)) return [];

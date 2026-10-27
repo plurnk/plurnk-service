@@ -670,7 +670,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             );
         }
         type Row = Omit<ApplicationSessionProjection, "lifecycle"> & { workspace_id: number; loopObservations: string };
-        // {§session-name-minting} — a lookup is no minting door: it resolves any name a listing returns,
+        // {§session-scheme} — a lookup is no minting door: it resolves any name a listing returns,
         // the runtime session's `_plurnk` among them.
         const row = hasId
             ? await this.#db.envelope_get_session_by_id.get<Row>({
@@ -765,7 +765,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return await Share.write({ openEvidence: EvidenceReader.open, dbPath: this.#dbPath, folder: checkedFolder, workspaceId: checkedWorkspaceId });
     }
 
-    // {§service-update} — explicit operator-triggered model-catalog and package update.
+    // {§startup-admission} — explicit operator-triggered model-catalog and package update.
     async updateService(): Promise<ApplicationServiceUpdateResult> {
         return await ServiceUpdater.run({ hostPaths: this.#hostPaths });
     }
@@ -814,7 +814,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
             if (derived === undefined) return undefined;
             const existing = await this.#db.envelope_get_workspace_by_name.get<{ id: number; hidden_at: string | null }>({ name: derived });
             if (existing === undefined) return undefined;
-            // {§place-hiding} Creating by the folder selects a hidden workspace and shows it.
+            // {§machine-processes} Creating by the folder selects a hidden workspace and shows it.
             if (existing.hidden_at !== null) await this.setWorkspaceHidden({ workspaceId: existing.id, hidden: false });
             return this.#labelled(await Envelope.attachToWorkspace(this.#db, existing.id));
         };
@@ -899,7 +899,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return renamed;
     }
 
-    // {§methods-workspace-hide} {§place-hiding}
+    // {§methods-workspace-hide} {§machine-processes}
     async setWorkspaceHidden(args: { readonly workspaceId: number; readonly hidden: boolean }): Promise<ApplicationWorkspaceHiding> {
         const workspaceId = ClientInput.assertId("workspace.hidden", "workspaceId", args.workspaceId);
         const hidden = ClientInput.assertFlag("workspace.hidden", "hidden", args.hidden);
@@ -909,7 +909,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return hiding;
     }
 
-    // {§methods-session-hide} {§place-hiding}
+    // {§methods-session-hide} {§machine-processes}
     async setSessionHidden(args: { readonly workspaceId: number; readonly sessionId: number; readonly hidden: boolean }): Promise<ApplicationSessionHiding> {
         const workspaceId = ClientInput.assertId("session.hidden", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("session.hidden", "sessionId", args.sessionId);
@@ -974,13 +974,13 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         );
     }
 
-    // {§session-scheme-fork} — branch a session's log while sharing its workspace.
+    // {§session-scheme} — branch a session's log while sharing its workspace.
     // Core owns the workspace check and immutable session-name admission.
     async forkSession(args: { workspaceId: number; sessionId: number; name?: string }): Promise<{ sessionId: number; sessionName: string | null; parentSessionId: number }> {
         const workspaceId = ClientInput.assertId("run.fork", "workspaceId", args.workspaceId);
         const sessionId = ClientInput.assertId("run.fork", "sessionId", args.sessionId);
         const name = ClientInput.assertOptionalSessionName("run.fork", "name", args.name);
-        // {§machine-processes-session-origin} A branch is a model's: only a model session's log forks.
+        // {§machine-processes} A branch is a model's: only a model session's log forks.
         await this.#sessionModels.assertModelSession(workspaceId, sessionId);
         let branchSessionId;
         try { branchSessionId = await Fork.fork(this.#db, sessionId, name); }

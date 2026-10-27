@@ -77,7 +77,7 @@ export default class ClientInteractions {
         this.#listeners.push(listener);
     }
 
-    // {§client-interaction-routing} The session's owner, while it receives the tool.
+    // {§session-ownership} The session's owner, while it receives the tool.
     async recipient(sessionId: number, toolName: string): Promise<string | null> {
         const owner = await SessionOwners.read(this.#db, sessionId);
         return SessionOwners.receives(owner, toolName) ? owner.address : null;

@@ -81,7 +81,7 @@ Revised determination.
         const anchored = await dispatch(`\`\`\`\`READ (${target}) <@abcde>\`\`\`\``);
         assert.equal(anchored.status, 400);
         assert.equal(anchored.problem?.type, "https://problems.plurnk.xyz/scheme/reasoning/line-anchor-unsupported");
-        // Scratch is workspace-readable ({§session-read-scope}); `log:///` is the reader's own log, so alice reads her receipt.
+        // Scratch is workspace-readable ({§session-scheme}); `log:///` is the reader's own log, so alice reads her receipt.
         const observer = await insertSession(db, workspaceId, null, "observer");
         const editable = await clientRead(engine, db, { workspaceId, sessionId: observer, statement: statement(`\`\`\`\`READ (${copy}) <1,-1>\`\`\`\``) });
         assert.equal(editable.status, 200, "a denied MOVE preserves its writable source");

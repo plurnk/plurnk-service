@@ -85,7 +85,7 @@ const dispatch = async (context: Context, statement: PlurnkStatement) => (await 
     workspaceId: context.workspaceId, actor: context.actor, contextSessionId: context.modelSessionId, statements: [statement],
 }))[0];
 
-// Generated documents are workspace resources ({§session-generated-subtree}): the client reads them,
+// Generated documents are workspace resources ({§session-scheme}): the client reads them,
 // leaving the model session's packets to the loops under test.
 const documentPresent = async (context: Context, pathname: string): Promise<number> => {
     const target = pathname.includes("://") ? pathname : `workspace://${pathname}`;

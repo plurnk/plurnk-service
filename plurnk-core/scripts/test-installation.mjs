@@ -305,7 +305,7 @@ ok(buildInfo.dirty === dirty, "packed build provenance reports checkout cleanlin
 const publicSurface = packedPublicSurface();
 ok(
     JSON.stringify(Object.keys(installedPackage.exports ?? {})) === JSON.stringify(["./launch", "./package.json", "./evidence"]),
-    "the packed export paths match {§service-package-exports} exactly",
+    "the packed export paths match {§observability-boundary} exactly",
 );
 ok(publicSurface.digest === "function", "the packed forensic package is importable");
 ok(installedPackage.name === "@plurnk/plurnk-service", "the packed package.json subpath remains addressable");

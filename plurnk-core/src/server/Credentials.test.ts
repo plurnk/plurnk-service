@@ -106,7 +106,7 @@ test("{§credential-authority} a minted secret is written beside the database, 0
     } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-test("{§credential-sessions} a subject's live browser sign-ins are listed by family, oldest first, with their clients and never a token", () => {
+test("{§credential-authority} a subject's live browser sign-ins are listed by family, oldest first, with their clients and never a token", () => {
     let now = 1_000;
     const authority = new Credentials({ now: () => now });
     const signIn = { kind: "session", subject: "operator", clientId: "browser", scopes: ["acp"] } as const;
@@ -139,7 +139,7 @@ test("{§credential-sessions} a subject's live browser sign-ins are listed by fa
     assert.equal(authority.sessions("operator")[0]?.createdAt, 7_000);
 });
 
-test("{§credential-module-client} a module registers its own confidential client once: the secret is minted here, told to the registrant alone and checked here", () => {
+test("{§credential-authority} a module registers its own confidential client once: the secret is minted here, told to the registrant alone and checked here", () => {
     const authority = new Credentials();
     const web = authority.registerClient({ id: "web", redirectPaths: ["/web/callback"], scopes: ["acp", "acp"] });
     assert.equal(web.clientId, "web");
@@ -156,7 +156,7 @@ test("{§credential-module-client} a module registers its own confidential clien
     assert.notEqual(other.clientSecret, web.clientSecret, "every boot mints its own");
 });
 
-test("{§credential-module-client} a module client's registration is refused when its id, its redirect paths or its scopes are malformed", () => {
+test("{§credential-authority} a module client's registration is refused when its id, its redirect paths or its scopes are malformed", () => {
     const authority = new Credentials();
     const good = { id: "web", redirectPaths: ["/web/callback", "/"], scopes: ["acp"] };
     for (const id of ["", "operator", "no spaces", "sl/ash"]) assert.throws(() => authority.registerClient({ ...good, id }), /module client id/u, JSON.stringify(id));

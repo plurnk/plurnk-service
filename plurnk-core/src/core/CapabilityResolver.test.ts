@@ -147,7 +147,7 @@ test("{§capability-admission} leaves every partially unresolved composed route 
     );
 });
 
-test("{§session-generated-subtree} intrinsic mutations preserve each external transfer demand", () => {
+test("{§session-scheme} intrinsic mutations preserve each external transfer demand", () => {
     const own = "workspace:///_plurnk/reference.md";
     const external = "session://alice/notes.md";
     assert.deepEqual(resolver.descriptors(statement(`\`\`\`\`EDIT (${own})

@@ -215,7 +215,7 @@ turn.** It cannot execute operations or alter the audited history.
 | Scope     | One interview for each session with model-bearing inference turns; sessions without inference evidence are omitted.                                                |
 | Evidence  | The session's final packet plus every attempt's exact normalized response and admission evidence; opaque raw transport remains in durable forensic artifacts. Quoted evidence is budgeted to the witness window ({§digest-requiem-evidence-budget}). |
 | Witness   | An explicitly supplied provider; CLI composition may resolve the active configured provider. Absence fails hard; the report package never selects a route.                                                                          |
-| Identity  | The session's durable provider identity ({§session-provider-identity}) is sent as the `sessionId`, without asserting a live session topology. |
+| Identity  | The session's durable provider identity ({§machine-processes}) is sent as the `sessionId`, without asserting a live session topology. |
 | Attempts  | One call at `PLURNK_DIGEST_REQUIEM_MAX_TOKENS`; only an empty length-limited response receives one retry at `PLURNK_DIGEST_REQUIEM_RETRY_MAX_TOKENS`.         |
 | Artifacts | `requiem.md` carries testimony and exact nullable USD accounting. `requiem.json` is durably materialized before each call and preserves logical call state, messages, normalized responses, every physical request's state and accounting, and their shared aggregate projection. |
 

@@ -215,7 +215,7 @@ export default class PacketWire {
     // JSON pointers (same shape as the errors section) to the live things the session holds open: its
     // unconcluded sessions and its open streams. The model SEES them each turn and reasons for itself
     // (READ / SEND / KILL via the path). Orienting state, never an instruction; every list renders every
-    // turn, `[]` when empty ({§packet-empty-sections}).
+    // turn, `[]` when empty ({§child-orientation}).
     static renderOpenWork(sessions: readonly OpenWorkPointer[], streams: readonly OpenWorkPointer[], messages: readonly OpenWorkPointer[] = []): string {
         // {§session-obligations} — the messages it sent that await completion are the third list it is held on.
         return `{"sessions":${PacketWire.#pointers(sessions)},\n"streams":${PacketWire.#pointers(streams)},\n"messages":${PacketWire.#pointers(messages)}}`;
@@ -738,7 +738,7 @@ export default class PacketWire {
         // {§session-auto-name} The created identity is an outcome, not an authored target.
         if ((op === "WORK" || op === "FORK") && typeof attrs.session === "string") {
             meta.session = attrs.session;
-            // {§session-scheme-spawn} — a WORK that reached a session the name already held says so.
+            // {§session-scheme} — a WORK that reached a session the name already held says so.
             if (attrs.delivered === "message") meta.delivered = "message";
         }
         // {§session-wait-timing} — the accepted bound, not elapsed time or the current configuration.

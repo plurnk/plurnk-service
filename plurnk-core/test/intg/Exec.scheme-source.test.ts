@@ -336,7 +336,7 @@ test("{§exec-source-temporary} cleanup failure preserves the settled result and
     }
 });
 
-test("{§session-read-scope} execution source READ preserves literal shared and named scratch identities", async () => {
+test("{§session-scheme} execution source READ preserves literal shared and named scratch identities", async () => {
     const ctx = await wire();
     try {
         const child = await ctx.actor(ctx.root.sessionId, "child");
@@ -373,7 +373,7 @@ test("{§session-read-scope} execution source READ preserves literal shared and 
             "child command",
         ]);
 
-        // {§session-read-scope} — a sibling names another session's space and materializes it (#394).
+        // {§session-scheme} — a sibling names another session's space and materializes it (#394).
         const named = await ctx.dispatch(sibling, "session://child/script#body");
         assert.equal(named.status, 200, JSON.stringify(named));
         assert.equal(ctx.runs.at(-1)?.materialized, "child command", "the sibling's execution materialized the named session's script");

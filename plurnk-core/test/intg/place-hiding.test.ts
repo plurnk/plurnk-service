@@ -1,4 +1,4 @@
-// {§place-hiding} — what a hide covers and refuses, the group it marks, what brings a place back, and where a hidden
+// {§machine-processes} — what a hide covers and refuses, the group it marks, what brings a place back, and where a hidden
 // place is left out.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -68,7 +68,7 @@ const seedWork = async (db: Db, workspaceId: number, sessionId: number, work: Wo
 const POSITIONS = ["at", "beneath", "outside"] as const;
 
 for (const target of ["workspace", "session"] as const) {
-    test(`{§place-hiding} a ${target}'s hide is refused, naming what is live, exactly while live work sits on it or beneath it; nothing is marked by a refusal`, async () => {
+    test(`{§machine-processes} a ${target}'s hide is refused, naming what is live, exactly while live work sits on it or beneath it; nothing is marked by a refusal`, async () => {
         const db = await openMigrated();
         try {
             for (const position of POSITIONS) {
@@ -110,7 +110,7 @@ for (const target of ["workspace", "session"] as const) {
     });
 }
 
-test("{§place-hiding} a session's hide marks its subtree as one group: a group inside joins it, a session created beneath joins it, a second hide changes nothing, and showing any member shows the group", async () => {
+test("{§machine-processes} a session's hide marks its subtree as one group: a group inside joins it, a session created beneath joins it, a second hide changes nothing, and showing any member shows the group", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `groups-${crypto.randomUUID()}`);
@@ -150,7 +150,7 @@ test("{§place-hiding} a session's hide marks its subtree as one group: a group 
     } finally { await db.close(); }
 });
 
-test("{§place-hiding} a live loop starting on a hidden session brings back its group and its workspace; concluded history brings nothing back", async () => {
+test("{§machine-processes} a live loop starting on a hidden session brings back its group and its workspace; concluded history brings nothing back", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `return-${crypto.randomUUID()}`);
@@ -172,7 +172,7 @@ test("{§place-hiding} a live loop starting on a hidden session brings back its 
     } finally { await db.close(); }
 });
 
-test("{§place-hiding} {§methods-session-list} listings filter by the mark only when asked; the overview leaves out hidden sessions and, in the daemon's scope, every session of a hidden workspace", async () => {
+test("{§machine-processes} {§methods-session-list} listings filter by the mark only when asked; the overview leaves out hidden sessions and, in the daemon's scope, every session of a hidden workspace", async () => {
     await withDaemon(null, async (_db, daemon) => {
         const shownWorkspace = await daemon.createWorkspace({ name: `shown-${crypto.randomUUID()}` });
         const hiddenWorkspace = await daemon.createWorkspace({ name: `hidden-${crypto.randomUUID()}` });
@@ -260,7 +260,7 @@ test("{§methods-workspace-hide} {§methods-session-hide} {§notifications-works
     } finally { await rm(folder, { recursive: true, force: true }); }
 });
 
-test("{§place-hiding} a hide is refused over a gate the daemon holds; a loop run on a hidden session brings it and its workspace back", async () => {
+test("{§machine-processes} a hide is refused over a gate the daemon holds; a loop run on a hidden session brings it and its workspace back", async () => {
     const gated = new Mock({ contextWindow: 16384, responses: [
         // A host execution the server reviews: the loop waits on its proposal.
         makeMockResponse("\n````sh\necho pending\n````\n\n````NOTE\nproposed\n````", 10),

@@ -1,5 +1,5 @@
-// {§daemon-launch} — the service's own launcher: spawn the daemon executable, await its readiness
-// line ({§startup-readiness-line}), hand back the address it published and a stop that is
+// {§startup-admission} — the service's own launcher: spawn the daemon executable, await its readiness
+// line ({§startup-admission}), hand back the address it published and a stop that is
 // SIGTERM-and-wait. It touches no filesystem state of its own beyond a shared daemon's log file: what
 // a launcher keeps or removes after stop is that launcher's policy, never this helper's.
 import { errnoCode } from "@plurnk/plurnk-contracts";
@@ -70,7 +70,7 @@ export interface LaunchedDaemon {
 
 type Ended = { code: number | null; signal: NodeJS.Signals | null };
 
-// {§startup-readiness-line} — the one line the daemon prints when it is ready: a URL, then the
+// {§startup-admission} — the one line the daemon prints when it is ready: a URL, then the
 // database path and the route as JSON strings, so a path or route with spaces parses exactly.
 export const READINESS_LINE = /^plurnk-service acp=(\S+) db=("(?:[^"\\]|\\.)*") route=("(?:[^"\\]|\\.)*")$/mu;
 
@@ -194,7 +194,7 @@ export default class Launch {
         };
     }
 
-    // {§daemon-launch} The service's own log, beside the rest of its state, created on first use.
+    // {§startup-admission} The service's own log, beside the rest of its state, created on first use.
     static #serviceLog(env: NodeJS.ProcessEnv): string {
         const { stateDir } = new HostPaths({ env });
         mkdirSync(stateDir, { recursive: true, mode: 0o700 });

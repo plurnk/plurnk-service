@@ -15195,9 +15195,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §lifecycle-terms (lifecycle-terms) in plurnk-core/SPEC.md"
         },
         "packet-terms": {
           "spec": "plurnk-core/SPEC.md",
@@ -15207,9 +15207,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "lifecycle-terms",
+          "reason": "Folded non-heading tag §packet-terms (packet-terms) into section heading §lifecycle-terms"
         },
         "arch": {
           "spec": "plurnk-core/SPEC.md",
@@ -15219,9 +15219,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "observability-boundary",
+          "reason": "Folded non-heading tag §arch (arch) into section heading §observability-boundary"
         },
         "observability-boundary": {
           "spec": "plurnk-core/SPEC.md",
@@ -15231,9 +15231,9 @@
           "liveShape": "heading",
           "codeCitations": 12,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §observability-boundary (observability-boundary) in plurnk-core/SPEC.md"
         },
         "observability-genai-conventions": {
           "spec": "plurnk-core/SPEC.md",
@@ -15243,9 +15243,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "observability-boundary",
+          "reason": "Folded non-heading tag §observability-genai-conventions (observability-genai-conventions) into section heading §observability-boundary"
         },
         "service-session-composition": {
           "spec": "plurnk-core/SPEC.md",
@@ -15255,9 +15255,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "observability-boundary",
+          "reason": "Folded non-heading tag §service-session-composition (service-session-composition) into section heading §observability-boundary"
         },
         "service-package-exports": {
           "spec": "plurnk-core/SPEC.md",
@@ -15267,9 +15267,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "observability-boundary",
+          "reason": "Folded non-heading tag §service-package-exports (service-package-exports) into section heading §observability-boundary"
         },
         "startup-admission": {
           "spec": "plurnk-core/SPEC.md",
@@ -15279,9 +15279,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §startup-admission (startup-admission) in plurnk-core/SPEC.md"
         },
         "service-runtime-floor": {
           "spec": "plurnk-core/SPEC.md",
@@ -15291,9 +15291,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "startup-admission",
+          "reason": "Folded non-heading tag §service-runtime-floor (service-runtime-floor) into section heading §startup-admission"
         },
         "startup-listener-admission": {
           "spec": "plurnk-core/SPEC.md",
@@ -15303,9 +15303,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "startup-admission",
+          "reason": "Folded non-heading tag §startup-listener-admission (startup-listener-admission) into section heading §startup-admission"
         },
         "http-host": {
           "spec": "plurnk-core/SPEC.md",
@@ -15315,9 +15315,9 @@
           "liveShape": "paragraph",
           "codeCitations": 6,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §http-host (http-host) in plurnk-core/SPEC.md"
         },
         "http-request-origin": {
           "spec": "plurnk-core/SPEC.md",
@@ -15327,9 +15327,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "http-host",
+          "reason": "Folded non-heading tag §http-request-origin (http-request-origin) into section heading §http-host"
         },
         "credential-authority": {
           "spec": "plurnk-core/SPEC.md",
@@ -15339,9 +15339,9 @@
           "liveShape": "paragraph",
           "codeCitations": 14,
           "testCitations": 11,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §credential-authority (credential-authority) in plurnk-core/SPEC.md"
         },
         "credential-module-client": {
           "spec": "plurnk-core/SPEC.md",
@@ -15351,9 +15351,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "credential-authority",
+          "reason": "Folded non-heading tag §credential-module-client (credential-module-client) into section heading §credential-authority"
         },
         "credential-sessions": {
           "spec": "plurnk-core/SPEC.md",
@@ -15363,9 +15363,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "credential-authority",
+          "reason": "Folded non-heading tag §credential-sessions (credential-sessions) into section heading §credential-authority"
         },
         "startup-admission-order": {
           "spec": "plurnk-core/SPEC.md",
@@ -15375,9 +15375,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "startup-admission",
+          "reason": "Folded non-heading tag §startup-admission-order (startup-admission-order) into section heading §startup-admission"
         },
         "startup-readiness-line": {
           "spec": "plurnk-core/SPEC.md",
@@ -15387,9 +15387,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "startup-admission",
+          "reason": "Folded non-heading tag §startup-readiness-line (startup-readiness-line) into section heading §startup-admission"
         },
         "daemon-launch": {
           "spec": "plurnk-core/SPEC.md",
@@ -15399,9 +15399,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "startup-admission",
+          "reason": "Folded non-heading tag §daemon-launch (daemon-launch) into section heading §startup-admission"
         },
         "service-stop": {
           "spec": "plurnk-core/SPEC.md",
@@ -15411,9 +15411,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "startup-admission",
+          "reason": "Folded non-heading tag §service-stop (service-stop) into section heading §startup-admission"
         },
         "service-update": {
           "spec": "plurnk-core/SPEC.md",
@@ -15423,9 +15423,9 @@
           "liveShape": "paragraph",
           "codeCitations": 6,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "startup-admission",
+          "reason": "Folded non-heading tag §service-update (service-update) into section heading §startup-admission"
         },
         "actor-boundary": {
           "spec": "plurnk-core/SPEC.md",
@@ -15435,9 +15435,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §actor-boundary (actor-boundary) in plurnk-core/SPEC.md"
         },
         "session-ownership": {
           "spec": "plurnk-core/SPEC.md",
@@ -15447,9 +15447,9 @@
           "liveShape": "heading",
           "codeCitations": 7,
           "testCitations": 9,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §session-ownership (session-ownership) in plurnk-core/SPEC.md"
         },
         "session-owner-creation": {
           "spec": "plurnk-core/SPEC.md",
@@ -15459,9 +15459,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-ownership",
+          "reason": "Folded non-heading tag §session-owner-creation (session-owner-creation) into section heading §session-ownership"
         },
         "session-owner-resolution": {
           "spec": "plurnk-core/SPEC.md",
@@ -15471,9 +15471,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-ownership",
+          "reason": "Folded non-heading tag §session-owner-resolution (session-owner-resolution) into section heading §session-ownership"
         },
         "client-interaction-routing": {
           "spec": "plurnk-core/SPEC.md",
@@ -15483,9 +15483,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-ownership",
+          "reason": "Folded non-heading tag §client-interaction-routing (client-interaction-routing) into section heading §session-ownership"
         },
         "actor-boundary-isolation": {
           "spec": "plurnk-core/SPEC.md",
@@ -15495,9 +15495,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-isolation (actor-boundary-isolation) into section heading §actor-boundary"
         },
         "actor-boundary-origin-not-filter": {
           "spec": "plurnk-core/SPEC.md",
@@ -15507,9 +15507,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-origin-not-filter (actor-boundary-origin-not-filter) into section heading §actor-boundary"
         },
         "actor-boundary-attached-functionality": {
           "spec": "plurnk-core/SPEC.md",
@@ -15519,9 +15519,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-attached-functionality (actor-boundary-attached-functionality) into section heading §actor-boundary"
         },
         "actor-boundary-two-doors": {
           "spec": "plurnk-core/SPEC.md",
@@ -15531,9 +15531,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-two-doors (actor-boundary-two-doors) into section heading §actor-boundary"
         },
         "actor-boundary-lineage-attention": {
           "spec": "plurnk-core/SPEC.md",
@@ -15543,9 +15543,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-lineage-attention (actor-boundary-lineage-attention) into section heading §actor-boundary"
         },
         "actor-boundary-commons-broadcast": {
           "spec": "plurnk-core/SPEC.md",
@@ -15555,9 +15555,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-commons-broadcast (actor-boundary-commons-broadcast) into section heading §actor-boundary"
         },
         "actor-boundary-no-mutex": {
           "spec": "plurnk-core/SPEC.md",
@@ -15567,9 +15567,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-no-mutex (actor-boundary-no-mutex) into section heading §actor-boundary"
         },
         "actor-boundary-passive-wake": {
           "spec": "plurnk-core/SPEC.md",
@@ -15579,9 +15579,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-passive-wake (actor-boundary-passive-wake) into section heading §actor-boundary"
         },
         "actor-boundary-self-hosting": {
           "spec": "plurnk-core/SPEC.md",
@@ -15591,9 +15591,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "actor-boundary",
+          "reason": "Folded non-heading tag §actor-boundary-self-hosting (actor-boundary-self-hosting) into section heading §actor-boundary"
         },
         "turn0-agents-stunt": {
           "spec": "plurnk-core/SPEC.md",
@@ -15603,9 +15603,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-initialization-entry",
+          "reason": "Folded non-heading tag §turn0-agents-stunt (turn0-agents-stunt) into section heading §session-initialization-entry"
         },
         "turn0-local-instructions": {
           "spec": "plurnk-core/SPEC.md",
@@ -15615,9 +15615,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-initialization-entry",
+          "reason": "Folded non-heading tag §turn0-local-instructions (turn0-local-instructions) into section heading §session-initialization-entry"
         },
         "actor-boundary-doc-injection": {
           "spec": "plurnk-core/SPEC.md",
@@ -15627,9 +15627,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-initialization-entry",
+          "reason": "Folded non-heading tag §actor-boundary-doc-injection (actor-boundary-doc-injection) into section heading §session-initialization-entry"
         },
         "actor-boundary-catalog-preview": {
           "spec": "plurnk-core/SPEC.md",
@@ -15639,9 +15639,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-initialization-entry",
+          "reason": "Folded non-heading tag §actor-boundary-catalog-preview (actor-boundary-catalog-preview) into section heading §session-initialization-entry"
         },
         "session-initialization-entry": {
           "spec": "plurnk-core/SPEC.md",
@@ -15651,9 +15651,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 9,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §session-initialization-entry (session-initialization-entry) in plurnk-core/SPEC.md"
         },
         "machine-processes": {
           "spec": "plurnk-core/SPEC.md",
@@ -15663,9 +15663,9 @@
           "liveShape": "heading",
           "codeCitations": 9,
           "testCitations": 7,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §machine-processes (machine-processes) in plurnk-core/SPEC.md"
         },
         "machine-processes-one-filesystem": {
           "spec": "plurnk-core/SPEC.md",
@@ -15675,9 +15675,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-one-filesystem (machine-processes-one-filesystem) into section heading §machine-processes"
         },
         "machine-processes-one-overlay": {
           "spec": "plurnk-core/SPEC.md",
@@ -15687,9 +15687,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-one-overlay (machine-processes-one-overlay) into section heading §machine-processes"
         },
         "machine-processes-fork-copies-the-log": {
           "spec": "plurnk-core/SPEC.md",
@@ -15699,9 +15699,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-fork-copies-the-log (machine-processes-fork-copies-the-log) into section heading §machine-processes"
         },
         "machine-processes-fork-cost": {
           "spec": "plurnk-core/SPEC.md",
@@ -15711,9 +15711,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-fork-cost (machine-processes-fork-cost) into section heading §machine-processes"
         },
         "machine-processes-entry-inheritance": {
           "spec": "plurnk-core/SPEC.md",
@@ -15723,9 +15723,9 @@
           "liveShape": "table",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-entry-inheritance (machine-processes-entry-inheritance) into section heading §machine-processes"
         },
         "session-fork-trigger": {
           "spec": "plurnk-core/SPEC.md",
@@ -15735,9 +15735,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §session-fork-trigger (session-fork-trigger) into section heading §machine-processes"
         },
         "machine-processes-session-is-its-log": {
           "spec": "plurnk-core/SPEC.md",
@@ -15747,9 +15747,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-session-is-its-log (machine-processes-session-is-its-log) into section heading §machine-processes"
         },
         "machine-processes-fork-pending-activity": {
           "spec": "plurnk-core/SPEC.md",
@@ -15759,9 +15759,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-fork-pending-activity (machine-processes-fork-pending-activity) into section heading §machine-processes"
         },
         "machine-processes-model-session-readable": {
           "spec": "plurnk-core/SPEC.md",
@@ -15771,9 +15771,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-model-session-readable (machine-processes-model-session-readable) into section heading §machine-processes"
         },
         "machine-processes-session-origin": {
           "spec": "plurnk-core/SPEC.md",
@@ -15783,9 +15783,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-session-origin (machine-processes-session-origin) into section heading §machine-processes"
         },
         "session-provider-identity": {
           "spec": "plurnk-core/SPEC.md",
@@ -15795,9 +15795,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §session-provider-identity (session-provider-identity) into section heading §machine-processes"
         },
         "machine-processes-fork-shares-workspace": {
           "spec": "plurnk-core/SPEC.md",
@@ -15807,9 +15807,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-fork-shares-workspace (machine-processes-fork-shares-workspace) into section heading §machine-processes"
         },
         "machine-processes-no-fork-workspace": {
           "spec": "plurnk-core/SPEC.md",
@@ -15819,9 +15819,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §machine-processes-no-fork-workspace (machine-processes-no-fork-workspace) into section heading §machine-processes"
         },
         "place-hiding": {
           "spec": "plurnk-core/SPEC.md",
@@ -15831,9 +15831,9 @@
           "liveShape": "paragraph",
           "codeCitations": 9,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "machine-processes",
+          "reason": "Folded non-heading tag §place-hiding (place-hiding) into section heading §machine-processes"
         },
         "session-scheme": {
           "spec": "plurnk-core/SPEC.md",
@@ -15843,9 +15843,9 @@
           "liveShape": "heading",
           "codeCitations": 5,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §session-scheme (session-scheme) in plurnk-core/SPEC.md"
         },
         "session-authority-carving": {
           "spec": "plurnk-core/SPEC.md",
@@ -15855,9 +15855,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-authority-carving (session-authority-carving) into section heading §session-scheme"
         },
         "session-name-minting": {
           "spec": "plurnk-core/SPEC.md",
@@ -15867,9 +15867,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-name-minting (session-name-minting) into section heading §session-scheme"
         },
         "session-read-scope": {
           "spec": "plurnk-core/SPEC.md",
@@ -15879,9 +15879,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-read-scope (session-read-scope) into section heading §session-scheme"
         },
         "session-write-scoping": {
           "spec": "plurnk-core/SPEC.md",
@@ -15891,9 +15891,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-write-scoping (session-write-scoping) into section heading §session-scheme"
         },
         "session-generated-subtree": {
           "spec": "plurnk-core/SPEC.md",
@@ -15903,9 +15903,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-generated-subtree (session-generated-subtree) into section heading §session-scheme"
         },
         "session-control-addressing": {
           "spec": "plurnk-core/SPEC.md",
@@ -15915,9 +15915,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-control-addressing (session-control-addressing) into section heading §session-scheme"
         },
         "session-scheme-spawn": {
           "spec": "plurnk-core/SPEC.md",
@@ -15927,9 +15927,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-scheme-spawn (session-scheme-spawn) into section heading §session-scheme"
         },
         "session-spawn-prompt-resource": {
           "spec": "plurnk-core/SPEC.md",
@@ -15939,9 +15939,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-spawn-prompt-resource (session-spawn-prompt-resource) into section heading §session-scheme"
         },
         "session-scheme-irc": {
           "spec": "plurnk-core/SPEC.md",
@@ -15951,9 +15951,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-scheme-irc (session-scheme-irc) into section heading §session-scheme"
         },
         "session-scheme-fork": {
           "spec": "plurnk-core/SPEC.md",
@@ -15963,9 +15963,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-scheme-fork (session-scheme-fork) into section heading §session-scheme"
         },
         "session-scheme-fork-scratch": {
           "spec": "plurnk-core/SPEC.md",
@@ -15975,9 +15975,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-scheme-fork-scratch (session-scheme-fork-scratch) into section heading §session-scheme"
         },
         "session-lifecycle-wake-requeue-not-terminal": {
           "spec": "plurnk-core/SPEC.md",
@@ -15987,9 +15987,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-lifecycle-wake-requeue-not-terminal (session-lifecycle-wake-requeue-not-terminal) into section heading §session-scheme"
         },
         "session-scheme-collect": {
           "spec": "plurnk-core/SPEC.md",
@@ -15999,9 +15999,9 @@
           "liveShape": "list",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-scheme-collect (session-scheme-collect) into section heading §session-scheme"
         },
         "session-loop-result": {
           "spec": "plurnk-core/SPEC.md",
@@ -16011,9 +16011,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "session-scheme",
+          "reason": "Folded non-heading tag §session-loop-result (session-loop-result) into section heading §session-scheme"
         },
         "child-orientation": {
           "spec": "plurnk-core/SPEC.md",
@@ -16023,9 +16023,9 @@
           "liveShape": "list",
           "codeCitations": 6,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retained as canonical section heading §child-orientation (child-orientation) in plurnk-core/SPEC.md"
         },
         "packet-empty-sections": {
           "spec": "plurnk-core/SPEC.md",
@@ -16035,9 +16035,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "child-orientation",
+          "reason": "Folded non-heading tag §packet-empty-sections (packet-empty-sections) into section heading §child-orientation"
         },
         "packet-current-turn": {
           "spec": "plurnk-core/SPEC.md",
@@ -16047,9 +16047,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "child-orientation",
+          "reason": "Folded non-heading tag §packet-current-turn (packet-current-turn) into section heading §child-orientation"
         }
       },
       "tests": {
@@ -16066,9 +16066,9 @@
             "schemes-directory",
             "session-generated-subtree"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained CapabilityResolver.test.ts as canonical unit suite for (capability-admission, schemes-directory, session-generated-subtree)"
         },
         "plurnk-core/src/core/EntryAddressBinding.test.ts": {
           "tier": "unit",
@@ -16081,9 +16081,9 @@
           "citedTags": [
             "entry-address-resolution"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained EntryAddressBinding.test.ts as canonical unit suite for (entry-address-resolution)"
         },
         "plurnk-core/src/core/ErrorDetail.test.ts": {
           "tier": "unit",
@@ -16096,9 +16096,9 @@
           "citedTags": [
             "error-detail-bound"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained ErrorDetail.test.ts as canonical unit suite for (error-detail-bound)"
         },
         "plurnk-core/src/core/ServiceUpdater.test.ts": {
           "tier": "unit",
@@ -16111,9 +16111,9 @@
           "citedTags": [
             "service-update"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained ServiceUpdater.test.ts as canonical unit suite for (service-update)"
         },
         "plurnk-core/src/core/caps/CoreInteractionCaps.test.ts": {
           "tier": "unit",
@@ -16126,9 +16126,9 @@
           "citedTags": [
             "scheme-interactions"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained CoreInteractionCaps.test.ts as canonical unit suite for (scheme-interactions)"
         },
         "plurnk-core/src/core/runtime-floor.test.ts": {
           "tier": "unit",
@@ -16141,9 +16141,9 @@
           "citedTags": [
             "service-runtime-floor"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained runtime-floor.test.ts as canonical unit suite for (service-runtime-floor)"
         },
         "plurnk-core/src/observe/genai.test.ts": {
           "tier": "unit",
@@ -16156,9 +16156,9 @@
           "citedTags": [
             "observability-genai-conventions"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained genai.test.ts as canonical unit suite for (observability-genai-conventions)"
         },
         "plurnk-core/src/server/Credentials.test.ts": {
           "tier": "unit",
@@ -16174,9 +16174,9 @@
             "credential-module-client",
             "credential-sessions"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained Credentials.test.ts as canonical unit suite for (auth-oauth-documents, credential-authority, credential-module-client, credential-sessions)"
         },
         "plurnk-core/src/server/HttpListener.test.ts": {
           "tier": "unit",
@@ -16191,9 +16191,9 @@
             "module-http-mounts",
             "startup-listener-admission"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained HttpListener.test.ts as canonical unit suite for (http-host, module-http-mounts, startup-listener-admission)"
         },
         "plurnk-core/test/intg/Daemon.entry-read-wire.test.ts": {
           "tier": "intg",
@@ -16208,9 +16208,9 @@
             "session-authority-carving",
             "session-read-scope"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated Daemon.entry-read-wire.test.ts (client-entry-address, session-authority-carving, session-read-scope) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/Engine.ambient-topology.test.ts": {
           "tier": "intg",
@@ -16229,9 +16229,9 @@
             "log-address-metadata",
             "machine-processes-fork-pending-activity"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated Engine.ambient-topology.test.ts (actor-boundary-commons-broadcast, actor-boundary-lineage-attention, env-delta-child-activity, env-delta-commons-mutation, env-delta-no-coalescing, log-address-metadata, machine-processes-fork-pending-activity) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/Engine.copy-session-authority.test.ts": {
           "tier": "intg",
@@ -16244,9 +16244,9 @@
           "citedTags": [
             "session-write-scoping"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/machine-process.test.ts",
+          "reason": "Consolidated Engine.copy-session-authority.test.ts (session-write-scoping) into machine-process.test.ts"
         },
         "plurnk-core/test/intg/Engine.log-curation-receipts.test.ts": {
           "tier": "intg",
@@ -16260,9 +16260,9 @@
             "log-kill-meta-operation",
             "session-initialization-entry"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/machine-process.test.ts",
+          "reason": "Consolidated Engine.log-curation-receipts.test.ts (log-kill-meta-operation, session-initialization-entry) into machine-process.test.ts"
         },
         "plurnk-core/test/intg/Launch.test.ts": {
           "tier": "intg",
@@ -16278,9 +16278,9 @@
             "startup-readiness-line",
             "state-root"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained Launch.test.ts as canonical integration suite for (daemon-launch, startup-listener-admission, startup-readiness-line, state-root)"
         },
         "plurnk-core/test/intg/Session.ownership.test.ts": {
           "tier": "intg",
@@ -16295,9 +16295,9 @@
             "session-owner-resolution",
             "session-ownership"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated Session.ownership.test.ts (session-owner-creation, session-owner-resolution, session-ownership) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/actor-boundary.test.ts": {
           "tier": "intg",
@@ -16315,9 +16315,9 @@
             "env-delta-passive",
             "turn0-agents-stunt"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained actor-boundary.test.ts as canonical integration suite for (actor-boundary, actor-boundary-no-mutex, actor-boundary-passive-wake, connection-lifecycle, env-delta-passive, turn0-agents-stunt)"
         },
         "plurnk-core/test/intg/administrative-policy.test.ts": {
           "tier": "intg",
@@ -16331,9 +16331,9 @@
             "runtime-bookkeeping-policy",
             "session-owner-resolution"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated administrative-policy.test.ts (runtime-bookkeeping-policy, session-owner-resolution) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/canonical-pathname.test.ts": {
           "tier": "intg",
@@ -16346,9 +16346,9 @@
           "citedTags": [
             "session-authority-carving"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "demote-to-unit",
+          "target": "plurnk-core/src/core/EntryAddressBinding.test.ts",
+          "reason": "Pure URI authority/pathname parsing check demoted to EntryAddressBinding.test.ts"
         },
         "plurnk-core/test/intg/catalog-preview.test.ts": {
           "tier": "intg",
@@ -16367,9 +16367,9 @@
             "session-initialization-entry",
             "statement-rendering"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated catalog-preview.test.ts (actor-boundary, actor-boundary-catalog-preview, emission-row, executor-shell, operator-config-workspace-files-items, session-initialization-entry, statement-rendering) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/child-file-visibility.test.ts": {
           "tier": "intg",
@@ -16391,9 +16391,9 @@
             "session-read-scope",
             "session-scheme-collect"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/session-scheme.test.ts",
+          "reason": "Consolidated child-file-visibility.test.ts (child-orientation, env-delta-child-activity, env-delta-child-termination, loop-answer, machine-processes-one-filesystem, membership, message-reply-delivery, packet-empty-sections, session-read-scope, session-scheme-collect) into session-scheme.test.ts"
         },
         "plurnk-core/test/intg/client-isolation.test.ts": {
           "tier": "intg",
@@ -16409,9 +16409,9 @@
             "machine-processes",
             "machine-processes-model-session-readable"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated client-isolation.test.ts (actor-boundary-isolation, connection-lifecycle, machine-processes, machine-processes-model-session-readable) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/doc-injection.test.ts": {
           "tier": "intg",
@@ -16424,9 +16424,9 @@
           "citedTags": [
             "turn0-agents-stunt"
           ],
-          "disposition": "pending",
+          "disposition": "purge:duplicate",
           "target": null,
-          "reason": null
+          "reason": "Duplicates turn-0 AGENTS.md and catalog preview coverage in actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/initialization-notes.test.ts": {
           "tier": "intg",
@@ -16439,9 +16439,9 @@
           "citedTags": [
             "session-initialization-entry"
           ],
-          "disposition": "pending",
+          "disposition": "purge:pinned-wording",
           "target": null,
-          "reason": null
+          "reason": "Pins exact turn-0 plan NOTE strings; turn-0 NOTE framing is covered in actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/initialization-prompt-backup.test.ts": {
           "tier": "intg",
@@ -16454,9 +16454,9 @@
           "citedTags": [
             "session-initialization-entry"
           ],
-          "disposition": "pending",
+          "disposition": "purge:tombstone",
           "target": null,
-          "reason": null
+          "reason": "Asserts absence of retired /prompts.md scratch archive"
         },
         "plurnk-core/test/intg/inject-fold-posture.test.ts": {
           "tier": "intg",
@@ -16470,9 +16470,9 @@
             "methods-loop-run-fold-consistency",
             "session-ownership"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated inject-fold-posture.test.ts (methods-loop-run-fold-consistency, session-ownership) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/live-harness-composition.test.ts": {
           "tier": "intg",
@@ -16486,9 +16486,9 @@
             "actor-boundary-client-operations",
             "service-session-composition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated live-harness-composition.test.ts (actor-boundary-client-operations, service-session-composition) into Launch.test.ts"
         },
         "plurnk-core/test/intg/local-instructions.test.ts": {
           "tier": "intg",
@@ -16502,9 +16502,9 @@
             "members-configuration",
             "turn0-local-instructions"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated local-instructions.test.ts (members-configuration, turn0-local-instructions) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/loop-resources.test.ts": {
           "tier": "intg",
@@ -16518,9 +16518,9 @@
             "markerless-first-page",
             "session-loop-result"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated loop-resources.test.ts (markerless-first-page, session-loop-result) into Launch.test.ts"
         },
         "plurnk-core/test/intg/loops.test.ts": {
           "tier": "intg",
@@ -16536,9 +16536,9 @@
             "session-loop-result",
             "validation-topology"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/machine-process.test.ts",
+          "reason": "Consolidated loops.test.ts (loop-terminals, session-lifecycle-terminal-result, session-loop-result, validation-topology) into machine-process.test.ts"
         },
         "plurnk-core/test/intg/machine-process.test.ts": {
           "tier": "intg",
@@ -16555,9 +16555,9 @@
             "machine-processes-fork-cost",
             "no-visibility"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained machine-process.test.ts as canonical integration suite for (log-history-projection, machine-processes, machine-processes-entry-inheritance, machine-processes-fork-cost, no-visibility)"
         },
         "plurnk-core/test/intg/mcp-catalog-composition.test.ts": {
           "tier": "intg",
@@ -16575,9 +16575,9 @@
             "module-workspace-quiescence",
             "session-generated-subtree"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated mcp-catalog-composition.test.ts (connection-lifecycle, executor-tool-catalog, mcp-catalog-refresh-in-place, mcp-configuration, module-workspace-quiescence, session-generated-subtree) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/mcp-subscription-composition.test.ts": {
           "tier": "intg",
@@ -16592,9 +16592,9 @@
             "connection-lifecycle",
             "mcp-host-composition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated mcp-subscription-composition.test.ts (actor-boundary-lineage-attention, connection-lifecycle, mcp-host-composition) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/module-client-boot.test.ts": {
           "tier": "intg",
@@ -16609,9 +16609,9 @@
             "credential-authority",
             "credential-module-client"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated module-client-boot.test.ts (auth-oauth-documents, credential-authority, credential-module-client) into Launch.test.ts"
         },
         "plurnk-core/test/intg/observe-exporter-failure.test.ts": {
           "tier": "intg",
@@ -16624,9 +16624,9 @@
           "citedTags": [
             "observability-boundary"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated observe-exporter-failure.test.ts (observability-boundary) into Launch.test.ts"
         },
         "plurnk-core/test/intg/observe-genai.test.ts": {
           "tier": "intg",
@@ -16639,9 +16639,9 @@
           "citedTags": [
             "observability-genai-conventions"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated observe-genai.test.ts (observability-genai-conventions) into Launch.test.ts"
         },
         "plurnk-core/test/intg/observe-redaction.test.ts": {
           "tier": "intg",
@@ -16654,9 +16654,9 @@
           "citedTags": [
             "observability-boundary"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated observe-redaction.test.ts (observability-boundary) into Launch.test.ts"
         },
         "plurnk-core/test/intg/observe-retry.test.ts": {
           "tier": "intg",
@@ -16669,9 +16669,9 @@
           "citedTags": [
             "observability-boundary"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated observe-retry.test.ts (observability-boundary) into Launch.test.ts"
         },
         "plurnk-core/test/intg/observe-topology.test.ts": {
           "tier": "intg",
@@ -16684,9 +16684,9 @@
           "citedTags": [
             "observability-boundary"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated observe-topology.test.ts (observability-boundary) into Launch.test.ts"
         },
         "plurnk-core/test/intg/owner-approval.test.ts": {
           "tier": "intg",
@@ -16702,9 +16702,9 @@
             "proposal-ownership-notification",
             "session-owner-resolution"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated owner-approval.test.ts (edit-execution, notifications-loop-proposal, proposal-ownership-notification, session-owner-resolution) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/packet-current-turn.test.ts": {
           "tier": "intg",
@@ -16717,9 +16717,9 @@
           "citedTags": [
             "packet-current-turn"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated packet-current-turn.test.ts (packet-current-turn) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/packet-preflight.test.ts": {
           "tier": "intg",
@@ -16732,9 +16732,9 @@
           "citedTags": [
             "session-initialization-entry"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated packet-preflight.test.ts (session-initialization-entry) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/packet-session-block.test.ts": {
           "tier": "intg",
@@ -16747,9 +16747,9 @@
           "citedTags": [
             "packet-current-turn"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated packet-session-block.test.ts (packet-current-turn) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/schema-baseline.test.ts": {
           "tier": "intg",
@@ -16764,9 +16764,9 @@
             "place-hiding",
             "session-ownership"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/machine-process.test.ts",
+          "reason": "Consolidated schema-baseline.test.ts (db-migrations, place-hiding, session-ownership) into machine-process.test.ts"
         },
         "plurnk-core/test/intg/service-stop.test.ts": {
           "tier": "intg",
@@ -16780,9 +16780,9 @@
             "daemon-launch",
             "service-stop"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/Launch.test.ts",
+          "reason": "Consolidated service-stop.test.ts (daemon-launch, service-stop) into Launch.test.ts"
         },
         "plurnk-core/test/intg/session-capabilities.test.ts": {
           "tier": "intg",
@@ -16798,9 +16798,9 @@
             "provider-recovery",
             "session-ownership"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated session-capabilities.test.ts (client-interaction-routing, owner-interaction-ring, provider-recovery, session-ownership) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/session-pingpong.test.ts": {
           "tier": "intg",
@@ -16813,9 +16813,9 @@
           "citedTags": [
             "session-scheme-spawn"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/session-scheme.test.ts",
+          "reason": "Consolidated session-pingpong.test.ts (session-scheme-spawn) into session-scheme.test.ts"
         },
         "plurnk-core/test/intg/session-scheme.test.ts": {
           "tier": "intg",
@@ -16852,9 +16852,9 @@
             "wait-obligation-matrix",
             "workspace-capability-policy"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retained session-scheme.test.ts as canonical integration suite for (actor-boundary, entry-owner, join-blocking-collect, machine-processes, machine-processes-entry-inheritance, machine-processes-session-origin, markerless-first-page, message-completion, op-execution-order, op-synchronous, pinned-wording-core, problems-entries, send-wait-scope, session-auto-name, session-control-addressing, session-generated-subtree, session-ownership, session-read-scope, session-scheme, session-scheme-fork-scratch, session-scheme-irc, session-scheme-spawn, session-write-scoping, wait-obligation-matrix, workspace-capability-policy)"
         },
         "plurnk-core/test/intg/session-spawn-prompt-resource.test.ts": {
           "tier": "intg",
@@ -16867,9 +16867,9 @@
           "citedTags": [
             "session-spawn-prompt-resource"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/session-scheme.test.ts",
+          "reason": "Consolidated session-spawn-prompt-resource.test.ts (session-spawn-prompt-resource) into session-scheme.test.ts"
         },
         "plurnk-core/test/intg/session-topology-mechanics.test.ts": {
           "tier": "intg",
@@ -16885,9 +16885,9 @@
             "session-name-minting",
             "session-obligations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/machine-process.test.ts",
+          "reason": "Consolidated session-topology-mechanics.test.ts (machine-processes-fork-copies-the-log, session-auto-name, session-name-minting, session-obligations) into machine-process.test.ts"
         },
         "plurnk-core/test/intg/sessions.test.ts": {
           "tier": "intg",
@@ -16904,9 +16904,9 @@
             "session-scheme-spawn",
             "validation-topology"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/machine-process.test.ts",
+          "reason": "Consolidated sessions.test.ts (machine-processes-fork-shares-workspace, session-name-minting, session-provider-identity, session-scheme-spawn, validation-topology) into machine-process.test.ts"
         },
         "plurnk-core/test/intg/stream-timing.test.ts": {
           "tier": "intg",
@@ -16919,9 +16919,9 @@
           "citedTags": [
             "child-orientation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/actor-boundary.test.ts",
+          "reason": "Consolidated stream-timing.test.ts (child-orientation) into actor-boundary.test.ts"
         },
         "plurnk-core/test/intg/workspace-addresses.test.ts": {
           "tier": "intg",
@@ -16936,9 +16936,9 @@
             "entry-owner",
             "session-write-scoping"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/session-scheme.test.ts",
+          "reason": "Consolidated workspace-addresses.test.ts (actor-boundary-doc-injection, entry-owner, session-write-scoping) into session-scheme.test.ts"
         }
       }
     },

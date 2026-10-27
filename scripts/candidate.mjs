@@ -45,7 +45,7 @@ const runtime = pinRuntime(root, resolve(stateDir, "runtime"));
 const { default: Launch } = await import(pathToFileURL(resolve(runtime, "plurnk-core", "dist", "launch", "Launch.js")).href);
 const { default: HostPaths } = await import(pathToFileURL(resolve(runtime, "plurnk-core", "dist", "core", "HostPaths.js")).href);
 
-// {§daemon-launch} — the pinned runtime through the service's own launcher; the database stays
+// {§startup-admission} — the pinned runtime through the service's own launcher; the database stays
 // exactly where this driver retains its evidence.
 let daemon;
 let client;

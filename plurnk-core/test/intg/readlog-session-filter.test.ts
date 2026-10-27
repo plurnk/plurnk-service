@@ -1,4 +1,4 @@
-// {§methods-log-read}, {§machine-processes-model-session-readable}: readLog selects one
+// {§methods-log-read}, {§machine-processes}: readLog selects one
 // ownership-verified session without mixing sibling journal rows.
 import test from "node:test";
 import assert from "node:assert/strict";

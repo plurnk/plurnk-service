@@ -109,7 +109,7 @@ export default class QuestionTool extends BaseExecutor {
             message: parsed.message,
             requestedSchema: parsed.requestedSchema,
         });
-        // {§client-interaction-routing} An unsupported request is this operation's result.
+        // {§session-ownership} An unsupported request is this operation's result.
         let resolution;
         try {
             resolution = await interact(request);
