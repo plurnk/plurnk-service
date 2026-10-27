@@ -30,7 +30,7 @@ test("{§startup-admission} refuses update with 403 update-disabled when PLURNK_
     }
 });
 
-test("{§startup-admission} updates cached model catalog and reports source checkout or npm install status", async () => {
+test("{§startup-admission} updates cached model catalog and reports package upgrade instructions", async () => {
     const dir = mkdtempSync(join(tmpdir(), "plurnk-service-update-run-"));
     try {
         const hostPaths = new HostPaths({ home: dir, env: { PLURNK_SERVICE_STATE_ROOT: dir } });
@@ -72,10 +72,12 @@ test("{§startup-admission} updates cached model catalog and reports source chec
             },
         });
         assert.equal(sourceResult.catalog.status, "updated");
-        assert.equal(sourceResult.npm.status, "source");
+        assert.equal(sourceResult.service.artifact, "source");
+        assert.equal(sourceResult.service.version, "4.4.0");
         assert.equal(lookup("openai", "gpt-update-test")?.name, "GPT Update Test");
         assert.match(ServiceUpdater.formatReport(sourceResult), /catalog: updated/);
         assert.match(ServiceUpdater.formatReport(sourceResult), /source checkout/);
+        assert.match(ServiceUpdater.formatReport(sourceResult), /npm install -g @plurnk\/plurnk-service@latest @plurnk\/plurnk@latest/);
 
         const distResult = await ServiceUpdater.run({
             env: { PLURNK_SERVICE_UPDATEABLE: "1" },
@@ -87,13 +89,14 @@ test("{§startup-admission} updates cached model catalog and reports source chec
                 artifact: "dist",
                 path: dir,
             },
-            npmInstall: async () => "4.5.0",
         });
         assert.equal(distResult.catalog.status, "unchanged");
-        assert.equal(distResult.npm.status, "updated");
-        assert.equal(distResult.npm.previousVersion, "4.4.0");
-        assert.equal(distResult.npm.currentVersion, "4.5.0");
-        assert.match(ServiceUpdater.formatReport(distResult), /4\.4\.0 -> 4\.5\.0/);
+        assert.equal(distResult.service.artifact, "dist");
+        assert.equal(distResult.service.version, "4.4.0");
+        assert.match(
+            ServiceUpdater.formatReport(distResult),
+            /version: @plurnk\/plurnk-service@4\.4\.0 — to update packages, stop the daemon and run: npm install -g @plurnk\/plurnk-service@latest @plurnk\/plurnk@latest/,
+        );
     } finally {
         resetCatalog();
         rmSync(dir, { recursive: true, force: true });

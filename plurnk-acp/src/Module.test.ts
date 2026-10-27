@@ -836,12 +836,12 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                     /Action 'workspace\.mcp\.list' rejected parameters\./,
                 );
 
-                const updateAction = await ctx.request<{ catalog: { status: string }; npm: { status: string } }>(
+                const updateAction = await ctx.request<{ catalog: { status: string }; service: { artifact: string } }>(
                     "_plurnk/action",
                     { kind: "service.update", params: {} },
                 );
                 assert.equal(updateAction.catalog.status, "updated");
-                assert.equal(updateAction.npm.status, "source");
+                assert.equal(updateAction.service.artifact, "source");
 
                 await ctx.request(methods.agent.session.resume, {
                     sessionId: "1#user",

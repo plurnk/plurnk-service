@@ -477,17 +477,17 @@ export const executeSlashCommand = async (
     }
     if (cmd === "update") {
         const res = await invoke({ ...envelope, kind: "service.update", params: {} });
-        if (isRecord(res) && isRecord(res.catalog) && isRecord(res.npm)) {
+        if (isRecord(res) && isRecord(res.catalog) && isRecord(res.service)) {
             const added = typeof res.catalog.addedModels === "number" && res.catalog.addedModels > 0
                 ? `, +${res.catalog.addedModels} new`
                 : "";
             const catLine = `catalog: ${String(res.catalog.status)} (${String(res.catalog.models)} models across ${String(res.catalog.providers)} providers${added})`;
-            const npmLine = res.npm.status === "source"
-                ? `npm: ${String(res.npm.package)}@${String(res.npm.currentVersion)} (source checkout)`
-                : res.npm.status === "updated"
-                  ? `npm: ${String(res.npm.package)} ${String(res.npm.previousVersion)} -> ${String(res.npm.currentVersion)}`
-                  : `npm: ${String(res.npm.package)}@${String(res.npm.currentVersion)} (unchanged)`;
-            return `${catLine}\n${npmLine}`;
+            const suffix = res.service.artifact === "source" ? " (source checkout)" : "";
+            const upgradeCmd = typeof res.service.upgradeCommand === "string"
+                ? res.service.upgradeCommand
+                : "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest";
+            const verLine = `version: ${String(res.service.package)}@${String(res.service.version)}${suffix} — to update packages, stop the daemon and run: ${upgradeCmd}`;
+            return `${catLine}\n${verLine}`;
         }
         return typeof res === "string" ? res : JSON.stringify(res);
     }

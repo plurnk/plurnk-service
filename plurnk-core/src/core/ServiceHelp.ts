@@ -23,7 +23,7 @@ ${EnvFlags.formatFlagsHelp(flags)}
   --env-file-if-exists=<path>  layer env from <path> if present (repeatable; later wins)
   --config=<path>              layer additional env from <path>
   stop                         stop the service that holds the configured database, and wait for it to exit
-  update                       update the cached model catalog and installed packages (requires PLURNK_SERVICE_UPDATEABLE=1)
+  update                       update the cached model catalog and print package upgrade instructions (requires PLURNK_SERVICE_UPDATEABLE=1)
   config defaults             print every installed package's annotated .env.defaults
   config check                validate configuration without contacting a provider
   share                        share a consistent copy of the database as a digest <folder>

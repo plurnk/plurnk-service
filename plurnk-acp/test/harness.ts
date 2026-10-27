@@ -761,11 +761,11 @@ export const createHarness = async (options?: {
                 updatedAt: "2026-10-26T00:00:00.000Z",
                 path: "/tmp/models.json",
             },
-            npm: {
-                status: "source",
+            service: {
                 package: "@plurnk/plurnk-service",
-                previousVersion: "4.4.0",
-                currentVersion: "4.4.0",
+                version: "4.4.0",
+                artifact: "source",
+                upgradeCommand: "npm install -g @plurnk/plurnk-service@latest @plurnk/plurnk@latest",
             },
         }),
     };
