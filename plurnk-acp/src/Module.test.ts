@@ -68,7 +68,10 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
     });
 
     test("{§acp-http-authorization} {§acp-daemon-client}: Streamable HTTP, WebSocket, CORS, OAuth perimeter, and revocation", async () => {
-        const h = await createHarness({ authMode: "oauth" });
+        const h = await createHarness({
+            authMode: "oauth",
+            env: { PLURNK_ACP_HEARTBEAT_MS: "20" },
+        });
         try {
             const preflight = await fetch(h.baseUrl, { method: "OPTIONS" });
             assert.equal(preflight.status, 204);
@@ -93,6 +96,44 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
                 body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 2 } }),
             });
             assert.equal(badScope.status, 403);
+
+            const initPost = await fetch(h.baseUrl, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    authorization: "Bearer valid-token",
+                },
+                body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 2 } }),
+            });
+            assert.equal(initPost.status, 200);
+            const connId = initPost.headers.get("acp-connection-id");
+            assert.ok(connId, "initialize returns Acp-Connection-Id");
+            await initPost.text();
+
+            const sseAbort = new AbortController();
+            const sseRes = await fetch(h.baseUrl, {
+                method: "GET",
+                headers: {
+                    accept: "text/event-stream",
+                    authorization: "Bearer valid-token",
+                    "acp-connection-id": connId,
+                },
+                signal: sseAbort.signal,
+            });
+            assert.equal(sseRes.status, 200);
+            assert.match(sseRes.headers.get("content-type") ?? "", /text\/event-stream/i);
+            const reader = sseRes.body?.getReader();
+            assert.ok(reader, "SSE response has readable body");
+            const decoder = new TextDecoder();
+            let sseText = "";
+            while (!sseText.includes(": heartbeat")) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                sseText += decoder.decode(value, { stream: true });
+            }
+            assert.match(sseText, /: heartbeat/, "SSE stream emits heartbeat comments at PLURNK_ACP_HEARTBEAT_MS");
+            sseAbort.abort();
+            await reader.cancel().catch(() => undefined);
 
             const httpStream = createHttpStream(h.baseUrl, {
                 headers: { authorization: "Bearer valid-token" },

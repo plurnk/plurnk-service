@@ -113,6 +113,7 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
     #offEvents: (() => void) | null = null;
     #offRevoked: (() => void) | null = null;
     readonly #peers = new Set<AcpPeer>();
+    readonly #sseResponses = new Set<ServerResponse>();
     readonly #gates = new GateTracker();
     readonly #streamOffsets = new Map<string, number>();
     readonly #work = new Set<Promise<unknown>>();
@@ -181,6 +182,12 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
         this.#peers.clear();
         await Promise.allSettled(closingPeers.map((peer) => peer.closeWithProblem(stopping)));
         await this.#acpServer.close();
+        for (const res of [...this.#sseResponses]) {
+            this.#sseResponses.delete(res);
+            if (!res.writableEnded && !res.destroyed) {
+                res.end();
+            }
+        }
         await new Promise<void>((resolve) => this.#wss.close(() => resolve()));
         // {§module-contract} Join admitted route work before returning from close().
         while (this.#work.size > 0) await Promise.allSettled([...this.#work]);
@@ -250,6 +257,33 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     (req.headers["acp-connection-id"] !== undefined ||
                         req.headers.accept?.toLowerCase().includes("text/event-stream") === true)))
         ) {
+            if (req.method === "GET") {
+                req.socket.setTimeout(0);
+                this.#sseResponses.add(res);
+                let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+                if (this.#opts.heartbeatMs > 0) {
+                    heartbeatTimer = setInterval(() => {
+                        if (
+                            res.headersSent &&
+                            !res.writableEnded &&
+                            !res.destroyed &&
+                            String(res.getHeader("content-type") ?? "")
+                                .toLowerCase()
+                                .includes("text/event-stream")
+                        ) {
+                            res.write(": heartbeat\n\n");
+                        }
+                    }, this.#opts.heartbeatMs);
+                    heartbeatTimer.unref();
+                }
+                res.once("close", () => {
+                    this.#sseResponses.delete(res);
+                    if (heartbeatTimer !== null) {
+                        clearInterval(heartbeatTimer);
+                        heartbeatTimer = null;
+                    }
+                });
+            }
             this.#requestContext.run({ family: admission.family }, () => {
                 this.#nodeHttpHandler(req, res);
             });
@@ -684,14 +718,29 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
             closeTransport: connInfo.closeTransport,
             closeWithProblem: async (problem: ProblemDetails) => {
                 if (peer.client !== null) {
+                    const deliveries: Promise<unknown>[] = [];
                     for (const session of new Set(peer.sessions.values())) {
-                        this.#notifyPeerSession(peer, session.acpSessionId, {
-                            sessionUpdate: "notice",
-                            severity: "error",
-                            title: problem.title,
-                            description: problem.detail,
-                        });
+                        deliveries.push(
+                            peer.client
+                                .notify(methods.client.session.update, {
+                                    sessionId: session.acpSessionId,
+                                    update: {
+                                        sessionUpdate: "notice",
+                                        severity: "error",
+                                        title: problem.title,
+                                        description: `problem:${problem.title} — ${problem.detail}`,
+                                        _meta: {
+                                            plurnk: {
+                                                problem,
+                                            },
+                                        },
+                                    },
+                                })
+                                .catch(() => undefined),
+                        );
                     }
+                    await Promise.allSettled(deliveries);
+                    await new Promise<void>((resolve) => setImmediate(resolve));
                 }
                 peer.closeTransport?.();
             },
