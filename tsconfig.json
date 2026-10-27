@@ -1,4 +1,4 @@
-// {§lint-gate} The project for the development JavaScript no workspace project owns: scripts, bins and fixtures.
+// {§lint-gate} {§native-source-toolchain} The project for the development JavaScript no workspace project owns: scripts, bins and fixtures.
 // Type-aware lint and editors find a file's project by this name. A script with a declaration beside it is named
 // under `files`, since a wildcard takes the declaration in its place.
 {

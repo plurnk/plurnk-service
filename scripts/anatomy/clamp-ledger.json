@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-26T23:39:28.066Z",
+  "updatedAt": "2026-10-27T00:17:06.255Z",
   "rules": {
     "headingOnlyDeclarations": true,
     "forbidMapBlocks": true,
@@ -47,227 +47,71 @@
           "baselineLine": 3,
           "baselineShape": "heading",
           "liveShape": "heading",
-          "codeCitations": 0,
+          "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Heading contract for native TypeScript source execution and dist build separation"
         },
         "lint-gate": {
           "spec": "scripts/SPEC.md",
-          "chapter": "§lint-gate Lint is a gate",
+          "chapter": "§lint-gate Lint and the deterministic drill",
           "baselineLine": 17,
           "baselineShape": "heading",
           "liveShape": "heading",
-          "codeCitations": 2,
-          "testCitations": 1,
-          "disposition": "pending",
+          "codeCitations": 3,
+          "testCitations": 4,
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
-        },
-        "drill-scope": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "§lint-gate Lint is a gate",
-          "baselineLine": 31,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "drill-parallelism": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "§lint-gate Lint is a gate",
-          "baselineLine": 33,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 1,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "package-graph-policy": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Policies the root lint enforces",
-          "baselineLine": 61,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "env-surface-policy": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Policies the root lint enforces",
-          "baselineLine": 62,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "build-projection": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Policies the root lint enforces",
-          "baselineLine": 63,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "package-lifecycle": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Policies the root lint enforces",
-          "baselineLine": 64,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "reason": "Heading contract for repository lint gate, drill orchestration, and policy checks"
         },
         "packed-projection": {
           "spec": "scripts/SPEC.md",
-          "chapter": "Policies the root lint enforces",
+          "chapter": "§packed-projection Package build and tarball projection",
           "baselineLine": 65,
           "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "commit-provenance": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Policies the root lint enforces",
-          "baselineLine": 67,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "commit-conventions": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Policies the root lint enforces",
-          "baselineLine": 68,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "runtime-import-direction": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Audits on demand",
-          "baselineLine": 74,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 0,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "type-resolution-audit": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Audits on demand",
-          "baselineLine": 75,
-          "baselineShape": "table",
-          "liveShape": "table",
+          "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
-        },
-        "candidate-launcher": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Launchers",
-          "baselineLine": 79,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "orientation-verdict": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "Launchers",
-          "baselineLine": 86,
-          "baselineShape": "paragraph",
-          "liveShape": "paragraph",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "reason": "Heading contract for packed tarball manifest projection and type resolution"
         },
         "scripts-layout": {
           "spec": "scripts/SPEC.md",
-          "chapter": "§scripts-layout One directory lists what a person runs",
+          "chapter": "§scripts-layout Directory layout and the field guide",
           "baselineLine": 108,
           "baselineShape": "heading",
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
-        },
-        "agents-map": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "§agents-map The field guide is rules plus a map",
-          "baselineLine": 135,
-          "baselineShape": "heading",
-          "liveShape": "heading",
-          "codeCitations": 0,
-          "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "reason": "Heading contract for operator-facing scripts directory layout and AGENTS map"
         },
         "environment-layers": {
           "spec": "scripts/SPEC.md",
-          "chapter": "§environment-layers The environment, layered once",
+          "chapter": "§environment-layers Layered real-model environment and launchers",
           "baselineLine": 143,
           "baselineShape": "heading",
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Heading contract for cascading real-model environment layers and candidate runs"
         },
         "package-release-contract": {
           "spec": "scripts/SPEC.md",
-          "chapter": "§package-release-contract Independent versions",
+          "chapter": "§package-release-contract Independent package versions",
           "baselineLine": 162,
           "baselineShape": "heading",
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Heading contract for independent workspace versioning and changeset SemVer rules"
         },
         "release-candidate-graph": {
           "spec": "scripts/SPEC.md",
@@ -276,34 +120,22 @@
           "baselineShape": "heading",
           "liveShape": "heading",
           "codeCitations": 8,
-          "testCitations": 10,
-          "disposition": "pending",
+          "testCitations": 2,
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Heading contract for release candidate dependency graph, qualification, and upload"
         },
         "release-finalization": {
           "spec": "scripts/SPEC.md",
-          "chapter": "§release-finalization Publication records",
+          "chapter": "§release-finalization Publication records and mirror synchronization",
           "baselineLine": 187,
           "baselineShape": "heading",
           "liveShape": "heading",
           "codeCitations": 2,
-          "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "release-mirror": {
-          "spec": "scripts/SPEC.md",
-          "chapter": "§release-finalization Publication records",
-          "baselineLine": 196,
-          "baselineShape": "table",
-          "liveShape": "table",
-          "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Heading contract for signed tag verification, mirror sync, and GitHub release notes"
         },
         "spec-check-cli": {
           "spec": "plurnk-spec-check/SPEC.md",
@@ -313,69 +145,347 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Heading contract for the plurnk-spec-check CLI invocation and workspace discovery"
         },
         "spec-check-tags": {
           "spec": "plurnk-spec-check/SPEC.md",
-          "chapter": "§spec-check-tags Declarations and citations",
+          "chapter": "§spec-check-tags Declarations, witnesses, and provenance",
           "baselineLine": 17,
           "baselineShape": "heading",
           "liveShape": "heading",
+          "codeCitations": 1,
+          "testCitations": 1,
+          "disposition": "keep-heading",
+          "target": null,
+          "reason": "Heading contract for specification tag syntax, witnesses, and issue provenance"
+        },
+        "drill-scope": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "§lint-gate Lint is a gate",
+          "baselineLine": 31,
+          "baselineShape": "paragraph",
+          "liveShape": "removed",
+          "codeCitations": 1,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold drill changed-workspace intg scoping rules into the lint-gate section"
+        },
+        "drill-parallelism": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "§lint-gate Lint is a gate",
+          "baselineLine": 33,
+          "baselineShape": "paragraph",
+          "liveShape": "removed",
+          "codeCitations": 1,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold drill host core/memory concurrency sharing into the lint-gate section"
+        },
+        "package-graph-policy": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Policies the root lint enforces",
+          "baselineLine": 61,
+          "baselineShape": "table",
+          "liveShape": "removed",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold workspace dependency range and lockfile policy into the lint-gate section"
+        },
+        "env-surface-policy": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Policies the root lint enforces",
+          "baselineLine": 62,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold .env.defaults ownership and surface policy into the lint-gate section"
+        },
+        "build-projection": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Policies the root lint enforces",
+          "baselineLine": 63,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "packed-projection",
+          "reason": "Fold workspace build:clean/build:dist/prepack rules into packed-projection"
+        },
+        "package-lifecycle": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Policies the root lint enforces",
+          "baselineLine": 64,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold workspace script naming and coverage flag policy into the lint-gate section"
+        },
+        "commit-provenance": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Policies the root lint enforces",
+          "baselineLine": 67,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold repository metadata and homepage provenance into the lint-gate section"
+        },
+        "commit-conventions": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Policies the root lint enforces",
+          "baselineLine": 68,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold conventional commit subject and (#N) issue check into the lint-gate section"
+        },
+        "runtime-import-direction": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Audits on demand",
+          "baselineLine": 74,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 2,
+          "disposition": "fold-into",
+          "target": "lint-gate",
+          "reason": "Fold dependency-cruiser package import direction rules into the lint-gate section"
+        },
+        "type-resolution-audit": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Audits on demand",
+          "baselineLine": 75,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 1,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "packed-projection",
+          "reason": "Fold arethetypeswrong packed tarball type resolution into packed-projection"
+        },
+        "candidate-launcher": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Launchers",
+          "baselineLine": 79,
+          "baselineShape": "paragraph",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 3,
+          "disposition": "fold-into",
+          "target": "environment-layers",
+          "reason": "Fold candidate launcher lifecycle and topology rules into environment-layers"
+        },
+        "orientation-verdict": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "Launchers",
+          "baselineLine": 86,
+          "baselineShape": "paragraph",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "environment-layers",
+          "reason": "Fold orientation run inspection verdict checks into environment-layers"
+        },
+        "agents-map": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "§agents-map The field guide is rules plus a map",
+          "baselineLine": 135,
+          "baselineShape": "heading",
+          "liveShape": "removed",
+          "codeCitations": 0,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "scripts-layout",
+          "reason": "Fold AGENTS.md command and path map verification into scripts-layout"
+        },
+        "release-mirror": {
+          "spec": "scripts/SPEC.md",
+          "chapter": "§release-finalization Publication records",
+          "baselineLine": 196,
+          "baselineShape": "table",
+          "liveShape": "removed",
+          "codeCitations": 2,
+          "testCitations": 1,
+          "disposition": "fold-into",
+          "target": "release-finalization",
+          "reason": "Fold GitHub mirror main synchronization into release-finalization"
         },
         "spec-check-witnesses": {
           "spec": "plurnk-spec-check/SPEC.md",
           "chapter": "§spec-check-witnesses Witnesses",
           "baselineLine": 29,
           "baselineShape": "heading",
-          "liveShape": "heading",
+          "liveShape": "removed",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "spec-check-tags",
+          "reason": "Fold dual-witness code and test citation rules into spec-check-tags"
         },
         "spec-check-provenance": {
           "spec": "plurnk-spec-check/SPEC.md",
           "chapter": "§spec-check-provenance Issue references",
           "baselineLine": 38,
           "baselineShape": "heading",
-          "liveShape": "heading",
+          "liveShape": "removed",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "spec-check-tags",
+          "reason": "Fold issue provenance URL and shorthand checks into spec-check-tags"
         }
       },
       "tests": {
         "plurnk-spec-check/check.test.mjs": {
           "tier": "unit",
           "baselineLines": 330,
-          "liveLines": 330,
-          "testCount": 14,
-          "untaggedCount": 1,
+          "liveLines": 428,
+          "testCount": 18,
+          "untaggedCount": 0,
           "usesOpenMigrated": false,
           "usesLaunch": false,
           "citedTags": [
-            "spec-check-provenance",
-            "spec-check-tags",
-            "spec-check-witnesses"
+            "spec-check-cli",
+            "spec-check-tags"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Canonical unit suite for plurnk-spec-check tag, witness, and CLI behavior"
+        },
+        "scripts/candidate.test.mjs": {
+          "tier": "root",
+          "baselineLines": 227,
+          "liveLines": 531,
+          "testCount": 24,
+          "untaggedCount": 0,
+          "usesOpenMigrated": false,
+          "usesLaunch": false,
+          "citedTags": [
+            "candidate-pinned-runtime",
+            "emission-row",
+            "environment-layers",
+            "operator-config-env-defaults",
+            "operator-config-real-model-profile",
+            "test-artifact-retention"
+          ],
+          "disposition": "keep-suite",
+          "target": null,
+          "reason": "Canonical unit suite for real-model environment layers and candidate launcher"
+        },
+        "scripts/drill.test.js": {
+          "tier": "root",
+          "baselineLines": 156,
+          "liveLines": 464,
+          "testCount": 32,
+          "untaggedCount": 0,
+          "usesOpenMigrated": false,
+          "usesLaunch": false,
+          "citedTags": [
+            "acp-first-party-client-conformance",
+            "credential-authority",
+            "lint-gate",
+            "test-artifact-retention",
+            "tier-census"
+          ],
+          "disposition": "keep-suite",
+          "target": null,
+          "reason": "Canonical unit suite for drill scoping, parallelism, gate profile, and artifacts"
+        },
+        "scripts/env-surface-policy.test.mjs": {
+          "tier": "root",
+          "baselineLines": 141,
+          "liveLines": 384,
+          "testCount": 22,
+          "untaggedCount": 0,
+          "usesOpenMigrated": false,
+          "usesLaunch": false,
+          "citedTags": [
+            "default-extension-ownership",
+            "host-path-layout",
+            "lint-gate",
+            "mimetype-optional-grammars",
+            "module-compatibility",
+            "test-artifact-retention"
+          ],
+          "disposition": "keep-suite",
+          "target": null,
+          "reason": "Canonical unit suite for repo lint policies (env, deps, host paths, commits)"
+        },
+        "scripts/layout.test.mjs": {
+          "tier": "root",
+          "baselineLines": 64,
+          "liveLines": 208,
+          "testCount": 12,
+          "untaggedCount": 0,
+          "usesOpenMigrated": false,
+          "usesLaunch": false,
+          "citedTags": [
+            "lint-gate",
+            "native-source-toolchain",
+            "scripts-layout"
+          ],
+          "disposition": "keep-suite",
+          "target": null,
+          "reason": "Canonical unit suite for scripts layout, AGENTS map, and import direction"
+        },
+        "scripts/package-build-policy.test.mjs": {
+          "tier": "root",
+          "baselineLines": 50,
+          "liveLines": 282,
+          "testCount": 6,
+          "untaggedCount": 0,
+          "usesOpenMigrated": false,
+          "usesLaunch": false,
+          "citedTags": [
+            "mimetype-query-assets",
+            "packed-projection",
+            "release-candidate-graph"
+          ],
+          "disposition": "keep-suite",
+          "target": null,
+          "reason": "Canonical unit suite for build policy, tarball projection, and type checks"
+        },
+        "scripts/release-finalize.test.mjs": {
+          "tier": "root",
+          "baselineLines": 245,
+          "liveLines": 996,
+          "testCount": 70,
+          "untaggedCount": 0,
+          "usesOpenMigrated": false,
+          "usesLaunch": false,
+          "citedTags": [
+            "acp-http-authorization",
+            "package-release-contract",
+            "release-candidate-graph",
+            "release-finalization"
+          ],
+          "disposition": "keep-suite",
+          "target": null,
+          "reason": "Canonical unit suite for release versioning, candidate graph, and finalization"
         },
         "plurnk-spec-check/installation.test.mjs": {
           "tier": "unit",
           "baselineLines": 106,
-          "liveLines": 106,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -385,14 +495,14 @@
             "spec-check-tags",
             "spec-check-witnesses"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-spec-check/check.test.mjs",
+          "reason": "Merge packed tarball installation checks into plurnk-spec-check/check.test.mjs"
         },
         "scripts/agents-map.test.mjs": {
           "tier": "root",
           "baselineLines": 43,
-          "liveLines": 43,
+          "liveLines": 0,
           "testCount": 3,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -400,14 +510,14 @@
           "citedTags": [
             "agents-map"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/layout.test.mjs",
+          "reason": "Merge AGENTS.md command and path map checks into scripts/layout.test.mjs"
         },
         "scripts/audit/direction.test.mjs": {
           "tier": "root",
           "baselineLines": 67,
-          "liveLines": 67,
+          "liveLines": 0,
           "testCount": 4,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -415,31 +525,14 @@
           "citedTags": [
             "runtime-import-direction"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "scripts/candidate.test.mjs": {
-          "tier": "root",
-          "baselineLines": 227,
-          "liveLines": 227,
-          "testCount": 4,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "candidate-launcher",
-            "candidate-pinned-runtime",
-            "operator-config-env-defaults"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/layout.test.mjs",
+          "reason": "Merge dependency-cruiser direction checks into scripts/layout.test.mjs"
         },
         "scripts/commit-provenance.test.js": {
           "tier": "root",
           "baselineLines": 43,
-          "liveLines": 43,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -447,14 +540,14 @@
           "citedTags": [
             "commit-provenance"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/env-surface-policy.test.mjs",
+          "reason": "Merge package metadata provenance checks into scripts/env-surface-policy.test.mjs"
         },
         "scripts/conventional.test.mjs": {
           "tier": "root",
           "baselineLines": 38,
-          "liveLines": 38,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -462,14 +555,14 @@
           "citedTags": [
             "commit-conventions"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/env-surface-policy.test.mjs",
+          "reason": "Merge conventional commit subject checks into scripts/env-surface-policy.test.mjs"
         },
         "scripts/dependency-policy.test.js": {
           "tier": "root",
           "baselineLines": 78,
-          "liveLines": 78,
+          "liveLines": 0,
           "testCount": 9,
           "untaggedCount": 8,
           "usesOpenMigrated": false,
@@ -479,14 +572,14 @@
             "mimetype-optional-grammars",
             "package-graph-policy"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/env-surface-policy.test.mjs",
+          "reason": "Merge lockfile and peer range checks into scripts/env-surface-policy.test.mjs"
         },
         "scripts/dependency-policy.test.mjs": {
           "tier": "root",
           "baselineLines": 80,
-          "liveLines": 80,
+          "liveLines": 0,
           "testCount": 6,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -495,14 +588,14 @@
             "module-compatibility",
             "package-graph-policy"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/env-surface-policy.test.mjs",
+          "reason": "Merge dependency range policy checks into scripts/env-surface-policy.test.mjs"
         },
         "scripts/deps-preflight.test.mjs": {
           "tier": "root",
           "baselineLines": 61,
-          "liveLines": 61,
+          "liveLines": 0,
           "testCount": 7,
           "untaggedCount": 7,
           "usesOpenMigrated": false,
@@ -510,45 +603,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "scripts/drill.test.js": {
-          "tier": "root",
-          "baselineLines": 156,
-          "liveLines": 156,
-          "testCount": 16,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "drill-parallelism",
-            "drill-scope"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "scripts/env-surface-policy.test.mjs": {
-          "tier": "root",
-          "baselineLines": 141,
-          "liveLines": 141,
-          "testCount": 13,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "env-surface-policy"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge outdated dependency waiver classification into scripts/release-finalize.test.mjs"
         },
         "scripts/host-path-policy.test.mjs": {
           "tier": "root",
           "baselineLines": 24,
-          "liveLines": 24,
+          "liveLines": 0,
           "testCount": 2,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -557,29 +619,14 @@
             "host-path-layout",
             "test-artifact-retention"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "scripts/layout.test.mjs": {
-          "tier": "root",
-          "baselineLines": 64,
-          "liveLines": 64,
-          "testCount": 2,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "scripts-layout"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/env-surface-policy.test.mjs",
+          "reason": "Merge host-path literal policy checks into scripts/env-surface-policy.test.mjs"
         },
         "scripts/lib/candidate-env.test.mjs": {
           "tier": "root",
           "baselineLines": 27,
-          "liveLines": 27,
+          "liveLines": 0,
           "testCount": 2,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -587,14 +634,14 @@
           "citedTags": [
             "candidate-launcher"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/candidate.test.mjs",
+          "reason": "Merge candidate client environment override checks into scripts/candidate.test.mjs"
         },
         "scripts/lib/candidate-topology.test.mjs": {
           "tier": "root",
           "baselineLines": 75,
-          "liveLines": 75,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -603,14 +650,14 @@
             "candidate-launcher",
             "test-artifact-retention"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/candidate.test.mjs",
+          "reason": "Merge candidate client and benchmark path topology into scripts/candidate.test.mjs"
         },
         "scripts/lib/environment.test.mjs": {
           "tier": "root",
           "baselineLines": 66,
-          "liveLines": 66,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 3,
           "usesOpenMigrated": false,
@@ -618,14 +665,14 @@
           "citedTags": [
             "environment-layers"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/candidate.test.mjs",
+          "reason": "Merge real-model environment layer precedence checks into scripts/candidate.test.mjs"
         },
         "scripts/lib/gate-environment.test.mjs": {
           "tier": "root",
           "baselineLines": 51,
-          "liveLines": 51,
+          "liveLines": 0,
           "testCount": 1,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -633,14 +680,14 @@
           "citedTags": [
             "operator-config-real-model-profile"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/candidate.test.mjs",
+          "reason": "Merge personal resource disablement in gate runs into scripts/candidate.test.mjs"
         },
         "scripts/lib/npm-json.test.mjs": {
           "tier": "root",
           "baselineLines": 30,
-          "liveLines": 30,
+          "liveLines": 0,
           "testCount": 3,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -648,14 +695,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/package-build-policy.test.mjs",
+          "reason": "Merge npm JSON output parser checks into scripts/package-build-policy.test.mjs"
         },
         "scripts/lib/orientation-verdict.test.mjs": {
           "tier": "root",
           "baselineLines": 115,
-          "liveLines": 115,
+          "liveLines": 0,
           "testCount": 7,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -664,14 +711,14 @@
             "emission-row",
             "orientation-verdict"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/candidate.test.mjs",
+          "reason": "Merge orientation inspection verdict evaluator into scripts/candidate.test.mjs"
         },
         "scripts/lib/package-artifacts.test.mjs": {
           "tier": "root",
           "baselineLines": 114,
-          "liveLines": 114,
+          "liveLines": 0,
           "testCount": 8,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -680,14 +727,14 @@
             "mimetype-query-assets",
             "packed-projection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/package-build-policy.test.mjs",
+          "reason": "Merge packed tarball staging checks into scripts/package-build-policy.test.mjs"
         },
         "scripts/lib/package-projection.test.mjs": {
           "tier": "root",
           "baselineLines": 55,
-          "liveLines": 55,
+          "liveLines": 0,
           "testCount": 4,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -695,14 +742,14 @@
           "citedTags": [
             "packed-projection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/package-build-policy.test.mjs",
+          "reason": "Merge manifest export projection checks into scripts/package-build-policy.test.mjs"
         },
         "scripts/lib/query-assets.test.mjs": {
           "tier": "root",
           "baselineLines": 40,
-          "liveLines": 40,
+          "liveLines": 0,
           "testCount": 1,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -710,14 +757,14 @@
           "citedTags": [
             "mimetype-query-assets"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/package-build-policy.test.mjs",
+          "reason": "Merge tree-sitter .scm asset copy checks into scripts/package-build-policy.test.mjs"
         },
         "scripts/lib/registry-visibility.test.mjs": {
           "tier": "root",
           "baselineLines": 43,
-          "liveLines": 43,
+          "liveLines": 0,
           "testCount": 2,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -725,14 +772,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge post-publish registry propagation polling into scripts/release-finalize.test.mjs"
         },
         "scripts/lib/release-authority.test.mjs": {
           "tier": "root",
           "baselineLines": 51,
-          "liveLines": 51,
+          "liveLines": 0,
           "testCount": 3,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -740,14 +787,14 @@
           "citedTags": [
             "release-finalization"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge canonical forge origin authority checks into scripts/release-finalize.test.mjs"
         },
         "scripts/lib/release-candidate.test.mjs": {
           "tier": "root",
           "baselineLines": 71,
-          "liveLines": 71,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -755,14 +802,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge qualified candidate archive integrity into scripts/release-finalize.test.mjs"
         },
         "scripts/lib/release-consumer.test.mjs": {
           "tier": "root",
           "baselineLines": 34,
-          "liveLines": 34,
+          "liveLines": 0,
           "testCount": 3,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -770,14 +817,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge consumer production audit checks into scripts/release-finalize.test.mjs"
         },
         "scripts/lib/release-daemon-probe.test.mjs": {
           "tier": "root",
           "baselineLines": 143,
-          "liveLines": 143,
+          "liveLines": 0,
           "testCount": 9,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -786,14 +833,14 @@
             "acp-http-authorization",
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge installed daemon readiness and auth probe into scripts/release-finalize.test.mjs"
         },
         "scripts/lib/release-package-graph.test.mjs": {
           "tier": "root",
           "baselineLines": 61,
-          "liveLines": 61,
+          "liveLines": 0,
           "testCount": 7,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -801,14 +848,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge candidate dependency graph and cycle checks into scripts/release-finalize.test.mjs"
         },
         "scripts/lib/release-registry.test.mjs": {
           "tier": "root",
           "baselineLines": 48,
-          "liveLines": 48,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -816,14 +863,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge npm registry lookup and artifact identity into scripts/release-finalize.test.mjs"
         },
         "scripts/lib/test-artifact-retention.test.mjs": {
           "tier": "root",
           "baselineLines": 105,
-          "liveLines": 105,
+          "liveLines": 0,
           "testCount": 6,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -832,29 +879,14 @@
             "test-artifact-retention",
             "tier-census"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "scripts/package-build-policy.test.mjs": {
-          "tier": "root",
-          "baselineLines": 50,
-          "liveLines": 50,
-          "testCount": 3,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "build-projection"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/drill.test.js",
+          "reason": "Merge test artifact directory and green reclaim checks into scripts/drill.test.js"
         },
         "scripts/package-lifecycle-policy.test.mjs": {
           "tier": "root",
           "baselineLines": 86,
-          "liveLines": 86,
+          "liveLines": 0,
           "testCount": 7,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -862,14 +894,14 @@
           "citedTags": [
             "package-lifecycle"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/env-surface-policy.test.mjs",
+          "reason": "Merge workspace lifecycle script checks into scripts/env-surface-policy.test.mjs"
         },
         "scripts/package-types.test.mjs": {
           "tier": "root",
           "baselineLines": 79,
-          "liveLines": 79,
+          "liveLines": 0,
           "testCount": 3,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -877,14 +909,14 @@
           "citedTags": [
             "type-resolution-audit"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/package-build-policy.test.mjs",
+          "reason": "Merge packed tarball type audit checks into scripts/package-build-policy.test.mjs"
         },
         "scripts/project-lifecycle.test.mjs": {
           "tier": "root",
           "baselineLines": 58,
-          "liveLines": 58,
+          "liveLines": 0,
           "testCount": 3,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -893,30 +925,14 @@
             "lint-gate",
             "native-source-toolchain"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
-        },
-        "scripts/release-finalize.test.mjs": {
-          "tier": "root",
-          "baselineLines": 245,
-          "liveLines": 245,
-          "testCount": 16,
-          "untaggedCount": 0,
-          "usesOpenMigrated": false,
-          "usesLaunch": false,
-          "citedTags": [
-            "release-finalization",
-            "release-mirror"
-          ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/layout.test.mjs",
+          "reason": "Merge root project lifecycle script checks into scripts/layout.test.mjs"
         },
         "scripts/release-gates.test.mjs": {
           "tier": "root",
           "baselineLines": 78,
-          "liveLines": 78,
+          "liveLines": 0,
           "testCount": 1,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -924,14 +940,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge release:gate workspace selection checks into scripts/release-finalize.test.mjs"
         },
         "scripts/release-lifecycle.test.mjs": {
           "tier": "root",
           "baselineLines": 120,
-          "liveLines": 120,
+          "liveLines": 0,
           "testCount": 9,
           "untaggedCount": 2,
           "usesOpenMigrated": false,
@@ -939,14 +955,14 @@
           "citedTags": [
             "release-candidate-graph"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge candidate publication ordering and resume into scripts/release-finalize.test.mjs"
         },
         "scripts/release-version.test.mjs": {
           "tier": "root",
           "baselineLines": 105,
-          "liveLines": 105,
+          "liveLines": 0,
           "testCount": 5,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -954,14 +970,14 @@
           "citedTags": [
             "package-release-contract"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/release-finalize.test.mjs",
+          "reason": "Merge changeset version bump matrix into scripts/release-finalize.test.mjs"
         },
         "scripts/test-client-conformance.test.mjs": {
           "tier": "root",
           "baselineLines": 25,
-          "liveLines": 25,
+          "liveLines": 0,
           "testCount": 1,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -969,14 +985,14 @@
           "citedTags": [
             "acp-first-party-client-conformance"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/drill.test.js",
+          "reason": "Merge missing client checkout prerequisite check into scripts/drill.test.js"
         },
         "scripts/test-profile.test.mjs": {
           "tier": "root",
           "baselineLines": 210,
-          "liveLines": 210,
+          "liveLines": 0,
           "testCount": 9,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
@@ -984,9 +1000,9 @@
           "citedTags": [
             "credential-authority"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "scripts/drill.test.js",
+          "reason": "Merge .env.test gate profile and pre-push hook checks into scripts/drill.test.js"
         }
       }
     },
@@ -3471,8 +3487,8 @@
           "tier": "intg",
           "baselineLines": 1248,
           "liveLines": 1248,
-          "testCount": 81,
-          "untaggedCount": 1,
+          "testCount": 80,
+          "untaggedCount": 0,
           "usesOpenMigrated": false,
           "usesLaunch": false,
           "citedTags": [
@@ -3892,8 +3908,8 @@
           "tier": "intg",
           "baselineLines": 58,
           "liveLines": 58,
-          "testCount": 5,
-          "untaggedCount": 1,
+          "testCount": 4,
+          "untaggedCount": 0,
           "usesOpenMigrated": false,
           "usesLaunch": false,
           "citedTags": [
@@ -5483,10 +5499,10 @@
           "usesOpenMigrated": false,
           "usesLaunch": false,
           "citedTags": [
+            "lint-gate",
             "parser-consumers",
             "provider-runtime-neutral-errors",
-            "provider-runtime-neutral-openai",
-            "runtime-import-direction"
+            "provider-runtime-neutral-openai"
           ],
           "disposition": "pending",
           "target": null,
@@ -9663,7 +9679,7 @@
           "baselineShape": "paragraph",
           "liveShape": "paragraph",
           "codeCitations": 2,
-          "testCitations": 3,
+          "testCitations": 2,
           "disposition": "pending",
           "target": null,
           "reason": null
@@ -20280,7 +20296,7 @@
           "tier": "intg",
           "baselineLines": 142,
           "liveLines": 142,
-          "testCount": 1,
+          "testCount": 0,
           "untaggedCount": 0,
           "usesOpenMigrated": false,
           "usesLaunch": false,
@@ -21129,8 +21145,8 @@
           "tier": "intg",
           "baselineLines": 239,
           "liveLines": 239,
-          "testCount": 11,
-          "untaggedCount": 1,
+          "testCount": 10,
+          "untaggedCount": 0,
           "usesOpenMigrated": true,
           "usesLaunch": false,
           "citedTags": [
@@ -24633,7 +24649,7 @@
           "tier": "intg",
           "baselineLines": 415,
           "liveLines": 415,
-          "testCount": 11,
+          "testCount": 10,
           "untaggedCount": 0,
           "usesOpenMigrated": true,
           "usesLaunch": false,
@@ -27681,8 +27697,8 @@
           "tier": "unit",
           "baselineLines": 167,
           "liveLines": 167,
-          "testCount": 17,
-          "untaggedCount": 5,
+          "testCount": 12,
+          "untaggedCount": 0,
           "usesOpenMigrated": false,
           "usesLaunch": false,
           "citedTags": [

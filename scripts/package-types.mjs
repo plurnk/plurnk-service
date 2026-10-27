@@ -6,7 +6,7 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm run packages:types [-- --only <workspace-dir>]...
-Checks that every package's exported types resolve from a consumer's view ({§type-resolution-audit}).
+Checks that every package's exported types resolve from a consumer's view ({§packed-projection}).
 Reads: every workspace's package.json exports.
 Writes: findings to stdout; exit 1 on any.
 `);

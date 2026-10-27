@@ -84,7 +84,7 @@ line of at most 100 characters citing its issue as `(#N)`, with no body or trail
 | Real-model tier outcome | `~/benchmarks/tier-<live\|demo>-<stamp>/census.md`: one row per specimen with its verdict, skip reason, evidence directories and cost, and the aliases that would satisfy each unmet requirement ({§tier-census}). |
 | Runtime state/telemetry | [`plurnk-core/README.md`](./plurnk-core/README.md) for database, digest, and OpenTelemetry surfaces. |
 | Candidate/model forensics | `candidate` prints its retained artifact directory; `npm run share -- <plurnk.db> [folder]` writes any database's digest from a consistent copy ([`plurnk-core/SPEC.md`](./plurnk-core/SPEC.md) {§share}). |
-| Published type resolution | `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds; also runs beside publint in `release:gate` ({§type-resolution-audit}). |
+| Published type resolution | `npm run packages:types` (or `-- --only plurnk-contracts`): pinned ATTW 0.18.5 checks actual packed packages, invoking their normal prepack builds; also runs beside publint in `release:gate` ({§packed-projection}). |
 
 The type-resolution audit uses ATTW's `esm-only` profile and leaves its findings
 visible. `plurnk-meta`'s `./POLICY.md` and `./recap.md` exports are excluded because
@@ -223,7 +223,7 @@ dependencies before consumers, verifies registry-installed products, carries eac
 released commit to the GitHub mirror's `main`, and records the release. Registry
 errors stop publication; only an explicit missing version permits a new upload. A
 mirror that cannot fast-forward stops publication before any record
-({§release-mirror}). On interruption, retry **the same artifact directory**;
+({§release-finalization}). On interruption, retry **the same artifact directory**;
 already-served artifacts must match byte-for-byte ({§release-candidate-graph}).
 
 GitHub is a mirror of the canonical forge with no automation of its own. After any

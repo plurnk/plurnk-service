@@ -10,15 +10,15 @@ import { usage } from "./lib/usage.mjs";
 
 usage(import.meta, `
 usage: npm test   (node scripts/drill.mjs; the pre-push hook runs it on a push to main)
-The deterministic gate: the platform's one build, root lint and unit, then every workspace's lint, unit and intg tiers, then client conformance. Each node --test tier emits Node's native per-file coverage table as report-only output (--experimental-test-coverage --test-coverage-include-all --test-coverage-include=<scope> must precede --test or Node silently swallows it; --test-coverage-include scopes the table and all-files roll-up to the package's own source so imported workspace dependencies do not pollute it; {§drill-scope}). Test detail is printed only when a phase goes red; no phase can fail on coverage.
+The deterministic gate: the platform's one build, root lint and unit, then every workspace's lint, unit and intg tiers, then client conformance. Each node --test tier emits Node's native per-file coverage table as report-only output (--experimental-test-coverage --test-coverage-include-all --test-coverage-include=<scope> must precede --test or Node silently swallows it; --test-coverage-include scopes the table and all-files roll-up to the package's own source so imported workspace dependencies do not pollute it; {§lint-gate}). Test detail is printed only when a phase goes red; no phase can fail on coverage.
 Reads: PLURNK_GATE_BASE and PLURNK_GATE_HEAD from the pre-push hook, to scope intg to the changed workspaces (full on a root or framework change); the hook runs it in a throwaway worktree beside this checkout, built from the pushed commit with this checkout's node_modules copied whole (run npm install after a lockfile change).
 Writes: the phase summary and per-file coverage tables to stdout; exit 1 on any red phase.
 `);
 
-// {§drill-parallelism} A test process's footprint, measured: a core integration file's process peaks near 420 MB.
+// {§lint-gate} A test process's footprint, measured: a core integration file's process peaks near 420 MB.
 const TEST_PROCESS_BYTES = 512 * 2 ** 20;
 
-// {§drill-parallelism} The host's parallelism: its available cores, and no more test processes than its available
+// {§lint-gate} The host's parallelism: its available cores, and no more test processes than its available
 // memory holds at that footprint.
 export const hostBudget = (cores = availableParallelism(), memory = process.availableMemory()) =>
     Math.max(1, Math.min(cores, Math.floor(memory / TEST_PROCESS_BYTES)));
@@ -32,7 +32,7 @@ export const tierFiles = async (dir, command) => {
     return files.size;
 };
 
-// {§drill-parallelism} Each lane's share of the budget: the largest lane's is all of it, and each other lane's is scaled
+// {§lint-gate} Each lane's share of the budget: the largest lane's is all of it, and each other lane's is scaled
 // by its test files against the largest's, at least one; the smaller lanes, done sooner, overlap the largest briefly.
 export const shares = (budget, counts) => {
     const largest = Math.max(0, ...counts);
@@ -100,7 +100,7 @@ const intgTargets = (files) => {
     return changed === null ? null : workspaces.filter((w) => changed.has(w.dir));
 };
 
-// {§drill-parallelism} A lane runs with its share as its test runner's concurrency.
+// {§lint-gate} A lane runs with its share as its test runner's concurrency.
 const run = (dir, script, share = BUDGET) => new Promise((resolve) => {
     const child = spawn("npm", ["run", script, "--silent"], { cwd: dir, env: { ...process.env, PLURNK_TEST_CONCURRENCY: String(share) } });
     let out = "";
@@ -142,7 +142,7 @@ export const coverageReport = (out) => {
 const phase = async (title, script, subset) => {
     const started = Date.now();
     const { included, excluded } = partitionByScript(subset, script);
-    // {§drill-parallelism} The largest lanes start first, each with its share of the host.
+    // {§lint-gate} The largest lanes start first, each with its share of the host.
     const counts = await Promise.all(included.map((w) => tierFiles(w.dir, w.commands[script])));
     const share = shares(BUDGET, counts);
     const jobs = included
@@ -173,7 +173,7 @@ const phase = async (title, script, subset) => {
 if (import.meta.main) {
     const t0 = Date.now();
     console.log(`parallelism: ${BUDGET} (${availableParallelism()} cores, ${Math.floor(process.availableMemory() / 2 ** 20)} MiB available)`);
-    // {§drill-scope} Built output is not tracked: one build of these sources comes first, since every later phase reads
+    // {§lint-gate} Built output is not tracked: one build of these sources comes first, since every later phase reads
     // it (the root lint type-checks against the generated grammar and model catalogs; root unit and conformance boot
     // the platform from dist), so no phase reads a build older than its sources, or none.
     if (!(await phase("build", "build", [rootTarget]))) process.exit(1);

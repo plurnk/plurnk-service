@@ -2,8 +2,8 @@
 
 The field guide: the rules for working in this repository and a map of where everything else is.
 It is self-contained — everything an agent or a contributor needs to act is here or in the
-documents it names — and `scripts/agents-map.test.mjs` keeps every command and path named here
-true ({§agents-map}). How to run a thing is the thing's own `--help`, never a paragraph here.
+documents it names — and `scripts/layout.test.mjs` keeps every command and path named here
+true ({§scripts-layout}). How to run a thing is the thing's own `--help`, never a paragraph here.
 
 This repository is an npm workspace containing the daemon (`plurnk-core`, published as
 `@plurnk/plurnk-service`), the contracts and grammar authority, the ACP server module, and the
@@ -40,7 +40,7 @@ extensions included in the default installation. The terminal client is a separa
   worktree with this checkout's `node_modules` copied whole, so run `npm install` after a change to
   the workspaces or the lockfile; the working tree may stay dirty and be edited while it runs. GitHub
   is a mirror of the Forge with no automation of its own: after the gate lands a commit, mirror it with
-  `git push --no-verify github origin/main:refs/heads/main` ({§release-mirror}).
+  `git push --no-verify github origin/main:refs/heads/main` ({§release-finalization}).
 - **The client is part of the gate.** The drill's last phase boots the built service and checks the
   terminal client checkout (`../plurnk`, or `PLURNK_CLIENT_CHECKOUT`) against it
   ({§acp-first-party-client-conformance}): land a client change before the service push that depends
@@ -135,14 +135,14 @@ rules, or protocol types in another package.
 
   | Use | Form | Rule |
   |-----|------|------|
-  | Declaration | `§lowercase-kebab` | Exactly one at the first semantic position of a `SPEC.md` heading, paragraph, list item, or table row. |
-  | Citation | `{§lowercase-kebab}` | Required everywhere outside the declaring block, including other specifications, code, coverage, and diagnostics. |
+  | Declaration | `§lowercase-kebab` | Exactly one at the first semantic position of a `SPEC.md` Markdown heading (`## §tag`, `### §tag`, or `#### §tag`). Paragraph, list-item, and table-row declarations are forbidden. |
+  | Citation | `{§lowercase-kebab}` | Required everywhere outside the declaring heading, including other specifications, code, coverage, and diagnostics. Every declared tag requires both an implementation/panel witness and a test witness; every deterministic `test()` title cites at least one `{§tag}`, and multiple tests in a suite share their parent heading tag. |
   | Presentation | `§3`, `§3.bis` | Numeric document navigation is not a named contract tag. |
 
   Fenced, inline, and indented code examples are inert. Keep declarations
   globally unambiguous and do not silently reuse one for different semantics.
-  A declaration must share its Markdown block with the contract it names; a
-  tag-only block is invalid.
+  A declaration must share its heading with a title and the section contract it names; a
+  tag-only heading is invalid.
 - Forge issues record observations, investigation, competing interpretations,
   rulings, rejected alternatives, and completion evidence. Issue numbers are
   provenance; specification tags are current authority.

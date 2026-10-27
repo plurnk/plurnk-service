@@ -506,7 +506,7 @@ const analyzeTestFile = (relPath, text) => {
     const lines = text.split("\n");
     const citedTags = [...new Set([...text.matchAll(REF_TAG)].map((m) => m[1]))].toSorted();
     const testBlocks = [];
-    const testCallRe = /\b(?:test|it)\s*\(\s*(`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/g;
+    const testCallRe = /\b(?:test|it)\s*\(\s*(`(?:\\[\s\S]|[^`])*`|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')\s*,/g;
     for (const match of text.matchAll(testCallRe)) {
         const literal = match[1] ?? "";
         const before = text.slice(0, match.index ?? 0);
@@ -652,7 +652,17 @@ const assignAll = (scans) => {
     }
 
     const serviceScan = scans.get("plurnk-service");
+    const unclaimedCoreChapters = [];
     if (serviceScan !== undefined) {
+        const coreParsed = serviceScan.specs.get("plurnk-core/SPEC.md");
+        if (coreParsed !== undefined) {
+            for (const ch of coreParsed.chapters.values()) {
+                const chKey = `plurnk-service:plurnk-core/SPEC.md:${ch.title}`;
+                if (!claimedChapters.has(chKey) && (ch.endLine >= ch.startLine || ch.tags.length > 0)) {
+                    unclaimedCoreChapters.push(`## ${ch.title} (L${ch.startLine})`);
+                }
+            }
+        }
         for (const [rel, t] of serviceScan.tests.entries()) {
             if (assignedTests.has(`plurnk-service:${rel}`)) continue;
             if (!rel.startsWith("plurnk-core/")) continue;
@@ -680,6 +690,10 @@ const assignAll = (scans) => {
         }
     }
 
+    for (const u of unitMap.values()) {
+        u.unclaimedCoreChapters = u.id.startsWith("core-") ? unclaimedCoreChapters : [];
+    }
+
     return unitMap;
 };
 
@@ -689,19 +703,15 @@ const loadAllScans = () => new Map([
     ["plurnk-bench", scanRepo("plurnk-bench")],
 ]);
 
-const cmdInit = (force, quiet = false) => {
+const buildSyncedState = (force = false) => {
     const existing = fs.existsSync(LEDGER_PATH)
         ? JSON.parse(fs.readFileSync(LEDGER_PATH, "utf8"))
         : null;
-    if (existing !== null && !force && !quiet) {
-        console.log("Syncing existing clamp-ledger.json with live filesystem state (preserving recorded dispositions)...");
-    }
-
     const scans = loadAllScans();
-    const unitMap = assignAll(scans);
+    const assignedMap = assignAll(scans);
     const ledgerUnits = {};
 
-    for (const [id, u] of unitMap.entries()) {
+    for (const [id, u] of assignedMap.entries()) {
         const prevUnit = existing?.units?.[id];
         const tagDecisions = {};
         for (const t of u.tags) {
@@ -773,9 +783,9 @@ const cmdInit = (force, quiet = false) => {
         };
     }
 
-    const payload = {
+    const ledger = {
         schemaVersion: 1,
-        updatedAt: new Date().toISOString(),
+        updatedAt: existing?.updatedAt ?? new Date().toISOString(),
         rules: {
             headingOnlyDeclarations: true,
             forbidMapBlocks: true,
@@ -787,9 +797,18 @@ const cmdInit = (force, quiet = false) => {
         },
         units: ledgerUnits,
     };
-    fs.writeFileSync(LEDGER_PATH, `${JSON.stringify(payload, null, 2)}\n`);
+    return { ledger, scans, assignedMap };
+};
+
+const cmdInit = (force, quiet = false) => {
+    if (fs.existsSync(LEDGER_PATH) && !force && !quiet) {
+        console.log("Syncing existing clamp-ledger.json with live filesystem state (preserving recorded dispositions)...");
+    }
+    const { ledger } = buildSyncedState(force);
+    ledger.updatedAt = new Date().toISOString();
+    fs.writeFileSync(LEDGER_PATH, `${JSON.stringify(ledger, null, 2)}\n`);
     if (!quiet) {
-        console.log(`Wrote ${LEDGER_PATH} across ${Object.keys(ledgerUnits).length} work units.`);
+        console.log(`Wrote ${LEDGER_PATH} across ${Object.keys(ledger.units).length} work units.`);
     }
 };
 
@@ -801,6 +820,12 @@ const evaluateUnit = (unitId, ledger, scans, assignedMap) => {
     }
     const scan = scans.get(unitLedger.repo);
     const errors = [];
+
+    if ((liveUnit.unclaimedCoreChapters ?? []).length > 0) {
+        errors.push(
+            `Unclaimed H2 chapter(s) in plurnk-core/SPEC.md: ${liveUnit.unclaimedCoreChapters.join(", ")} (keep the chapter title after its ${SEC}tag or fold its content into an existing chapter)`,
+        );
+    }
 
     const tagEntries = Object.entries(unitLedger.tags);
     const testEntries = Object.entries(unitLedger.tests);
@@ -850,7 +875,7 @@ const evaluateUnit = (unitId, ledger, scans, assignedMap) => {
         const codeCount = cite ? cite.codeFiles.size : 0;
         const testCount = cite ? cite.testFiles.size : 0;
         if (codeCount === 0) {
-            errors.push(`Surviving heading tag ${SEC}${t.tag} has 0 implementation/panel citations in src/ or .env.defaults`);
+            errors.push(`Surviving heading tag ${SEC}${t.tag} has 0 implementation/panel citations in non-test, non-markdown files`);
         }
         if (testCount === 0) {
             errors.push(`Surviving heading tag ${SEC}${t.tag} has 0 test citations in *.test.*`);
@@ -860,7 +885,12 @@ const evaluateUnit = (unitId, ledger, scans, assignedMap) => {
     for (const [tag, entry] of tagEntries) {
         if (entry.disposition === "pending") continue;
         const stillDeclared = liveTagsByName.has(tag);
-        const stillCited = (scan.citations.get(tag)?.codeFiles.size ?? 0) + (scan.citations.get(tag)?.testFiles.size ?? 0) > 0;
+        const citeRec = scan.citations.get(tag);
+        const citingFiles = [
+            ...(citeRec?.codeFiles ?? []),
+            ...(citeRec?.testFiles ?? []),
+            ...(citeRec?.docFiles ?? []),
+        ];
         if (entry.disposition === "keep-heading") {
             const live = liveTagsByName.get(tag);
             if (live === undefined) {
@@ -872,8 +902,8 @@ const evaluateUnit = (unitId, ledger, scans, assignedMap) => {
             if (stillDeclared) {
                 errors.push(`Tag ${SEC}${tag} is marked ${entry.disposition} but is still declared in ${entry.spec}`);
             }
-            if (stillCited) {
-                errors.push(`Tag ${SEC}${tag} is marked ${entry.disposition} but is still cited as {${SEC}${tag}} in code or tests`);
+            if (citingFiles.length > 0) {
+                errors.push(`Tag ${SEC}${tag} is marked ${entry.disposition} but is still cited as {${SEC}${tag}} in: ${citingFiles.slice(0, 6).join(", ")}${citingFiles.length > 6 ? "..." : ""}`);
             }
             if (entry.disposition === "fold-into" && (entry.target === null || !liveTagsByName.has(entry.target))) {
                 errors.push(`Tag ${SEC}${tag} folds into '${entry.target}', which is not a surviving heading tag in ${unitId}`);
@@ -949,10 +979,7 @@ const evaluateUnit = (unitId, ledger, scans, assignedMap) => {
 };
 
 const cmdStatus = (filterUnit) => {
-    cmdInit(false, true);
-    const ledger = JSON.parse(fs.readFileSync(LEDGER_PATH, "utf8"));
-    const scans = loadAllScans();
-    const assignedMap = assignAll(scans);
+    const { ledger, scans, assignedMap } = buildSyncedState(false);
 
     console.log(
         [
@@ -1028,10 +1055,7 @@ const cmdStatus = (filterUnit) => {
 };
 
 const cmdShow = (unitId, pendingOnly) => {
-    cmdInit(false, true);
-    const ledger = JSON.parse(fs.readFileSync(LEDGER_PATH, "utf8"));
-    const scans = loadAllScans();
-    const assignedMap = assignAll(scans);
+    const { ledger, scans, assignedMap } = buildSyncedState(false);
     const res = evaluateUnit(unitId, ledger, scans, assignedMap);
     const u = ledger.units[unitId];
 
@@ -1117,10 +1141,7 @@ const cmdDecideTest = (unitId, file, disposition, target, reason) => {
 };
 
 const cmdVerify = (unitId, all) => {
-    cmdInit(false, true);
-    const ledger = JSON.parse(fs.readFileSync(LEDGER_PATH, "utf8"));
-    const scans = loadAllScans();
-    const assignedMap = assignAll(scans);
+    const { ledger, scans, assignedMap } = buildSyncedState(false);
     const targets = all ? WORK_UNITS.map((u) => u.id) : [unitId];
     let failed = 0;
     for (const id of targets) {

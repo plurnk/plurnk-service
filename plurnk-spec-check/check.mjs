@@ -261,7 +261,7 @@ const printLocations = (title, entries, render) => {
 };
 
 const main = async () => {
-    // {§spec-check-cli} The consumer owns its source tree and any existing debt.
+    // {§spec-check-cli} {§spec-check-tags} The consumer owns its source tree and any existing debt.
     const { values, positionals } = parseArgs({
         allowPositionals: true,
         options: {

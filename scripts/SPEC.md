@@ -5,154 +5,58 @@
 | Surface | Contract |
 | --- | --- |
 | Runtime | Node 26 or newer; source execution uses native type stripping, and published execution uses built ESM. ESNext is a compiler target, not permission to require an API absent from the supported runtime. |
-| Compiler | TypeScript 7, ESNext target and libraries, NodeNext module semantics. Workspaces inherit the shared base; browser checks add DOM libraries without Node globals. |
+| Compiler | TypeScript 7, ESNext target and libraries, NodeNext module semantics. Workspaces inherit `tsconfig.base.json`; browser checks add DOM libraries without Node globals. |
 | Source | Verbatim imports and erasable-only syntax keep direct and built execution aligned. Preserve useful type abstractions; do not require transformation-only TypeScript syntax. |
-| Lint | No `var`, explicit `any`, deprecated APIs, or unprefixed Node built-ins in handwritten source. `const` for every binding assigned once, tests included; a binding a closure reads before its one assignment (`let owner; t.after(() => owner?.stop())`) stays `let`. Generated/vendor code remains outside source-style enforcement. |
-| Resources | Use native resource management where the owned resource implements disposal and the lexical lifetime fits. Callbacks, process-local handles, and asynchronous lifetimes need not become `using` declarations. |
+| Lint | No `var`, explicit `any`, deprecated APIs, or unprefixed Node built-ins in handwritten source. `const` for every binding assigned once, tests included; a binding a closure reads before its one assignment stays `let`. |
 
-The ordinary gate checks source and built behavior. A stylistic sweep is not an
-invitation to replace sound types, invent compatibility code, or change external
-protocol support.
+## §lint-gate Lint and the deterministic drill
 
-## §lint-gate Lint is a gate
+`oxlint` runs beside `tsc` in the lint tier (`npm run source:check`, part of `root:lint`), over every workspace's sources, tests and `scripts/`, from `.oxlintrc.json`. Type-aware rules read every file through a `tsconfig.json` whose program contains it (`plurnk-core/test/tsconfig.json` for core tests; root `tsconfig.json` for root scripts and fixtures). An `oxlint-disable-next-line` names its rule and states its reason on the same line.
 
-`oxlint` runs beside `tsc` in the lint tier (`npm run source:check`, part of root
-`test:lint`), over every workspace's sources, tests and `scripts/`, from the one
-shared `.oxlintrc.json`. The gate fails on errors.
+`scripts/drill.mjs` (`npm test`, run by the pre-push hook in a throwaway worktree) builds the platform once, runs `root:lint` and `root:unit`, then runs every workspace's `test:lint` and `test:unit`, then scopes `test:intg` to the changed workspaces (or full integration when a root or framework package changes; skipped on Markdown-only pushes outside `plurnk.md`). Parallelism is bounded by the host's available cores and memory at the measured per-process footprint, distributed across lanes via `PLURNK_TEST_CONCURRENCY`. Every `node --test` tier prints native coverage as report-only output before `--test` with no coverage threshold.
 
-| Element | Contract |
+| Policy / Audit | Enforced Rule |
 | --- | --- |
-| Categories | `correctness`, `suspicious` and `perf` are errors, with the typescript, unicorn, oxc, import, promise and node plugins. |
-| Projects | Type-aware rules read every file through a `tsconfig.json` whose program contains it, the types tsc checks it with: its workspace's, core's tests through `plurnk-core/test/tsconfig.json` (the test-only SqlRite statements), and the development JavaScript no workspace owns through the root `tsconfig.json`. No file is left to a fallback project, whose types depend on the files that share it. |
-| Exceptions | A rule the codebase judges is named in the config with its reason: a warning while its sites are rewritten, or off when it is an opinion rather than an idiom here. |
-| Inline disables | An `oxlint-disable-next-line` names its rule and states its reason on the same line. |
-| Promises | Each promise in the Lint row above becomes a denied rule as its findings reach zero; a warning is a counted debt, never a permanent state. |
+| Package graph (`scripts/dependency-policy.mjs`) | Frameworks never depend on their extensions ({§core-extension-composition}); packages never depend on a less stable layer; no cycles; devDependencies are not graph edges; install scripts must be reviewed in `allowScripts`; npm config lives only at the root. |
+| Environment surface (`scripts/env-surface-policy.mjs`) | Every number and choice read in shipped source is declared on `.env.defaults` ({§operator-config-env-defaults}); no inline defaults, `DEFAULT_*` constants, or fallback readers; duration/size/limit constants require a mechanism-register entry; the allowance ratchet only shrinks. |
+| Package lifecycle (`scripts/package-lifecycle-policy.mjs`) | Each workspace's `test` composes its `test:lint`, `test:unit`, and `test:intg` tiers in canonical order with no synonym or no-op tiers, no consumer `prepare`, and quoted recursive globs. |
+| Commit provenance & conventions (`scripts/commit-provenance.mjs`, `scripts/conventional.mjs`) | Every pushed commit carries a valid signature and registered author/committer identities; commit subjects are one conventional line ≤ 100 chars citing `(#N)` with no body; branches are `main` or `<type>/<kebab-slug>`. |
+| Runtime import direction (`npm run audit:direction`) | Over built `dist` output: erased type imports are not edges, side-effect imports are; owner boundaries hold on emitted imports; unresolved imports or missing build output fail. |
 
-§drill-scope **The drill scopes integration to what changed.** `scripts/drill.mjs`, the pre-push gate, builds the platform once, the build every later phase reads (the root lint type-checks against its generated sources; root unit and conformance boot it from `dist`), then runs root-owned lint and unit coverage before every workspace's lint and unit tiers, then integration for exactly the workspaces whose files changed: a change under a framework package or at the root level, or a root change beside a workspace change, runs integration in full, and an empty diff runs none, lint and unit having already run in full. Each tier reports its applicable and inapplicable workspaces and names every failing package in its summary. Every deterministic `node --test` tier positions `--experimental-test-coverage --test-coverage-include-all --test-coverage-include=<scope>` before `--test` and prints the per-file coverage table as report-only output with no coverage thresholds; a phase fails for test failures only. A push whose every file is Markdown documentation — a README, a CHANGELOG, a SPEC — runs the root lint alone; `plurnk.md` is model-facing teaching that tests parse, so it never counts as documentation, nor does any non-Markdown file or an empty push.
+## §packed-projection Package build and tarball projection
 
-§drill-parallelism **The drill's parallelism is the host's.** Its budget is the host's available cores, bounded by the
-test processes its available memory holds at a test process's measured footprint; no number is fixed for one machine.
-Each phase runs its packages through a pool that wide, largest first, and hands each package its share as
-`PLURNK_TEST_CONCURRENCY`: the package whose tier names the most test files has the whole budget, and every other
-package a share scaled by its test files against that one's, at least one, so the smaller packages, done sooner, overlap
-the largest only briefly. Every `node --test` tier passes its share on as `--test-concurrency`; a tier run outside the
-drill takes Node's own default.
+Every publishable workspace whose package projection includes `dist` owns one `build:clean` (`rm -rf dist`), begins `build` with it, keeps emission-only work in `build:dist`, and runs the complete `build` from `prepack` (`scripts/package-build-policy.mjs`).
 
-## Policies the root lint enforces
+The published tarball is a projection of the source (`scripts/lib/package-projection.mjs`, `scripts/lib/package-artifacts.mjs`, `scripts/package-provenance.mjs`): the packed manifest strips the `plurnk-dev` export condition, every remaining export target (including subpath patterns) must exist in the archive, required runtime-loaded files and teaching assets must be present, and test helpers or fixture builders are refused. `npm run packages:types` (`scripts/package-types.mjs`) verifies packed public exports with ATTW under `esm-only`.
 
-Each step of `npm run root:lint` is one script with one rule; the rule is stated here and the script
-refuses the tree when it does not hold.
+## §scripts-layout Directory layout and the field guide
 
-| Policy | Rule |
-| --- | --- |
-| §package-graph-policy Package graph | A framework never depends on an extension of its kind ({§core-extension-composition}); a package never depends on a less stable layer; no cycle; development dependencies are not graph edges; every package that ships an install script is reviewed by name, read from a valid npm report (an unreadable report is never green); npm configuration belongs to the root, never to a workspace. `scripts/dependency-policy.mjs`. |
-| §env-surface-policy Environment surface | Every number and choice a shipped source reads is declared on a panel (`.env.defaults`), live or as an optional knob; a computed name is a family covered by one declared example; a read never carries its own value and a constant named DEFAULT is a default living in code; a live declaration nothing consumes means the panel lies; one package owns a key; prose, messages, tests and fixtures are not reads; reading the system environment is mechanism, never debt; a number whose name says duration, size or limit is a choice unless the mechanism register says why it is not; the allowance file is a ratchet: new debt is refused, and so is a paid debt left on the books ({§operator-config-env-defaults}). `scripts/env-surface-policy.mjs`. |
-| §build-projection Build projection | Every workspace whose package projection includes `dist` owns one `build:clean`, begins `build` with it, keeps emission-only work in `build:dist` and builds from `prepack`; the scope is derived from the published projection, so a package that ships no `dist` owns no cleanup. `scripts/package-build-policy.mjs`. |
-| §package-lifecycle Package lifecycle | A workspace's `test` is exactly its `test:lint`, `test:unit` and `test:intg` tiers in that order, omitting a tier it does not have, never a synonym tier and never a no-op; a workspace owns at least one tier; external, release and forensic commands keep their classified names; no workspace imposes a `prepare` on consumers; a recursive glob in any script is quoted so node expands it rather than `sh`. `scripts/package-lifecycle-policy.mjs`. |
-| §packed-projection Packed projection | The tarball is a projection of the source: the published manifest carries no `plurnk-dev` export condition and everything else it declares is shipped (a subpath pattern ships when a packed file matches it; a condition aimed outside the tarball names the export and the file); each package's runtime-loaded files are required packed inputs and its test helpers and fixture builders are refused (#797). `scripts/lib/package-projection.mjs`, `scripts/lib/package-artifacts.mjs`, checked by `scripts/package-provenance.mjs`. |
-| §commit-provenance Commit provenance | Every pushed commit carries a good signature, in any clone; its author and committer are identities the clone's own `git config` registers (`plurnk.allowedAuthor`, repeatable; `plurnk.allowedCommitter`, the one signer), an author presented as the committer is refused, and a clone that registers none checks only the signature. `scripts/commit-provenance.mjs`, run by the pre-push hook. |
-| §commit-conventions Commit conventions | A commit is one conventional subject line of at most 100 characters with no body; generated merge and revert subjects pass; a template may carry blank and comment lines after the subject; a branch is `main` or `<type>/<kebab-slug>` over the same conventional types. `scripts/conventional.mjs`, run by the git hooks. |
+Every code file at the top of a `scripts/` directory (and under `scripts/audit/`) is an entry point named by a `package.json` script or git hook, and nothing in `package.json` or `.githooks/` names a module under `scripts/lib/`. `scripts/anatomy/` holds manual refactoring and audit helpers; `scripts/fixtures/` holds test fixture servers and inputs.
 
-## Audits on demand
+`AGENTS.md` holds the operating rules and a map of the repository. Every `npm` command it spells must be a script of the package it names, every `name:name` script it mentions must exist in some `package.json`, and every repository path it names must exist (`scripts/layout.test.mjs`).
 
-| Audit | Rule |
-| --- | --- |
-| §runtime-import-direction Runtime import direction | Over the built output, never the TypeScript: erased imports and type-only re-exports are not edges, a side-effect import beside a type-only import is; owner boundaries hold on emitted imports; an unresolved import or missing build output is a refusal (#1053). `npm run audit:direction`. |
-| §type-resolution-audit Type resolution | Packed public code resolves its exported types from a consumer's view under the `esm-only` profile, assets excluded; a selection names exact workspaces and refuses an absent or private one; every checker failure is reported and none becomes success. Runs in `release:gate` beside `publint` and on demand via `npm run packages:types`. |
+## §environment-layers Layered real-model environment and launchers
 
-## Launchers
+Real-model runs (`test:live`, `tier:live`, `tier:demo`, provider probes, `candidate`) layer configuration from highest to lowest precedence (`scripts/lib/environment.mjs`):
 
-§candidate-launcher **The candidate launcher** boots a source-built daemon and the terminal client from
-explicit checkouts: `PLURNK_CLIENT_CHECKOUT` is required, shared by the candidate and release lifecycles,
-and the conformance sibling default applies only when no checkout is supplied; relative experiment
-overrides are preserved; client overrides (`PLURNK_CANDIDATE_CLIENT_ENV`) parse one deterministic string
-map and may not reroute the daemon; a client terminated by a signal reaps the daemon; the grade deadline
-photographs the project root while the run plays on ({§candidate-pinned-runtime}).
-
-§orientation-verdict **The orientation verdict** accepts a report only when it is terminal, inspected its
-evidence (a READ of the repository, not an archived issue URL) and covers the service, the contracts, the
-client, the topology, current work or the forge's unavailability and its own gaps; a timeout, missing
-coverage, empty delivery or a failed documentation publication fails it regardless of the model's answer.
-
-## §scripts-layout One directory lists what a person runs
-
-`ls scripts` is the map of a package's own tooling, at the root and in each workspace: every code file
-at the top of a `scripts/` directory (and under the root's `audit/`) is an entry point that a package.json
-script or a git hook names, and nothing names a module under its `lib/`. `scripts/layout.test.mjs` fails
-on either violation.
-
-| Directory | Holds |
-| --- | --- |
-| `scripts/` | the entry points; `SPEC.md`; the data files a policy step reads |
-| `scripts/lib/` | the modules the entry points import; the root's also serve the workspaces' harnesses |
-| `scripts/audit/` | the on-demand audits (`npm run audit:*`) and their configuration |
-| `scripts/anatomy/` | the refactoring tools, run by hand; their README is their map |
-| `scripts/fixtures/` | the data the witnesses read |
-
-A witness sits beside the file it proves (`scripts/lib/npm-json.test.mjs` beside `npm-json.mjs`); a
-witness of several files, or of the repository, sits at the top level.
-
-## §agents-map The field guide is rules plus a map
-
-`AGENTS.md` holds the rules for working in the repository and a map of where everything else is;
-operating instructions live in the `--help` of the script that performs them and in
-the tagged specifications, never in the guide. `scripts/agents-map.test.mjs` keeps the map true: every
-`npm` command it spells is a script of the package it names, every `name:name` script it mentions
-exists in some package.json, and every repository path it names exists.
-
-## §environment-layers The environment, layered once
-
-A real-model run (the live and demo tiers, the providers' probes, the candidate) is configured by
-these layers, highest precedence first; `scripts/lib/environment.mjs` is their one statement, and
-`scripts/lib/environment.test.mjs` proves the order.
-
-| Layer | Where | Sets |
+| Layer | Source | Purpose |
 | --- | --- | --- |
-| The shell | the login shell, reached through `scripts/operator-environment.sh` | provider credentials; `PLURNK_MODEL=<selector>` for one run |
-| The gate profile | `plurnk-core/.env.test`, committed | the posture that is the same on every machine; names no model |
-| The operator file | `$XDG_CONFIG_HOME/plurnk/.env`, never committed | the model aliases and the standing selection |
-| The package defaults | each package's `.env.defaults`, committed | every choice, with its documentation |
-| The floor | `plurnk-core/test/floor.ts` | every installed package's defaults, set-if-unset |
+| Shell | Login shell via `scripts/operator-environment.sh` | Provider credentials and per-run `PLURNK_MODEL=<selector>` |
+| Gate profile | `plurnk-core/.env.test` | Deterministic gate posture (no authentication, no schedules, no personal policy) |
+| Operator file | `$XDG_CONFIG_HOME/plurnk/.env` | Reusable model aliases and standing model selection |
+| Package defaults | `plurnk-*/.env.defaults` | Every shipped knob and its default |
+| Floor | `plurnk-core/test/floor.ts` | Installed package defaults, set-if-unset |
 
-A launcher spawns node with `realModelNodeFlags` (the last `--env-file-if-exists` wins, so they run
-lowest to highest); a script already running calls `applyRealModelEnvironment` (`loadEnvFile` is
-set-if-unset, so it walks highest first); the candidate daemon's `--env-file` is `gateProfile`. The
-Mock tiers layer only their package's own `.env.defaults` under `test/setup.ts` and are not this cascade.
+`scripts/candidate.mjs` boots a source-built daemon from a pinned runtime copy and an explicit `PLURNK_CLIENT_CHECKOUT`, parses `PLURNK_CANDIDATE_CLIENT_ENV` without allowing daemon-routing overrides, reaps the daemon on client signal termination, and snapshots the project root at the grade deadline ({§candidate-pinned-runtime}). `scripts/orientation.mjs` (`scripts/lib/orientation-verdict.mjs`) accepts an orientation run only when it is terminal, inspected repository files via model `READ` operations rather than archived issue URLs, published workspace documentation cleanly, and covered the platform topology and current forge state.
 
-## §package-release-contract Independent versions
+## §package-release-contract Independent package versions
 
-| Surface | Contract |
-| --- | --- |
-| Package | Its public contract owns its SemVer. A release changes its shipped implementation, documentation, or delivery requirements; matching another package's version is not a change. |
-| Platform | The service is the assembled product. Compatible functionality warrants its minor release; fixes do not force a minor. Classify dependency changes by their effect on this product, not by copying the dependency's bump. |
-| Dependencies | Declare compatibility per named dependency. Compatible packages may retain their existing versions; changing a required dependency or minimum creates a new consumer artifact. |
-| Planning | Changesets records explicit package-level release intent and computes necessary internal dependent updates. No fixed or linked version groups. Unchanged compatible dependents and unrelated packages remain unchanged. |
-| Composition | Exact installed versions and source/artifact identities are qualification evidence, not a global framework version or an extra compatibility declaration. |
-| Repository | Workspace membership is a source boundary, not a synchronized release requirement. The private root is not another product version. |
+Each package's public contract owns its SemVer. Compatible platform functionality warrants a minor release; dependency fixes or major updates create consumer patches unless the consumer's own contract changes. Changesets records explicit package-level release intent with no fixed or linked version groups, leaving unchanged compatible dependents untouched (`scripts/release-version.mjs`).
 
 ## §release-candidate-graph Selected publication graph
 
-| Boundary | Contract |
-| --- | --- |
-| Selection | The stable-release workflow selects named packages at their committed `major.minor.patch` manifest versions. An inventory or a neighboring checkout does not authorize its publication or make it a prerequisite. |
-| Resolution | Candidate dependency and peer ranges must admit the selected version of that dependency. Unselected dependencies resolve normally from the registry; an excluded product cannot block the release. |
-| Preparation | Version and dependency edits precede qualification. Publication never edits source, stamps another repository, or substitutes a different candidate. |
-| Qualification | Build and test the source repositories; run package-specific release checks only for the selected packages, inspect their projected archives, and exercise the installed composition before publication. No ignored peer conflicts, forced incompatible overrides, or reliance on an unpublished registry version. |
-| Installed daemon | Verify the spawned package/version and its own ephemeral listener, the unauthenticated Bearer challenge, a `client_credentials` exchange using a fresh probe-only secret, and an authenticated request ({§acp-http-authorization}, {§auth-oauth-clients}). Keep authentication enabled; graceful shutdown and failure cleanup remain part of the probe. |
-| npm CLI boundary | Shared readers normalize `pack --json` arrays or package-keyed objects and `view --json` single manifests or one-element arrays. Empty/malformed artifact lists and ambiguous manifest sets fail; normalization never substitutes for artifact, source, or exact package/version verification. |
-| Dependencies | External dependencies across the root and every workspace must resolve at their registry `latest` unless waived in `deps-waivers.json` with `{ reason, issue, lane }` and not listed in `ownerVeto`; `release:version` and `release:gate` enforce `deps:check` (`scripts/deps-preflight.mjs`). Audit the fresh installed production composition at the moderate floor; advisory-service unavailability is a reported gap, not a clean audit. |
-| Publication | Upload independent packages sequentially as one dependency layer; verify that layer's registry visibility and immutable artifacts before uploading its consumers. Query the exact package/version, not its latest tag. A registry failure is not evidence that a package is unpublished. |
-| Retry | Retain qualified artifacts and their source identities. Resume only missing publication steps; a conflicting immutable artifact fails rather than being overwritten or accepted as equivalent. |
+The release workflow selects named packages at their committed `major.minor.patch` versions, verifies external dependencies are at registry `latest` unless waived in `deps-waivers.json` without `ownerVeto` (`scripts/deps-preflight.mjs`), qualifies packed archives in a clean consumer install with production `npm audit` and an authenticated daemon probe ({§acp-http-authorization}), and uploads layers in dependency order after verifying registry visibility and immutable artifact integrity (`scripts/release-check.mjs`, `scripts/release-gates.mjs`, `scripts/release-publish.mjs`). Shared npm JSON readers (`scripts/lib/npm-json.mjs`) normalize `npm pack --json` and `npm view --json` output and reject empty or ambiguous responses.
 
-## §release-finalization Publication records
+## §release-finalization Publication records and mirror synchronization
 
-| Stage | Contract |
-| --- | --- |
-| Qualification | Canonical signed sources, npm authority, and GitHub release-write permission are checked before publication. |
-| Sources | The selected package's canonical Git repository owns its source identity; directory names and inventory entries are not release authority. |
-| Notes | The package's `CHANGELOG.md` section `## <version>` at the verified source commit supplies its release notes. Qualification and publication require that section before uploading artifacts. |
-| npm and consumers | Package publication and installed-product verification precede release records. |
-| Git | Each release gets a signed tag on its exact verified source commit: `v<version>` for products and standalone packages, `<package-name>@<version>` for other monorepo packages. Push to the canonical forge and GitHub mirror; never move an existing tag. |
-| §release-mirror Mirror | GitHub is a mirror of the canonical forge with no automation of its own, so publication carries a release there: before any record names a commit, the mirror's `main` is brought to the canonical `main` that holds it by fast-forward push alone (`--no-verify`, since the canonical push owned verification), and a mirror that cannot fast-forward stops publication with no record written. A release is published only when the registry, the records and the mirror's `main` all carry it. Every gated landing mirrors the same way: `git push --no-verify github origin/main:refs/heads/main`. |
-| GitHub | A stable Release names that tag and records the tested composition. A service release gathers its simultaneously released modules; otherwise each changed module has its own record. Existing published records are preserved; conflicts or hosting failures fail the train. |
-| Repair | `release:finalize` uses retained qualification and successful registry-consumer evidence; it creates missing records without publishing npm packages or selecting today's HEAD. A retry resumes the missing stage. |
+Before creating release records, `scripts/release-finalize.mjs` verifies canonical PossumTech repository authority, signed commits on `main`, npm registry visibility, and GitHub release-write permission. GitHub is a mirror of the canonical forge: before any tag or release record is written, `github/main` is fast-forwarded to the canonical `origin/main` commit (`--no-verify`), and any non-fast-forward or tag conflict aborts finalization. Each package release receives a signed Git tag (`v<version>` for products, `<package-name>@<version>` for modules) pushed to both `origin` and `github`, and a GitHub Release with notes extracted from `CHANGELOG.md` at the verified commit. Retries repair only missing remote tags or release records.

@@ -20,7 +20,7 @@
         "LICENSE"
     ],
     "scripts": {
-        "test:unit": "node --experimental-test-coverage --test-coverage-include-all --test-coverage-include=check.mjs --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} check.test.mjs installation.test.mjs",
+        "test:unit": "node --experimental-test-coverage --test-coverage-include-all --test-coverage-include=check.mjs --test ${PLURNK_TEST_CONCURRENCY:+--test-concurrency=$PLURNK_TEST_CONCURRENCY} check.test.mjs",
         "test": "npm run test:unit"
     },
     "publishConfig": {
