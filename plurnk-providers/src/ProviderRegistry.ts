@@ -3,7 +3,7 @@
 // overrides) lives in @plurnk/plurnk-aliases; this module resolves the active
 // alias-or-route selector to a Provider.
 //
-// {§provider-resolution} Models.dev catalog → PLURNK provider declaration
+// {§provider-configuration} Models.dev catalog → PLURNK provider declaration
 // → local protocol adapter → scope-agnostic AI SDK provider extension discovery. Generic
 // provider facts belong to models.dev or operator config; PLURNK owns only the
 // stable Provider contract and product-specific local behavior.

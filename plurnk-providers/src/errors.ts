@@ -186,7 +186,7 @@ interface ProviderFailureCause {
 
 const firstLine = (text: string): string => text.split("\n")[0]?.trim() ?? "";
 
-// {§provider-failure-cause} — what the SDK wrapped. "Failed to process successful response" is
+// {§provider-failure-normalization} — what the SDK wrapped. "Failed to process successful response" is
 // the SDK's one message for a body that terminated, a body that was not JSON, a body that failed
 // the response schema, and its own internal faults; the durable Problem keeps a bounded
 // classification of the cause so forensics can tell them apart. The SDK's parse and validation

@@ -13,7 +13,7 @@
 import type { ProviderAlias, ProviderSpec } from "./types.ts";
 import ConfigurationError from "@plurnk/plurnk-meta/configuration-error";
 
-// {§alias-base-url} PLURNK_BASEURL_<alias>: per-alias endpoint override, case-folded on the alias
+// {§alias-declaration} PLURNK_BASEURL_<alias>: per-alias endpoint override, case-folded on the alias
 // to match PLURNK_MODEL_<alias>. Lets two aliases on the same provider name target
 // different self-hosted boxes (openai/ollama), the one thing a per-name base-URL
 // var can't express.
@@ -41,7 +41,7 @@ export const parseAliasesFromEnv = (env: NodeJS.ProcessEnv = process.env): Provi
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined || value.length === 0) continue;
         if (!key.startsWith("PLURNK_MODEL_")) continue;
-        if (key === "PLURNK_MODEL_CHILD") continue; // {§alias-child-selector-reserved}
+        if (key === "PLURNK_MODEL_CHILD") continue; // {§alias-declaration}
         const aliasRaw = key.slice("PLURNK_MODEL_".length);
         if (aliasRaw.length === 0) continue;
         const slash = value.indexOf("/");
@@ -84,8 +84,8 @@ const configuredRoute = (env: NodeJS.ProcessEnv, key: "PLURNK_MODEL" | "PLURNK_M
     return route;
 };
 
-// {§alias-active-selector} PLURNK_MODEL selects a declared alias or an exact route.
+// {§alias-declaration} PLURNK_MODEL selects a declared alias or an exact route.
 export const resolveActiveRoute = (env: NodeJS.ProcessEnv = process.env): ProviderSpec | null => configuredRoute(env, "PLURNK_MODEL");
 
-// {§alias-resolve-child} PLURNK_MODEL_CHILD resolves the same vocabulary; absent means inherit.
+// {§alias-parse} PLURNK_MODEL_CHILD resolves the same vocabulary; absent means inherit.
 export const resolveChildRoute = (env: NodeJS.ProcessEnv = process.env): ProviderSpec | null => configuredRoute(env, "PLURNK_MODEL_CHILD");

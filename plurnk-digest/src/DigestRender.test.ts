@@ -19,8 +19,8 @@ test("{§share-packet-names}: readable requests retain roles, order and complete
 
 // {§execution-output-identity} — a spawn's row carries the environment it received; the waterfall names every
 // value's provenance so a run's commands can never be misread as having run under the host's shell.
-// {§provider-wire-emission} — an empty emission is read from what the wire carried.
-test("{§provider-wire-emission} the digest reads a blank emission from the wire record", () => {
+// {§provider-failure-normalization} — an empty emission is read from what the wire carried.
+test("{§provider-failure-normalization} the digest reads a blank emission from the wire record", () => {
     const line = DigestRender.wireLine({
         content: "", reasoning: "Let me read it.",
         wire: {

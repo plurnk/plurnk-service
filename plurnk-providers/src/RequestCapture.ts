@@ -1,6 +1,6 @@
 import type { ProviderRequestCapture } from "./types.ts";
 
-// {§provider-dispatched-request}: one fetch closure per physical request,
+// {§provider-interface}: one fetch closure per physical request,
 // without global interception or a second request identity.
 export default class RequestCapture {
     #request: ProviderRequestCapture | undefined;

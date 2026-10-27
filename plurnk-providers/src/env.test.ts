@@ -1,20 +1,12 @@
-import test from "node:test";
-import { strict as assert } from "node:assert";
-import {
-    scopeEnvToAlias,
-    dataCaptureFromEnv,
-    costOverrideFromEnv,
-    cacheAffinityFromEnv,
-    cacheWritePolicyFromEnv,
-    generationEnvelopeFromEnv,
-    resolveGenerationEnvelopeFromEnv,
-    parseRequiredInt,
-    parseOptionalInt,
-    parseTimeoutMs,
-    requireEnv,
-    effortFromEnv,
-    reasoningResponseStyleFromEnv,
-} from "./env.ts";
+import test, { mock } from "node:test";
+import assert from "node:assert/strict";
+import { scopeEnvToAlias, dataCaptureFromEnv, costOverrideFromEnv, cacheAffinityFromEnv, cacheWritePolicyFromEnv, generationEnvelopeFromEnv, resolveGenerationEnvelopeFromEnv, parseRequiredInt, parseOptionalInt, parseTimeoutMs, requireEnv, effortFromEnv, reasoningResponseStyleFromEnv } from "./env.ts";
+import { withProviderDefaults } from "./defaults.ts";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { lookupProvider } from "@plurnk/plurnk-models";
+import { adaptiveEffortFromEnv } from "./reasoning-effort.ts";
+import { emitWarningOnce, resetEmittedWarnings } from "./warnings.ts";
 
 test("{§provider-configuration} parseRequiredInt: parses a non-negative integer", () => {
     assert.equal(parseRequiredInt("600000", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), 600000);
@@ -27,7 +19,7 @@ test("{§provider-configuration} parseRequiredInt: rejects non-numeric, fraction
     assert.throws(() => parseRequiredInt("-1", "PLURNK_PROVIDERS_FETCH_TIMEOUT", "openai"), /must be a non-negative integer \(got "-1"\)/);
 });
 
-test("{§provider-connectivity} parseTimeoutMs accepts disabled deadlines and rejects timer overflow", () => {
+test("{§provider-failure-normalization} parseTimeoutMs accepts disabled deadlines and rejects timer overflow", () => {
     assert.equal(parseTimeoutMs("0", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 0);
     assert.equal(parseTimeoutMs("2147483647", "PLURNK_PROVIDERS_OPERATION_TIMEOUT", "openai"), 2_147_483_647);
     assert.throws(
@@ -57,7 +49,7 @@ test("{§provider-effort} effortFromEnv: durable policy is independent from an o
     assert.throws(() => effortFromEnv({ PLURNK_PROVIDERS_EFFORT: "8192" }, "openai"), /must be one of "off", "adaptive", "low", "medium", "high", "xhigh", "max"/);
 });
 
-test("{§provider-tagged-reasoning} response style is explicit and invalid values fail at the provider boundary", () => {
+test("{§provider-interface} response style is explicit and invalid values fail at the provider boundary", () => {
     assert.equal(reasoningResponseStyleFromEnv({}, "cloudflare-workers-ai"), "verbatim");
     assert.equal(reasoningResponseStyleFromEnv({
         PLURNK_PROVIDERS_REASONING_RESPONSE_STYLE: "think-tags",
@@ -70,13 +62,13 @@ test("{§provider-tagged-reasoning} response style is explicit and invalid value
     );
 });
 
-test("{§model-catalog-readiness} requireEnv: returns the value or throws a named error", () => {
+test("{§provider-configuration} requireEnv: returns the value or throws a named error", () => {
     assert.equal(requireEnv("sk-x", "OPENAI_API_KEY", "openai"), "sk-x");
     assert.throws(() => requireEnv(undefined, "GROQ_API_KEY", "groq"), /groq provider: GROQ_API_KEY must be set/);
     assert.throws(() => requireEnv("", "GROQ_API_KEY", "groq"), /must be set/);
 });
 
-test("{§provider-cache-write-policy} cache policy keeps cost-neutral affinity separate from paid cache writes", () => {
+test("{§provider-sdk-boundary} cache policy keeps cost-neutral affinity separate from paid cache writes", () => {
     assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "1" }, "openai"), true);
     assert.equal(cacheAffinityFromEnv({ PLURNK_PROVIDERS_CACHE_AFFINITY: "0" }, "openai"), false);
     assert.equal(cacheWritePolicyFromEnv({ PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system" }, "anthropic"), "stable-system");
@@ -155,7 +147,7 @@ test("{§provider-configuration} scopeEnvToAlias: aliases with underscores resol
     assert.equal(scopeEnvToAlias(env, "fallback").PLURNK_PROVIDERS_EFFORT, "off"); // collision guard
 });
 
-test("{§provider-evidence} dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
+test("{§provider-failure-normalization} dataCaptureFromEnv: both knobs OFF by default, ON when set (TOP_LOGPROBS = the OpenAI top_logprobs count)", async () => {
     assert.deepEqual(dataCaptureFromEnv({}, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_RAWBODY: "0" }, "x"), { topLogprobs: null, rawBody: false });
     assert.deepEqual(dataCaptureFromEnv({ PLURNK_PROVIDERS_TOP_LOGPROBS: "3", PLURNK_PROVIDERS_RAWBODY: "1" }, "x"), { topLogprobs: 3, rawBody: true });
@@ -188,7 +180,7 @@ test("{§provider-configuration} scopeEnvToAlias: a caller's knob list scopes on
     assert.equal(mixed.PLURNK_PROVIDERS_EFFORT, "off");
 });
 
-test("{§provider-evidence} capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
+test("{§provider-failure-normalization} capture knobs are per-alias scopable: enable on a scraping alias, serving alias stays clean", async () => {
     const env = {
         PLURNK_PROVIDERS_TOP_LOGPROBS_fireslow: "3",
         PLURNK_PROVIDERS_RAWBODY_fireslow: "1",
@@ -201,7 +193,6 @@ test("{§provider-evidence} capture knobs are per-alias scopable: enable on a sc
 // the shipped .env.defaults — set (the floor) or commented (documented optional).
 // The file IS the operator documentation; this keeps it from drifting off the code.
 test("{§provider-configuration} every PROVIDERS_KNOBS entry appears in the shipped .env.defaults", async () => {
-    const { readFileSync } = await import("node:fs");
     const { PROVIDERS_KNOBS } = await import("./env.ts");
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     const missing = PROVIDERS_KNOBS.filter((k) => !defaults.includes(k));
@@ -224,26 +215,24 @@ test("{§capability-policy-cascade} effort accepts only the exact portable durab
     }
 });
 
-test("{§model-fact-resolution} the shipped floor defers reasoning posture to the provider by default (adaptive)", async () => {
-    const { readFileSync } = await import("node:fs");
+test("{§model-fact-resolution} the shipped floor defers reasoning posture to the provider by default (adaptive)", () => {
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.ok(defaults.includes("PLURNK_PROVIDERS_EFFORT=adaptive"), "floor must ship EFFORT=adaptive");
     assert.ok(!defaults.match(/^PLURNK_PROVIDERS_REASONING_BUDGET=/m), "no shipped magnitude — provider-adaptive depth remains unpinned");
 });
 
-test("{§provider-generation-envelope} the shipped DRY floor is off and claims no universally safe shape", async () => {
-    const { readFileSync } = await import("node:fs");
+test("{§provider-configuration} the shipped DRY floor is off and claims no universally safe shape", () => {
     const defaults = readFileSync(new URL("../.env.defaults", import.meta.url), "utf8");
     assert.match(defaults, /^PLURNK_PROVIDERS_DRY_MULTIPLIER=0$/m, "a fidelity-corrupting sampler cannot be a portable floor");
     assert.doesNotMatch(defaults, /^PLURNK_PROVIDERS_DRY_BASE=/m);
     assert.doesNotMatch(defaults, /^PLURNK_PROVIDERS_DRY_ALLOWED_LENGTH=/m);
 });
 
-// -- {§provider-generation-envelope} --
+// -- {§provider-configuration} --
 
 const floor = { PLURNK_PROVIDERS_OUTPUT_FLOOR: "10%" } as const;
 
-test("{§provider-generation-envelope} generationEnvelopeFromEnv: output is total and reasoning is an optional subset", () => {
+test("{§provider-configuration} generationEnvelopeFromEnv: output is total and reasoning is an optional subset", () => {
     assert.deepEqual(
         generationEnvelopeFromEnv({
             ...floor,
@@ -272,7 +261,7 @@ test("{§provider-generation-envelope} generationEnvelopeFromEnv: output is tota
     );
 });
 
-test("{§provider-output-floor} PLURNK_PROVIDERS_OUTPUT_FLOOR parses like the output budget: percent or absolute, alias-scoped, required for a standard provider and optional for Mock", () => {
+test("{§provider-capacity-admission} PLURNK_PROVIDERS_OUTPUT_FLOOR parses like the output budget: percent or absolute, alias-scoped, required for a standard provider and optional for Mock", () => {
     const budget = { PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%" } as const;
     assert.equal(generationEnvelopeFromEnv({ ...budget, ...floor }, "x", 100_000, null).outputFloor, 10_000);
     assert.equal(generationEnvelopeFromEnv({ ...budget, PLURNK_PROVIDERS_OUTPUT_FLOOR: "2048" }, "x", 100_000, null).outputFloor, 2_048);
@@ -290,7 +279,7 @@ test("{§provider-output-floor} PLURNK_PROVIDERS_OUTPUT_FLOOR parses like the ou
     );
 });
 
-test("{§provider-output-floor} the floor resolves against the effective output ceiling and is capped by the output budget", () => {
+test("{§provider-capacity-admission} the floor resolves against the effective output ceiling and is capped by the output budget", () => {
     assert.deepEqual(
         generationEnvelopeFromEnv({ ...floor, PLURNK_PROVIDERS_OUTPUT_BUDGET: "1000" }, "x", 1_000_000, null),
         { outputBudget: 1_000, outputFloor: 1_000, reasoningBudget: null },
@@ -321,7 +310,7 @@ test("{§provider-configuration} envelope knobs are per-alias scopable (measured
     assert.deepEqual(generationEnvelopeFromEnv(scopeEnvToAlias(env, "jennifer"), "x", 100_000, null), { outputBudget: 35_000, outputFloor: 10_000, reasoningBudget: 10_000 });
 });
 
-test("{§operator-cost-override} costOverrideFromEnv parses the catalog vocabulary and refuses drift", () => {
+test("{§provider-monetary-evidence} costOverrideFromEnv parses the catalog vocabulary and refuses drift", () => {
     assert.equal(costOverrideFromEnv({}, "x"), null);
     assert.deepEqual(
         costOverrideFromEnv({ PLURNK_PROVIDERS_COST: "input=0.22, output=0.66,cacheRead=0.007" }, "x"),
@@ -335,3 +324,128 @@ test("{§operator-cost-override} costOverrideFromEnv parses the catalog vocabula
     const scoped = scopeEnvToAlias({ PLURNK_PROVIDERS_COST_deepdumb: "input=0.44,output=1.32" }, "deepdumb");
     assert.deepEqual(costOverrideFromEnv(scoped, "x"), { input: 0.44, output: 1.32 });
 });
+
+{
+test("{§provider-configuration} withProviderDefaults supplies the package-owned operational floor", () => {
+    const env = withProviderDefaults({});
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "1");
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "stable-system");
+    assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "2700000");
+    assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "600000");
+    assert.deepEqual(Object.keys(env).filter((key) => key.endsWith("_TIMEOUT")).toSorted(), [
+        "PLURNK_PROVIDERS_FETCH_TIMEOUT",
+        "PLURNK_PROVIDERS_OPERATION_TIMEOUT",
+    ]);
+    assert.equal(env.PLURNK_PROVIDERS_RETRY_ATTEMPTS, "3");
+    assert.equal(env.PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT, "512");
+});
+
+test("{§provider-configuration} withProviderDefaults preserves every explicit operator value", () => {
+    const env = withProviderDefaults({
+        PLURNK_PROVIDERS_CACHE_AFFINITY: "malformed",
+        PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "off",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "84",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT: "42",
+    });
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_AFFINITY, "malformed");
+    assert.equal(env.PLURNK_PROVIDERS_CACHE_WRITE_POLICY, "off");
+    assert.equal(env.PLURNK_PROVIDERS_OPERATION_TIMEOUT, "84");
+    assert.equal(env.PLURNK_PROVIDERS_FETCH_TIMEOUT, "42");
+});
+}
+
+{
+const defaultsPath = fileURLToPath(new URL("../.env.defaults", import.meta.url));
+const declarations = readFileSync(defaultsPath, "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .map((line) => /^([A-Z0-9_]+)=(.*)$/.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({ key: match[1], value: match[2] }));
+
+const providerFact = (key: string): { provider: string; fact: string } | null => {
+    const match = /^PLURNK_PROVIDERS_PROVIDER_([A-Z0-9_]+)_(NPM|BASE_URL|API_KEY_ENV)$/.exec(key);
+    return match === null ? null : { provider: match[1].toLowerCase(), fact: match[2] };
+};
+
+test("{§model-fact-resolution} package defaults never redefine cataloged provider facts", () => {
+    // (#459) the env prefix IS the Models.dev id, underscored; probe both spellings.
+    for (const { key, value } of declarations) {
+        const fact = providerFact(key);
+        if (fact === null) continue;
+        for (const candidate of new Set([fact.provider, fact.provider.replaceAll("_", "-")])) {
+            assert.equal(
+                lookupProvider(candidate),
+                null,
+                `package default '${key}=${value}' redefines a Models.dev-cataloged provider fact (${candidate})`,
+            );
+        }
+    }
+});
+
+test("{§model-fact-resolution} package defaults never ship ordered credential fallbacks", () => {
+    for (const { key, value } of declarations) {
+        if (!key.endsWith("_API_KEY_ENV")) continue;
+        assert.ok(
+            /^[A-Z0-9_]+$/.test(value),
+            `package default '${key}' must hold one exact environment name, got '${value}'`,
+        );
+    }
+});
+
+test("{§provider-request-authority} the shipped floor identifies the public Plurnk application", () => {
+    const values = new Map(declarations.map(({ key, value }) => [key, value]));
+    assert.equal(values.get("PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_URL"), "https://github.com/plurnk/plurnk-service");
+    assert.equal(values.get("PLURNK_PROVIDERS_PROVIDER_OPENROUTER_APP_NAME"), "Plurnk");
+    assert.equal([...values.keys()].some((key) => key.startsWith("OPENROUTER_")), false);
+});
+}
+
+{
+test("{§provider-effort} adaptive fallback has one environment owner and follows alias scoping", () => {
+    const env = withProviderDefaults({});
+    assert.equal(env.PLURNK_PROVIDERS_EFFORT_FALLBACK, "high");
+    assert.equal(adaptiveEffortFromEnv(env, ["low", "high", "xhigh", "max"]), "high");
+    assert.equal(adaptiveEffortFromEnv(env, ["low", "medium", "xhigh"]), undefined);
+    assert.equal(adaptiveEffortFromEnv(scopeEnvToAlias({
+        ...env, PLURNK_PROVIDERS_EFFORT_FALLBACK_sample: "medium",
+    }, "sample"), ["low", "medium", "high"]), "medium");
+    assert.equal(adaptiveEffortFromEnv(scopeEnvToAlias({
+        ...env, PLURNK_PROVIDERS_EFFORT_FALLBACK_sample: "",
+    }, "sample"), ["high"]), "high", "empty alias overrides inherit the bare knob");
+    assert.equal(adaptiveEffortFromEnv({
+        ...env, PLURNK_PROVIDERS_EFFORT_FALLBACK: "",
+    }, ["high"]), undefined);
+});
+
+test("{§provider-effort} missing or invalid fallback configuration fails by name", () => {
+    assert.throws(() => adaptiveEffortFromEnv({}, ["high"]), /PLURNK_PROVIDERS_EFFORT_FALLBACK must be set/);
+    for (const invalid of ["off", "adaptive", "minimal", "turbo"]) {
+        assert.throws(() => adaptiveEffortFromEnv({
+            PLURNK_PROVIDERS_EFFORT_FALLBACK: invalid,
+        }, ["high"]), /PLURNK_PROVIDERS_EFFORT_FALLBACK must be empty or one of low, medium, high, xhigh, max/);
+    }
+});
+}
+
+{
+test.afterEach(() => { mock.restoreAll(); resetEmittedWarnings(); });
+
+test("{§provider-capacity-admission} same (code, message) fires once per process", () => {
+    const seen: string[] = [];
+    mock.method(process, "emitWarning", (msg: string | Error) => { seen.push(String(msg)); });
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    assert.deepEqual(seen, ["openai provider: estimate"]);
+});
+
+test("{§provider-capacity-admission} dedup is by (code, MESSAGE), not code — a second provider's surfacing is never suppressed", () => {
+    const seen: string[] = [];
+    mock.method(process, "emitWarning", (msg: string | Error) => { seen.push(String(msg)); });
+    emitWarningOnce("openai provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE");
+    emitWarningOnce("groq provider: estimate", "PLURNK_PROMPT_COUNT_ESTIMATE"); // same code, different provider
+    assert.deepEqual(seen, ["openai provider: estimate", "groq provider: estimate"]);
+});
+}

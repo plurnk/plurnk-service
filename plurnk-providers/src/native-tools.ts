@@ -3,7 +3,7 @@ import { outboundFetch } from "@plurnk/plurnk-meta";
 
 type ToolProtocol = "openai" | "messages" | "generate-content";
 
-// {§provider-native-tools-disabled} The SDK omits an empty tool set and its
+// {§provider-interface} The SDK omits an empty tool set and its
 // choice. Project the invariant after serialization, using protocol fields only.
 export const withoutNativeTools = (
     body: Record<string, unknown>,

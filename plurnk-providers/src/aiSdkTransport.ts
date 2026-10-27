@@ -41,7 +41,7 @@ export const retryDirective = (
     return null;
 };
 
-// {§provider-connectivity} (#479): a Retry-After header on any status is the
+// {§provider-failure-normalization} (#479): a Retry-After header on any status is the
 // provider directing a wait (RFC 9110 defines it on 503 exactly for this);
 // its presence, like a bare 429, earns the bounded transport retry.
 export const retryAfterPresent = (
@@ -175,7 +175,7 @@ const wireUsageOf = (
     return undefined;
 };
 
-// {§provider-usage-refusal} — the provider's bookkeeping is not the exchange.
+// {§provider-failure-normalization} — the provider's bookkeeping is not the exchange.
 // invalid details do not erase valid aggregates; contradictory aggregates remain unknown.
 // The original counters ride beside the refusal, never clamped or replaced.
 type UsageRefusal = { readonly reason: string; readonly usage: unknown };
@@ -212,9 +212,9 @@ const wireChargeEvidenceOf = (values: readonly unknown[]): unknown => {
     return undefined;
 };
 
-// {§provider-finish-reason} The unified classification is the finish reason; the raw vendor
+// {§provider-interface} The unified classification is the finish reason; the raw vendor
 // value is evidence beside it. One upstream semantic folded into `other` stays distinct: an exact
-// `insufficient_system_resource` is a resource interruption ({§provider-interrupted-attempt}).
+// `insufficient_system_resource` is a resource interruption ({§provider-failure-normalization}).
 const finishReasonOf = (unified: string | undefined, raw: string | undefined): ProviderAttemptFinishReason => {
     if (raw === "insufficient_system_resource") return "resource_interrupted";
     switch (unified) {
@@ -255,7 +255,7 @@ export type AiSdkTransportRequest = {
     observeText?: (delta: string) => void;
 };
 
-// {§provider-wire-emission} — what the wire carried, every channel, kept on every response.
+// {§provider-failure-normalization} — what the wire carried, every channel, kept on every response.
 type WireEmission = {
     // Raw chunks seen (one for an unstreamed body).
     readonly chunks: number;
@@ -325,7 +325,7 @@ const retainStreamFailureValues = <T extends object>(source: unknown, target: T)
     return target;
 };
 
-// {§provider-cancellation-evidence} (#971) — evidence is keyed by the failure object, so the object
+// {§provider-failure-normalization} (#971) — evidence is keyed by the failure object, so the object
 // must be this request's own. A caller's abort reason is shared by every request on that signal (the
 // SDK rejects each with the reason itself), so it is wrapped per request before anything is keyed on it.
 const preserveStreamFailure = (
@@ -372,7 +372,7 @@ export const normalizeRetryAttemptError = (error: unknown): unknown => {
         return error;
     }
     const directed = retryDirective(error.statusCode, error.responseHeaders ?? {});
-    // {§provider-connectivity} (#479): without an explicit directive the only
+    // {§provider-failure-normalization} (#479): without an explicit directive the only
     // transport-retryable failures are the provider-directed waits — a 429, or
     // any status carrying Retry-After; those live in headers the engine never
     // sees. Every other failure — a bare 408/409/5xx, a network error, and the
@@ -463,7 +463,7 @@ const executeModelOnce = async (
             ? systemProviderOptions
             : undefined,
     }));
-    // {§provider-input-modalities} — user and assistant messages in the SDK's own shape: a user message
+    // {§provider-interface} — user and assistant messages in the SDK's own shape: a user message
     // may be parts (text beside native files distinguished by media type); every other role is text.
     const conversation: LanguageModelPromptMessage[] = request.messages.slice(instructionCount).map((message): LanguageModelPromptMessage => {
         if (message.role === "user") {
@@ -489,7 +489,7 @@ const executeModelOnce = async (
             ? conversation
             : [{ role: "user" as const, content: [{ type: "text" as const, text: "" }], providerOptions: undefined }]),
     ];
-    // {§provider-native-tool-calls} — requests pass toolChoice: { type: "none" } ({§provider-native-tools-disabled}),
+    // {§provider-failure-normalization} — requests pass toolChoice: { type: "none" } ({§provider-interface}),
     // and raw wire tool_calls plus finishReason are preserved on the response without aborting the completed exchange.
     const callOptions: LanguageModelCallOptions = {
         prompt,
@@ -1691,7 +1691,7 @@ export const transportFailureEvidence = (
 
 const RETAINED_FIELDS = new Set(["content", "reasoning_content", "reasoning", "thinking", "role"]);
 
-// {§provider-wire-emission} — the emission as the wire carried it: field counts, chunks that
+// {§provider-failure-normalization} — the emission as the wire carried it: field counts, chunks that
 // carried nothing, merged tool calls, and the verbatim text of every channel the normalized record
 // does not already hold. A blank emission is then readable instead of guessed at.
 const wireEmissionOf = (values: readonly unknown[]): WireEmission => {

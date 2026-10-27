@@ -13,7 +13,7 @@ Ordinary provider behavior is intentionally not reimplemented here:
   evidence capture, first-party metadata, and local endpoint capabilities.
 
 Native tool calling is explicitly disabled through each protocol's standard
-controls; PLURNK operations travel as text ({§provider-native-tools-disabled}).
+controls; PLURNK operations travel as text ({§provider-interface}).
 
 See [SPEC.md](SPEC.md) for the contract, [the model reference](docs/models.md)
 for what a model is told about routes and generation, and
@@ -32,7 +32,7 @@ router fee; incomplete billing evidence remains unknown ({§provider-monetary-ev
 
 Browser and edge Sessions import accounting and normalized failures through
 their dedicated runtime-neutral subpaths
-({§provider-runtime-neutral-accounting}, {§provider-runtime-neutral-errors}):
+({§provider-interface}, {§provider-interface}):
 
 ```js
 import {
@@ -97,7 +97,7 @@ Sampling uses endpoint defaults unless configured. `TEMPERATURE`, `TOP_P`,
 `TOP_K`, `PRESENCE_PENALTY`, `FREQUENCY_PENALTY`, and `SEED` use the same
 `PLURNK_PROVIDERS_<KNOB>_<alias>` form. Supported values depend on the endpoint;
 Models.dev does not supply a recommended sampling profile. See the
-[sampling contract](SPEC.md) ({§provider-sampling-passthrough}) and
+[sampling contract](SPEC.md) ({§provider-configuration}) and
 [environment panel](.env.defaults) for ranges and omission rules.
 
 ## Capacity and reasoning
@@ -121,7 +121,7 @@ flowchart TD
   response room any request keeps, never above the output budget. The window less
   the floor is the input wall: a packet past the budget is still sent with its
   grant flexed down to the remainder; only a packet past the wall cannot be sent
-  ({§provider-output-floor}).
+  ({§provider-capacity-admission}).
 - **Context** is derived from the live endpoint or catalog. An operator cap can
   shrink known capacity or declare unknown capacity, never enlarge known limits.
   Prompt projection and initialization reasoning READ limits are separate Core policy.

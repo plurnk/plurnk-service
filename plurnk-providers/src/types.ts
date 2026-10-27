@@ -206,7 +206,7 @@ export class UnsupportedEffortError extends Error {
     }
 }
 
-// {§provider-input-modalities} — the native non-text inputs a route's model accepts, in the
+// {§provider-interface} — the native non-text inputs a route's model accepts, in the
 // catalog's vocabulary (Models.dev `modalities.input` minus `text`).
 export type InputModality = "image" | "pdf" | "audio" | "video";
 export const INPUT_MODALITIES: readonly InputModality[] = Object.freeze(["image", "pdf", "audio", "video"]);
@@ -226,7 +226,7 @@ export const chatMessageText = (message: Pick<ChatMessage, "content">): string =
         ? message.content
         : message.content.map((part) => part.type === "text" ? part.text : "").join("");
 
-// {§provider-call-kind} The caller-owned semantic contract for one logical model call. Providers do
+// {§provider-interface} The caller-owned semantic contract for one logical model call. Providers do
 // not infer this from messages or grammar presence: an emission expects PLURNK
 // output, while a bare call expects unconstrained response text.
 export type ProviderCallKind = "emission" | "bare";
@@ -262,7 +262,7 @@ export interface ProviderRequestCapacity {
     readonly maxInputTokens: number | null;
     readonly maxOutputTokens: number | null;
     readonly outputBudget: number | null;
-    // {§provider-output-floor}: the least response room this request keeps; never above outputBudget.
+    // {§provider-capacity-admission}: the least response room this request keeps; never above outputBudget.
     readonly outputFloor: number | null;
     readonly reasoningBudget: number | null;
     // {§provider-capacity-admission}: the curation reservation's line (maxInputTokens and
@@ -270,7 +270,7 @@ export interface ProviderRequestCapacity {
     // the decision was taken against.
     readonly inputCapacity: number | null;
     readonly inputWall: number | null;
-    // {§provider-flexed-allowance}: the response allowance actually granted this
+    // {§provider-capacity-admission}: the response allowance actually granted this
     // request — the window's remainder, between the floor and the model's limit.
     readonly responseMax: number | null;
     readonly prompt: PromptTokenMeasurement;
@@ -300,7 +300,7 @@ export type ProviderCostNormalizer = (
     evidence: ProviderChargeEvidence,
 ) => ProviderCost | undefined;
 
-// {§provider-reasoning-observer} Transient readable-reasoning observation. The completed ProviderResponse is
+// {§provider-interface} Transient readable-reasoning observation. The completed ProviderResponse is
 // still the sole authoritative value; this callback exposes exact, ordered,
 // nonempty deltas early enough for an attached client to render them live.
 export type ProviderReasoningObserver = (delta: string) => void;
@@ -310,7 +310,7 @@ export type ProviderReasoningObserver = (delta: string) => void;
 export type FinishReason = "stop" | "length" | "tool_calls" | "content_filter" | null;
 export type ProviderAttemptFinishReason = FinishReason | "resource_interrupted" | "error";
 
-// {§provider-evidence} A per-token logprob. `logprob` is the backend's raw model
+// {§provider-failure-normalization} A per-token logprob. `logprob` is the backend's raw model
 // log-probability of the emitted token — the sampling-transform-invariant
 // confidence, chosen over Fireworks' post-mask `sampling_logprob` (measured
 // IDENTICAL under grammar, incl. an adversarial mask; the raw value is the honest
@@ -333,7 +333,7 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly reasoning: string | null;
     readonly finishReason: TFinish;
     readonly model: string;
-    // {§provider-native-tool-calls}: unexecuted structured calls, independently of the finish reason.
+    // {§provider-failure-normalization}: unexecuted structured calls, independently of the finish reason.
     readonly nativeToolCalls?: boolean;
     // Per-token logprobs, present only when PLURNK_PROVIDERS_TOP_LOGPROBS is set
     // AND the backend returned them. Absent otherwise — NEVER synthesized. Opt-in,
@@ -343,7 +343,7 @@ export interface ProviderAssistant<TFinish extends ProviderAttemptFinishReason =
     readonly meanLogprob?: number;
 }
 
-// {§provider-grammar-transport} — transport evidence for an operator's grammar: the exact
+// {§provider-request-authority} — transport evidence for an operator's grammar: the exact
 // pre-projection response, where the projected content starts within it, and whether the
 // grammar reached the wire. Evidence only; nothing grades it.
 export interface GrammarEvidence {
@@ -352,7 +352,7 @@ export interface GrammarEvidence {
     readonly transported: boolean;
 }
 
-// {§provider-dispatched-request}: body bytes after SDK serialization and owned
+// {§provider-interface}: body bytes after SDK serialization and owned
 // transforms. Origin deliberately excludes userinfo, path, query and fragment.
 export interface ProviderRequestCapture {
     readonly method: string;
@@ -367,7 +367,7 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     // failover that preceded this response. {§provider-request-accounting}
     readonly accounting: readonly ProviderRequestAccounting[];
     readonly capacity: ProviderRequestCapacity;
-    // {§provider-grammar-transport} — transport evidence; present only when a grammar was configured.
+    // {§provider-request-authority} — transport evidence; present only when a grammar was configured.
     readonly grammarEvidence?: GrammarEvidence;
     // Per-turn provider→client metadata bag: the backend's non-standard top-level
     // response fields passed through verbatim. Monetary values carry their own
@@ -376,7 +376,7 @@ export interface ProviderResponse<TFinish extends ProviderAttemptFinishReason = 
     // filters what reaches the client; it reads `meta`, never mines `assistantRaw`.
     // Absent when the backend reported no extra fields.
     readonly meta?: Record<string, unknown>;
-    // The verbatim backend response body ({§provider-evidence}) — the full wire JSON for
+    // The verbatim backend response body ({§provider-failure-normalization}) — the full wire JSON for
     // a non-streamed turn, or the reassembled equivalent for a streamed one.
     // `assistantRaw` is a normalized DIGEST (it drops choices[]); this is the
     // capture-everything record for the endpoint's fine-tune corpus. Present ONLY
@@ -414,7 +414,7 @@ export interface Provider {
     // `grammar` is an optional GBNF string, the operator's own file read by the consumer.
     // Backends that support grammar-constrained sampling attach it verbatim; all others
     // ignore it. The provider never chooses or modifies the grammar
-    // ({§provider-grammar-transport}).
+    // ({§provider-request-authority}).
     //
     // `maxOutputTokens` may tighten the provider's configured total output
     // budget for this call. It includes visible output and hidden reasoning;
@@ -446,15 +446,15 @@ export interface Provider {
     readonly maxInputTokens: number | null;
     readonly maxOutputTokens: number | null;
     readonly outputBudget: number | null;
-    // {§provider-output-floor}: the least response room any request keeps; never above outputBudget.
+    // {§provider-capacity-admission}: the least response room any request keeps; never above outputBudget.
     readonly outputFloor: number | null;
     readonly reasoningBudget: number | null;
     // Exact durable policies this adapter can represent without coercion.
     readonly supportedEfforts: readonly Effort[];
-    // {§provider-input-modalities} — the native non-text parts the route's model accepts.
+    // {§provider-interface} — the native non-text parts the route's model accepts.
     readonly inputModalities: ReadonlySet<InputModality>;
     // {§provider-capacity-admission}: the reservation's line Core packs the room against, and the
-    // physical input wall ({§provider-output-floor}) that ends a loop; null when the limits
+    // physical input wall ({§provider-capacity-admission}) that ends a loop; null when the limits
     // cannot establish one.
     readonly inputCapacity: number | null;
     readonly inputWall: number | null;
@@ -473,7 +473,7 @@ export interface Provider {
     // Optional resolved capability: true when this backend decodes
     // UNBOUNDED absent a caller cap — llama-server honors n_predict to the
     // context wall (observed in a 30,736-junk-token wall run), so a consumer
-    // MUST bring an output envelope ({§provider-generation-envelope}). Cloud backends that silently
+    // MUST bring an output envelope ({§provider-configuration}). Cloud backends that silently
     // clamp an over-ask (fireworks/xai, verified live) never set this; undefined
     // = no claim. Introspectable so a consumer can refuse AT BOOT a local alias
     // with no declared envelope, instead of dying mid-turn in partition math.

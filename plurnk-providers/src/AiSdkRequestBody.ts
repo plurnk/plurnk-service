@@ -41,7 +41,7 @@ const MANUAL_REASONING_MINIMUM = 1024;
 // Body keys the provider owns — a caller's `sampling` passthrough may not set
 // these. Two families:
 //   transport/managed — grammar transport, the stream/JSON choice, slot pinning,
-//     data capture ({§provider-evidence}: backend-specific fields never cross the contract);
+//     data capture ({§provider-failure-normalization}: backend-specific fields never cross the contract);
 //   contract invariants — `n` (atomic single completion: choices[0] is the
 //     response; n>1 = paid, dropped output), the tool-calling family (tools-in-
 //     body doctrine, §2: native tool_calls return null content = a broken turn),
@@ -121,7 +121,7 @@ export default class AiSdkRequestBody {
 
     // Reasoning activation and allowance are independent of grammar transport;
     // only the response representation becomes lossless when evidence is needed.
-    // The llama-server template mapping is owned by {§llama-reasoning-request}.
+    // The llama-server template mapping is owned by {§provider-effort}.
     reasoningBody(
         preserveGrammarSentence = false,
         reasoningBudget = this.#reasoningBudget,
@@ -154,13 +154,13 @@ export default class AiSdkRequestBody {
     // bookkeeping so a long-lived daemon never grows the map unboundedly —
     // an evicted-and-returning run simply re-pins, worst case one cold prefill.
 
-    // Optional local llama-server GBNF transport ({§provider-grammar-transport}). Unsupported
+    // Optional local llama-server GBNF transport ({§provider-request-authority}). Unsupported
     // backends receive no grammar-related field.
     grammarBody(grammar: string | undefined): Record<string, unknown> {
         if (grammar === undefined) return {};
         switch (this.#grammarStyle) {
             // Grammar-constrained decoding can loop under the mask; a configured
-            // per-alias repeat_penalty is the measured remedy ({§provider-sampling-passthrough}).
+            // per-alias repeat_penalty is the measured remedy ({§provider-configuration}).
             case "llamacpp": return { grammar, ...(this.#repeatPenalty !== null ? { repeat_penalty: this.#repeatPenalty } : {}) };
             case "none": return {};
         }
@@ -239,7 +239,7 @@ export default class AiSdkRequestBody {
                     : undefined
             : undefined;
         const options: AiSdkProviderOptions = {};
-        // {§provider-request-controls} — the deployment's controls ride every native request, beside
+        // {§provider-request-authority} — the deployment's controls ride every native request, beside
         // whatever reasoning shape the route or its declared fields chose.
         for (const part of [...(declaredOptions === undefined ? [responseOptions, adaptiveOptions, nativeReasoning] : [declaredOptions]), this.#controlOptions]) {
             for (const [provider, values] of Object.entries(part ?? {})) {

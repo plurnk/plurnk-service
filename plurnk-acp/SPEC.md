@@ -207,7 +207,7 @@ is `"link"`, `agent_thought_chunk` carries a `resource_link` content block point
 other than `"inline"` or `"link"` fails with `400 reasoning-invalid`.
 
 - §acp-encrypted-reasoning **The encrypted-reasoning interface is not implemented.** Plurnk emits
-  and stores no encrypted reasoning bytes ({§provider-open-reasoning}).
+  and stores no encrypted reasoning bytes ({§provider-failure-normalization}).
 - §acp-plurnk-metadata **Plurnk facts ride standard `_meta.plurnk`.** Every standard ACP v2
   response and `session/update` notification carries its Plurnk provenance in `_meta.plurnk` without
   inventing custom `sessionUpdate` types:

@@ -582,7 +582,7 @@ QUOTE : { this.atLineStart() && this.quotationHere() }? (FENCE NAME? | '~~~' '~'
 // {§fence-pairing} - a fence opening no operation is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
-// {§provider-tagged-reasoning} - a route that delivers reasoning inline declares it, and the
+// {§provider-interface} - a route that delivers reasoning inline declares it, and the
 // provider peels that one leading envelope. Here a reasoning tag is prose: no rule in this mode
 // crosses a line start unanchored, so no substring found in text can re-read the program after it.
 TEXT_RUN : { !this.nakedHeadingHere() }? ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;

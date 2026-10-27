@@ -17,7 +17,7 @@ test("{§alias-declaration} parseAliasesFromEnv: extracts PLURNK_MODEL_<alias>=<
     assert.deepEqual(opus, { alias: "opus", provider: "openrouter", model: "anthropic/claude-opus-latest" });
 });
 
-test("{§alias-case-folding} parseAliasesFromEnv: lowercases alias key", () => {
+test("{§alias-declaration} parseAliasesFromEnv: lowercases alias key", () => {
     const env = { PLURNK_MODEL_GEMMA: "openai/macher.gguf" } as NodeJS.ProcessEnv;
     const aliases = parseAliasesFromEnv(env);
     assert.equal(aliases[0].alias, "gemma");
@@ -33,7 +33,7 @@ test("{§alias-parse} parseAliasesFromEnv: skips empty values", () => {
     assert.deepEqual(parseAliasesFromEnv(env), []);
 });
 
-test("{§alias-child-selector-reserved} parseAliasesFromEnv: PLURNK_MODEL_CHILD is a selector, not an alias declaration", () => {
+test("{§alias-declaration} parseAliasesFromEnv: PLURNK_MODEL_CHILD is a selector, not an alias declaration", () => {
     const env = {
         PLURNK_MODEL_child: "openai/small",
         PLURNK_MODEL_CHILD: "openai/other",
@@ -50,7 +50,7 @@ test("{§alias-declaration} parseAliasesFromEnv: tri-level value with multiple s
     assert.equal(alias.model, "anthropic/claude/3.5");
 });
 
-test("{§alias-case-collisions} parseAliasesFromEnv: fails hard on case-folding alias collision", () => {
+test("{§alias-parse} parseAliasesFromEnv: fails hard on case-folding alias collision", () => {
     const env = {
         PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus",
         PLURNK_MODEL_OPUS: "anthropic/claude-opus-latest",
@@ -58,7 +58,7 @@ test("{§alias-case-collisions} parseAliasesFromEnv: fails hard on case-folding 
     assert.throws(() => parseAliasesFromEnv(env), /Duplicate provider alias "opus"/);
 });
 
-test("{§alias-case-collisions} parseAliasesFromEnv: PLURNK_BASEURL_<alias> attaches a per-alias endpoint override (case-folded)", () => {
+test("{§alias-parse} parseAliasesFromEnv: PLURNK_BASEURL_<alias> attaches a per-alias endpoint override (case-folded)", () => {
     const env = {
         PLURNK_MODEL_HAZEL1: "openai/qwen2.5-coder",
         PLURNK_BASEURL_HAZEL1: "http://hazel1:8080/v1",
@@ -71,7 +71,7 @@ test("{§alias-case-collisions} parseAliasesFromEnv: PLURNK_BASEURL_<alias> atta
 
 for (const sameValue of [false, true]) {
     for (const keys of [["PLURNK_BASEURL_demo", "PLURNK_BASEURL_DEMO"], ["PLURNK_BASEURL_DEMO", "PLURNK_BASEURL_demo"]]) {
-        test(`{§alias-case-collisions} endpoint overrides reject ${keys.join(" / ")} with ${sameValue ? "identical" : "different"} values`, () => {
+        test(`{§alias-parse} endpoint overrides reject ${keys.join(" / ")} with ${sameValue ? "identical" : "different"} values`, () => {
             const env = {
                 PLURNK_MODEL_demo: "openai/fixture",
                 [keys[0]]: "http://127.0.0.1:8001/v1",
@@ -86,12 +86,12 @@ for (const sameValue of [false, true]) {
     }
 }
 
-test("{§alias-dangling-override} parseAliasesFromEnv: a PLURNK_BASEURL_* override with no matching alias fails hard", () => {
+test("{§alias-parse} parseAliasesFromEnv: a PLURNK_BASEURL_* override with no matching alias fails hard", () => {
     const env = { PLURNK_MODEL_a: "openai/m", PLURNK_BASEURL_typo: "http://nope" } as NodeJS.ProcessEnv;
     assert.throws(() => parseAliasesFromEnv(env), /PLURNK_BASEURL_\* override\(s\) with no matching PLURNK_MODEL_\* alias: typo/);
 });
 
-test("{§alias-unresolved-selector} configured selectors diagnose their own key; exact routes do not depend on the alias catalog", () => {
+test("{§alias-parse} configured selectors diagnose their own key; exact routes do not depend on the alias catalog", () => {
     for (const [resolve, key] of [[resolveActiveRoute, "PLURNK_MODEL"], [resolveChildRoute, "PLURNK_MODEL_CHILD"]] as const) {
         assert.throws(() => resolve({ [key]: "missing" }), { name: "ConfigurationError", key });
         const env = { [key]: "openai/direct", PLURNK_BASEURL_orphan: "http://localhost/v1" };
@@ -102,12 +102,12 @@ test("{§alias-unresolved-selector} configured selectors diagnose their own key;
     assert.throws(() => resolveChildRoute({ PLURNK_MODEL_CHILD: "" }), { name: "ConfigurationError", key: "PLURNK_MODEL_CHILD" });
 });
 
-test("{§alias-resolve-active} resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
+test("{§alias-parse} resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
     const env = { PLURNK_MODEL_gemma: "openai/macher.gguf" } as NodeJS.ProcessEnv;
     assert.equal(resolveActiveRoute(env), null);
 });
 
-test("{§alias-unresolved-selector} resolveActiveRoute: an explicit unknown selector fails hard", () => {
+test("{§alias-parse} resolveActiveRoute: an explicit unknown selector fails hard", () => {
     const env = {
         PLURNK_MODEL: "missing",
         PLURNK_MODEL_gemma: "openai/macher.gguf",
@@ -115,7 +115,7 @@ test("{§alias-unresolved-selector} resolveActiveRoute: an explicit unknown sele
     assert.throws(() => resolveActiveRoute(env), /neither a declared alias nor a provider\/model route/);
 });
 
-test("{§alias-resolve-active} resolveActiveRoute: matches alias case-insensitively and retains its tuning scope", () => {
+test("{§alias-parse} resolveActiveRoute: matches alias case-insensitively and retains its tuning scope", () => {
     const env = {
         PLURNK_MODEL: "GEMMA",
         PLURNK_MODEL_gemma: "openai/macher.gguf",
@@ -124,7 +124,7 @@ test("{§alias-resolve-active} resolveActiveRoute: matches alias case-insensitiv
     assert.equal(active?.alias, "gemma");
 });
 
-test("{§alias-resolve-active} resolveActiveRoute: accepts an exact provider/model route without manufacturing an alias", () => {
+test("{§alias-parse} resolveActiveRoute: accepts an exact provider/model route without manufacturing an alias", () => {
     const active = resolveActiveRoute({
         PLURNK_MODEL: "openrouter/anthropic/claude-sonnet-4",
     });
@@ -134,7 +134,7 @@ test("{§alias-resolve-active} resolveActiveRoute: accepts an exact provider/mod
     });
 });
 
-test("{§alias-resolve-selector} resolveModelSelector: one vocabulary resolves aliases and exact routes", () => {
+test("{§alias-parse} resolveModelSelector: one vocabulary resolves aliases and exact routes", () => {
     const aliases = parseAliasesFromEnv({ PLURNK_MODEL_fast: "google/gemini-3-flash" });
     assert.deepEqual(resolveModelSelector("fast", aliases), aliases[0]);
     assert.deepEqual(resolveModelSelector("google/gemini-3-pro", aliases), {

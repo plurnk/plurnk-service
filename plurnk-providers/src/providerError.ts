@@ -33,7 +33,7 @@ const defaultStatus = (kind: ProviderErrorKind): number => {
     }
 };
 
-// {§provider-retryable-truth} The kinds whose identical request the consumer re-issues. The Problem's
+// {§provider-failure-normalization} The kinds whose identical request the consumer re-issues. The Problem's
 // `retryable` is exactly membership here, and the consumer's recovery reads this same set, so the
 // flag can never disagree with what happens next.
 export const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set<ProviderErrorKind>([

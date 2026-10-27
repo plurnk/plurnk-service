@@ -1467,7 +1467,7 @@ export default class TurnRunner {
         attempts.recoveryFailures += 1;
         const failure = TurnRunner.#providerFailure(error, attempts.signal);
         if (error.attempt !== undefined) {
-            // {§provider-interrupted-attempt} — the interrupted response stays durable
+            // {§provider-failure-normalization} — the interrupted response stays durable
             // as an unaccepted attempt; it is never admitted or replayed.
             await modelCall.observeResponse(error.attempt, failure, attempts.wire.nativeInputs);
             await this.#classifyProviderAttempt(attempts, attemptId, this.#splitResponse(error.attempt, this.#executors()?.availableRuntimes(workspaceId) ?? [], attempts.wellFormed), attempts.currentEmissionAttempt, false);
@@ -1526,7 +1526,7 @@ export default class TurnRunner {
         const { turnId } = request;
         const failure = TurnRunner.#providerFailure(err, attempts.signal);
         const capacityFailure = err instanceof ProviderError && err.kind === "capacity_exceeded";
-        // {§provider-interrupted-attempt} — a provider-declared interruption
+        // {§provider-failure-normalization} — a provider-declared interruption
         // carries response evidence without becoming a completed exchange.
         // Persist it as an unaccepted attempt before settling the failure.
         if (err instanceof ProviderError && err.attempt !== undefined) {
@@ -1586,7 +1586,7 @@ export default class TurnRunner {
         }
         if (err instanceof ProviderError && (err.kind === "invalid_response" || err.kind === "generation_failed")) {
             // {§engine-rails} Contract Strikes: the provider violated its response contract, or
-            // ended generation with an error ({§provider-generation-failed}). The failure is durable
+            // ended generation with an error ({§provider-failure-normalization}). The failure is durable
             // and the turn is complete; the strike rail — never an instant loop death — rules whether
             // the streak ends it.
             return turnResult(request, recorded.result.status, {

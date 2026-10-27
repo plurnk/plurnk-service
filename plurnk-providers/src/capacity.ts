@@ -54,7 +54,7 @@ export const effectiveReasoningBudget = ({
     return Math.min(configured, outputBudget - 1);
 };
 
-// {§provider-output-floor}: the floor is never above the output budget, so a
+// {§provider-capacity-admission}: the floor is never above the output budget, so a
 // call that tightens the budget below the configured floor tightens the floor
 // with it.
 export const effectiveOutputFloor = ({
@@ -98,7 +98,7 @@ export const effectiveInputCapacity = ({
     return capacities.length === 0 ? null : Math.min(...capacities);
 };
 
-// {§provider-output-floor}: the input wall is every known physical input
+// {§provider-capacity-admission}: the input wall is every known physical input
 // constraint intersected — independent maxInputTokens and the window less the
 // output floor. Null when neither is known.
 export const effectiveInputWall = ({
@@ -128,10 +128,10 @@ export const effectiveInputWall = ({
     return walls.length === 0 ? null : Math.min(...walls);
 };
 
-// {§provider-flexed-allowance}: the wire margin kept between the measured prompt and the grant.
+// {§provider-capacity-admission}: the wire margin kept between the measured prompt and the grant.
 export const WIRE_FLEX_MARGIN = 256;
 
-// {§provider-flexed-allowance}: the grant is the window's remainder after the
+// {§provider-capacity-admission}: the grant is the window's remainder after the
 // prompt and the margin. An exact prompt takes the remainder itself, clamped
 // between the floor and the model's own output limit — above the reservation
 // when the prompt left room, down to the floor when it ate into the

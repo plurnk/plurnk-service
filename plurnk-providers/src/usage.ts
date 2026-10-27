@@ -46,7 +46,7 @@ const nonEmptyDetails = <T extends Record<string, number | undefined>>(details: 
     return entries.length === 0 ? undefined : Object.fromEntries(entries) as T;
 };
 
-// {§provider-usage-refusal}: strict normalization still refuses invalid details,
+// {§provider-failure-normalization}: strict normalization still refuses invalid details,
 // but the transport can retain the independently validated quantities.
 export class UsageDetailError extends TypeError {
     readonly usage: ProviderUsage;

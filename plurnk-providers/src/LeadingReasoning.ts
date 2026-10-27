@@ -1,6 +1,6 @@
 export type ReasoningEnvelope = readonly [opening: string, closing: string];
 
-// {§provider-tagged-reasoning} One leading envelope, shared by incremental
+// {§provider-interface} One leading envelope, shared by incremental
 // observation and settled response projection. Only an undecided delimiter is held.
 export default class LeadingReasoning {
     static readonly THINK: readonly ReasoningEnvelope[] = [["<think>", "</think>"]];

@@ -57,7 +57,7 @@ const parseOptionalSafeInt = (raw: string | undefined, name: string, label: stri
     return n;
 };
 
-// {§provider-sampling-passthrough} Both provider factories read the same tuning surface.
+// {§provider-configuration} Both provider factories read the same tuning surface.
 export interface SamplingFromEnv {
     readonly temperature: number | null;
     readonly topP: number | undefined;
@@ -118,7 +118,7 @@ export const cacheWritePolicyFromEnv = (env: NodeJS.ProcessEnv, label: string): 
     return value;
 };
 
-// {§provider-evidence} Data-capture knobs are read identically by every provider
+// {§provider-failure-normalization} Data-capture knobs are read identically by every provider
 // (standard AND
 // extension) so the opt-in surface is one source of truth. Both OFF by default —
 // the flag is the isolation, so serving turns request and carry nothing.
@@ -154,7 +154,7 @@ export function effectiveContextWindow(operatorCap: number | null, naturalWindow
             : Math.min(operatorCap, naturalWindow);
 }
 
-// {§provider-generation-envelope} Generation has one total output budget. An
+// {§provider-configuration} Generation has one total output budget. An
 // optional reasoning budget is a subset, never an additive second reserve.
 // Percentages are of the effective context window; absolutes remain useful for
 // measured local deployments. Physical model limits always cap operator policy.
@@ -184,7 +184,7 @@ export const resolveTokenBudget = (spec: TokenBudgetSpec, window: number | null)
 
 export type GenerationEnvelope = {
     readonly outputBudget: number | null;
-    // {§provider-output-floor}: the least response room any request keeps; never above the output budget.
+    // {§provider-capacity-admission}: the least response room any request keeps; never above the output budget.
     readonly outputFloor: number | null;
     readonly reasoningBudget: number | null;
 };
@@ -215,7 +215,7 @@ const resolveGeneration = (
             `${label} provider: PLURNK_PROVIDERS_OUTPUT_BUDGET (${outputBudget}) must leave positive input capacity inside the context window (${contextWindow})`,
         );
     }
-    // {§provider-output-floor}: a percentage floor resolves against the effective output ceiling
+    // {§provider-capacity-admission}: a percentage floor resolves against the effective output ceiling
     // (contextWindow capped by maxOutputTokens) and is never above the output budget — a floor the
     // budget cannot hold clamps to the budget, never refuses.
     const outputCeiling = contextWindow === null ? null : Math.min(...physicalCaps);
@@ -379,7 +379,7 @@ export const PROVIDERS_KNOBS = Object.freeze([
 // same parser — e.g. core's `PLURNK_PROVIDERS_GBNF` — without
 // reimplementing the suffix/collision rules. Default stays the
 // providers' knob list; provider call sites pass nothing.
-// {§operator-cost-override} (#461) — Models.dev is the rate starting point; the
+// {§provider-monetary-evidence} (#461) — Models.dev is the rate starting point; the
 // operator overlays exact per-1M-token USD rates when a provider reprices ahead
 // of the catalog. Format: comma-separated key=value over the catalog vocabulary
 // (input, output, reasoning, cacheRead, cacheWrite). Alias-scoped like every

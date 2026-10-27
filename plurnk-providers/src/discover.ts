@@ -37,7 +37,7 @@ export type Discovery = {
     registry: Map<string, string>; // trusted providers, eligible to instantiate
     skipped: Map<string, string>;  // declined by the trust gate (untrusted)
     packageAttributions: PackageAttributions;
-    // {§provider-grammar-transport} — extension-declared constrained-decoding
+    // {§provider-request-authority} — extension-declared constrained-decoding
     // capability per provider name; "none" unless the manifest declares one.
     grammarStyles: Map<string, GrammarStyle>;
 };

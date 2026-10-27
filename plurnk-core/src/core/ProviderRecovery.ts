@@ -6,7 +6,7 @@ const readMilliseconds = (key: string): number => Knob.integer(key, 0);
 // {§engine-rails} — the one owner of what a recoverable provider failure is and how long a
 // call keeps being re-issued: the loop's own inference and BARE's isolated calls both read it here.
 export default class ProviderRecovery {
-    // {§provider-retryable-truth} — the provider owns the set, so its Problems' `retryable` is what happens here.
+    // {§provider-failure-normalization} — the provider owns the set, so its Problems' `retryable` is what happens here.
     static readonly RECOVERABLE: ReadonlySet<ProviderErrorKind> = RETRYABLE_PROVIDER_KINDS;
 
     // How long one call keeps being re-issued after its first recoverable failure (0: none).

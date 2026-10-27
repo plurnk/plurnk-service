@@ -1,12 +1,14 @@
 import test, { mock } from "node:test";
-import { strict as assert } from "node:assert";
+import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { parseEnv } from "node:util";
-import type { Effort } from "@plurnk/plurnk-contracts";
 import { compatibleProviderFromEnv } from "./compatibleProvider.ts";
 import { UnsupportedEffortError } from "./types.ts";
 import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
+import { ollamaProviderFromEnv } from "./ollama.ts";
+import { type Effort } from "@plurnk/plurnk-contracts";
 
+{
 const env = {
     PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
     OPENAI_BASE_URL: "http://local.test/v1",
@@ -39,11 +41,11 @@ const streamedChatResponse = (content: string) => new Response([
 
 test.afterEach(() => mock.restoreAll());
 
-test("{§provider-generation-completion} repeated text and reasoning retain the provider finish and final usage", async (t) => {
+test("{§provider-interface} repeated text and reasoning retain the provider finish and final usage", async (t) => {
     const defaults = parseEnv(await readFile(new URL("../.env.defaults", import.meta.url), "utf8"));
     for (const channel of ["content", "reasoning_content"] as const) {
         for (const finishReason of ["stop", "length"] as const) {
-            await t.test(`${channel}: ${finishReason}`, async () => {
+            await t.test(`{§provider-interface} ${channel}: ${finishReason}`, async () => {
                 const repeated = "if app_configs is None:\n";
                 const fragments = Array.from({ length: 40 }, (_, index) => `${repeated}    candidate_${index}()\n`);
                 const chunk = (delta: Record<string, string>, finish: string | null = null) => `data: ${JSON.stringify({
@@ -87,7 +89,7 @@ test("{§provider-generation-completion} repeated text and reasoning retain the 
     }
 });
 
-test("{§provider-cache-affinity} an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
+test("{§provider-sdk-boundary} an undifferentiated compatible endpoint receives no guessed prompt-cache field", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         if (requestUrl(input).endsWith("/models")) {
@@ -106,7 +108,7 @@ test("{§provider-cache-affinity} an undifferentiated compatible endpoint receiv
     assert.equal("prompt_cache_key" in (body ?? {}), false);
 });
 
-test("{§provider-sampling-passthrough} the server-wide DRY-off floor emits no DRY request fields", async () => {
+test("{§provider-configuration} the server-wide DRY-off floor emits no DRY request fields", async () => {
     let body: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
         if (requestUrl(input).endsWith("/models")) {
@@ -136,7 +138,7 @@ test("{§provider-sampling-passthrough} the server-wide DRY-off floor emits no D
     assert.equal("dry_allowed_length" in (body ?? {}), false);
 });
 
-// {§llama-template-effort} What a llama-server rail admits, and what each admitted effort sends.
+// {§provider-effort} What a llama-server rail admits, and what each admitted effort sends.
 const TEMPLATE_EFFORTS: ReadonlyArray<{
     name: string;
     declared: Record<string, string>;
@@ -170,7 +172,7 @@ const TEMPLATE_EFFORTS: ReadonlyArray<{
 ];
 
 for (const row of TEMPLATE_EFFORTS) {
-    test(`{§llama-template-effort} a llama-server rail, ${row.name}`, async () => {
+    test(`{§provider-effort} a llama-server rail, ${row.name}`, async () => {
         let sent: Record<string, unknown> | undefined;
         mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
             const url = requestUrl(input);
@@ -209,7 +211,7 @@ test("{§provider-effort} a compatible route without a template refuses a fixed 
     );
 });
 
-test("{§provider-local-capabilities} detected llama-server measures the complete chat request through input_tokens", async () => {
+test("{§model-fact-resolution} detected llama-server measures the complete chat request through input_tokens", async () => {
     let countUrl: string | undefined;
     let countBody: Record<string, unknown> | undefined;
     mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
@@ -248,7 +250,7 @@ test("{§provider-local-capabilities} detected llama-server measures the complet
     assert.deepEqual(countBody?.chat_template_kwargs, { enable_thinking: false });
 });
 
-test("{§provider-prompt-measurement} a missing llama-server input-token endpoint degrades explicitly, never to a claimed bound", async () => {
+test("{§provider-capacity-admission} a missing llama-server input-token endpoint degrades explicitly, never to a claimed bound", async () => {
     mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
         const url = requestUrl(input);
         if (url.endsWith("/models")) {
@@ -269,3 +271,69 @@ test("{§provider-prompt-measurement} a missing llama-server input-token endpoin
         detail: "llama-server input-token endpoint returned HTTP 404",
     });
 });
+}
+
+{
+const env = Object.freeze({
+    PLURNK_PROVIDERS_MAX_CONCURRENCY: "-1",
+    PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
+    PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",
+    PLURNK_PROVIDERS_EFFORT: "off",
+    PLURNK_PROVIDERS_TEMPERATURE: "0.2",
+    PLURNK_PROVIDERS_REPEAT_PENALTY: "1.15",
+    PLURNK_PROVIDERS_FREQUENCY_PENALTY: "0",
+    PLURNK_PROVIDERS_OUTPUT_BUDGET: "35%",
+    PLURNK_PROVIDERS_OUTPUT_FLOOR: "10%",
+    PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_ERROR_DETAIL_LIMIT: "512",
+    PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
+    PLURNK_PROVIDERS_CACHE_WRITE_POLICY: "stable-system",
+});
+
+test.afterEach(() => mock.restoreAll());
+
+// {§model-fact-resolution}
+test("{§model-fact-resolution} #126: Ollama always probes model physics and applies an operator context-window ceiling", async () => {
+    const calls: string[] = [];
+    mock.method(globalThis, "fetch", async (input: string | URL | Request) => {
+        calls.push(requestUrl(input));
+        return new Response(JSON.stringify({
+            model_info: { "qwen.context_length": 32_768 },
+        }));
+    });
+
+    const windows: Array<number | null> = [];
+    for (const operatorCap of [undefined, "8192", "65536"] as const) {
+        const provider = await ollamaProviderFromEnv({
+            ...env,
+            ...(operatorCap === undefined ? {} : { PLURNK_PROVIDERS_CONTEXT_WINDOW: operatorCap }),
+        }, "qwen2.5-coder", { baseUrl: "http://ollama.test:11434/v1" });
+        windows.push(provider.contextWindow);
+    }
+
+    assert.deepEqual(windows, [32_768, 8_192, 32_768]);
+    assert.deepEqual(calls, Array.from({ length: 3 }, () => "http://ollama.test:11434/api/show"));
+});
+
+test("{§model-fact-resolution} #126: an operator ceiling does not hide an Ollama probe HTTP failure", async () => {
+    mock.method(globalThis, "fetch", async () => new Response(null, { status: 503 }));
+    await assert.rejects(
+        () => ollamaProviderFromEnv({
+            ...env,
+            PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
+        }, "qwen2.5-coder", { baseUrl: "http://ollama.test:11434" }),
+        /ollama provider: \/api\/show returned 503/,
+    );
+});
+
+test("{§model-fact-resolution} #126: an operator ceiling does not hide a missing Ollama model fact", async () => {
+    mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ model_info: {} })));
+    await assert.rejects(
+        () => ollamaProviderFromEnv({
+            ...env,
+            PLURNK_PROVIDERS_CONTEXT_WINDOW: "8192",
+        }, "qwen2.5-coder", { baseUrl: "http://ollama.test:11434" }),
+        /ollama provider: \/api\/show has no \*\.context_length key for "qwen2\.5-coder"/,
+    );
+});
+}

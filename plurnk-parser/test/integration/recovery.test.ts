@@ -1043,7 +1043,7 @@ test("{§fence-pairing}: a reasoning tag written in prose does not unquote the f
     }
 });
 
-test("{§provider-tagged-reasoning}: the grammar peels no reasoning envelope, so a tag hides nothing after it", () => {
+test("{§provider-interface}: the grammar peels no reasoning envelope, so a tag hides nothing after it", () => {
     // A route that delivers reasoning inline declares it and the provider peels one leading
     // envelope. The grammar reads tags as text, so what follows one is read exactly as written.
     const source = `<think>\n${PlurnkParser.frame("NOTE", "Considering the timeout.")}\n</think>\n${task}`;

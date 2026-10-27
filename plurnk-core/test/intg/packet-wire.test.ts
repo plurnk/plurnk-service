@@ -2025,7 +2025,7 @@ test("{§emission-history} {§digest-forensic-fidelity}: stored and shared reque
     assert.deepEqual(provider.received[2].map(({ role }) => role), ["system", "user", "assistant", "user", "assistant", "user"], "EDIT and READ each retain their own assistant/result boundary");
 });
 
-test("{§provider-wire-emission}: blank emissions retain their wire channels through persistence and digest", async () => {
+test("{§provider-failure-normalization}: blank emissions retain their wire channels through persistence and digest", async () => {
     // The surveys are the initialization program; with the preview off there is none and no digest stem for it.
     const priorFiles = process.env.PLURNK_SERVICE_FILES_ITEMS;
     process.env.PLURNK_SERVICE_FILES_ITEMS = "-1";
@@ -2040,7 +2040,7 @@ test("{§provider-wire-emission}: blank emissions retain their wire channels thr
             contextWindow: 100000, outputBudget: 1000,
             effort: { mode: "off", budget: null }, temperature: null, repeatPenalty: null, retryAttempts: 0,
             rawBody: false,
-            // {§provider-native-tool-calls}: ordinary empty-turn recovery follows the warning.
+            // {§provider-failure-normalization}: ordinary empty-turn recovery follows the warning.
             fetch: async () => {
                 requests += 1;
                 if (requests > 1) {

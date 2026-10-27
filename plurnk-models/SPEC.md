@@ -1,27 +1,18 @@
-# Model Catalog
+# `@plurnk/plurnk-models` Specification
 
-## §model-catalog-build Snapshot lifecycle
+## §model-catalog-build Catalog snapshot and update
 
-| Boundary | Contract |
-| --- | --- |
-| Source | The lockfile selects the official `@opencode-ai/models/snapshot` build-only dependency. Generation performs no network requests. |
-| Development | Build generates ignored `src/catalog.json` and `src/providers.json`; neither is committed. |
-| Publication | Build/prepack includes both generated catalogs in `dist`. Runtime requires neither upstream code nor network access. |
-| Refresh | Update the snapshot dependency and lockfile, then rebuild and verify consumers. A build does not select a newer snapshot. |
+`@plurnk/plurnk-models` projects the upstream `@opencode-ai/models` snapshot into `src/catalog.json` and `src/providers.json` during `npm run generate` (invoked by `npm run build`). Only providers whose `npm` package is supported by `@plurnk/plurnk-providers` and models with a positive `limit.context` are emitted. Missing display names, capability booleans, modalities, or reasoning option descriptors fail generation.
 
-## §model-catalog-cache On-demand XDG cache overlay
+## §model-catalog-cache Runtime refresh and disk cache
 
-| Boundary | Contract |
-| --- | --- |
-| Offline boot | `loadCatalogCache(cachePath)` reads an existing cached projection without network access. On overlap between the shipped snapshot and the cache, whichever has the newer timestamp wins while entries unique to the other remain available. |
-| Explicit refresh | `updateCatalogCache(cachePath)` performs a conditional `GET` (`If-None-Match` when an `ETag` is cached) against `https://models.dev/api.json`, validates the response through `projectCatalog`, writes the cache atomically, and hot-swaps the active in-memory catalog immediately. |
+`updateCatalogCache(cachePath, options?)` fetches `https://models.dev/api.json` (sending `If-None-Match` when a cached ETag exists), projects the upstream payload through the same validator as build-time generation, writes the atomic disk cache at `cachePath`, and hot-swaps the in-memory catalog so newly released models resolve immediately without restarting the daemon. `loadCatalogCache(cachePath)` merges cached entries into the shipped snapshot on startup so cached models remain available across restarts.
 
-## §model-catalog-projection Retained facts
+## §model-catalog-projection Model resolution and physics
 
-| Projection | Contract |
-| --- | --- |
-| Providers | Retain providers using supported AI SDK packages, with id, name, SDK package, credential names, and optional API URL. |
-| Models | Retain models with positive context windows and valid required capability facts. Preserve independent input/output limits, reasoning controls, modalities, optional capabilities, and available rate groups. |
-| Missing facts | Omit unavailable optional facts; do not infer one limit or rate from another. Invalid required facts fail generation. |
-| Runtime | Read-only lookup; precedence and operator overrides belong to {§model-fact-resolution}. |
-| Native ids | `resolveModel` resolves a provider-native id, or a suffix unique within that provider's catalog, to its catalog id; no PLURNK vendor table stands between. |
+| Function | Contract |
+|---|---|
+| `lookup(provider, model)` | Exact lookup in the active catalog (`ModelInfo` or `null`). Preserves independent `contextWindow`, `maxInputTokens`, `maxOutputTokens`, `reasoning`, `reasoningOptions`, `modalities`, and per-1M-token USD `cost` rates (`inputPer1M`, `outputPer1M`, `reasoningPer1M`, `cacheReadPer1M`, `cacheWritePer1M`). |
+| `resolveModel(provider, model)` | Exact `lookup` first; on miss, resolves a unique `/<model>` path suffix within `provider` (`{ id, info }`), throwing when multiple catalog ids share the suffix. |
+| `lookupProvider(provider)` | Returns `ProviderInfo` (`{ id, name, npm, env, api? }`) or `null` (`ollama` is the built-in local rail; `ollama-cloud` is the cataloged cloud provider). |
+| `providerCredentialEnvNames()` | Returns secret credential environment variable names across cataloged providers, excluding non-secret coordinate variables (`AWS_REGION`, `AWS_DEFAULT_REGION`, `CLOUDFLARE_ACCOUNT_ID`). |

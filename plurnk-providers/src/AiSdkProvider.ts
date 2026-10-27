@@ -30,7 +30,7 @@ import RequestCapture from "./RequestCapture.ts";
 
 export type ProviderFetch = typeof globalThis.fetch;
 
-// {§provider-connectivity} — an AbortSignal is advisory: a wedged transport that never observes it can
+// {§provider-failure-normalization} — an AbortSignal is advisory: a wedged transport that never observes it can
 // hang the await past the deadline (#505). Once the signal fires, a well-behaved transport unwinds and settles its
 // own attempt (and accounting) within a short grace, and that path wins the race untouched; only a
 // transport still wedged after the grace is force-rejected with the signal's own reason, so the existing
@@ -117,11 +117,11 @@ export type AiSdkProviderConfig = {
     headers?: Record<string, string>;         // fully-resolved request headers (incl. auth); default {}
     fetch?: ProviderFetch;                    // per-instance request executor; default globalThis.fetch
     contextWindow?: number | null;              // default null; caller resolves-or-fails, narrows to required with the interface
-    inputModalities?: ReadonlySet<InputModality>; // {§provider-input-modalities} — native parts the route's model accepts; default none
+    inputModalities?: ReadonlySet<InputModality>; // {§provider-interface} — native parts the route's model accepts; default none
     maxInputTokens?: number | null;
     maxOutputTokens?: number | null;
     outputBudget?: number | null;
-    outputFloor?: number | null;               // {§provider-output-floor} — the least response room any request keeps
+    outputFloor?: number | null;               // {§provider-capacity-admission} — the least response room any request keeps
     reasoningBudget?: number | null;
     supportedEfforts?: readonly Effort[];
     // Native AI SDK projection for adaptive. Models.dev supplies the route's
@@ -138,26 +138,26 @@ export type AiSdkProviderConfig = {
     outputTokenField?: "max_tokens" | "max_completion_tokens";
     reasoningRequestBody?: (mode: Effort, reasoningBudget: number | null) => Record<string, unknown>;
     reasoningRequestProviderOptions?: (mode: Effort, reasoningBudget: number | null) => AiSdkProviderOptions | undefined;
-    reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-tagged-reasoning}; default "verbatim"
+    reasoningResponseStyle?: ReasoningResponseStyle; // {§provider-interface}; default "verbatim"
     countPromptTokens?: (messages: readonly ChatMessage[], signal?: AbortSignal) => PromptTokenMeasurement | Promise<PromptTokenMeasurement>;
     estimateCost?: (usage: ProviderUsage | undefined) => ProviderCost;
     normalizeCost?: ProviderCostNormalizer;
     source?: string;                           // notice/problem source, e.g. "provider:openai"; default "provider"
     grammarStyle?: GrammarStyle;               // how a GBNF grammar is carried; default "none" (not sent)
-    // {§provider-cache-affinity} Provider routes own the exact documented
+    // {§provider-sdk-boundary} Provider routes own the exact documented
     // projection; the common transport only applies it as managed request state.
     cacheAffinity?: CacheAffinity;
-    // {§provider-cache-write-policy} Already policy-gated by provider construction.
+    // {§provider-sdk-boundary} Already policy-gated by provider construction.
     // The transport attaches it to only the final leading system instruction.
     systemCacheProviderOptions?: AiSdkProviderOptions;
-    // {§provider-readable-reasoning} Route-owned native option needed to expose
+    // {§provider-effort} Route-owned native option needed to expose
     // readable reasoning. Applied only when the effective posture is not off.
     reasoningResponseProviderOptions?: AiSdkProviderOptions;
     // Optional provider-configured service tier. Unlike caller sampling, this is
     // a fixed deployment choice and therefore wins on every request; a native route
-    // carries it only as {§provider-request-controls} allows.
+    // carries it only as {§provider-request-authority} allows.
     serviceTier?: string;
-    // {§provider-request-controls} — which global request controls a native route's SDK documents as
+    // {§provider-request-authority} — which global request controls a native route's SDK documents as
     // provider options, and under which namespace. Absent on a native route means none.
     requestControls?: NativeRequestControls;
     streaming?: boolean;                        // SSE transport (default true); false → one non-streamed JSON
@@ -185,7 +185,7 @@ export type AiSdkProviderConfig = {
     // {§provider-effort} Required intent, projected through the transport.
     // The independent budget is never an activation flag.
     effort: EffortSetting;
-    // {§provider-sampling-passthrough} Configured sampling is below caller sampling.
+    // {§provider-configuration} Configured sampling is below caller sampling.
     // Absent optional values and null temperature retain endpoint defaults.
     temperature: number | null;
     topP?: number;
@@ -212,16 +212,16 @@ export type AiSdkProviderConfig = {
     // ProviderError Problem. Standard factories supply the env-owned value;
     // direct construction may omit it to preserve the complete diagnostic.
     errorDetailLimit?: number;
-    // Data-capture knobs ({§provider-evidence}), off by default — the flag is the isolation, so a
+    // Data-capture knobs ({§provider-failure-normalization}), off by default — the flag is the isolation, so a
     // serving turn requests nothing and carries nothing. `topLogprobs`: when a
     // non-negative int, request `logprobs:true, top_logprobs:<n>` and surface the
     // per-token confidence on assistant.logprobs (PLURNK_PROVIDERS_TOP_LOGPROBS;
-    // null = off); a native route carries it only as {§provider-request-controls}
+    // null = off); a native route carries it only as {§provider-request-authority}
     // allows. `rawBody` retains SDK raw responses and dispatched request bodies
-    // ({§provider-dispatched-request}). Both knobs are gated per-alias.
+    // ({§provider-interface}). Both knobs are gated per-alias.
     topLogprobs?: number | null;
     rawBody?: boolean;
-    // {§provider-generation-envelope} The generation budgets, env-read via the
+    // {§provider-configuration} The generation budgets, env-read via the
     // common envelope parser — a percentage of the detected window or an absolute token
     // count. Optional so an out-of-date sibling keeps constructing (no claim);
     // the standard factory always supplies them. Resolved against contextWindow
@@ -273,14 +273,14 @@ const providerWarningMessage = (warning: CallWarning): string => {
 };
 
 
-// {§provider-request-controls} — the global controls a native SDK documents as provider options.
+// {§provider-request-authority} — the global controls a native SDK documents as provider options.
 export interface NativeRequestControls {
     readonly namespace: string;
     readonly serviceTier: boolean;
     readonly logprobs: boolean;
 }
 
-// {§provider-request-controls} — a native route forwards a configured control only through its
+// {§provider-request-authority} — a native route forwards a configured control only through its
 // SDK's documented provider option; a control the SDK does not document is named once and not
 // sent, never dropped in silence (#988).
 const nativeControlOptions = (
@@ -362,7 +362,7 @@ export default class AiSdkProvider implements Provider {
     #requiresOutputBudget: boolean | undefined;
     readonly attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
 
-    // Optional capability ({§provider-local-capabilities}): exact tokenization served by the backend's
+    // Optional capability ({§model-fact-resolution}): exact tokenization served by the backend's
     // own vocab. Assigned in the constructor ONLY when the config carries a
     // tokenizeUrl (llama-server), so `provider.tokenize === undefined` remains
     // the honest capability signal for every other backend.
@@ -509,7 +509,7 @@ export default class AiSdkProvider implements Provider {
                 throw new Error(`${this.#source}: ${name} must be a positive safe integer or null`);
             }
         }
-        // {§provider-output-floor}: the floor is never above the output budget.
+        // {§provider-capacity-admission}: the floor is never above the output budget.
         this.#outputFloor = effectiveOutputFloor({ configured: this.#outputFloor, outputBudget: this.#outputBudget });
         if (this.#reasoningBudget !== null
             && this.#outputBudget !== null
@@ -562,7 +562,7 @@ export default class AiSdkProvider implements Provider {
             outputBudget: this.#outputBudget,
         });
     }
-    // {§provider-output-floor}: the physical input wall, the window less the floor.
+    // {§provider-capacity-admission}: the physical input wall, the window less the floor.
     get inputWall(): number | null {
         return effectiveInputWall({
             contextWindow: this.#contextWindow,
@@ -701,7 +701,7 @@ export default class AiSdkProvider implements Provider {
         // ({§provider-failure-normalization}).
         signal?.throwIfAborted();
 
-        // Grammar transport ({§provider-grammar-transport}): an operator's grammar rides a
+        // Grammar transport ({§provider-request-authority}): an operator's grammar rides a
         // llama-style route verbatim and is never sent on any other style.
         const wantGrammar = grammar !== undefined && this.#grammarStyle !== "none";
         const sendGrammar = wantGrammar ? grammar : undefined;
@@ -720,7 +720,7 @@ export default class AiSdkProvider implements Provider {
                 { capacity, extensions: { capacityStage: "preflight", capacity } },
             );
         }
-        // {§provider-flexed-allowance}: the wire grants the flexed allowance —
+        // {§provider-capacity-admission}: the wire grants the flexed allowance —
         // the window's remainder, between the floor and the model's limit.
         const effectiveMaxOutputTokens = capacity.responseMax ?? capacity.outputBudget ?? undefined;
         const nativeReasoningBudget = this.#requestBody.nativeReasoningBudget(
@@ -969,7 +969,7 @@ export default class AiSdkProvider implements Provider {
 
         let raw;
         try {
-            // {§provider-connectivity} — the operation deadline and caller cancellation are backstopped by
+            // {§provider-failure-normalization} — the operation deadline and caller cancellation are backstopped by
             // racing, not only by the advisory operationSignal, so a transport that ignores the abort still
             // surfaces the deadline (→ the operationTimeout/caller branches below) rather than hanging the
             // loop (#505). A well-behaved transport settles first and wins the race with its own evidence.
@@ -1146,7 +1146,7 @@ export default class AiSdkProvider implements Provider {
             ...(meta !== undefined ? { meta } : {}),
             ...(notices !== undefined ? { notices } : {}),
         };
-        // {§provider-flexed-allowance} (#482): conformance judges the GRANT the
+        // {§provider-capacity-admission} (#482): conformance judges the GRANT the
         // wire actually sent, not the configured reservation — output between
         // the two is overflow tolerance working, never a provider fault.
         const grantedOutput = capacity.responseMax ?? capacity.outputBudget;
@@ -1173,7 +1173,7 @@ export default class AiSdkProvider implements Provider {
                 },
             );
         }
-        // {§provider-generation-failed} The SDK classified the finish as an error: the attempt failed with
+        // {§provider-failure-normalization} The SDK classified the finish as an error: the attempt failed with
         // its evidence, and nothing here is a completed exchange or a transport outage.
         if (raw.finishReason === "error") {
             const attempt: ProviderResponse<"error"> = {

@@ -4273,9 +4273,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-runtime-neutral-accounting into section heading tag §provider-interface"
         },
         "provider-runtime-neutral-errors": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4285,9 +4285,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-runtime-neutral-errors into section heading tag §provider-interface"
         },
         "provider-runtime-neutral-openai": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4297,9 +4297,9 @@
           "liveShape": "table",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-runtime-neutral-openai into section heading tag §provider-interface"
         },
         "provider-interface": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4309,9 +4309,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-interface in plurnk-providers/SPEC.md"
         },
         "provider-prompt-measurement": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4321,9 +4321,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-capacity-admission",
+          "reason": "Fold provider-prompt-measurement into section heading tag §provider-capacity-admission"
         },
         "provider-capacity-admission": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4333,9 +4333,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-capacity-admission in plurnk-providers/SPEC.md"
         },
         "provider-monetary-evidence": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4345,9 +4345,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 6,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-monetary-evidence in plurnk-providers/SPEC.md"
         },
         "provider-cache-identity": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4357,9 +4357,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-cache-identity into section heading tag §provider-interface"
         },
         "provider-call-kind": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4369,9 +4369,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-call-kind into section heading tag §provider-interface"
         },
         "provider-native-tools-disabled": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4381,9 +4381,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-native-tools-disabled into section heading tag §provider-interface"
         },
         "provider-generation-completion": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4393,9 +4393,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-generation-completion into section heading tag §provider-interface"
         },
         "provider-request-observer": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4405,9 +4405,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-request-observer into section heading tag §provider-interface"
         },
         "provider-dispatched-request": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4417,9 +4417,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-dispatched-request into section heading tag §provider-interface"
         },
         "provider-reasoning-observer": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4429,9 +4429,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-reasoning-observer into section heading tag §provider-interface"
         },
         "provider-finish-reason": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4441,9 +4441,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-finish-reason into section heading tag §provider-interface"
         },
         "provider-tagged-reasoning": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4453,9 +4453,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-tagged-reasoning into section heading tag §provider-interface"
         },
         "provider-sdk-boundary": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4465,9 +4465,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-sdk-boundary in plurnk-providers/SPEC.md"
         },
         "operator-cost-override": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4477,9 +4477,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-monetary-evidence",
+          "reason": "Fold operator-cost-override into section heading tag §provider-monetary-evidence"
         },
         "provider-effort": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4489,9 +4489,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 7,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-effort in plurnk-providers/SPEC.md"
         },
         "provider-readable-reasoning": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4501,9 +4501,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-effort",
+          "reason": "Fold provider-readable-reasoning into section heading tag §provider-effort"
         },
         "provider-sdk-warning": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4513,9 +4513,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-sdk-boundary",
+          "reason": "Fold provider-sdk-warning into section heading tag §provider-sdk-boundary"
         },
         "provider-cache-affinity": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4525,9 +4525,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-sdk-boundary",
+          "reason": "Fold provider-cache-affinity into section heading tag §provider-sdk-boundary"
         },
         "provider-cache-write-policy": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4537,9 +4537,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-sdk-boundary",
+          "reason": "Fold provider-cache-write-policy into section heading tag §provider-sdk-boundary"
         },
         "provider-configuration": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4549,9 +4549,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-configuration in plurnk-providers/SPEC.md"
         },
         "provider-resolution": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4561,9 +4561,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-configuration",
+          "reason": "Fold provider-resolution into section heading tag §provider-configuration"
         },
         "model-catalog-readiness": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4573,9 +4573,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-configuration",
+          "reason": "Fold model-catalog-readiness into section heading tag §provider-configuration"
         },
         "provider-input-modalities": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4585,9 +4585,9 @@
           "liveShape": "heading",
           "codeCitations": 5,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-input-modalities into section heading tag §provider-interface"
         },
         "model-fact-resolution": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4597,9 +4597,9 @@
           "liveShape": "heading",
           "codeCitations": 6,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §model-fact-resolution in plurnk-providers/SPEC.md"
         },
         "provider-fact-authority": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4609,9 +4609,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "model-fact-resolution",
+          "reason": "Fold provider-fact-authority into section heading tag §model-fact-resolution"
         },
         "provider-grammar-transport": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4621,9 +4621,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-authority",
+          "reason": "Fold provider-grammar-transport into section heading tag §provider-request-authority"
         },
         "provider-local-capabilities": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4633,9 +4633,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "model-fact-resolution",
+          "reason": "Fold provider-local-capabilities into section heading tag §model-fact-resolution"
         },
         "llama-template-effort": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4645,9 +4645,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-effort",
+          "reason": "Fold llama-template-effort into section heading tag §provider-effort"
         },
         "llama-reasoning-request": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4657,9 +4657,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-effort",
+          "reason": "Fold llama-reasoning-request into section heading tag §provider-effort"
         },
         "provider-ping-probe": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4669,9 +4669,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "model-fact-resolution",
+          "reason": "Fold provider-ping-probe into section heading tag §model-fact-resolution"
         },
         "token-envelope-probe": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4681,9 +4681,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "model-fact-resolution",
+          "reason": "Fold token-envelope-probe into section heading tag §model-fact-resolution"
         },
         "provider-request-authority": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4693,9 +4693,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-request-authority in plurnk-providers/SPEC.md"
         },
         "provider-request-controls": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4705,9 +4705,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-authority",
+          "reason": "Fold provider-request-controls into section heading tag §provider-request-authority"
         },
         "openrouter-app-attribution": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4717,9 +4717,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-authority",
+          "reason": "Fold openrouter-app-attribution into section heading tag §provider-request-authority"
         },
         "provider-failure-normalization": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4729,9 +4729,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-failure-normalization in plurnk-providers/SPEC.md"
         },
         "provider-retryable-truth": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4741,9 +4741,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-retryable-truth into section heading tag §provider-failure-normalization"
         },
         "provider-failure-cause": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4753,9 +4753,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-failure-cause into section heading tag §provider-failure-normalization"
         },
         "provider-capacity-failure": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4765,9 +4765,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-capacity-failure into section heading tag §provider-failure-normalization"
         },
         "provider-flexed-allowance": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4777,9 +4777,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-capacity-admission",
+          "reason": "Fold provider-flexed-allowance into section heading tag §provider-capacity-admission"
         },
         "provider-output-floor": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4789,9 +4789,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-capacity-admission",
+          "reason": "Fold provider-output-floor into section heading tag §provider-capacity-admission"
         },
         "provider-sampling-passthrough": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4801,9 +4801,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-configuration",
+          "reason": "Fold provider-sampling-passthrough into section heading tag §provider-configuration"
         },
         "provider-connectivity": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4813,9 +4813,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-connectivity into section heading tag §provider-failure-normalization"
         },
         "provider-cancellation-evidence": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4825,9 +4825,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-cancellation-evidence into section heading tag §provider-failure-normalization"
         },
         "provider-native-tool-calls": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4837,9 +4837,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-native-tool-calls into section heading tag §provider-failure-normalization"
         },
         "provider-completed-admission": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4849,9 +4849,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-completed-admission into section heading tag §provider-failure-normalization"
         },
         "provider-request-rejection": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4861,9 +4861,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-request-rejection into section heading tag §provider-failure-normalization"
         },
         "provider-interrupted-attempt": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4873,9 +4873,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-interrupted-attempt into section heading tag §provider-failure-normalization"
         },
         "provider-generation-failed": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4885,9 +4885,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-generation-failed into section heading tag §provider-failure-normalization"
         },
         "provider-grammar-evidence": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4897,9 +4897,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-grammar-evidence into section heading tag §provider-failure-normalization"
         },
         "provider-evidence": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4909,9 +4909,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-evidence into section heading tag §provider-failure-normalization"
         },
         "provider-wire-emission": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4921,9 +4921,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-wire-emission into section heading tag §provider-failure-normalization"
         },
         "provider-usage-refusal": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4933,9 +4933,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-usage-refusal into section heading tag §provider-failure-normalization"
         },
         "provider-open-reasoning": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4945,9 +4945,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-failure-normalization",
+          "reason": "Fold provider-open-reasoning into section heading tag §provider-failure-normalization"
         },
         "provider-generation-envelope": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4957,9 +4957,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-configuration",
+          "reason": "Fold provider-generation-envelope into section heading tag §provider-configuration"
         },
         "provider-output-budget-conformance": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4969,9 +4969,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-configuration",
+          "reason": "Fold provider-output-budget-conformance into section heading tag §provider-configuration"
         },
         "provider-inference-admission": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4981,9 +4981,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §provider-inference-admission in plurnk-providers/SPEC.md"
         },
         "provider-capacity-pool": {
           "spec": "plurnk-providers/SPEC.md",
@@ -4993,9 +4993,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-interface",
+          "reason": "Fold provider-capacity-pool into section heading tag §provider-interface"
         },
         "model-catalog-build": {
           "spec": "plurnk-models/SPEC.md",
@@ -5005,9 +5005,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §model-catalog-build in plurnk-models/SPEC.md"
         },
         "model-catalog-cache": {
           "spec": "plurnk-models/SPEC.md",
@@ -5017,9 +5017,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §model-catalog-cache in plurnk-models/SPEC.md"
         },
         "model-catalog-projection": {
           "spec": "plurnk-models/SPEC.md",
@@ -5029,9 +5029,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §model-catalog-projection in plurnk-models/SPEC.md"
         },
         "alias-declaration": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5041,9 +5041,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §alias-declaration in plurnk-aliases/SPEC.md"
         },
         "alias-active-selector": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5053,9 +5053,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-declaration",
+          "reason": "Fold alias-active-selector into section heading tag §alias-declaration"
         },
         "alias-child-selector-reserved": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5065,9 +5065,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-declaration",
+          "reason": "Fold alias-child-selector-reserved into section heading tag §alias-declaration"
         },
         "alias-base-url": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5077,9 +5077,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-declaration",
+          "reason": "Fold alias-base-url into section heading tag §alias-declaration"
         },
         "alias-case-folding": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5089,9 +5089,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-declaration",
+          "reason": "Fold alias-case-folding into section heading tag §alias-declaration"
         },
         "alias-parse": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5101,9 +5101,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain section heading tag §alias-parse in plurnk-aliases/SPEC.md"
         },
         "alias-resolve-selector": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5113,9 +5113,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-parse",
+          "reason": "Fold alias-resolve-selector into section heading tag §alias-parse"
         },
         "alias-resolve-active": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5125,9 +5125,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-parse",
+          "reason": "Fold alias-resolve-active into section heading tag §alias-parse"
         },
         "alias-resolve-child": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5137,9 +5137,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-parse",
+          "reason": "Fold alias-resolve-child into section heading tag §alias-parse"
         },
         "alias-case-collisions": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5149,9 +5149,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-parse",
+          "reason": "Fold alias-case-collisions into section heading tag §alias-parse"
         },
         "alias-dangling-override": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5161,9 +5161,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-parse",
+          "reason": "Fold alias-dangling-override into section heading tag §alias-parse"
         },
         "alias-unresolved-selector": {
           "spec": "plurnk-aliases/SPEC.md",
@@ -5173,9 +5173,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "alias-parse",
+          "reason": "Fold alias-unresolved-selector into section heading tag §alias-parse"
         }
       },
       "tests": {
@@ -5190,9 +5190,9 @@
           "citedTags": [
             "provider-inference-admission"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "demote-to-unit",
+          "target": "plurnk-providers/src/admission.test.ts",
+          "reason": "Demote inference-admission integration suite to unit coverage in admission.test.ts"
         },
         "plurnk-aliases/src/aliases.test.ts": {
           "tier": "unit",
@@ -5213,9 +5213,9 @@
             "alias-resolve-selector",
             "alias-unresolved-selector"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain alias declaration and selector resolution unit suite"
         },
         "plurnk-models/src/generate.test.mjs": {
           "tier": "unit",
@@ -5229,9 +5229,9 @@
             "model-catalog-build",
             "model-catalog-projection"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain models.dev catalog generator unit suite"
         },
         "plurnk-models/src/index.test.ts": {
           "tier": "unit",
@@ -5245,9 +5245,9 @@
             "model-catalog-cache",
             "model-catalog-projection"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain model catalog cache and projection unit suite"
         },
         "plurnk-providers/scripts/lib/runtime-neutral-session.test.mjs": {
           "tier": "unit",
@@ -5261,9 +5261,9 @@
             "provider-runtime-neutral-accounting",
             "provider-runtime-neutral-errors"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/scripts/providers-ping.test.mjs",
+          "reason": "Merge runtime-neutral session helper tests into providers-ping.test.mjs"
         },
         "plurnk-providers/scripts/providers-ping.test.mjs": {
           "tier": "unit",
@@ -5276,9 +5276,9 @@
           "citedTags": [
             "provider-ping-probe"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain provider ping and probe script unit suite"
         },
         "plurnk-providers/scripts/token-envelope-probe.test.mjs": {
           "tier": "unit",
@@ -5291,9 +5291,9 @@
           "citedTags": [
             "token-envelope-probe"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/scripts/providers-ping.test.mjs",
+          "reason": "Merge token envelope probe tests into providers-ping.test.mjs"
         },
         "plurnk-providers/src/AiSdkProvider.test.ts": {
           "tier": "unit",
@@ -5333,9 +5333,9 @@
             "provider-tagged-reasoning",
             "provider-usage-refusal"
           ],
-          "disposition": "pending",
+          "disposition": "purge:retired-shim",
           "target": null,
-          "reason": null
+          "reason": "Purge legacy AI SDK V4 adapter test suite"
         },
         "plurnk-providers/src/InferenceAdmission.test.ts": {
           "tier": "unit",
@@ -5348,9 +5348,9 @@
           "citedTags": [
             "provider-inference-admission"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/admission.test.ts",
+          "reason": "Merge InferenceAdmission tests into admission.test.ts"
         },
         "plurnk-providers/src/LeadingReasoning.test.ts": {
           "tier": "unit",
@@ -5363,9 +5363,9 @@
           "citedTags": [
             "provider-tagged-reasoning"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/capacity.test.ts",
+          "reason": "Merge LeadingReasoning tests into capacity.test.ts"
         },
         "plurnk-providers/src/Mock.test.ts": {
           "tier": "unit",
@@ -5381,9 +5381,9 @@
             "provider-interface",
             "provider-output-floor"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/ProviderRegistry.test.ts",
+          "reason": "Merge Mock provider tests into ProviderRegistry.test.ts"
         },
         "plurnk-providers/src/Pool.test.ts": {
           "tier": "unit",
@@ -5399,9 +5399,9 @@
             "provider-capacity-pool",
             "provider-interface"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/admission.test.ts",
+          "reason": "Merge Pool tests into admission.test.ts"
         },
         "plurnk-providers/src/ProviderRegistry.test.ts": {
           "tier": "unit",
@@ -5417,9 +5417,9 @@
             "provider-resolution",
             "provider-tagged-reasoning"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain ProviderRegistry, discovery, and Mock provider unit suite"
         },
         "plurnk-providers/src/RequestCapture.test.ts": {
           "tier": "unit",
@@ -5432,9 +5432,9 @@
           "citedTags": [
             "provider-dispatched-request"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/errors.test.ts",
+          "reason": "Merge RequestCapture tests into errors.test.ts"
         },
         "plurnk-providers/src/accounting.test.ts": {
           "tier": "unit",
@@ -5448,9 +5448,9 @@
             "provider-accounting",
             "provider-monetary-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/cost.test.ts",
+          "reason": "Merge accounting tests into cost.test.ts"
         },
         "plurnk-providers/src/admission.test.ts": {
           "tier": "unit",
@@ -5464,9 +5464,9 @@
             "provider-connectivity",
             "provider-inference-admission"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain provider inference admission and pool unit suite"
         },
         "plurnk-providers/src/aiSdkTransport.test.ts": {
           "tier": "unit",
@@ -5486,9 +5486,9 @@
             "provider-usage-refusal",
             "provider-wire-emission"
           ],
-          "disposition": "pending",
+          "disposition": "purge:retired-shim",
           "target": null,
-          "reason": null
+          "reason": "Purge legacy AI SDK V4 transport shim test suite"
         },
         "plurnk-providers/src/boundaries.test.ts": {
           "tier": "unit",
@@ -5504,9 +5504,9 @@
             "provider-runtime-neutral-errors",
             "provider-runtime-neutral-openai"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain runtime-neutral boundary unit suite"
         },
         "plurnk-providers/src/capacity.test.ts": {
           "tier": "unit",
@@ -5522,9 +5522,9 @@
             "provider-generation-envelope",
             "provider-output-floor"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain capacity admission, input modalities, and leading reasoning unit suite"
         },
         "plurnk-providers/src/catalogProvider.test.ts": {
           "tier": "unit",
@@ -5540,9 +5540,9 @@
             "provider-effort",
             "provider-monetary-evidence"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain catalog provider and native tool opt-out unit suite"
         },
         "plurnk-providers/src/compatibleProvider.test.ts": {
           "tier": "unit",
@@ -5561,9 +5561,9 @@
             "provider-prompt-measurement",
             "provider-sampling-passthrough"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain OpenAI-compatible and Ollama provider unit suite"
         },
         "plurnk-providers/src/cost.test.ts": {
           "tier": "unit",
@@ -5579,9 +5579,9 @@
             "provider-cost",
             "provider-monetary-evidence"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain monetary cost, usage, and router accounting unit suite"
         },
         "plurnk-providers/src/defaults.test.ts": {
           "tier": "unit",
@@ -5594,9 +5594,9 @@
           "citedTags": [
             "provider-configuration"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/env.test.ts",
+          "reason": "Merge defaults tests into env.test.ts"
         },
         "plurnk-providers/src/discover.test.ts": {
           "tier": "unit",
@@ -5611,9 +5611,9 @@
             "extension-trust-boundary",
             "provider-grammar-transport"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/ProviderRegistry.test.ts",
+          "reason": "Merge discover tests into ProviderRegistry.test.ts"
         },
         "plurnk-providers/src/env.test.ts": {
           "tier": "unit",
@@ -5637,9 +5637,9 @@
             "provider-output-floor",
             "provider-tagged-reasoning"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain provider environment, defaults, effort, and warning unit suite"
         },
         "plurnk-providers/src/errors.test.ts": {
           "tier": "unit",
@@ -5658,9 +5658,9 @@
             "provider-request-rejection",
             "provider-retryable-truth"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain failure normalization and request evidence unit suite"
         },
         "plurnk-providers/src/inputModalities.test.ts": {
           "tier": "unit",
@@ -5673,9 +5673,9 @@
           "citedTags": [
             "provider-input-modalities"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/capacity.test.ts",
+          "reason": "Merge inputModalities tests into capacity.test.ts"
         },
         "plurnk-providers/src/native-tools.test.ts": {
           "tier": "unit",
@@ -5688,9 +5688,9 @@
           "citedTags": [
             "provider-native-tools-disabled"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/catalogProvider.test.ts",
+          "reason": "Merge native-tools tests into catalogProvider.test.ts"
         },
         "plurnk-providers/src/ollama.test.ts": {
           "tier": "unit",
@@ -5703,9 +5703,9 @@
           "citedTags": [
             "model-fact-resolution"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/compatibleProvider.test.ts",
+          "reason": "Merge ollama tests into compatibleProvider.test.ts"
         },
         "plurnk-providers/src/providerDefaults.test.ts": {
           "tier": "unit",
@@ -5719,9 +5719,9 @@
             "openrouter-app-attribution",
             "provider-fact-authority"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/env.test.ts",
+          "reason": "Merge providerDefaults tests into env.test.ts"
         },
         "plurnk-providers/src/reasoning-effort.test.ts": {
           "tier": "unit",
@@ -5734,9 +5734,9 @@
           "citedTags": [
             "provider-effort"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/env.test.ts",
+          "reason": "Merge reasoning-effort tests into env.test.ts"
         },
         "plurnk-providers/src/request-evidence.test.ts": {
           "tier": "unit",
@@ -5750,9 +5750,9 @@
             "provider-dispatched-request",
             "provider-request-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/errors.test.ts",
+          "reason": "Merge request-evidence tests into errors.test.ts"
         },
         "plurnk-providers/src/requestControls.test.ts": {
           "tier": "unit",
@@ -5765,9 +5765,9 @@
           "citedTags": [
             "provider-request-controls"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/sdkModels.test.ts",
+          "reason": "Merge requestControls tests into sdkModels.test.ts"
         },
         "plurnk-providers/src/routerAccounting.test.ts": {
           "tier": "unit",
@@ -5780,9 +5780,9 @@
           "citedTags": [
             "provider-monetary-evidence"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/cost.test.ts",
+          "reason": "Merge routerAccounting tests into cost.test.ts"
         },
         "plurnk-providers/src/sampling.test.ts": {
           "tier": "unit",
@@ -5795,9 +5795,9 @@
           "citedTags": [
             "provider-sampling-passthrough"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/sdkModels.test.ts",
+          "reason": "Merge sampling tests into sdkModels.test.ts"
         },
         "plurnk-providers/src/sdkModels.test.ts": {
           "tier": "unit",
@@ -5818,9 +5818,9 @@
             "provider-readable-reasoning",
             "provider-sdk-boundary"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain SDK model routing, request controls, and sampling unit suite"
         },
         "plurnk-providers/src/usage.test.ts": {
           "tier": "unit",
@@ -5838,9 +5838,9 @@
             "provider-usage",
             "provider-usage-refusal"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/cost.test.ts",
+          "reason": "Merge usage tests into cost.test.ts"
         },
         "plurnk-providers/src/warnings.test.ts": {
           "tier": "unit",
@@ -5853,9 +5853,9 @@
           "citedTags": [
             "provider-prompt-measurement"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-providers/src/env.test.ts",
+          "reason": "Merge warnings tests into env.test.ts"
         }
       }
     },

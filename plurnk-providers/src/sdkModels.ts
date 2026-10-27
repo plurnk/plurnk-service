@@ -1749,7 +1749,7 @@ export type SdkModel = {
     readonly systemCacheProviderOptions?: AiSdkProviderOptions;
     readonly reasoningResponseProviderOptions?: AiSdkProviderOptions;
     readonly additiveReasoningProvider?: "anthropic" | "bedrock";
-    // {§provider-request-controls} — the global controls this SDK documents as provider options.
+    // {§provider-request-authority} — the global controls this SDK documents as provider options.
     readonly requestControls?: NativeRequestControls;
     readonly catalog: ProviderInfo | null;
 };
@@ -1761,7 +1761,7 @@ const supportedSdkPackages = new Set(
     Object.values(providerCatalogSnapshot()).map(({ npm }) => npm),
 );
 
-// {§openrouter-app-attribution}: an OpenRouter-SDK route's application attribution is its provider's declaration,
+// {§provider-request-authority}: an OpenRouter-SDK route's application attribution is its provider's declaration,
 // handed to the SDK, which owns the headers.
 const openRouterAttribution = (provider: string, env: NodeJS.ProcessEnv): { appUrl?: string; appName?: string } => {
     const [urlKey, rawUrl] = providerSetting(provider, env, "APP_URL");
@@ -1780,7 +1780,7 @@ const openRouterAttribution = (provider: string, env: NodeJS.ProcessEnv): { appU
     return { appUrl: parsed.href, ...(name === undefined || name === "" ? {} : { appName: name }) };
 };
 
-// {§provider-fact-authority} — one credential declaration holds exactly one
+// {§model-fact-resolution} — one credential declaration holds exactly one
 // name. An ordered fallback list would paper over an operator/catalog naming
 // mismatch; that mismatch belongs at its owning boundary instead.
 const singleCredentialName = (provider: string, value: string): string => {
@@ -1979,7 +1979,7 @@ const baseUrl = (
     catalog: ProviderInfo,
     override?: string,
 ): string | undefined => {
-    // {§provider-fact-authority} — distinct sources, one precedence: the PLURNK
+    // {§model-fact-resolution} — distinct sources, one precedence: the PLURNK
     // knob, then the provider-native convention (OPENAI_BASE_URL etc.), then
     // the catalog. This is not an alias fallback: each source is a different
     // owner, and the catalog remains the last authority.
@@ -1992,7 +1992,7 @@ const requireApiKey = (
     env: NodeJS.ProcessEnv,
     catalog: ProviderInfo,
 ): string => {
-    // {§provider-fact-authority} — a catalog `env` list mixes credentials with
+    // {§model-fact-resolution} — a catalog `env` list mixes credentials with
     // non-secret coordinates; the credential is the credential-named one.
     const candidates = credentialCandidates(provider, env, catalog);
     const key = firstSet(env, candidates);

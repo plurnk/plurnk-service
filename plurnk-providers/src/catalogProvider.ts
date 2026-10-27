@@ -43,7 +43,7 @@ import { withProviderDefaults } from "./defaults.ts";
 import type { LanguageModelSource } from "./aiSdkTransport.ts";
 import type { ExtensionAttribution, ExtensionAttributionContext } from "@plurnk/plurnk-meta";
 
-// {§provider-input-modalities} — the catalog's input modalities, kept to the vocabulary the wire
+// {§provider-interface} — the catalog's input modalities, kept to the vocabulary the wire
 // can carry; an unknown model declares none.
 export const inputModalitiesOf = (input: readonly string[] | undefined): ReadonlySet<InputModality> =>
     new Set((input ?? []).filter((modality): modality is InputModality => (INPUT_MODALITIES as readonly string[]).includes(modality)));
@@ -343,7 +343,7 @@ export const providerFromSdkModel = ({
     contextWindow: number;
     info?: ModelInfo;
     attributions?: (context: ExtensionAttributionContext) => ExtensionAttribution;
-    // {§provider-grammar-transport} — extension-declared constrained-decoding
+    // {§provider-request-authority} — extension-declared constrained-decoding
     // capability; "none" keeps the grammar off the wire.
     grammarStyle?: GrammarStyle;
     cacheAffinity?: CacheAffinity;
@@ -403,7 +403,7 @@ export const providerFromSdkModel = ({
             ? {}
             : { cacheWrite: catalogCost.cacheWritePer1M }),
     };
-    // {§operator-cost-override} (#461): the catalog is the starting point; a declared
+    // {§provider-monetary-evidence} (#461): the catalog is the starting point; a declared
     // override merges over it, and the estimate's source names the overlay.
     const costOverride = costOverrideFromEnv(env, name);
     let rates = catalogRates;
@@ -433,7 +433,7 @@ export const providerFromSdkModel = ({
         ...(url === undefined ? {} : { url }),
         ...(headers === undefined ? {} : { headers: { ...headers } }),
         contextWindow,
-        // {§provider-input-modalities} — the catalog's input modalities decide which native parts ride.
+        // {§provider-interface} — the catalog's input modalities decide which native parts ride.
         inputModalities: inputModalitiesOf(info?.modalities.input),
         maxInputTokens,
         maxOutputTokens,

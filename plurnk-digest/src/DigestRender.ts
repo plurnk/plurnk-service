@@ -507,7 +507,7 @@ export default class DigestRender {
                 ? `  ↳ reasoning:\n${DigestRender.#indentLines(reasoning.trimEnd(), "    ")}`
                 : `  ↳ reasoning: ${reasoning.trim()}`)
             : null;
-        // {§provider-wire-emission} — an empty emission is read from what the wire carried, never guessed at.
+        // {§provider-failure-normalization} — an empty emission is read from what the wire carried, never guessed at.
         const wireLine = content.length === 0 && packet?.assistant != null ? DigestRender.wireLine(packet.assistantRaw) : null;
         const roles = packet?.messages().map(({ role }) => role).join(" → ");
         const requestLine = packet === null ? null
@@ -516,7 +516,7 @@ export default class DigestRender {
         return [head, ...(requestLine ? [requestLine] : []), ...(summary ? [summary] : []), ...(reasoningLine ? [reasoningLine] : []), ...(wireLine ? [wireLine] : []), ...opLines].join("\n");
     }
 
-    // {§provider-wire-emission} — public so the line can be witnessed on its own.
+    // {§provider-failure-normalization} — public so the line can be witnessed on its own.
     static wireLine(assistantRaw: unknown): string | null {
         const wire = isRecord(assistantRaw) && isRecord(assistantRaw.wire) ? assistantRaw.wire : null;
         if (wire === null) return null;

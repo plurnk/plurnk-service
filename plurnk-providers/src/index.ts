@@ -57,7 +57,7 @@ export type { DiscoverOptions, Discovery } from "./discover.ts";
 // Stable PLURNK adapter over AI SDK language models and compatible local URLs.
 export { default as AiSdkProvider } from "./AiSdkProvider.ts";
 export type { AiSdkProviderConfig, ReasoningStyle, GrammarStyle } from "./AiSdkProvider.ts";
-// {§provider-capacity-pool} Front N interchangeable backends as one Provider -
+// {§provider-interface} Front N interchangeable backends as one Provider -
 // session-sticky for KV-cache reuse, overflow to a healthy sibling; the blend
 // DECISION stays the consumer's, by choosing which pool to call.
 export { default as Pool } from "./Pool.ts";

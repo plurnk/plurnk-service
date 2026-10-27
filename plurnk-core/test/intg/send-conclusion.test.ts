@@ -1371,7 +1371,7 @@ test("{§loop-completion}: an admitted syntax recovery does not withhold complet
 describe("native-tool-calls", () => {
 for (const transport of ["text", "wire"] as const) {
     for (const withOperation of [false, true]) {
-        test(`{§fence-pairing} {§provider-native-tool-calls}: ${transport} calls withOperation=${withOperation} retain valid work and use ordinary strikes`, async () => {
+        test(`{§fence-pairing} {§provider-failure-normalization}: ${transport} calls withOperation=${withOperation} retain valid work and use ordinary strikes`, async () => {
             const db = await openMigrated();
             try {
                 const workspaceId = await insertWorkspace(db, "native-calls");
@@ -1426,7 +1426,7 @@ for (const transport of ["text", "wire"] as const) {
 }
 
 for (const finish of ["stop", "tool_calls"]) {
-    test(`{§loop-completion} {§provider-native-tool-calls}: native calls with finish=${finish} cannot conclude resolved work`, async (t) => {
+    test(`{§loop-completion} {§provider-failure-normalization}: native calls with finish=${finish} cannot conclude resolved work`, async (t) => {
         const db = await openMigrated(); t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "native-call-settlement");
         const sessionId = await insertSession(db, workspaceId, null, "alice");

@@ -86,7 +86,7 @@ consumer reconstructs a name. A name that cannot be a file name, or two turns sh
 | `<stem>.response.md`, attempt artifacts | The request received no admitted response | Stored request and attempt state |
 | `<stem>.packet.raw.txt` | The stored packet fails typed validation | Exact stored packet text |
 | `<stem>.packet.invalid.json` | The stored packet fails typed validation | Turn identity and complete validation error chain |
-| `requests/<id>.md`, `.json` | Every physical provider request | Request identity, disposition, accounting and available response/failure evidence; Markdown links the originating turn and complete JSON. A captured dispatched body follows {§provider-dispatched-request}; absent capture is explicit. |
+| `requests/<id>.md`, `.json` | Every physical provider request | Request identity, disposition, accounting and available response/failure evidence; Markdown links the originating turn and complete JSON. A captured dispatched body follows {§provider-interface}; absent capture is explicit. |
 
 A source-backed turn without provider participation produces only its source-channel
 artifacts; a request-only turn produces no fabricated assistant. A

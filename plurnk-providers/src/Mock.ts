@@ -56,11 +56,11 @@ export default class Mock implements Provider {
     #reasoningBudget: number | null;
     #queue: MockResponse[];
 
-    // {§provider-generation-envelope} Mock resolves the same generation
+    // {§provider-configuration} Mock resolves the same generation
     // envelope as a real provider, but tolerates absent policy because it is
     // also the universal test fixture. No output budget means its context
     // window alone cannot determine an input capacity; no output floor, no
-    // input wall ({§provider-output-floor}). Mock has no alias identity, so it
+    // input wall ({§provider-capacity-admission}). Mock has no alias identity, so it
     // reads the bare knobs.
     constructor({ contextWindow, responses, inputModalities = [] }: { contextWindow: number | null; responses: MockResponse[]; inputModalities?: Iterable<InputModality> }) {
         this.#contextWindow = contextWindow;

@@ -393,7 +393,7 @@ test("{§tokenomics} {§provider-surface} an exact prompt over the reservation b
         assert.ok(probe.weight < capacity && capacity < exactChars, "fixture separates the curation ruler from provider tokens");
 
         // {§provider-capacity-admission}: over the reservation, under the wall — the request goes, and the
-        // grant is the window's remainder ({§provider-flexed-allowance}), never below the floor.
+        // grant is the window's remainder ({§provider-capacity-admission}), never below the floor.
         const roomy = exactCharAt(capacity, [response([noteStmt("admitted")])]);
         assert.equal(roomy.inputCapacity, capacity);
         assert.ok(roomy.inputWall !== null && roomy.inputWall > exactChars, "a million-token window's wall is far above the exact count");
@@ -516,7 +516,7 @@ test("{§tokenomics} a proven request-token upper bound can authorize provider a
 });
 
 describe("Engine.budget", () => {
-test("{§provider-generation-envelope} input capacity subtracts the total output budget once; reasoning is only its subset", async () => {
+test("{§provider-configuration} input capacity subtracts the total output budget once; reasoning is only its subset", async () => {
     const KEYS = ["PLURNK_PROVIDERS_OUTPUT_BUDGET", "PLURNK_PROVIDERS_REASONING_BUDGET"] as const;
     const prev = KEYS.map((k) => process.env[k]);
     process.env.PLURNK_PROVIDERS_OUTPUT_BUDGET = "3000";

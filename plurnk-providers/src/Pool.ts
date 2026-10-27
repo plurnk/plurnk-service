@@ -22,7 +22,7 @@ const OVERFLOW_KINDS: ReadonlySet<ProviderErrorKind> = new Set(["network_failure
 // consumer's, one level up, by choosing WHICH pool to call. Backends MUST be
 // interchangeable - same served model, compatible window - so the pool presents ONE
 // honest Provider surface instead of pretending N models are one
-// ({§provider-capacity-pool}).
+// ({§provider-interface}).
 //
 // Affinity is the load-bearing part. A session's turns stick to one backend so its
 // stable prompt prefix keeps hitting the same KV cache; scattering a session across
@@ -79,7 +79,7 @@ export default class Pool implements Provider {
 
     get model(): string { return this.#backends[0].model; }
     get contextWindow(): number | null { return this.#floor.contextWindow; }
-    // {§provider-input-modalities} — a pool accepts a modality only when every backend does.
+    // {§provider-interface} — a pool accepts a modality only when every backend does.
     get inputModalities(): ReadonlySet<InputModality> {
         const [first, ...rest] = this.#backends.map((backend) => backend.inputModalities);
         return new Set([...(first ?? [])].filter((modality) => rest.every((set) => set.has(modality))));
@@ -204,7 +204,7 @@ export default class Pool implements Provider {
             inputCapacity: minimum(envelopes.map((envelope) => envelope.inputCapacity)),
             inputWall,
             // A pool spans members whose windows differ; it grants the reservation, bounded by each
-            // member's remainder and never below its floor ({§provider-flexed-allowance}).
+            // member's remainder and never below its floor ({§provider-capacity-admission}).
             responseMax: minimum(envelopes.map(({ provider, outputBudget, outputFloor }) => flexedResponseMax({
                 contextWindow: provider.contextWindow,
                 maxOutputTokens: provider.maxOutputTokens,

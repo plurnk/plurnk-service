@@ -37,7 +37,7 @@ test("{§observability-boundary} provider identity is independent of its configu
 // A per-alias baseUrl (PLURNK_BASEURL_<alias>) reaches endpoint resolution ahead of
 // OPENAI_BASE_URL. Here alias.baseUrl and OPENAI_BASE_URL point at different ports;
 // the construction probe must hit the alias's port, never the env's.
-test("{§provider-resolution} instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL", async () => {
+test("{§provider-configuration} instantiateProvider threads alias.baseUrl past an ambient OPENAI_BASE_URL", async () => {
     const hit: string[] = [];
     const realFetch = globalThis.fetch;
     globalThis.fetch = ((u: string | URL | Request, ...rest: unknown[]) => {

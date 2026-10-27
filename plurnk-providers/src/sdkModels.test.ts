@@ -1,9 +1,14 @@
-import test from "node:test";
-import { strict as assert } from "node:assert";
+import test, { mock } from "node:test";
+import assert from "node:assert/strict";
+import AiSdkProvider, { type AiSdkProviderConfig } from "./AiSdkProvider.ts";
 import { configuredProviderInfo, createSdkModel, providerReadiness } from "./sdkModels.ts";
 import { withProviderDefaults } from "./defaults.ts";
+import { resetEmittedWarnings } from "./warnings.ts";
+import { catalogProviderFromEnv } from "./catalogProvider.ts";
+import { requestBody, requestUrl } from "../../scripts/lib/test-fetch.ts";
+import { loadActiveProvider } from "./ProviderRegistry.ts";
 
-test("{§provider-fact-authority} one env declaration holds one credential name", () => {
+test("{§model-fact-resolution} one env declaration holds one credential name", () => {
     assert.deepEqual(configuredProviderInfo("acme-cloud", {
         PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_NPM: "@ai-sdk/openai-compatible",
         PLURNK_PROVIDERS_PROVIDER_ACME_CLOUD_BASE_URL: "https://api.acme.test/v1",
@@ -24,7 +29,7 @@ test("{§provider-fact-authority} one env declaration holds one credential name"
     );
 });
 
-test("{§model-catalog-readiness}: readiness uses the construction credential and endpoint requirements without exposing values", () => {
+test("{§provider-configuration}: readiness uses the construction credential and endpoint requirements without exposing values", () => {
     assert.deepEqual(providerReadiness("google", {}), {
         ready: false,
         causes: [{
@@ -51,7 +56,7 @@ test("{§model-catalog-readiness}: readiness uses the construction credential an
     }), { ready: true, causes: [] });
 });
 
-test("{§model-catalog-readiness}: Bedrock reports its actual alternative authentication sets and region requirement", () => {
+test("{§provider-configuration}: Bedrock reports its actual alternative authentication sets and region requirement", () => {
     assert.deepEqual(providerReadiness("amazon-bedrock", {}), {
         ready: false,
         causes: [{
@@ -80,14 +85,14 @@ test("{§model-catalog-readiness}: Bedrock reports its actual alternative authen
     });
 });
 
-test("{§model-catalog-readiness}: operator-declared unauthenticated compatible endpoints are ready without an invented credential", () => {
+test("{§provider-configuration}: operator-declared unauthenticated compatible endpoints are ready without an invented credential", () => {
     assert.deepEqual(providerReadiness("acme", {
         PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
         PLURNK_PROVIDERS_PROVIDER_ACME_BASE_URL: "http://127.0.0.1:9000/v1",
     }), { ready: true, causes: [] });
 });
 
-test("{§model-catalog-readiness}: an authenticated operator declaration reports its missing credential-name configuration", () => {
+test("{§provider-configuration}: an authenticated operator declaration reports its missing credential-name configuration", () => {
     const env = {
         PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai",
     };
@@ -124,7 +129,7 @@ test("{§provider-effort} SDK construction does not freeze request-local reasoni
     assert.equal(model.settings?.reasoning, undefined);
 });
 
-test("{§openrouter-app-attribution} attribution rejects malformed URLs", () => {
+test("{§provider-request-authority} attribution rejects malformed URLs", () => {
     assert.throws(
         () => createSdkModel("openrouter", "openai/gpt-5", {
             OPENROUTER_API_KEY: "key",
@@ -134,7 +139,7 @@ test("{§openrouter-app-attribution} attribution rejects malformed URLs", () => 
     );
 });
 
-test("{§provider-readable-reasoning} the Google SDK adapter owns its readable-reasoning response projection", () => {
+test("{§provider-effort} the Google SDK adapter owns its readable-reasoning response projection", () => {
     assert.deepEqual(
         createSdkModel("google", "gemini-flash-latest", { GEMINI_API_KEY: "test-key" })?.reasoningResponseProviderOptions,
         { google: { thinkingConfig: { includeThoughts: true } } },
@@ -160,7 +165,7 @@ test("{§provider-monetary-evidence} createSdkModel attaches DeepInfra's documen
     });
 });
 
-test("{§provider-fact-authority} catalog credential names are law without any package or operator alias", () => {
+test("{§model-fact-resolution} catalog credential names are law without any package or operator alias", () => {
     const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", withProviderDefaults({
         CLOUDFLARE_ACCOUNT_ID: "account",
         CLOUDFLARE_API_KEY: "key",
@@ -173,7 +178,7 @@ test("{§provider-fact-authority} catalog credential names are law without any p
     assert.deepEqual(sdk?.cacheAffinity, { target: "header", name: "x-session-affinity" });
 });
 
-test("{§provider-fact-authority} an operator credential override holds one exact name", () => {
+test("{§model-fact-resolution} an operator credential override holds one exact name", () => {
     const sdk = createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
         CLOUDFLARE_ACCOUNT_ID: "account",
         MY_ORG_CLOUDFLARE_KEY: "key",
@@ -185,7 +190,7 @@ test("{§provider-fact-authority} an operator credential override holds one exac
     });
 });
 
-test("{§provider-fact-authority} ordered credential fallbacks are rejected at construction", () => {
+test("{§model-fact-resolution} ordered credential fallbacks are rejected at construction", () => {
     assert.throws(
         () => createSdkModel("cloudflare-workers-ai", "@cf/google/gemma-4-26b-a4b-it", {
             CLOUDFLARE_ACCOUNT_ID: "account",
@@ -203,7 +208,7 @@ test("{§provider-fact-authority} ordered credential fallbacks are rejected at c
     );
 });
 
-test("{§provider-cache-affinity} the SDK adapter supplies each documented cache-affinity projection", () => {
+test("{§provider-sdk-boundary} the SDK adapter supplies each documented cache-affinity projection", () => {
     assert.deepEqual(
         createSdkModel("openai", "gpt-4.1-mini", withProviderDefaults({ OPENAI_API_KEY: "key" }))?.cacheAffinity,
         { target: "provider-option", provider: "openai", name: "promptCacheKey" },
@@ -223,7 +228,7 @@ test("{§provider-cache-affinity} the SDK adapter supplies each documented cache
     assert.equal(createSdkModel("cerebras", "gemma-4-31b", { CEREBRAS_API_KEY: "key" })?.cacheAffinity, undefined);
 });
 
-test("{§provider-cache-write-policy} explicit stable-system cache breakpoints exist only where a provider supports them", () => {
+test("{§provider-sdk-boundary} explicit stable-system cache breakpoints exist only where a provider supports them", () => {
     const cacheControl = { type: "ephemeral" };
     const system = (provider: string, model: string, env: NodeJS.ProcessEnv) => createSdkModel(provider, model, withProviderDefaults(env))?.systemCacheProviderOptions;
     assert.deepEqual(system("anthropic", "claude-sonnet-4-6", { ANTHROPIC_API_KEY: "key" }), { anthropic: { cacheControl } });
@@ -234,7 +239,7 @@ test("{§provider-cache-write-policy} explicit stable-system cache breakpoints e
     assert.equal(system("minimax", "MiniMax-M2.5", { MINIMAX_API_KEY: "key" }), undefined, "another provider on the Anthropic SDK declares none");
 });
 
-test("{§provider-cache-affinity} an operator-declared compatible provider receives no guessed cache extension", () => {
+test("{§provider-sdk-boundary} an operator-declared compatible provider receives no guessed cache extension", () => {
     const sdk = createSdkModel("acme", "model", {
         ACME_API_KEY: "key",
         PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@ai-sdk/openai-compatible",
@@ -245,14 +250,14 @@ test("{§provider-cache-affinity} an operator-declared compatible provider recei
     assert.equal(sdk?.systemCacheProviderOptions, undefined);
 });
 
-test("{§model-catalog-readiness} a cataloged compatible provider fails before transport when its declared credential is absent", () => {
+test("{§provider-configuration} a cataloged compatible provider fails before transport when its declared credential is absent", () => {
     assert.throws(
         () => createSdkModel("deepseek", "deepseek-v4-flash", {}),
         /deepseek provider: DEEPSEEK_API_KEY must be set/,
     );
 });
 
-test("{§provider-fact-authority} createSdkModel fails clearly for a declared but unsupported SDK package", () => {
+test("{§model-fact-resolution} createSdkModel fails clearly for a declared but unsupported SDK package", () => {
     assert.throws(
         () => createSdkModel("acme", "model", {
             PLURNK_PROVIDERS_PROVIDER_ACME_NPM: "@acme/ai-sdk",
@@ -261,10 +266,10 @@ test("{§provider-fact-authority} createSdkModel fails clearly for a declared bu
     );
 });
 
-// {§provider-fact-authority}: the catalog admits a provider only for an SDK package it names, so every admitted
+// {§model-fact-resolution}: the catalog admits a provider only for an SDK package it names, so every admitted
 // provider constructs; a package on the generator's list without a construction here is a route that reports ready
 // and then cannot run.
-test("{§provider-fact-authority} every catalog provider constructs a model through its SDK package", async () => {
+test("{§model-fact-resolution} every catalog provider constructs a model through its SDK package", async () => {
     const { catalogSnapshot, lookupProvider } = await import("@plurnk/plurnk-models");
     const failures: string[] = [];
     for (const [provider, models] of Object.entries(catalogSnapshot())) {
@@ -276,3 +281,320 @@ test("{§provider-fact-authority} every catalog provider constructs a model thro
     }
     assert.deepEqual(failures, []);
 });
+
+{
+// {§provider-request-authority} — a configured service tier or logprobs count reaches a native route only
+// through the option its SDK documents, and a control the SDK does not document is named, never
+// dropped in silence (#988). Requests are captured as the SDK serialized them; nothing leaves the host.
+
+
+
+
+
+
+
+
+const KEYS = {
+    OPENAI_API_KEY: "k", GROQ_API_KEY: "k", CEREBRAS_API_KEY: "k", MISTRAL_API_KEY: "k",
+    XAI_API_KEY: "k", GOOGLE_GENERATIVE_AI_API_KEY: "k", ANTHROPIC_API_KEY: "k",
+};
+
+const nativeProvider = (provider: string, model: string, extra: Partial<AiSdkProviderConfig> = {}): AiSdkProvider => {
+    const sdk = createSdkModel(provider, model, KEYS);
+    assert.ok(sdk?.languageModel, `${provider} is a native route`);
+    return new AiSdkProvider({
+        model, languageModel: sdk.languageModel, fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+        retryAttempts: 0, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null },
+        ...(sdk.requestControls === undefined ? {} : { requestControls: sdk.requestControls }),
+        ...extra,
+    });
+};
+
+const captureBodies = (respond: (body: Record<string, unknown>) => Response): Array<Record<string, unknown>> => {
+    const bodies: Array<Record<string, unknown>> = [];
+    mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(requestBody(init)) as Record<string, unknown>;
+        bodies.push(body);
+        return respond(body);
+    });
+    return bodies;
+};
+
+const openAiReply = (body: Record<string, unknown>): Response => {
+    const logprobs = { content: [{ token: "ok", logprob: -0.25, bytes: [111, 107], top_logprobs: [{ token: "ok", logprob: -0.25, bytes: [111, 107] }] }] };
+    if (body.stream !== true) {
+        return new Response(JSON.stringify({
+            id: "c", object: "chat.completion", created: 1, model: "gpt-4.1",
+            choices: [{ index: 0, message: { role: "assistant", content: "ok" }, logprobs, finish_reason: "stop" }],
+            usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        }), { headers: { "content-type": "application/json" } });
+    }
+    const chunks = [
+        { id: "c", object: "chat.completion.chunk", created: 1, model: "gpt-4.1", choices: [{ index: 0, delta: { role: "assistant", content: "ok" }, logprobs, finish_reason: null }] },
+        { id: "c", object: "chat.completion.chunk", created: 1, model: "gpt-4.1", choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 } },
+    ];
+    return new Response(`${chunks.map((chunk) => `data: ${JSON.stringify(chunk)}`).join("\n\n")}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
+};
+
+for (const streaming of [true, false]) {
+    test(`{§provider-request-authority} the native OpenAI route sends the service tier and logprobs it was configured with (${streaming ? "streaming" : "buffered"})`, async (t) => {
+        t.after(() => mock.restoreAll());
+        const bodies = captureBodies(openAiReply);
+        const provider = nativeProvider("openai", "gpt-4.1", { serviceTier: "priority", topLogprobs: 3, streaming });
+        const result = await provider.generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
+        assert.equal(result.assistant.content, "ok");
+        assert.equal(bodies.length, 1);
+        assert.equal(bodies[0].service_tier, "priority", "the tier rides the SDK's documented option");
+        assert.equal(bodies[0].logprobs, true);
+        assert.equal(bodies[0].top_logprobs, 3);
+        if (!streaming) assert.equal(result.assistant.logprobs?.[0]?.token, "ok", "the requested evidence comes back");
+    });
+}
+
+test("{§provider-request-authority} logprobs count 0 asks for the chosen token only", async (t) => {
+    t.after(() => mock.restoreAll());
+    const bodies = captureBodies(openAiReply);
+    await nativeProvider("openai", "gpt-4.1", { topLogprobs: 0, streaming: false }).generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] });
+    assert.equal(bodies[0].logprobs, true);
+    assert.equal(bodies[0].top_logprobs, 0, "no alternative tokens are requested");
+});
+
+// Each SDK that documents a service tier serializes the configured value; the reply need not parse.
+for (const [provider, model, tier] of [
+    ["groq", "llama-3.3-70b-versatile", "flex"],
+    ["cerebras", "gemma-4-31b", "flex"],
+    ["xai", "grok-4", "priority"],
+    ["google", "gemini-2.5-pro", "flex"],
+    ["anthropic", "claude-sonnet-4-5", "auto"],
+] as const) {
+    test(`{§provider-request-authority} ${provider} receives its documented service tier`, async (t) => {
+        t.after(() => mock.restoreAll());
+        const bodies = captureBodies(() => new Response("{}", { status: 500 }));
+        await nativeProvider(provider, model, { serviceTier: tier, streaming: false })
+            .generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] })
+            .catch(() => undefined);
+        assert.equal(bodies.length, 1, "one request was serialized");
+        assert.match(JSON.stringify(bodies[0]), new RegExp(`"(service_tier|serviceTier)":"${tier}"`, "u"));
+    });
+}
+
+test("{§provider-request-authority} a control the SDK does not document is named once and not sent", async (t) => {
+    t.after(() => mock.restoreAll());
+    resetEmittedWarnings();
+    const warned: string[] = [];
+    mock.method(process, "emitWarning", (message: string, options: { code?: string }) => { warned.push(`${options.code}: ${message}`); });
+    const bodies = captureBodies(() => new Response("{}", { status: 500 }));
+    for (let i = 0; i < 2; i++) nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2, streaming: false });
+    await nativeProvider("mistral", "mistral-large-latest", { serviceTier: "flex", topLogprobs: 2, streaming: false })
+        .generate({ sessionId: "w", messages: [{ role: "user", content: "hello" }] })
+        .catch(() => undefined);
+    const named = warned.filter((line) => line.startsWith("PLURNK_REQUEST_CONTROL_UNSUPPORTED"));
+    assert.equal(named.length, 2, "one warning per control, once per process");
+    assert.match(named[0], /PLURNK_PROVIDERS_SERVICE_TIER is not a provider option this route's SDK \(mistral\) documents, so it is not sent/u);
+    assert.match(named[1], /PLURNK_PROVIDERS_TOP_LOGPROBS/u);
+    assert.doesNotMatch(JSON.stringify(bodies[0]), /tier|logprob/iu, "nothing undocumented reaches the wire");
+});
+
+test("{§provider-request-authority} a compatible route keeps its body fields and refuses native controls", () => {
+    assert.throws(() => new AiSdkProvider({
+        model: "m", url: "https://example.test/v1/chat/completions", fetchTimeoutMs: 5000, operationTimeoutMs: 5000,
+        retryAttempts: 0, temperature: null, repeatPenalty: null, effort: { mode: "off", budget: null },
+        requestControls: { namespace: "openai", serviceTier: true, logprobs: true },
+    }), /native request controls require an AI SDK model/u);
+});
+
+test("{§provider-request-authority} the catalog route carries the operator's tier and logprobs beside its cache key", async (t) => {
+    t.after(() => mock.restoreAll());
+    const bodies = captureBodies(openAiReply);
+    const provider = catalogProviderFromEnv("openai", withProviderDefaults({
+        OPENAI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_FETCH_TIMEOUT: "1000",
+        PLURNK_PROVIDERS_OPERATION_TIMEOUT: "3000",
+        PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+        PLURNK_PROVIDERS_EFFORT: "off",
+        PLURNK_PROVIDERS_CACHE_AFFINITY: "1",
+        PLURNK_PROVIDERS_SERVICE_TIER: "priority",
+        PLURNK_PROVIDERS_TOP_LOGPROBS: "2",
+    }), "gpt-4.1-mini");
+    assert.ok(provider);
+    await provider.generate({ sessionId: "w-1", messages: [{ role: "user", content: "hello" }] });
+    assert.equal(bodies[0].service_tier, "priority");
+    assert.equal(bodies[0].logprobs, true);
+    assert.equal(bodies[0].top_logprobs, 2);
+    assert.equal(bodies[0].prompt_cache_key, "w-1", "the controls merge into the namespace the cache key uses");
+});
+}
+
+{
+const baseEnv = {
+    PLURNK_MODEL: "sample_box",
+    PLURNK_MODEL_sample_box: "fireworks-ai/accounts/fireworks/models/kimi-k3",
+    FIREWORKS_API_KEY: "test-key",
+    OPENAI_API_KEY: "test-key",
+    PLURNK_PROVIDERS_EFFORT: "adaptive",
+    PLURNK_PROVIDERS_RETRY_ATTEMPTS: "0",
+    PLURNK_PROVIDERS_PROBE_ATTEMPTS: "1",
+    PLURNK_PROVIDERS_PROBE_DELAY: "0",
+};
+
+const installWire = () => {
+    const calls: Record<string, unknown>[] = [];
+    mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url.endsWith("/models")) return Response.json({ data: [{ id: "local", meta: { n_ctx: 8192 } }] });
+        if (url.endsWith("/props")) return Response.json({ total_slots: 1 });
+        if (url.endsWith("/input_tokens")) return Response.json({ input_tokens: 2 });
+        calls.push(JSON.parse(requestBody(init)) as Record<string, unknown>);
+        return new Response([
+            `data: ${JSON.stringify({
+                id: "sampling-test",
+                object: "chat.completion.chunk",
+                created: 1,
+                model: "test",
+                choices: [{ index: 0, delta: { content: "ok" }, finish_reason: "stop" }],
+            })}`,
+            "data: [DONE]",
+        ].join("\n\n"), { headers: { "content-type": "text/event-stream" } });
+    });
+    return calls;
+};
+
+const generateArgs = { sessionId: "sampling-test", messages: [{ role: "user" as const, content: "hello" }] };
+const samplingKeys = new Set(["temperature", "top_p", "top_k", "presence_penalty", "frequency_penalty", "seed"]);
+const samplingOf = (body: Record<string, unknown> | undefined) =>
+    Object.fromEntries(Object.entries(body ?? {}).filter(([key]) => samplingKeys.has(key)));
+
+test.afterEach(() => mock.restoreAll());
+
+for (const [name, route] of [
+    ["catalog compatible", "fireworks-ai/accounts/fireworks/models/kimi-k3"],
+    ["native OpenAI SDK", "openai/gpt-4.1-mini"],
+    ["local compatible", "openai/local-sampling-test"],
+] as const) {
+    test(`{§provider-configuration}: ${name} carries alias sampling to the wire and caller values win`, async () => {
+        const calls = installWire();
+        const topK = name === "native OpenAI SDK" ? {} : { PLURNK_PROVIDERS_TOP_K_SAMPLE_BOX: "40" };
+        const provider = await loadActiveProvider({
+            ...baseEnv,
+            PLURNK_MODEL_sample_box: route,
+            PLURNK_BASEURL_sample_box: "http://sampling.test/v1",
+            PLURNK_PROVIDERS_TEMPERATURE: "0.6",
+            PLURNK_PROVIDERS_TEMPERATURE_SAMPLE_BOX: "1",
+            PLURNK_PROVIDERS_TOP_P: "0.95",
+            PLURNK_PROVIDERS_TOP_P_SAMPLE_BOX: "1",
+            ...topK,
+            PLURNK_PROVIDERS_PRESENCE_PENALTY_SAMPLE_BOX: "0.25",
+            PLURNK_PROVIDERS_FREQUENCY_PENALTY_SAMPLE_BOX: "-0.5",
+            PLURNK_PROVIDERS_SEED_SAMPLE_BOX: "0",
+        });
+        assert.equal((await provider.generate(generateArgs)).assistant.content, "ok");
+        assert.deepEqual(samplingOf(calls[0]), {
+            temperature: 1,
+            top_p: 1,
+            ...(name === "native OpenAI SDK" ? {} : { top_k: 40 }),
+            presence_penalty: 0.25,
+            frequency_penalty: -0.5,
+            seed: 0,
+        });
+        const sampling = {
+            temperature: 0,
+            top_p: 0.7,
+            ...(name === "native OpenAI SDK" ? {} : { top_k: 10 }),
+            presence_penalty: 0,
+            frequency_penalty: 0,
+            seed: 17,
+        };
+        await provider.generate({ ...generateArgs, sampling });
+        assert.deepEqual(samplingOf(calls[1]), sampling);
+    });
+
+    test(`{§provider-configuration}: ${name} omits unset sampling and ignores other aliases`, async () => {
+        const calls = installWire();
+        const provider = await loadActiveProvider({
+            ...baseEnv,
+            PLURNK_MODEL_sample_box: route,
+            PLURNK_BASEURL_sample_box: "http://sampling.test/v1",
+            PLURNK_PROVIDERS_TOP_P_other: "0.5",
+            PLURNK_PROVIDERS_TOP_K_other: "20",
+            PLURNK_PROVIDERS_PRESENCE_PENALTY_other: "1",
+            PLURNK_PROVIDERS_SEED_other: "42",
+        });
+        await provider.generate(generateArgs);
+        assert.deepEqual(samplingOf(calls[0]), {});
+    });
+}
+
+test("{§provider-configuration}: empty alias tuning retains the configured global value", async () => {
+    const calls = installWire();
+    const provider = await loadActiveProvider({ ...baseEnv, PLURNK_PROVIDERS_TOP_P: "0.8", PLURNK_PROVIDERS_TOP_P_sample_box: "" });
+    await provider.generate(generateArgs);
+    assert.deepEqual(samplingOf(calls[0]), { top_p: 0.8 });
+});
+
+test("{§provider-configuration}: numeric boundaries remain values, not absence", async () => {
+    const calls = installWire();
+    for (const value of [-2, 2]) {
+        const provider = await loadActiveProvider({
+            ...baseEnv,
+            PLURNK_PROVIDERS_TOP_P_sample_box: "0",
+            PLURNK_PROVIDERS_TOP_K_sample_box: "0",
+            PLURNK_PROVIDERS_PRESENCE_PENALTY_sample_box: String(value),
+            PLURNK_PROVIDERS_FREQUENCY_PENALTY_sample_box: String(value),
+            PLURNK_PROVIDERS_SEED_sample_box: "-1",
+        });
+        await provider.generate(generateArgs);
+        assert.deepEqual(samplingOf(calls.at(-1)), {
+            top_p: 0, top_k: 0, presence_penalty: value, frequency_penalty: value, seed: -1,
+        });
+    }
+});
+
+test("{§provider-configuration}: native Google SDK maps every sampling control the current model takes", async () => {
+    let config: Record<string, unknown> | undefined;
+    mock.method(globalThis, "fetch", async (_input: string | URL | Request, init?: RequestInit) => {
+        config = (JSON.parse(requestBody(init)) as { generationConfig: Record<string, unknown> }).generationConfig;
+        return new Response(`data: ${JSON.stringify({
+            responseId: "sampling-gemini",
+            candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+        })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+    });
+    const provider = await loadActiveProvider({
+        ...baseEnv,
+        PLURNK_MODEL_sample_box: "google/gemini-flash-latest",
+        GEMINI_API_KEY: "test-key",
+        PLURNK_PROVIDERS_TEMPERATURE_sample_box: "0.6",
+        PLURNK_PROVIDERS_TOP_P_sample_box: "0.9",
+        PLURNK_PROVIDERS_TOP_K_sample_box: "40",
+        PLURNK_PROVIDERS_PRESENCE_PENALTY_sample_box: "0.5",
+        PLURNK_PROVIDERS_FREQUENCY_PENALTY_sample_box: "-0.5",
+        PLURNK_PROVIDERS_SEED_sample_box: "42",
+    });
+    const result = await provider.generate(generateArgs);
+    assert.equal(result.assistant.content, "ok");
+    assert.ok(config);
+    const { temperature, topP, topK, presencePenalty, frequencyPenalty, seed } = config;
+    assert.deepEqual({ temperature, topP, topK, presencePenalty, frequencyPenalty, seed }, {
+        temperature: 0.6, topP: 0.9, topK: 40, presencePenalty: 0.5, frequencyPenalty: -0.5, seed: 42,
+    });
+    assert.deepEqual(result.notices?.filter(({ kind }) => kind === "provider_warning") ?? [], []);
+});
+
+for (const [knob, values] of [
+    ["TOP_P", ["-0.1", "1.1", "NaN", "Infinity"]],
+    ["TOP_K", ["-1", "1.5", "NaN", "9007199254740992"]],
+    ["PRESENCE_PENALTY", ["-2.1", "2.1", "NaN"]],
+    ["FREQUENCY_PENALTY", ["-2.1", "2.1", "NaN"]],
+    ["SEED", ["1.5", "NaN", "9007199254740992"]],
+] as const) {
+    test(`{§provider-configuration}: invalid ${knob} refuses before inference`, async () => {
+        const calls = installWire();
+        for (const value of values) {
+            await assert.rejects(
+                loadActiveProvider({ ...baseEnv, [`PLURNK_PROVIDERS_${knob}_sample_box`]: value }),
+                new RegExp(`PLURNK_PROVIDERS_${knob} must`),
+            );
+        }
+        assert.equal(calls.length, 0);
+    });
+}
+}

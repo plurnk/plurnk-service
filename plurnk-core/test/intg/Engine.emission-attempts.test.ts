@@ -144,7 +144,7 @@ test("{§emission-admission} provider I/O begins only after its pending attempt 
     }
 });
 
-test("{§provider-connectivity}: one model call durably settles a transient request and its successful retry", async () => {
+test("{§provider-failure-normalization}: one model call durably settles a transient request and its successful retry", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         let calls = 0;
@@ -419,7 +419,7 @@ test("{§emission-admission}: an emission that writes the harness log is resampl
     }
 });
 
-test("{§provider-generation-completion} repeated reasoning and its final answer settle once with complete usage", async () => {
+test("{§provider-interface} repeated reasoning and its final answer settle once with complete usage", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const line = "if app_configs is None:\n";
@@ -1222,7 +1222,7 @@ class GarbageProvider extends AttemptWitness {
     }
 }
 
-test("{§provider-generation-failed} {§engine-rails} a provider-declared generation error strikes like an invalid response and is never re-issued; the loop continues", async () => {
+test("{§provider-failure-normalization} {§engine-rails} a provider-declared generation error strikes like an invalid response and is never re-issued; the loop continues", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     // A recovery wait here would last a minute, past the runner's bound: a loop that ends in seconds took none.
     const priorBackoff = process.env.PLURNK_SERVICE_PROVIDER_RECOVERY_BACKOFF;
@@ -1249,7 +1249,7 @@ test("{§provider-generation-failed} {§engine-rails} a provider-declared genera
     }
 });
 
-test("{§provider-generation-failed} {§engine-rails} three consecutive generation errors strike out through the rail", async () => {
+test("{§provider-failure-normalization} {§engine-rails} three consecutive generation errors strike out through the rail", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new GarbageProvider(3, [
@@ -2329,7 +2329,7 @@ test("{§op-methods-op-dispatch}: an intervening operation separates concurrent 
 });
 
 // {§op-methods-op-dispatch}
-test("{§provider-cache-identity} BARE calls receive only their body prompts, run in parallel, and commit in authored order", async () => {
+test("{§provider-interface} BARE calls receive only their body prompts, run in parallel, and commit in authored order", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const parent = new Mock({
@@ -2578,7 +2578,7 @@ test("{§provider-interface} Mock.provider: contextWindow exposed", () => {
     assert.equal(mock.contextWindow, 200000);
 });
 
-test("{§provider-prompt-measurement} Mock.provider: prompt measurement carries exact provenance", async () => {
+test("{§provider-capacity-admission} Mock.provider: prompt measurement carries exact provenance", async () => {
     const mock = new Mock({ contextWindow: 200000, responses: [] });
     assert.deepEqual(
         await mock.countPromptTokens([{ role: "user", content: "alpha beta gamma" }]),
@@ -2602,7 +2602,7 @@ test("{§provider-instantiation} Mock.provider: exhausted queue throws", async (
     await assert.rejects(() => mock.generate({ messages: [{ role: "user", content: "y" }] }), /Mock provider exhausted/);
 });
 
-test("{§provider-generation-completion} Mock.provider: assistant and request accounting remain separate", async () => {
+test("{§provider-interface} Mock.provider: assistant and request accounting remain separate", async () => {
     const r: MockResponse = {
         assistant: {
             content: "````SEND [200]\ndone\n````",
@@ -2646,7 +2646,7 @@ test("{§provider-instantiation} Mock.provider: prompt is ignored — same input
     assert.equal(b.assistant.content, "alpha");
 });
 
-test("{§provider-evidence} Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
+test("{§provider-failure-normalization} Mock.provider: assistantRaw defaults to null; explicit value is passed through", async () => {
     const r1: MockResponse = { assistant: { content: "x", ops: [], reasoning: null } };
     const r2: MockResponse = { assistant: { content: "y", ops: [], reasoning: null }, assistantRaw: { vendor: "anthropic", id: "msg_123" } };
     const mock = new Mock({ contextWindow: 10_000, responses: [r1, r2] });
@@ -2710,14 +2710,14 @@ test("{§alias-parse} parseAliasesFromEnv: empty value, no slash, or no suffix a
     assert.deepEqual(aliases.map((a) => a.alias), ["valid"]);
 });
 
-test("{§alias-resolve-active} resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
+test("{§alias-parse} resolveActiveRoute: returns null when PLURNK_MODEL unset", () => {
     const alias = resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
     });
     assert.equal(alias, null);
 });
 
-test("{§provider-resolution} resolveActiveRoute: returns the matching alias when PLURNK_MODEL set", () => {
+test("{§provider-configuration} resolveActiveRoute: returns the matching alias when PLURNK_MODEL set", () => {
     const alias = resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL_opus: "openrouter/anthropic/claude-opus-latest",
@@ -2726,7 +2726,7 @@ test("{§provider-resolution} resolveActiveRoute: returns the matching alias whe
     assert.deepEqual(alias, { alias: "opus", provider: "openrouter", model: "anthropic/claude-opus-latest" });
 });
 
-test("{§alias-resolve-active} resolveActiveRoute: case-insensitive PLURNK_MODEL lookup", () => {
+test("{§alias-parse} resolveActiveRoute: case-insensitive PLURNK_MODEL lookup", () => {
     const alias = resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL: "GEMMA",
@@ -2734,14 +2734,14 @@ test("{§alias-resolve-active} resolveActiveRoute: case-insensitive PLURNK_MODEL
     assert.equal(alias?.alias, "gemma");
 });
 
-test("{§alias-resolve-active} resolveActiveRoute: rejects an explicit unknown alias", () => {
+test("{§alias-parse} resolveActiveRoute: rejects an explicit unknown alias", () => {
     assert.throws(() => resolveActiveRoute({
         PLURNK_MODEL_gemma: "openai/macher.gguf",
         PLURNK_MODEL: "ghost",
     }), /neither a declared alias nor a provider\/model route/);
 });
 
-test("{§provider-resolution} resolveActiveRoute: exact routes require no alias declaration", () => {
+test("{§provider-configuration} resolveActiveRoute: exact routes require no alias declaration", () => {
     assert.deepEqual(resolveActiveRoute({ PLURNK_MODEL: "google/gemini-3-flash" }), {
         provider: "google",
         model: "gemini-3-flash",
