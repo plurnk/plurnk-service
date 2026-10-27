@@ -10,7 +10,7 @@
 ### Patch Changes
 
 - 22ec9ca: A result range of neither one nor two positions is refused naming
-  `requestedPositions` as written and no extent ({§text-region}).
+  `requestedPositions` as written and no extent ({§range-extent}).
 - 19df83f: Specifications: every extension handler states its contract in a shipped
   `SPEC.md`; READMEs reduced to usage; new tags for the aliases cascade, the
   result-shape guards, the card read per wake and the llama-server effort posture.

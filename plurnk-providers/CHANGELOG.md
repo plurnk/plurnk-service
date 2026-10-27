@@ -21,7 +21,7 @@
   the context wall, resolve `PLURNK_PROVIDERS_OUTPUT_FLOOR` percentages against
   the effective output ceiling, and refuse model changes whose calibrated budget
   cannot hold the worker's current context with `413 context-exceeds-model-budget`
-  ({§tokenomics}, {§tokenomics}, {§provider-capacity-admission},
+  ({§tokenomics-calibrated-readout}, {§context-wall}, {§provider-output-floor},
   {§session-model-selection}) (#1225).
 
 ## 5.0.0

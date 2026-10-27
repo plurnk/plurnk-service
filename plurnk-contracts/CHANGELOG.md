@@ -15,53 +15,53 @@
   representations core computes, with `entryId` null, and a message core
   retains reads at the address that minted it. Only core's own acquisition runs:
   another scheme's entry reads as stored, never prepared, so a client read never
-  fetches ({§scheme-address}). A channel name may be empty, a log row's
-  unnamed default ({§text-region}).
+  fetches ({§client-entry-address}). A channel name may be empty, a log row's
+  unnamed default ({§entry-read-result}).
 - c3922c2: A loop stopped without failing (499) has the lifecycle `cancelled`, in the
   status gauge, the worker directory, `status.descendants` and the inbox; any
   other status of 400 or more stays `failed`. `LoopLifecycle` gains the word
-  ({§application-session-observation}).
+  ({§loop-lifecycle-vocabulary}).
 
 ### Minor Changes
 
 - cfa2be9: An address at the daemon has one HTTP form:
   `GET /agui/<workspace>/<worker>/entry?target=<address>` answers the channel
   the address selects, read from that worker's perspective through
-  `ApplicationPort.readEntryChannel` ({§acp-body-reference},
-  {§methods}). A result's body, a turn's reasoning and a
+  `ApplicationPort.readEntryChannel` ({§acp-entry-route},
+  {§methods-entry-channel-read}). A result's body, a turn's reasoning and a
   message's words travel by reference at it. A log row names its worker,
-  `worker_name` beside `worker_id` ({§methods-invocation}).
+  `worker_name` beside `worker_id` ({§methods-log-entry-wire}).
 - 558c0db: `FunctionalityAdapter` gains `Definition` and `Snapshot` type parameters, and
   `FunctionalityPreparation`, `FunctionalityPrepared`, `FunctionalityAdmission`,
   `FunctionalityServiceDefinition`, `FunctionalityPreparedDefinition` and
   `FunctionalityDefinitionSource` carry them; each defaults to the previous type.
   `registerFunctionalityAdapter` infers both from the adapter it registers.
-- 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
-  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-create},
-  {§methods-workspace-create}). A worker's hide covers its subtree as one group;
+- 0cee49c: Workspaces and workers hide and show by a durable mark ({§place-hiding}):
+  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
+  {§methods-session-hide}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group
   and workspace. `listWorkspaces` and `listWorkers` take `hidden` and carry
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
   `worker/hidden`. AG-UI: `workspace.hidden.set`, `worker.hidden.set`;
   `workspace.list` and `workspace.workers` take `includeHidden`
-  ({§acp-action-binding}). Migration 33.
+  ({§acp-place-hiding}). Migration 33.
 - 878d630: The package root exports the value guards `isRecord`, `isSafeInteger` and
   `errnoCode`
-  ({§text-region}); `Validator`'s asserts take `unknown` and return the wire
+  ({§wire-entrypoint}); `Validator`'s asserts take `unknown` and return the wire
   type their schema proves; `Validator.assertPlurnkStatement` joins them.
   `isPlurnkOp` tests membership in the operation alphabet beside `PLURNK_OPS`.
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
   the loop's number among its worker's loops, beside `loopId`
-  ({§notifications}, {§notifications},
-  {§operation-results}). The AG-UI status gauge carries it as `status.loopSeq`,
-  replaced in every delta that replaces `loopId` ({§acp-status-descendants}); the
+  ({§notifications-loop-packet}, {§notifications-loop-terminated},
+  {§loop-status-notice}). The AG-UI status gauge carries it as `status.loopSeq`,
+  replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
   conformance kit's gauge carries it.
 - 50fbe81: An interactive `McpOAuth` definition may name the `issuer` its sign-in binds
   to, where discovery starts, and `authorizationParams` added to the
-  authorization request, such as `access_type=offline` ({§mcp-server-definition},
-  {§oauth-continuation}). `oauth.begin` for an alias awaiting a sign-in after a refused
+  authorization request, such as `access_type=offline` ({§mcp-oauth},
+  {§oauth-issuer}). `oauth.begin` for an alias awaiting a sign-in after a refused
   request starts the authorization on a connection its server never challenges
-  ({§oauth-continuation}).
+  ({§oauth-begin-unchallenged}).
 - 4e4cb32: AG-UI: an accepted message is discoverable before its arrival (#1166).
   `status.inbox` lists the accepted messages the bound Worker has not yet
   observed; the snapshot carries the ones a client on the thread sent, with
@@ -72,30 +72,30 @@
   `forwardedProps.plurnk.reasoning: "link"`: each reasoning message holds no
   text and names its turn's `reasoning://<worker>/L/T` address in its HTTP form,
   the live text arrives as `CUSTOM plurnk.reasoning`, and a snapshot holds each
-  turn's link ({§acp-plurnk-metadata}). Every other Run receives reasoning as
+  turn's link ({§acp-reasoning-link}). Every other Run receives reasoning as
   AG-UI defines it. No row repeats reasoning its message holds.
 - de9ce8f: `status.streams` lists the streams the bound Worker holds open, each with its
   identity, lifetime, the row that opened it, and every channel's state, written
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
-  ({§acp-status-descendants}). `ApplicationPort.readStreams` reads it
-  ({§methods}). `stream/event`'s `contentLength` counts Unicode
+  ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
+  ({§methods-session-streams}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
-  reported ({§notifications}, {§methods-workspace-create}). AG-UI moves
+  reported ({§notifications-loop-packet}, {§methods-session-gauge}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
-  a reattached observer agree ({§acp-status-descendants}).
+  a reattached observer agree ({§acp-state-patches}).
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-workspace-create}, {§message-completion},
-  {§application-session-observation}); `excerptOf` is the one list excerpt rule
-  ({§application-session-observation}). `workspace/renamed` announces a rename
-  ({§notifications}). AG-UI: a Run carrying
+  finished first and bounded ({§methods-session-overview}, {§session-finished-reply},
+  {§application-session-overview}); `excerptOf` is the one list excerpt rule
+  ({§list-excerpt}). `workspace/renamed` announces a rename
+  ({§notifications-workspace-renamed}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
-  `/agui/connect` ({§acp-overview}, {§acp-overview},
-  {§acp-overview}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
+  `/agui/connect` ({§acp-overview-run}, {§acp-overview-state},
+  {§acp-overview-updates}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
   `PLURNK_AGUI_EXCERPT_CHARS` caps every list excerpt.
 
 ### Patch Changes
@@ -123,7 +123,7 @@
   page says a receipt names the working directory, relative to the project root,
   only when the command ran elsewhere.
 - 06d4a8d: `reasoning/event` carries its turn's `loopSeq` and `turnSeq`
-  ({§notifications}), and every reasoning message names that
+  ({§notifications-reasoning-event}), and every reasoning message names that
   turn as `metadata.plurnk.coordinate` (`L/T`) from its first event, live, as
   its row folds onto it and in a snapshot, a subagent's included
   ({§acp-plurnk-metadata}). The AG-UI conformance kit's specimens follow.
@@ -160,7 +160,7 @@
   example it was written as, at no cost to a complete reading; only a declared
   code block discarded as text still counts with a hidden operation. A message
   whose own fence is narrower than the fences wrapping its examples now holds them
-  instead of running them ({§fence-pairing}, {§operation-fences}; #1147).
+  instead of running them ({§pairing-objective}, {§balanced-fences}; #1147).
 
 ### Patch Changes
 
@@ -169,7 +169,7 @@
   turn that continues or parks without a NOTE in its program or from its
   reasoning is told so in the next packet by the `engine:turn` notice
   `continued_without_note` (`level: warn`, that command as its directive). A
-  notice, never a failure ({§operation-results}).
+  notice, never a failure ({§continued-without-note}).
 - acffc4f: The card teaches NOTE as working memory — save all new facts, ideas and plans
   for later turns — with `fact`, `idea` and `plan` examples in place of `plan`,
   `finding`, `decision` and `next`. The initialization turn's two NOTEs follow:

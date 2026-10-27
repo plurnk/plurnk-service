@@ -76,6 +76,7 @@ const collectSpecTags = (files) => {
     const emptyDeclarations = [];
 
     for (const { name, text } of files) {
+        if (path.basename(name) === "CHANGELOG.md") continue;
         const isSpec = path.basename(name) === "SPEC.md";
         const checksUnbraced = checksUnbracedTags(name);
         let paragraphOpen = false;

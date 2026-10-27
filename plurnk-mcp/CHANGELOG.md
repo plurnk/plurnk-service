@@ -16,9 +16,9 @@
   working invocation fence in `invalid-tool-arguments` and `tool-reported-error`
   recovery, hold model Functionality mutations at the workspace boundary across
   `authorization-required` sign-in, and conclude loops when a turn pairs a reply
-  `SEND` with `WAIT` and no live work remains ({§executor-discovery},
-  {§executor-discovery}, {§mcp-model-projection}, {§functionality-model-projection},
-  {§oauth-continuation}, {§loop-completion}) (#1228).
+  `SEND` with `WAIT` and no live work remains ({§executor-input-schema-preview},
+  {§executor-blank-invocation}, {§problems-mcp}, {§functionality-model-mutation},
+  {§oauth-continuation}, {§wait-obligation-matrix}) (#1228).
 
 ## 3.3.0
 
@@ -26,24 +26,24 @@
 
 - b8ec13b: An enabled server that cannot run keeps its alias, registered out of service;
   a call to it is refused with the state that keeps it from running
-  ({§mcp-configuration}). A request refused for want of a sign-in — a tool
+  ({§mcp-unavailable-runtime}). A request refused for want of a sign-in — a tool
   call, a resource or prompt read, or a completion — on a URL-only or interactive
   OAuth definition fails `401 authorization-required` and republishes its alias
-  awaiting a sign-in ({§mcp-host-composition}).
+  awaiting a sign-in ({§mcp-request-unauthorized}).
 - a7ccdf9: `list` shows the grant an active alias presents as its `detail.grant`: the
   issuer its tokens came from, the scope its authorization server stated, and
-  whether it refreshes; never a token ({§oauth-continuation}).
+  whether it refreshes; never a token ({§oauth-grant}).
 - 8e07dc6: An accepted interactive sign-in outlives its connection: each later connection
   for its alias with the same definition presents and refreshes it, after
-  workspace cooling, an enable, or disable then enable ({§oauth-continuation}). A
+  workspace cooling, an enable, or disable then enable ({§oauth-grant}). A
   connection carrying a grant starts a sign-in only at a redirect its definition
   configures.
 - 50fbe81: An interactive `McpOAuth` definition may name the `issuer` its sign-in binds
   to, where discovery starts, and `authorizationParams` added to the
-  authorization request, such as `access_type=offline` ({§mcp-server-definition},
-  {§oauth-continuation}). `oauth.begin` for an alias awaiting a sign-in after a refused
+  authorization request, such as `access_type=offline` ({§mcp-oauth},
+  {§oauth-issuer}). `oauth.begin` for an alias awaiting a sign-in after a refused
   request starts the authorization on a connection its server never challenges
-  ({§oauth-continuation}).
+  ({§oauth-begin-unchallenged}).
 
 ### Patch Changes
 

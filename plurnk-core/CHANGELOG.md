@@ -39,19 +39,19 @@
   working invocation fence in `invalid-tool-arguments` and `tool-reported-error`
   recovery, hold model Functionality mutations at the workspace boundary across
   `authorization-required` sign-in, and conclude loops when a turn pairs a reply
-  `SEND` with `WAIT` and no live work remains ({§executor-discovery},
-  {§executor-discovery}, {§mcp-model-projection}, {§functionality-model-projection},
-  {§oauth-continuation}, {§loop-completion}) (#1228).
+  `SEND` with `WAIT` and no live work remains ({§executor-input-schema-preview},
+  {§executor-blank-invocation}, {§problems-mcp}, {§functionality-model-mutation},
+  {§oauth-continuation}, {§wait-obligation-matrix}) (#1228).
 - b28031f: `@opencode-ai/models` moves to `^0.0.113` ({§model-catalog-build}).
   `effort-unsupported` and `effort-invalid` name the route's supported or valid
   efforts in `recovery`, and `provider-unavailable` includes the provider's
-  instantiation failure ({§session-model-selection}, {§operation-results}).
+  instantiation failure ({§session-effort}, {§problems-functionality}).
 - 2b882f9: Translate the calibrated curation budget additively by measured overhead
   without extrapolating unmeasured content, remove daemon-side row shedding at
   the context wall, resolve `PLURNK_PROVIDERS_OUTPUT_FLOOR` percentages against
   the effective output ceiling, and refuse model changes whose calibrated budget
   cannot hold the worker's current context with `413 context-exceeds-model-budget`
-  ({§tokenomics}, {§tokenomics}, {§provider-capacity-admission},
+  ({§tokenomics-calibrated-readout}, {§context-wall}, {§provider-output-floor},
   {§session-model-selection}) (#1225).
 - Updated dependencies [c30873c]
 - Updated dependencies [2b882f9]
@@ -75,39 +75,39 @@
 - cfa2be9: An address at the daemon has one HTTP form:
   `GET /agui/<workspace>/<worker>/entry?target=<address>` answers the channel
   the address selects, read from that worker's perspective through
-  `ApplicationPort.readEntryChannel` ({§acp-body-reference},
-  {§methods}). A result's body, a turn's reasoning and a
+  `ApplicationPort.readEntryChannel` ({§acp-entry-route},
+  {§methods-entry-channel-read}). A result's body, a turn's reasoning and a
   message's words travel by reference at it. A log row names its worker,
-  `worker_name` beside `worker_id` ({§methods-invocation}).
+  `worker_name` beside `worker_id` ({§methods-log-entry-wire}).
 - d679cc5: A client entry read acquires an address as exact READ does, from its worker's
   perspective: `log:///`, `reasoning://`, `ops://` and `note://` read as the
   representations core computes, with `entryId` null, and a message core
   retains reads at the address that minted it. Only core's own acquisition runs:
   another scheme's entry reads as stored, never prepared, so a client read never
-  fetches ({§scheme-address}). A channel name may be empty, a log row's
-  unnamed default ({§text-region}).
-- 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
-  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-create},
-  {§methods-workspace-create}). A worker's hide covers its subtree as one group;
+  fetches ({§client-entry-address}). A channel name may be empty, a log row's
+  unnamed default ({§entry-read-result}).
+- 0cee49c: Workspaces and workers hide and show by a durable mark ({§place-hiding}):
+  `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-hide},
+  {§methods-session-hide}). A worker's hide covers its subtree as one group;
   `409 live-work` while anything covered is live; a live loop shows its group
   and workspace. `listWorkspaces` and `listWorkers` take `hidden` and carry
   `hidden_at`; the overview omits hidden places; `workspace/hidden`,
   `worker/hidden`. AG-UI: `workspace.hidden.set`, `worker.hidden.set`;
   `workspace.list` and `workspace.workers` take `includeHidden`
-  ({§acp-action-binding}). Migration 33.
+  ({§acp-place-hiding}). Migration 33.
 - c3922c2: A loop stopped without failing (499) has the lifecycle `cancelled`, in the
   status gauge, the worker directory, `status.descendants` and the inbox; any
   other status of 400 or more stays `failed`. `LoopLifecycle` gains the word
-  ({§application-session-observation}).
+  ({§loop-lifecycle-vocabulary}).
 - 92270b9: The project's root `AGENTS.local.md` is projected as
   `worker:///_plurnk/AGENTS.local.md`, read from disk whatever its git status and
   hidden only by an exclusion, and read at turn 0 after `AGENTS.md`
-  ({§session-initialization-entry}).
+  ({§turn0-local-instructions}).
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
   the loop's number among its worker's loops, beside `loopId`
-  ({§notifications}, {§notifications},
-  {§operation-results}). The AG-UI status gauge carries it as `status.loopSeq`,
-  replaced in every delta that replaces `loopId` ({§acp-status-descendants}); the
+  ({§notifications-loop-packet}, {§notifications-loop-terminated},
+  {§loop-status-notice}). The AG-UI status gauge carries it as `status.loopSeq`,
+  replaced in every delta that replaces `loopId` ({§acp-status-loop-number}); the
   conformance kit's gauge carries it.
 - 4e4cb32: AG-UI: an accepted message is discoverable before its arrival (#1166).
   `status.inbox` lists the accepted messages the bound Worker has not yet
@@ -123,7 +123,7 @@
   packages; an unsupported exporter name is now reported as that module's
   contained configuration (`module:@plurnk/plurnk-otel`).
 - 06d4a8d: `reasoning/event` carries its turn's `loopSeq` and `turnSeq`
-  ({§notifications}), and every reasoning message names that
+  ({§notifications-reasoning-event}), and every reasoning message names that
   turn as `metadata.plurnk.coordinate` (`L/T`) from its first event, live, as
   its row folds onto it and in a snapshot, a subagent's included
   ({§acp-plurnk-metadata}). The AG-UI conformance kit's specimens follow.
@@ -131,87 +131,87 @@
   `forwardedProps.plurnk.reasoning: "link"`: each reasoning message holds no
   text and names its turn's `reasoning://<worker>/L/T` address in its HTTP form,
   the live text arrives as `CUSTOM plurnk.reasoning`, and a snapshot holds each
-  turn's link ({§acp-plurnk-metadata}). Every other Run receives reasoning as
+  turn's link ({§acp-reasoning-link}). Every other Run receives reasoning as
   AG-UI defines it. No row repeats reasoning its message holds.
 - 4b70069: Every receipt's H3 names its operand (`→ path`, `→ from → to` for
   COPY/MOVE), whether or not it is paired with its replayed operation; a
   paired receipt still leaves the pattern, scope, aside, metadata and body to
-  that operation ({§emission-history}).
+  that operation ({§paired-receipt}).
 - b3864d5: `plurnk-service stop` ends the service that holds the configured database
   and returns once it has exited; a database nobody holds is not running, and
-  that is success ({§startup-admission}). A `shared` launch without a log file
+  that is success ({§service-stop}). A `shared` launch without a log file
   writes to the service's `<state dir>/service.log`, which the result names as
-  `logFile` ({§startup-admission}).
+  `logFile` ({§daemon-launch}).
 - de9ce8f: `status.streams` lists the streams the bound Worker holds open, each with its
   identity, lifetime, the row that opened it, and every channel's state, written
   or not, so a client attaching mid-execution finds a silent one; it is
   republished as `STATE_DELTA /plurnk/status/streams` when it changes
-  ({§acp-status-descendants}). `ApplicationPort.readStreams` reads it
-  ({§methods}). `stream/event`'s `contentLength` counts Unicode
+  ({§acp-status-streams}). `ApplicationPort.readStreams` reads it
+  ({§methods-session-streams}). `stream/event`'s `contentLength` counts Unicode
   code points.
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
-  finished first and bounded ({§methods-workspace-create}, {§message-completion},
-  {§application-session-observation}); `excerptOf` is the one list excerpt rule
-  ({§application-session-observation}). `workspace/renamed` announces a rename
-  ({§notifications}). AG-UI: a Run carrying
+  finished first and bounded ({§methods-session-overview}, {§session-finished-reply},
+  {§application-session-overview}); `excerptOf` is the one list excerpt rule
+  ({§list-excerpt}). `workspace/renamed` announces a rename
+  ({§notifications-workspace-renamed}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
-  `/agui/connect` ({§acp-overview}, {§acp-overview},
-  {§acp-overview}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
+  `/agui/connect` ({§acp-overview-run}, {§acp-overview-state},
+  {§acp-overview-updates}). `PLURNK_AGUI_OVERVIEW_WORKERS` bounds it and
   `PLURNK_AGUI_EXCERPT_CHARS` caps every list excerpt.
 - 2693a59: A change to a worker's model, effort or spawn model is announced as
-  `worker/policy` ({§notifications}), and every client attached to
+  `worker/policy` ({§notifications-session-policy}), and every client attached to
   the worker is sent the new route as `STATE_DELTA /plurnk/status/model`,
-  whichever view made the change ({§acp-status-descendants}). A delta an event causes
+  whichever view made the change ({§acp-status-model}). A delta an event causes
   reaches the Run before any later event, its terminal included
-  ({§acp-status-descendants}).
+  ({§acp-state-patches}).
 
 ### Patch Changes
 
 - 0a3b016: A refusal of a blank tool request, a required body or target absent or neither
   supplied, carries the invocation's working form in `recovery`; a registry
   runtime named without a target answers with every enabled target's fence
-  ({§executor-discovery}).
+  ({§executor-blank-invocation}).
 - 93c0d87: `instanceof ConfigurationError` recognizes a configuration error from any copy of
-  the package by its name and key ({§env-knob}), so a module
+  the package by its name and key ({§configuration-error-identity}), so a module
   loaded from its own plugin root reports its configuration errors as its
   diagnostic instead of aborting daemon boot.
 - 8760da7: A READ of a file on disk that a members exclusion covers names the exclusion and
   that only the user can lift it, instead of offering a `members (add)` that cannot
-  admit it ({§fs-namespace}).
+  admit it ({§membership-read-refusal}).
 - 519e7a1: An execution's `stream/concluded` summary sizes only the channels its executor
   declares and reads how it ended from the settled result: `completed`, with any
   exit code, for a success, and the Problem's title in lowercase for a failure
-  ({§exec-stream}).
+  ({§exec-conclusion-summary}).
 - 65028a4: `plurnk-service` refuses a Node.js below its `engines.node` floor with one
   line naming both versions, exit 1, before any other module loads
-  ({§startup-admission}). `daemon/provider/not-configured` recovers with
+  ({§service-runtime-floor}). `daemon/provider/not-configured` recovers with
   "Select a model for this worker, or set `PLURNK_MODEL=<provider/model>` as
   the service default; that provider's API key must be in the service's
-  environment." ({§operation-results}). The generated
+  environment." ({§problems-functionality}). The generated
   `~/.config/plurnk/.env` cites no spec tag.
 - 1fc7b1f: Membership honors the daemon user's own git excludes file, the configured
   `core.excludesFile` or git's default, and a refusal or `discover` verdict for an
   ignored file names the rule's file and line instead of "the repository"
-  ({§membership}, {§membership}).
+  ({§membership-git-hermetic}, {§membership-ignore-source}).
 - 6c197b2: A model worker's initialization opens with the plan `1. Survey the environment.`
   `2. Evaluate and react to the Open Message.` and closes with its second step. A
   survey that would select nothing is left out of the program, and the program no
-  longer READs its own `ops://` source ({§session-initialization-entry},
+  longer READs its own `ops://` source ({§actor-boundary-catalog-preview},
   {§session-initialization-entry}).
 - 70b19d7: A loop's terminal reaps every loop-bound stream, one spawned before a park
   included, and is announced once those streams have concluded
-  ({§exec-lifetime}, {§notifications}).
+  ({§exec-lifetime}, {§notifications-loop-terminated}).
 - 6f3d277: A file beyond the model's members scope is admitted only by a client or operator
   definition, the user's to give: the `model-scope` refusal and the members
-  teaching say so and no longer suggest staging a file ({§tools-resource-materialization}).
+  teaching say so and no longer suggest staging a file ({§members-model-scope}).
 - 2606732: A `members` glob is matched against member keys: an absolute spelling admits
   exactly what its root-relative spelling does, inside the root or beyond it, and
   READ reaches those members by either spelling. An absolute glob used to list
-  matches that no READ could reach ({§tools-resource-materialization}).
+  matches that no READ could reach ({§members-functionality}).
 - 22ec9ca: A result range of neither one nor two positions is refused naming
-  `requestedPositions` as written and no extent ({§text-region}).
+  `requestedPositions` as written and no extent ({§range-extent}).
 - 68e8d53: A mounted route's failure ends its own request, never the daemon: its request
   answers `500 route-failed`, or is cut where its response had begun, and the
   failure is reported. A request target the listener cannot parse answers
@@ -220,21 +220,21 @@
   `SPEC.md`; READMEs reduced to usage; new tags for the aliases cascade, the
   result-shape guards, the card read per wake and the llama-server effort posture.
 - 1e6019e: A channel deleted before its terminal publication settles every publication of
-  it ({§exec-stream}). An HTTP response without a readable projection
+  it ({§stream-channel-deletion}). An HTTP response without a readable projection
   drops the `readable` channel its request seeded; the loop that sent it no longer
   runs to its turn ceiling after its final reply.
 - 808f1b6: A loop's `loop/terminated` is announced once. A gate its running turn holds
   settles first, and a cancellation announces the loops it retired after the
   worker's drain settles and the streams it reaped close
-  ({§notifications}).
+  ({§notifications-loop-terminated}).
 - 4d1873a: A loop's `loop/terminated` follows its worker's pending `stream/concluded`,
   including a stream whose durable close already released its live handle
-  ({§notifications}).
+  ({§notifications-loop-terminated}).
 - f3cd7de: `loop/packet` carries the loop's client gauge after each model turn, and
   `ApplicationPort.workerGauge` returns the gauge the Worker's latest packet
-  reported ({§notifications}, {§methods-workspace-create}). AG-UI moves
+  reported ({§notifications-loop-packet}, {§methods-session-gauge}). AG-UI moves
   the budget with every packet and its snapshots carry the latest, so a live and
-  a reattached observer agree ({§acp-status-descendants}).
+  a reattached observer agree ({§acp-state-patches}).
 - e52015a: A worker name lost to a concurrent claim is refused as `name-conflict` (409),
   like any taken name, instead of escaping as an internal error.
 - Updated dependencies [cfa2be9]
@@ -340,7 +340,7 @@
   in addresses, misses and the `path_normalized` notice — never as a `../` climb;
   a path inside the root stays project-relative. An absolute spelling of a path
   beyond the root is already canonical and earns no notice
-  ({§fs-namespace}; #1146).
+  ({§file-path-normalization}; #1146).
 - d4f8760: `PLURNK_MEMBERS_AUTO_ADD=1` (default): a model's READ of an untracked, unignored,
   unexcluded project file admits it as the Worker's own member definition and reads
   it; a FIND lists such files as `untracked` and admits the ones its text pattern
@@ -352,7 +352,7 @@
   turn that continues or parks without a NOTE in its program or from its
   reasoning is told so in the next packet by the `engine:turn` notice
   `continued_without_note` (`level: warn`, that command as its directive). A
-  notice, never a failure ({§operation-results}).
+  notice, never a failure ({§continued-without-note}).
 
 ### Patch Changes
 
@@ -560,7 +560,7 @@ waterfall, composer and web approval presentation remain separate work.
   miss recovery names the `members (add)` body the family accepts.
 - 89def41: The packet's `## Worker` block carries the worker's approval owner and whether a
   person attends it (`"owner": {"address", "interactive"}`), so a model knows up
-  front when nobody can answer a question ({§child-orientation}).
+  front when nobody can answer a question ({§packet-current-turn}).
 - a8df72c: Rollback reverses a worker's settled file mutations after a log coordinate,
   latest first, as the acting client's own operations:
   `rollback({ workspaceId, workerId, clientWorkerId, to })` on the application
@@ -586,7 +586,7 @@ waterfall, composer and web approval presentation remain separate work.
 - be45046: The live and demo tiers write a census: every run lands its workers and a
   `census.md`/`census.json` under one `tier-<kind>-<stamp>/` directory in the
   benchmark home, each specimen declares what it requires of its route and host
-  and skips by name when unmet, and `tier:history` ledgers runs ({§test-artifact-retention}).
+  and skips by name when unmet, and `tier:history` ledgers runs ({§tier-census}).
   The third-party MCP composition, the llama-server rails, the upstream A2A TCK
   and the client's real-model TUI tier are live specimens, no longer opt-in flags
   or scripts. `digest-missing` recovers workers inside tier runs and resolves the

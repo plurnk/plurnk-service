@@ -132,6 +132,10 @@ test("{§spec-check-tags} unresolved citations are checked inside and outside sp
                 `// ${cite("missing-in-code")}`,
             ].join("\n"),
         },
+        {
+            name: "alpha/CHANGELOG.md",
+            text: `- historical release note citing ${cite("retired-in-changelog")}`,
+        },
     ];
 
     assert.deepEqual(analyzeSpecReferences(files), {
