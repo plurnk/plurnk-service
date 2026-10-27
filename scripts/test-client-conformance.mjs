@@ -331,7 +331,7 @@ try {
     // the client omits the ant and the gate light. The lifecycle glyph stands alone, and the place (workspace,
     // loop, turn, session) is the prompt prefix's, asserted separately below.
     // The client renders a chosen effort as `alias[low]` and a seeded default as `alias(low)` (plurnk SPEC, identity effort).
-    await tui.waitFor(/⏹️  · 🎲 journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
+    await tui.waitFor(/⏹️  · journey(?:[[(]adaptive[\])])? · \d+ms · ↓800 ↑160/);   // two spaces after the glyph; the model leads
     // The prompt prefix names the place: [workspace/~session(loop/turn)].
     await tui.waitFor(/\[installed-tui\/[\s\S]{0,80}?~Tui_Session(?:\(\d+\/\d+\))?\]/);
     const tuiOutput = tui.output();
@@ -359,10 +359,10 @@ try {
     // word boundary that moves with the title, and the renderer may repaint between the rows.
     await tui.waitFor(wrapped("The requested model is unavailable; select an available model."));
     // The glyph is the lifecycle; the status line carries no turn count.
-    await tui.waitFor(/❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
+    await tui.waitFor(/❌  · journey(?:[[(]adaptive[\])])? · \d/);
     tui.write("/sessions\r");
     // The bound session's row carries its lifecycle mark.
-    await tui.waitFor(/● rejected-session ❌[\s\S]*❌  · 🎲 journey(?:[[(]adaptive[\])])? · \d/);
+    await tui.waitFor(/● rejected-session ❌[\s\S]*❌  · journey(?:[[(]adaptive[\])])? · \d/);
     if (tui.output().includes("Strike threshold") || tui.output().includes("⏹️")) {
         throw new Error(`installed TUI lost the provider failure\n${tui.output()}`);
     }

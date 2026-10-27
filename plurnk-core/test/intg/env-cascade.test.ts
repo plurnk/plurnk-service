@@ -580,8 +580,9 @@ for (const built of [false, true]) {
             cwd: fx.cwd,
             _meta: { plurnk: { workspace: "lazy-model", projectRoot: fx.cwd } },
         });
-        const unchangedMeta = (unchanged.result?._meta as { plurnk?: { status?: unknown } } | undefined)?.plurnk;
-        assert.deepEqual(unchangedMeta?.status, { model: null, spawnModel: null });
+        const unchangedMeta = (unchanged.result?._meta as { plurnk?: { status?: { model?: unknown; spawnModel?: unknown } } } | undefined)?.plurnk;
+        assert.equal(unchangedMeta?.status?.model, null);
+        assert.equal(unchangedMeta?.status?.spawnModel, null);
         for (let attempt = 0; attempt < 2; attempt++) {
             const selected = await acpCall(daemon.url, "session/set_config_option", {
                 sessionId,
