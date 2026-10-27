@@ -579,6 +579,58 @@ describe("{§acp-daemon-client} plurnk-acp Module", { concurrency: true }, () =>
 
                 const missingTarget = await fetch(`${h.baseUrl}/1/1/entry`);
                 assert.equal(missingTarget.status, 400);
+
+                // Cancelled termination without a calibrated turn omits fabricated usage_update and duplicate notice
+                const beforeCount = updates.length;
+                h.port.emitEvent(
+                    1,
+                    "loop/terminated",
+                    makeTerminatedEvent({
+                        sessionId: 1,
+                        loopId: 9,
+                        loopSeq: 9,
+                        turnIds: [],
+                        result: {
+                            status: 499,
+                            problem: {
+                                type: "https://problems.plurnk.xyz/lifecycle/cancel/scope-cancelled",
+                                title: "Session scope cancelled",
+                                status: 499,
+                                detail: "The session scope was cancelled: Cancelled by ACP client.",
+                            },
+                        },
+                        usage: {
+                            curationWeight: null,
+                            curationBudget: null,
+                            contextTokens: null,
+                            contextCapacity: null,
+                            accounting: {
+                                requests: [],
+                                knownUsage: null,
+                                knownCostUsd: null,
+                                usage: { inputTokens: 0, outputTokens: 0 },
+                                costUsd: null,
+                            },
+                            meta: {},
+                        },
+                    }),
+                );
+                await waitFor(() =>
+                    updates.slice(beforeCount).some(
+                        (u) => u.sessionUpdate === "state_update" && u.state === "idle",
+                    ),
+                );
+                const cancelledUpdates = updates.slice(beforeCount);
+                assert.equal(
+                    cancelledUpdates.filter((u) => u.sessionUpdate === "notice").length,
+                    0,
+                    "terminated problem is carried on state_update without a duplicate notice",
+                );
+                assert.equal(
+                    cancelledUpdates.filter((u) => u.sessionUpdate === "usage_update").length,
+                    0,
+                    "uncalibrated cancellation omits fabricated 0/128k usage_update",
+                );
             });
         } finally {
             await h.close();

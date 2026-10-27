@@ -95,6 +95,41 @@ test("{§operation-results} structured cancellation atomically claims the unreso
     }
 });
 
+test("{§operation-results} {§session-loop-lifecycle} cancelTree never resurrects a prior loop settled with 499 cancel", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `cancel-cutoff-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId, null, "main");
+        const firstLoop = await insertLoop(db, sessionId, 1, "first");
+        const lifecycle = new LoopLifecycle(db);
+
+        await lifecycle.finish(
+            firstLoop,
+            Results.failure("lifecycle:cancel", "loop-cancelled", 499, "The loop was cancelled: daemon_stopping.", undefined, {
+                reason: "daemon_stopping",
+                stage: "loop",
+                retryable: false,
+            }),
+            { terminatedBy: "cancel" },
+        );
+
+        const secondLoop = await insertLoop(db, sessionId, 2, "second");
+        const cancelled = await lifecycle.cancelTree(sessionId, "Cancelled by ACP client", true);
+
+        assert.deepEqual(
+            cancelled.loops.map(({ loopId }) => loopId),
+            [secondLoop],
+            "only the active loop is returned; prior 499-cancelled loops are never re-emitted",
+        );
+        assert.equal(
+            cancelled.loops[0]?.result.problem?.detail,
+            "The session scope was cancelled: Cancelled by ACP client.",
+        );
+    } finally {
+        await db.close();
+    }
+});
+
 test("{§session-loop-lifecycle} an uncommon terminal status remains exact in the result while the scheduler stores its terminal class", async () => {
     const db = await openMigrated();
     try {

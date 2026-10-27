@@ -1299,7 +1299,6 @@ export default class Module implements DaemonModule<AcpSetupSeam> {
                     false,
                 ).catch(() => undefined));
             if (bound === undefined) return;
-            this.#seam.cancelDrain(bound.sessionId, "Cancelled by ACP client");
             await this.#seam.cancelSession({
                 workspaceId: bound.workspaceId,
                 sessionId: bound.sessionId,

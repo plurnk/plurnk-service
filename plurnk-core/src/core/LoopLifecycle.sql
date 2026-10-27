@@ -81,7 +81,11 @@ WITH RECURSIVE tree(id, depth) AS (
 )
 -- CROSS JOIN fixes the nesting: the walked tree is the outer loop and each session is a
 -- primary-key probe, instead of a scan of every session probing the tree ({§db-migrations}).
-SELECT tree.id AS session_id, tree.depth, sessions.cancelled_through_sequence
+SELECT tree.id AS session_id, tree.depth,
+       MAX(
+           sessions.cancelled_through_sequence,
+           COALESCE((SELECT MAX(sequence) FROM loops WHERE session_id = sessions.id AND status NOT IN (100, 102, 202)), 0)
+       ) AS cancelled_through_sequence
 FROM tree CROSS JOIN sessions ON sessions.id = tree.id
 WHERE $include_root = 1 OR tree.id <> $session_id
 ORDER BY tree.depth DESC, tree.id;
@@ -145,6 +149,9 @@ AFTER UPDATE OF status ON loops
 WHEN NEW.status IN (200, 413, 429, 499, 500, 504, 508) AND OLD.status NOT IN (200, 413, 429, 499, 500, 504, 508)
 BEGIN
     UPDATE loops SET terminated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id;
+    UPDATE sessions
+    SET cancelled_through_sequence = MAX(cancelled_through_sequence, NEW.sequence)
+    WHERE id = NEW.session_id AND NEW.status = 499 AND NEW.terminated_by = 'cancel';
 END;
 
 -- INIT: sessions_cancel_live_loops

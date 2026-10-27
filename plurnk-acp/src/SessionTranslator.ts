@@ -661,27 +661,16 @@ export default class SessionTranslator {
                     ? { sessionUpdate: "state_update", state: "idle", stopReason: "refusal", usage, _meta: terminalMeta }
                     : { sessionUpdate: "state_update", state: "idle", stopReason: "end_turn", usage, _meta: terminalMeta };
 
-        const curationWeight = usageObj?.curationWeight ?? 0;
-        const curationBudget = usageObj?.curationBudget ?? 0;
+        const curationWeight = usageObj?.curationWeight ?? null;
+        const curationBudget = usageObj?.curationBudget ?? null;
         const contextTokens = usageObj?.contextTokens ?? null;
         const contextCapacity = usageObj?.contextCapacity ?? null;
-        const used = contextTokens ?? (usageObj?.curationWeight ?? totalTokens);
-        const size = contextCapacity ?? (usageObj?.curationBudget ?? 128000);
+        const used = contextTokens ?? curationWeight;
+        const size = contextCapacity ?? curationBudget;
 
         const updates: AcpSessionUpdate[] = [];
-        if (problem !== null) {
+        if (used !== null && size !== null && size > 0) {
             updates.push({
-                sessionId: this.#acpSessionId,
-                update: {
-                    sessionUpdate: "notice",
-                    severity: "error",
-                    title: problem.title,
-                    description: problem.detail,
-                },
-            });
-        }
-        updates.push(
-            {
                 sessionId: this.#acpSessionId,
                 update: {
                     sessionUpdate: "usage_update",
@@ -699,14 +688,14 @@ export default class SessionTranslator {
                         },
                     },
                 },
+            });
+        }
+        updates.push({
+            sessionId: this.#acpSessionId,
+            update: {
+                ...idleUpdate,
             },
-            {
-                sessionId: this.#acpSessionId,
-                update: {
-                    ...idleUpdate,
-                },
-            },
-        );
+        });
         return updates;
     }
 
