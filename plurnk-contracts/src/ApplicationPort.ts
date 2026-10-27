@@ -63,7 +63,7 @@ export interface HttpHost {
     httpAddress(): { readonly host: string; readonly port: number };
 }
 
-/** {§application-port} The transport-neutral application contract consumed by exterior adapters. */
+/** {§application-session-observation} The transport-neutral application contract consumed by exterior adapters. */
 export interface ApplicationPort extends HttpHost {
     readonly credentials: CredentialAuthority;
     registerSessionOwner(workspaceId: number, owner: SessionOwner): Promise<void>;
@@ -128,7 +128,7 @@ export interface ApplicationPort extends HttpHost {
     // {§connection-lifecycle} — cancel exactly one client operation: its dispatch while it runs and every execution its
     // rows started that still runs; false when nothing of it was running.
     cancelLoop(args: { readonly workspaceId: number; readonly loopId: number; readonly reason?: string }): Promise<boolean>;
-    // {§executor-heading} — the workspace's available names also permit slotless invocation.
+    // {§fence-pairing} — the workspace's available names also permit slotless invocation.
     executorTags(workspaceId: number): readonly string[];
     readLog(args: {
         readonly workspaceId: number;

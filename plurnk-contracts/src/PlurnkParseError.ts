@@ -8,7 +8,7 @@ export default class PlurnkParseError extends Error {
     readonly severity: Severity;
     // {§parse-recovery}: the working form, for a hard diagnostic; the runtime projects it as the Problem's recovery.
     readonly recovery: string | undefined;
-    // {§parse-admission}: severity and loss of an operation are independent facts.
+    // {§parse-recovery}: severity and loss of an operation are independent facts.
     readonly operationOmitted: boolean;
 
     constructor(line: number, column: number, source: ErrorSource, message: string, severity: Severity = "error", recovery?: string, operationOmitted = false) {

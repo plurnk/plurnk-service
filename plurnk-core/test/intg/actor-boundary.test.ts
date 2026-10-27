@@ -1214,7 +1214,7 @@ test("{§turn-source-resources} the turn-0 initialization consists of the real o
                 assert.deepEqual(
                     program.content.split("\n\n").flatMap((block) => /^```([A-Z]+)/.exec(block)?.[1] ?? []),
                     initializationRows.map(({ op }) => op),
-                    "{§statement-rendering}: every operation is separated by a blank line and has exactly one ordinary receipt",
+                    "{§fence-pairing}: every operation is separated by a blank line and has exactly one ordinary receipt",
                 );
             } finally { ws.close(); }
         });

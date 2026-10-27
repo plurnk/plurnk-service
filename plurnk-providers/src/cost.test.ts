@@ -28,7 +28,7 @@ test("{§provider-monetary-evidence} direct charged evidence wins over a Models.
     assert.equal(providerCostUsd(charged), "0.73");
 });
 
-test("{§provider-cost} an exact zero estimate remains distinguishable from unknown cost", () => {
+test("{§provider-request-accounting} an exact zero estimate remains distinguishable from unknown cost", () => {
     const zero = estimateProviderCost(usage, { input: 0, output: 0 }, "Models.dev");
     const unknown = estimateProviderCost(usage, null, "Models.dev");
     assert.deepEqual(zero, {
@@ -85,7 +85,7 @@ test("{§provider-monetary-evidence} a distinct reasoning rate requires reported
     );
 });
 
-test("{§provider-accounting} decimal aggregation is exact and becomes unknown if any request is unknown", () => {
+test("{§provider-request-accounting} decimal aggregation is exact and becomes unknown if any request is unknown", () => {
     assert.equal(addDecimals(["0.1", "0.02", "3"]), "3.12");
     assert.equal(sumProviderCostsUsd([
         {
@@ -104,7 +104,7 @@ test("{§provider-accounting} decimal aggregation is exact and becomes unknown i
     ]), null);
 });
 
-test("{§provider-cost} malformed charged money is rejected instead of coerced", () => {
+test("{§provider-request-accounting} malformed charged money is rejected instead of coerced", () => {
     assert.throws(() => validateChargedCost({
         kind: "charged",
         amount: { amount: "1e3", currency: "usd" },

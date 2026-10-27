@@ -44,7 +44,7 @@ export type ApplicationSessionOrigin = "model" | "_plurnk";
 
 // {§application-session-observation} — `kind` is how the session was minted (a root session, a FORK
 // child with a forked log, a WORK child with a fresh log); `lifecycle` projects its representative loop
-// through the shared {§loop-lifecycle-vocabulary}, so a directory row can carry the same glyph the
+// through the shared {§application-session-observation}, so a directory row can carry the same glyph the
 // bound session's own status gauge shows. Neither is inferred by a client.
 export type ApplicationSessionKind = "root" | "fork" | "work";
 export interface ApplicationSessionProjection {
@@ -60,7 +60,7 @@ export interface ApplicationSessionProjection {
     readonly hidden_at: string | null;
 }
 
-/** {§application-session-overview} A session's latest finished reply ({§message-completion}). */
+/** {§application-session-observation} A session's latest finished reply ({§message-completion}). */
 export interface ApplicationSessionReply {
     /** The reply's durable log row. */
     readonly id: number;
@@ -70,12 +70,12 @@ export interface ApplicationSessionReply {
     readonly completion: 200 | 499;
     /** When it was recorded, Unix milliseconds. */
     readonly at: number;
-    /** {§list-excerpt} */
+    /** {§application-session-observation} */
     readonly excerpt: string;
     readonly continued: boolean;
 }
 
-/** {§application-session-overview} One place of the overview and what waits there. */
+/** {§application-session-observation} One place of the overview and what waits there. */
 export interface ApplicationOverviewSession {
     readonly workspaceId: number;
     readonly id: number;
@@ -88,7 +88,7 @@ export interface ApplicationOverviewSession {
     readonly reply: ApplicationSessionReply | null;
 }
 
-/** {§application-session-overview} A workspace the overview's places belong to. */
+/** {§application-session-observation} A workspace the overview's places belong to. */
 export interface ApplicationOverviewWorkspace {
     readonly id: number;
     readonly name: string;
@@ -97,7 +97,7 @@ export interface ApplicationOverviewWorkspace {
     readonly projectLabel: string | null;
 }
 
-/** {§application-session-overview} The places in a scope, most recently finished first, and the workspaces they belong to. */
+/** {§application-session-observation} The places in a scope, most recently finished first, and the workspaces they belong to. */
 export interface ApplicationSessionOverview {
     readonly sessions: readonly ApplicationOverviewSession[];
     readonly workspaces: readonly ApplicationOverviewWorkspace[];

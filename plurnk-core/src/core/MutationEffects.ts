@@ -138,7 +138,7 @@ export default class MutationEffects {
     }
 
 
-    // {§copy-move-observation} {§edit-result-receipt-projection} — scoped
+    // {§op-shapes} {§edit-result-receipt-projection} — scoped
     // COPY/MOVE into an unscoped channel is a text materialization even when
     // CRUD creates the channel wholesale. Carry the receipt through synchronous
     // writes and proposals; the destination scheme owns reviewed output.

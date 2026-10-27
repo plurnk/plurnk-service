@@ -313,7 +313,7 @@ export default class Session extends CoreSchemeAdapterBase {
         }
         const address = SessionControlAddress.resolve(statement.target, "SEND");
         if (!address.ok) return address.result;
-        // {§send-directed-scope} — a session SEND takes no scope.
+        // {§op-shapes} — a session SEND takes no scope.
         if (statement.lineMarker !== null) {
             return Results.failure("scheme:session", "scope-unsupported", 400, "A session SEND takes no scope.", {}, { retryable: false });
         }

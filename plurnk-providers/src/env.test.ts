@@ -209,7 +209,7 @@ test("{§provider-configuration} every PROVIDERS_KNOBS entry appears in the ship
     assert.ok(defaults.includes("PLURNK_PROVIDERS_GBNF="), "GBNF (service-read, providers-namespace) must be declared with its default");
 });
 
-test("{§effort-wire} effort accepts only the exact portable durable vocabulary", () => {
+test("{§capability-policy-cascade} effort accepts only the exact portable durable vocabulary", () => {
     for (const mode of ["off", "adaptive", "low", "medium", "high", "xhigh", "max"] as const) {
         assert.deepEqual(effortFromEnv({ PLURNK_PROVIDERS_EFFORT: mode }, "openai"), {
             mode,

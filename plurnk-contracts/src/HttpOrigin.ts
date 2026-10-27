@@ -1,6 +1,6 @@
 /**
  * {§http-host} A request as far as its headers, which is all an origin is read from. A Node request
- * satisfies it, and naming it keeps the package root runtime-neutral ({§runtime-neutral-root}).
+ * satisfies it, and naming it keeps the package root runtime-neutral ({§whitespace-contract}).
  */
 export interface RequestHeaders {
     readonly headers: Readonly<Record<string, string | readonly string[] | undefined>>;

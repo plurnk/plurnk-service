@@ -3,7 +3,7 @@ import { isPlurnkOp, type KillStatement, type PlurnkOp } from "@plurnk/plurnk-co
 type BodyShape = "none" | "text" | "prose" | "mutation" | "distillation" | "annotation";
 type Selection = Pick<KillStatement, "target" | "lineMarker" | "metadata">;
 
-// {§op-shapes} {§kill-scope}: semantic shape after the grammar has bound the slots.
+// {§op-shapes} {§op-shapes}: semantic shape after the grammar has bound the slots.
 export default class StatementShape {
     static readonly #BODIES = {
         FIND: "annotation", READ: "annotation", EDIT: "mutation", COPY: "none", MOVE: "none",

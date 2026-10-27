@@ -826,7 +826,7 @@ test("{§channel-selection} an AUTHORED html write is verbatim — attribute dat
     } finally { await db.close(); }
 });
 
-test("{§naked-pattern} {§channel-selection}: `READ (page.html) #readable`, the channel written after the parenthesis, reads the readable projection", async () => {
+test("{§parse-recovery} {§channel-selection}: `READ (page.html) #readable`, the channel written after the parenthesis, reads the readable projection", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `trailing-channel-${crypto.randomUUID()}`);

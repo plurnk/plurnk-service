@@ -2,7 +2,7 @@ export type JsonReplacer = (this: unknown, key: string, value: unknown) => unkno
 
 // Generated aggregate results remain one valid JSON value while giving every
 // top-level array item one physical model-facing line. Arbitrary stored JSON is
-// not routed here and therefore retains its source coordinates. {§json-result-rendering}
+// not routed here and therefore retains its source coordinates. {§contract-representations}
 export const renderJsonResult = (value: unknown, replacer?: JsonReplacer): string => {
     const serialized = JSON.stringify(value, replacer);
     if (serialized === undefined) {

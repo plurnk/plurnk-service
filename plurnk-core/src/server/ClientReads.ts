@@ -52,7 +52,7 @@ export default class ClientReads {
         this.#residency = residency;
     }
 
-    // Contracts {§entry-read-result}: resolve through the scheme's address law,
+    // Contracts {§text-region}: resolve through the scheme's address law,
     // then project one workspace entry without exposing persistence columns.
     async readEntry(args: {
         workspaceId: number;
@@ -264,7 +264,7 @@ export default class ClientReads {
         return this.readEntry({ ...args, ...(channel === undefined ? {} : { channel }) });
     }
 
-    // {§scheme-address} {§entry-read-result} A representation core computes, read as a stored entry is: every
+    // {§scheme-address} {§text-region} A representation core computes, read as a stored entry is: every
     // channel, or the selected one from its offset in Unicode code points. It is no stored entry, so it names none.
     static #computedRead(
         target: string,

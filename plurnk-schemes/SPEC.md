@@ -59,7 +59,7 @@ class Notes {
 | §manifest-metadata-modifier `metadataModifier?` | `true` declares `[metadata]` on resource operations. Absent/false rejects it at dispatch; admitted turns first apply {§outside-text}. SEND recipients own their message metadata independently; accepting SEND options does not enable resource-read options. |
 | §manifest-capability-traits `traits?` | Unique lowercase capability facts (for example `web` or `interaction`). The scheme declares facts only; the consumer's general capability-policy cascade decides admission. |
 | `documentation?` | The **deep doc** (semantics / channels / edge cases), with an exact H2 `Summary` for discovery. Consumer materializes it as a pull-able `workspace:///_plurnk/plurnk/<name>.md` entry READ on demand; never hits the hot path. Analogous to executor supplemental `details`. |
-| §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§client-display-capabilities}; omission delegates identity fallback to the client. It never enters model teaching. |
+| §manifest-client-display `glyph?` | Non-empty opaque client presentation glyph. It is projected through {§mcp-server-definition}; omission delegates identity fallback to the client. It never enters model teaching. |
 | `storedScheme?` | Value persisted to `entries.scheme`, which may differ from the addressing `name`. Absent defaults to `name`. It must be a non-null string because every persisted identity component is non-null. |
 
 The manifest is closed: unknown top-level fields fail admission. Every entry
@@ -67,7 +67,7 @@ belongs to the operation's workspace. Resource coordinates and intrinsic
 mutability are resolved through {§entry-address-resolution}.
 
 {§manifest-metadata-modifier} is the scheme's explicit opt-in to
-{§scheme-metadata-modifier}. Core never parses or moves metadata into the
+{§slot-order}. Core never parses or moves metadata into the
 target. Direct operation methods receive it on `statement.metadata`; exact
 resource preparation receives the same ordered raw blocks on
 `request.metadata`. A present modifier on any scheme that did not opt in is a
@@ -184,7 +184,7 @@ export interface SchemeHandler {
 
 §resolved-edit-statement `ResolvedEditStatement` is the scheme-facing EDIT
 shape: its `lineMarker` is `LineMarker | null` and therefore contains numbers
-only. Core resolves the model-facing {§text-line-anchor-syntax} before invoking
+only. Core resolves the model-facing {§matcher-prefix-claims} before invoking
 `SchemeHandler.editBatch` or `EntryOperationCaps.editBatch`; an unresolved
 anchor crossing that boundary is an internal contract violation. Core also
 prepares authored body syntax before this boundary ({§zero-width-column-one-insert});
@@ -240,7 +240,7 @@ is selected from the same channels used by READ and exact FIND. A selected
 channel's producer failure aborts before destination mutation; successful
 non-`200` content remains eligible for transfer.
 
-§entry-address-resolution `resolveEntryAddress?` defines canonical addresses for client and model operations. Core removes the channel fragment and target-slot escapes {§path-parentheses} before invocation; other identity components remain exact. The hook receives capability-free `SchemeAddressCtx` and returns only the resource coordinate. The optional access argument defaults to `read`; `write` checks intrinsic mutability before a mutation or proposal. Resolution is observational and has no effects.
+§entry-address-resolution `resolveEntryAddress?` defines canonical addresses for client and model operations. Core removes the channel fragment and target-slot escapes {§path-syntax} before invocation; other identity components remain exact. The hook receives capability-free `SchemeAddressCtx` and returns only the resource coordinate. The optional access argument defaults to `read`; `write` checks intrinsic mutability before a mutation or proposal. Resolution is observational and has no effects.
 
 | Return | Meaning |
 |---|---|
@@ -334,7 +334,7 @@ interface EditBatchResult extends SchemeResult {
 | Resolver replaced the proposed body  | `superseded[N]` retains authored marker `N`       | One `replacement` effect describes the bytes that actually landed     |
 
 `requested` retains the admitted scope. `source` and `result` are resolved
-scope strings using {§text-scope-semantics}: `<line>`, `<first,last>`, or
+scope strings using {§op-shapes}: `<line>`, `<first,last>`, or
 `<startLine,startColumn,endLine,endColumn>`. Empty selections use an exact
 zero-width region at the source insertion point or landed deletion join;
 they never invent a line beyond an unterminated EOF. Producers resolve these
@@ -393,7 +393,7 @@ does not reverse a landed mutation.
 - Mutation receipts: `EditBatchResult`, `EditBatchReceipt`, `EditReceipt`, `EditEffectReceipt`, `EditReceiptUnit`, and `ParseIssueTransition`.
 - §scheme-packet-transform **Packet-section transformation.** A scheme may implement `transformSections(sections: PacketSectionDraft[]) → PacketSectionDraft[] | Promise<…>` to add, remove, or reorder sections before core measures the packet. The exact draft shape is `{ name; slot: "system"|"user"|"assistant"; header: string|null; content }`; no token measurement exists at this boundary. Core invokes implementations in registration order and applies `PacketSections.assertDrafts` to the initial list and every returned list. Names are non-empty and unique within the packet. Slots are message roles; their order determines the envelope ({§packet-assembly}).
 - Behavior contract: `SchemeHandler` (§2). Scheme-facing grammar types re-exported here so siblings pin only this package: `PlurnkStatement` + the per-op statement types (`ReadStatement`, `FindStatement`, `CopyStatement`, `MoveStatement`, `SendStatement`, `ExecStatement`, `WorkStatement`, `ForkStatement`, `KillStatement`, `ContinuationStatement`) and path types (`ParsedPath` = `LocalPath` | `UrlPath`). EDIT uses `ResolvedEditStatement` under {§resolved-edit-statement}.
-- Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-glob}.
+- Target syntax: contracts-owned `PathSyntax` is re-exported for the shared exact-versus-path-glob classifier {§path-syntax}.
 - Discovery: `SchemeDiscovery` (behavior class) with `SchemeInfo` / `SchemeDiscoveryResult` / `DiscoverOptions` (§6).
 - §executor-scheme-output Executor-scheme ("an executor is a scheme"): `OutputScheme.manifestFromRuntime(decl)` derives a read-only-output `SchemeManifest` from an executor's `RuntimeDecl` (zero scheme-authoring). Executor output is a canonical entry and therefore inherits core's exact READ projection under {§read-preparation}; no executor-specific READ helper exists. `Summarize.summarize(content, mimetype)` -> `OrientIndex` is the structural-only execution-receipt index (no content - universal-receipt containment). A per-tag executor-scheme supplies its manifest via instance `get manifest()` (§2 `SchemeHandler.manifest?`).
 - Results: `SchemeResult` is the universal operation-result contract. Statuses below 400 carry no `problem`; statuses 400–599 require RFC 9457 `ProblemDetails`. `EntryResult`, `ProposalResult`, and `PassthroughResult` are optional conventional shapes, not engine routing discriminators. Guards inspect those optional shapes; proposal routing itself is engine-owned and follows status plus operation semantics.
@@ -424,10 +424,10 @@ The canonical storage coordinate is authority `<host>[:<port>]` plus pathname
 `<path>[?<query>]`, keyed together with workspace and the exact
 addressed scheme. `NetworkAddress.render({ scheme, authority, pathname })` is
 its model-facing inverse: it applies the Plurnk lexical target spelling
-{§path-parentheses} after reconstructing the exact address. Transport URLs and
+{§path-syntax} after reconstructing the exact address. Transport URLs and
 storage identity never carry that syntax layer. Routing aliases select a
 handler; they do not collapse resource identity.
-Scheme metadata is statement-level input under {§scheme-metadata-modifier}; it
+Scheme metadata is statement-level input under {§slot-order}; it
 is never a `NetworkAddress` component.
 
 ### §mimetype-classifier Mimetype classification — `MimetypeClassifier`
@@ -552,7 +552,7 @@ start-column overshoots remain 416 errors.
   the complete available extent; that fact is never serialized separately.
 
 A successful line or pagination selection carries the contracts-owned
-`RangeExtent` {§range-extent}; a 416 carries the same extent without
+`RangeExtent` {§text-region}; a 416 carries the same extent without
 `returned`. Exact regions use `region` instead. An exact-region failure,
 including a failed tolerated three-coordinate scope, carries
 `requestedCoordinates` exactly as authored; an invalid-arity text scope does
@@ -635,7 +635,7 @@ its implementation.
 - `projection` — the text and bounded-byte projection capability in {§scheme-projection}. Acquisition schemes own source representations; they do not instantiate or second-guess the readers. `null` means no readable projection.
 - §scheme-interactions `interactions` — `request(ClientInteractionRequest, signal?)`
   awaits the contracts-owned interaction and returns its
-  `ClientInteractionResolution` ({§client-interaction-wire}). Core binds the
+  `ClientInteractionResolution` ({§provider-request-accounting}). Core binds the
   current operation identity, persistence, client projection, and cancellation;
   the scheme retains no callback, interaction identity, or private lifecycle.
   An optional signal narrows, never replaces, the operation's cancellation scope.
@@ -775,7 +775,7 @@ names the address as an immutable received message:
 
 | code | status | contract |
 |---|---:|---|
-| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line; a result page names the unit it pages). Recovery: Choose a range within the available extent. Some refusals state the extent or show the working form of the construct instead; none rebuilds the input into another scope ({§diagnostic-observation}): a result position outside its page the page's bound (`Choose positions within 1..3.`), a region holding a zero line or column the counting rule of {§text-scope-semantics} (`Lines and columns count from 1.`), an inverted region the form's order (`An exact region names its earlier position first: <SL,SC,EL,EC>.`), a `<-N,-1>` range the line extent (`-1 is the only position counted from the end; lines run 1..92.`), and a line range from 0 the line forms ({§range-starts-at-one}). |
+| `range-not-satisfiable` | 416 | The range lies outside the available extent (a line before 1, past the end, or a column outside its line; a result page names the unit it pages). Recovery: Choose a range within the available extent. Some refusals state the extent or show the working form of the construct instead; none rebuilds the input into another scope ({§diagnostic-observation}): a result position outside its page the page's bound (`Choose positions within 1..3.`), a region holding a zero line or column the counting rule of {§op-shapes} (`Lines and columns count from 1.`), an inverted region the form's order (`An exact region names its earlier position first: <SL,SC,EL,EC>.`), a `<-N,-1>` range the line extent (`-1 is the only position counted from the end; lines run 1..92.`), and a line range from 0 the line forms ({§range-starts-at-one}). |
 | `overlapping-edits` | 409 | Two EDIT regions overlap, or a whole-resource replacement cannot coexist with another EDIT. Recovery: Submit the whole-resource replacement by itself. |
 | `invalid-expression` | 400 | The *dialect* matcher expression is invalid. Recovery: Revise the matcher expression. |
 | `unsupported-dialect` | 415 | The *dialect* matcher is not supported for *mimetype*. Recovery: Use a matcher supported by the resource mimetype. |

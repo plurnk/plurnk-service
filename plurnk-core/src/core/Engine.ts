@@ -351,7 +351,7 @@ export default class Engine {
 
     // Late injection: the executor registry is async-built at daemon start()
     // (discover + probe), after Engine construction.
-    // {§fence-heading-in-body} — the tags the parser must know for a workspace's executors.
+    // {§operation-fences} — the tags the parser must know for a workspace's executors.
     executorTags(workspaceId?: number): readonly string[] {
         return this.#executors?.availableRuntimes(workspaceId) ?? [];
     }
@@ -479,7 +479,7 @@ export default class Engine {
 
     // The request ledger is cardinal evidence; its aggregate and the latest-turn
     // occupancy gauge are derived projections. {§tokenomics},
-    // {§notifications}, {§provider-accounting}
+    // {§notifications}, {§provider-request-accounting}
     async loopUsage(loopId: number): Promise<LoopUsage> {
         const [gauge, requests] = await Promise.all([
             this.loopGauge(loopId),
@@ -518,7 +518,7 @@ export default class Engine {
     }
 
     // {§methods-workspace-create} — the spend of a session and its descendants since the session
-    // began; nothing spent projects explicit zero ({§provider-accounting}).
+    // began; nothing spent projects explicit zero ({§provider-request-accounting}).
     async sessionAccounting(sessionId: number): Promise<ProviderAccounting> {
         const requests = await this.#db.engine_session_provider_requests.all<ProviderRequestStorageRow>({ session_id: sessionId });
         return aggregateProviderAccounting(requests.map(providerRequestFromStorageRow));

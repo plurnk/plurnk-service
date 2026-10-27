@@ -39,7 +39,7 @@ export default class Problems {
             const problem = (error as { problem?: unknown }).problem;
             return problem === undefined ? null : Validator.assertProblemDetails(problem);
         } catch (cause) {
-            // {§problem-error-carrier}: recognition rejects malformed carriers; the
+            // {§diagnostic-observation}: recognition rejects malformed carriers; the
             // caller still owns the original exception and its complete cause.
             if (cause instanceof InvalidOperationResultError || cause instanceof InvalidProblemDetailsError) return null;
             throw cause;

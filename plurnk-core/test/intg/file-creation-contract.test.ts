@@ -752,7 +752,7 @@ test("{§packet} File.read: lineMarker out of range returns 416", async () => {
     });
 });
 
-test("{§text-scope-semantics} File.read: an invalid exact region remains a composed 416 result", async () => {
+test("{§op-shapes} File.read: an invalid exact region remains a composed 416 result", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await writeFile(join(root, "f.txt"), "one\ntwo\n");
         await addMember(ctx, "f.txt");
@@ -763,7 +763,7 @@ test("{§text-scope-semantics} File.read: an invalid exact region remains a comp
         assert.deepEqual(r.problem?.requestedCoordinates, [2, 1, 2, -2]);
         assert.equal(Object.hasOwn(r, "range"), false);
         assert.equal(r.content, null);
-        // {§text-scope-semantics} -1 as a column is the end of its line, not an invalid region.
+        // {§op-shapes} -1 as a column is the end of its line, not an invalid region.
         const toEnd = await readFileScheme(readStmt(filePath("f.txt"), { lineMarker: { marks: [2, 1, 2, -1] } }), ctx);
         assert.equal(toEnd.status, 200);
         assert.equal(toEnd.content, "two");
@@ -977,7 +977,7 @@ test("{§file-snapshot-revision}: a grown file exposes newly valid lines and its
     });
 });
 
-// {§local-path-fragment} — the channel a receipt advertises is addressable in the bare spelling.
+// {§op-shapes} — the channel a receipt advertises is addressable in the bare spelling.
 test("{§packet} READ of a bare path with #readable reads the readable channel, not a file named users.html#readable", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         await mkdir(join(root, "data"), { recursive: true });
@@ -1844,7 +1844,7 @@ test("{§operation-results} {§diagnostic-observation} a file target named like 
 });
 
 describe("refusal-recovery", () => {
-// {§problem-details} — a refusal carries the next step its producer knows (#1005).
+// {§diagnostic-observation} — a refusal carries the next step its producer knows (#1005).
 // {§fs-namespace} {§log-history-projection} {§exec-target-routing} {§operation-results} {§find-result-projection} {§exec-lifetime}
 
 

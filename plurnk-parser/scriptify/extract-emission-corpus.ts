@@ -1,4 +1,4 @@
-// {§recorded-emissions} Build the recorded-emission corpus from drill digests.
+// {§whitespace-contract} Build the recorded-emission corpus from drill digests.
 //
 // Every live/demo drill writes each model turn's exact emission beside the digest that
 // recorded what the engine made of it. Those emissions are the only test inputs nobody

@@ -118,7 +118,7 @@ test("{§provider-monetary-evidence} response cost normalization is an explicit 
     );
 });
 
-test("{§provider-accounting} unknown requests retain subtotals without presenting them as totals", () => {
+test("{§provider-request-accounting} unknown requests retain subtotals without presenting them as totals", () => {
     const accounting = aggregateProviderAccounting([
         {
             provider: "provider:a",
@@ -150,7 +150,7 @@ test("{§provider-accounting} unknown requests retain subtotals without presenti
     assert.equal(accounting.knownCostUsd, "0.25", "received price evidence is retained separately");
 });
 
-test("{§provider-accounting} aggregateProviderAccounting omits unknown nested usage fields from its JSON projection", () => {
+test("{§provider-request-accounting} aggregateProviderAccounting omits unknown nested usage fields from its JSON projection", () => {
     const accounting = aggregateProviderAccounting([{
         provider: "provider:a",
         model: "m",
@@ -174,7 +174,7 @@ test("{§provider-accounting} aggregateProviderAccounting omits unknown nested u
     });
 });
 
-test("{§provider-accounting} aggregateProviderAccounting does not invent complete detail partitions across heterogeneous requests", () => {
+test("{§provider-request-accounting} aggregateProviderAccounting does not invent complete detail partitions across heterogeneous requests", () => {
     const accounting = aggregateProviderAccounting([
         {
             provider: "provider:detailed",

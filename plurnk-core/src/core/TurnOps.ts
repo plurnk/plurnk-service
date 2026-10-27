@@ -4,7 +4,7 @@ import { type PlurnkStatement } from "@plurnk/plurnk-contracts";
 
 export type InternalTurnStatement = PlurnkStatement;
 
-// {§statement-rendering} — core programs use the same serializer and admission parser.
+// {§fence-pairing} — core programs use the same serializer and admission parser.
 export default class TurnOps {
     // {§turn-source-resources} — the frozen projection is the admitted program, canonical and whole; the wire derives
     // what the model is shown from it ({§packet-assembly}).

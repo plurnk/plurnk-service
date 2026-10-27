@@ -26,7 +26,7 @@ type names only what the module uses.
 | Member | Receives | Contract |
 | --- | --- | --- |
 | `setup` | Its setup seam | Establishes every capability the host may demand during recovery. |
-| `start` | A slice of {§application-port} | Opens exterior ingress only after durable recovery; may return a distinct lifetime object. |
+| `start` | A slice of {§application-session-observation} | Opens exterior ingress only after durable recovery; may return a distinct lifetime object. |
 | `stop` | Nothing | Rejects new ingress and settles owned producers while observers stay subscribed. |
 | `close` | Nothing | Releases observers and remaining resources after producers settle, and returns once the work its routes admitted has settled ({§module-route-settlement}). |
 | `mounts` | Declared, not called | The HTTP route prefixes the module mounts at `start` ({§module-http-mounts}). |
@@ -98,7 +98,7 @@ contribution types live in its framework's package, so this package never depend
 | `WorkspacePluginsSeam`, `WorkspacePluginSet` | `@plurnk/plurnk-agent-plugins` ({§plugin-set-module-slice}) | `readWorkspacePlugins` |
 | `ProvidedSkillsSeam` | `@plurnk/plurnk-agent-skills` ({§provided-skills-module-slice}) | `readProvidedSkills` |
 
-A start seam is a `Pick` of {§application-port} naming the calls the module makes.
+A start seam is a `Pick` of {§application-session-observation} naming the calls the module makes.
 
 §module-compatibility **A module states its compatibility as npm peer ranges.** It declares this
 package, and each framework whose slice it uses, as peer dependencies; the host that implements the

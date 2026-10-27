@@ -1142,7 +1142,7 @@ test("{§loop-completion} WAIT: a live obligation parks; an empty join continues
         assert.equal(satisfied.detail, "Nothing is in flight. Continuing."); // {§operation-results}
         assert.equal((await db.test_get_loop_status.get<{ status: number }>({ id: loop }))?.status, 102, "the empty join is not terminal");
 
-        // {§send-wait-scope} — a duration never invents live work.
+        // {§op-shapes} — a duration never invents live work.
         const s3 = await insertWorkspace(db, `wait-scope-${crypto.randomUUID()}`);
         const run3 = await insertSession(db, s3);
         const loop3 = await insertLoop(db, run3, 1, "solo");

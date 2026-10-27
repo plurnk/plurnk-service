@@ -9,7 +9,7 @@ import { chatMessageText, type ChatMessage, type MockResponse } from "@plurnk/pl
 export const userText = (messages: readonly ChatMessage[]): string =>
     messages.filter(({ role }) => role === "user").map(chatMessageText).join("\n\n");
 
-// {§fence-heading-in-body} — every executor tag the integration fixtures write, as the daemon would name them.
+// {§operation-fences} — every executor tag the integration fixtures write, as the daemon would name them.
 export const TEST_EXECUTORS: readonly string[] = ["sh", "bash", "js", "python3", "gitea", "brave", "fixture", "fx", "dialogue", "tools", "question", "members", "skills", "env", "svc", "mcp", "resource-tool", "optional-resource", "kubernetes", "goji", "example", "viaexec", "tool", "other", "registrytool", "calc", "workspacecap", "echo", "cdp", "playwright"];
 
 // Fixtures mint executors freely; every fence tag a DSL text writes is an executor for that text.

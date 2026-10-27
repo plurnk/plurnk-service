@@ -9,7 +9,7 @@ import { isExecutionOp } from "@plurnk/plurnk-contracts";
 // including a completion READ ({§exec-stream}).
 const SOFT_FAILURE_STATUSES: ReadonlySet<number> = new Set([404, 409, 416, 425, 501]);
 const EXECUTOR_EVIDENCE_PREFIX = "https://problems.plurnk.xyz/executor/";
-// {§matcher-refusal} — a fumbled pattern refuses its one operation and is never a contract strike.
+// {§matcher-prefix-claims} — a fumbled pattern refuses its one operation and is never a contract strike.
 const UNREADABLE_PATTERN = "https://problems.plurnk.xyz/grammar/matcher/unreadable-pattern";
 
 export type StrikeOutcome = {

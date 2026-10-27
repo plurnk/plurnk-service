@@ -113,7 +113,7 @@ export default class AdmittedTurnExecutor {
         onSettled?: (logEntryId: number) => void | Promise<void>;
     }): Promise<AdmittedTurnResult> {
         // {§loop-completion}: settlement follows durable message and observation obligations.
-        // {§turn-disposition} — every WAIT is admitted and dispatched; together they are one park,
+        // {§op-shapes} — every WAIT is admitted and dispatched; together they are one park,
         // and the last of them settles the turn.
         const dispositions = statements.filter(TurnDisposition.is);
         const finalOp = dispositions.at(-1);
@@ -206,7 +206,7 @@ export default class AdmittedTurnExecutor {
                             retryable: false,
                         },
                     ),
-                    // {§parse-attempt} The statement the parser refused rides the row, outside its body.
+                    // {§parse-recovery} The statement the parser refused rides the row, outside its body.
                     ...(error.attempt === undefined ? {} : { attrs: { attempt: error.attempt } }),
                 });
                 outcomes.push({ op: null, status: recorded.result.status, problemType: recorded.result.problem?.type ?? null });

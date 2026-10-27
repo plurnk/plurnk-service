@@ -189,7 +189,7 @@ export default class Slicer {
             return { error: "An exact text region requires four integer coordinates." };
         }
         const resolved = Slicer.#exactRegion(content, marker, body);
-        // {§text-scope-semantics} — lines and columns count from 1; a refused region holding a zero
+        // {§op-shapes} — lines and columns count from 1; a refused region holding a zero
         // says so as read and is never rebuilt into another region ({§diagnostic-observation}).
         if (!("error" in resolved) || !marker.marks.includes(0)) return resolved;
         return { error: resolved.error, recovery: "Lines and columns count from 1." };
@@ -197,7 +197,7 @@ export default class Slicer {
 
     static #exactRegion(content: string, marker: LineMarker, body: string): TextReplacement | ScopeError {
         const lines = TextCoordinates.lines(content);
-        // {§text-scope-semantics} — `-1` is the final addressable endpoint in every form: as a region line it
+        // {§op-shapes} — `-1` is the final addressable endpoint in every form: as a region line it
         // is the end of the content, so `<1,1,-1,1>` is the whole text and `<-1,1,-1,1>` appends; as a column
         // it is the end of its line, so `<3,1,3,-1>` is line 3 to its end and `<3,-1,3,-1>` appends to it.
         if (!Slicer.#fourMarks(marker.marks)) return { error: "A region names four marks: start line, start column, end line, end column." };
@@ -274,7 +274,7 @@ export default class Slicer {
         body: string,
     ): TextReplacement | ScopeError {
         const lines = TextCoordinates.logicalLines(content);
-        // {§empty-mutation-scope}: position 1 is writable without inventing a readable line.
+        // {§op-shapes}: position 1 is writable without inventing a readable line.
         if (lines.length === 0 && marker.marks.length === 1 && marker.marks[0] === 1) {
             return { start: 0, end: 0, body, startLine: 1, endLine: 1 };
         }
@@ -413,7 +413,7 @@ export default class Slicer {
         }
         if (first === 0) return Slicer.#zeroStart(last, unit);
         // Whole-content `<1,-1>` is valid even on empty content — it selects the entire,
-        // possibly-empty range ({§empty-mutation-scope}). start>end here yields an empty
+        // possibly-empty range ({§op-shapes}). start>end here yields an empty
         // slice for READ and a full replacement for EDIT.
         if (totalLines === 0) {
             if (first === 1 && (last === -1 || last > 0)) {
@@ -424,7 +424,7 @@ export default class Slicer {
         const n = first;
         let m = last;
         if (m === -1 || m > totalLines) m = totalLines;
-        // {§text-scope-semantics} — -1 is the only position counted from the end; a `<-N,-1>` start is
+        // {§op-shapes} — -1 is the only position counted from the end; a `<-N,-1>` start is
         // refused with the line extent, never rebuilt into a tail ({§diagnostic-observation}).
         if (n < -1 && last === -1) {
             return {
@@ -533,7 +533,7 @@ export default class Slicer {
         options: { readonly unit?: RangeUnit } = {},
     ): PageResult<T> {
         const total = items.length;
-        // {§range-extent} An extent holds one or two positions; a request of any other arity is named as written.
+        // {§text-region} An extent holds one or two positions; a request of any other arity is named as written.
         if (marker.marks.length !== 1 && marker.marks.length !== 2) {
             return Slicer.#failure(
                 "range-not-satisfiable",

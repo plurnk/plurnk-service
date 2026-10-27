@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { PlurnkParser } from "../../src/index.ts";
+import test, { describe } from "node:test";
 import { Validator, isExecution, writtenOp } from "@plurnk/plurnk-contracts";
+import { PlurnkParser } from "../../src/index.ts";
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-// Registered tags are lowercase ({§executor-runtime-declaration}); the fence may spell them in any case.
+describe("fenced-operations", () => {
 const EXECUTORS = ["sh", "bash", "js", "gitea", "constructor", "tostring", "valueof"];
 const statements = (source: string) => {
     const result = PlurnkParser.parseStatements(source, { executors: EXECUTORS });
@@ -123,7 +125,7 @@ test("{§executor-runtime-declaration} fenced operations: transfer operands and 
     assert.equal(exec.aside, "list issues");
 });
 
-test("{§scheme-metadata-modifier}: targetless SEND retains message metadata and an opaque body", () => {
+test("{§slot-order}: targetless SEND retains message metadata and an opaque body", () => {
     const [send] = statements('````SEND [{"attachments":["report.pdf"]}] <!-- report -->\nHere is the report.\n````');
     assert.equal(send.op, "SEND");
     if (send.op !== "SEND") return;
@@ -192,7 +194,7 @@ test("{§executor-runtime-declaration} fenced operations: a closed malformed tar
 });
 
 // One long line above its closer pairs as the same words on short lines do: rescanning it from each character would not.
-test("{§quotation} fenced operations: a body line of any length above its closer pairs in one pass", () => {
+test("{§fence-pairing} fenced operations: a body line of any length above its closer pairs in one pass", () => {
     const words = "the survey went on without a break ".repeat(9_000);
     const parsed = (body: string): number => {
         const started = performance.now();
@@ -205,4 +207,112 @@ test("{§quotation} fenced operations: a body line of any length above its close
     const lines = parsed(words.replaceAll("break ", "break\n"));
     const line = parsed(words);
     assert.ok(line < 10 * lines, `one ${words.length}-character line took ${line.toFixed(0)} ms; the same words on short lines, ${lines.toFixed(0)} ms`);
+});
+});
+
+describe("boundary", () => {
+test("{§whitespace-contract} {§parser-build}: the parser package exports exactly the parser surface", () => {
+    assert.deepEqual(Object.keys(Parser).toSorted(), ["PlurnkParser", "parsePath"]);
+});
+
+test("{§parser-build}: contracts exports no parser and depends on no parser runtime", () => {
+    assert.equal("PlurnkParser" in Contracts, false, "PlurnkParser is not a contracts export");
+    assert.equal("parsePath" in Contracts, false, "parsePath is not a contracts export");
+    const manifest = JSON.parse(readFileSync(fileURLToPath(import.meta.resolve("@plurnk/plurnk-contracts/package.json")), "utf8")) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+    };
+    for (const runtime of ["antlr4ng", "xpath", "json-p3"]) {
+        assert.equal(Object.hasOwn(manifest.dependencies ?? {}, runtime), false, `${runtime} is not a contracts dependency`);
+    }
+    assert.equal(Object.hasOwn(manifest.devDependencies ?? {}, "antlr-ng"), false, "the grammar compiler left contracts too");
+});
+});
+
+describe("heading-tail", () => {
+const parse = (input: string) => PlurnkParser.parseStatements(input, { executors: ["sh", "python3"] });
+const ops = (input: string) => parse(input).items.flatMap((item) => item.kind === "statement" ? ["runtime" in item.statement ? item.statement.runtime : item.statement.op] : []);
+const errors = (input: string) => parse(input).items.flatMap((item) => item.kind === "error" ? [`${item.error.line}:${item.error.column} ${item.error.message}`] : []);
+const recorded = (prefix: string) => {
+    const dir = new URL("../fixtures/recorded/", import.meta.url);
+    const name = readdirSync(dir).find((entry) => entry.startsWith(prefix));
+    assert.ok(name, `a recorded fixture named ${prefix}*`);
+    return readFileSync(new URL(name, dir), "utf8");
+};
+const STRAY = "1:7 unrecognized character '`' in operation header - expected `(path)`, `<scope>`, `[metadata]`, a line ending, or the closing fence";
+
+test("{§operation-fences}: a known name followed directly by a backtick is a heading in error, and the operation after it still runs (#996)", () => {
+    const input = "```NOTE`\nbody\n```\n```READ (x.txt)\n```\n";
+    assert.deepEqual(errors(input), [STRAY]);
+    assert.deepEqual(ops(input), ["READ"]);
+});
+
+test("{§fence-pairing}: every heading line the lexer opens, the pairing pairs — a closer at the name, a word after it, stray backticks, an executor (#996)", () => {
+    for (const heading of ["```NOTE``` hello", "```READ``` takes a scope", "```READ`x`", "```sh`"]) {
+        const input = `${heading}\nbody\n\`\`\`\n`;
+        assert.doesNotThrow(() => parse(input), heading);
+        assert.equal(parse(input).unparsedTail, undefined, heading);
+    }
+});
+
+test("{§op-shapes}: the same heading in a reasoning emission is read, not thrown (#996)", () => {
+    assert.doesNotThrow(() => PlurnkParser.parseReasoningOperations("```NOTE`\nbody\n```\n"));
+});
+
+test("{§operation-fences}: deepseek-flash's NOTE with a backtick glued to its name, as recorded on the 16k rung of #995 (#996)", () => {
+    const input = recorded("deep16-run341-3cdd88d7-1-12");
+    assert.deepEqual(errors(input), [STRAY]);
+    assert.deepEqual(ops(input), ["KILL", "KILL"]);
+});
+});
+
+describe("kill-distillation", () => {
+const statements = (source: string) => PlurnkParser.parse(source).items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
+const advisories = (source: string) => PlurnkParser.parse(source).items.flatMap((item) => item.kind === "error" ? [item.error.message] : []);
+
+test("{§log-kill-scope} a log KILL keeps its body as the distillation of what it retires", () => {
+    const source = "```KILL (log:///1/[1-7]/*/{NOTE,READ}) <!-- retires the rows; the body stays as a NOTE -->\nwcs.py: _array_converter short-circuits empty input; fix the return path.\n```\n";
+    const [kill] = statements(source);
+    assert.equal(kill?.op, "KILL");
+    if (kill?.op !== "KILL") return;
+    assert.equal(kill.target?.kind === "url" ? kill.target.scheme : null, "log");
+    assert.equal(kill.body, "wcs.py: _array_converter short-circuits empty input; fix the return path.");
+    assert.equal(kill.aside, "retires the rows; the body stays as a NOTE");
+    assert.equal(kill.matcher, null, "a distillation is never read as a matcher");
+    assert.deepEqual(advisories(source), [], "no advisory: the body is admitted");
+});
+
+test("{§log-kill-scope} a scoped log KILL keeps its scope and its distillation", () => {
+    const [kill] = statements("```KILL (log:///1/[8-9]/*/READ) <17,-1> <!-- keeps lines 1–16 of each -->\nLines 17+ were the unrelated fixtures.\n```\n");
+    assert.equal(kill?.op, "KILL");
+    if (kill?.op !== "KILL") return;
+    assert.deepEqual(kill.lineMarker, { marks: [17, -1] });
+    assert.equal(kill.body, "Lines 17+ were the unrelated fixtures.");
+});
+
+test("{§log-kill-scope} a naked pattern and a distillation ride one log KILL", () => {
+    const [withPattern] = statements("```KILL (log:///1/**) ~stale\nThe stale reads said nothing new.\n```\n");
+    assert.equal(withPattern?.op, "KILL");
+    if (withPattern?.op !== "KILL") return;
+    assert.equal(withPattern.matcher?.raw, "~stale");
+    assert.equal(withPattern.body, "The stale reads said nothing new.");
+    const [inline] = statements("```KILL (log:///1/**) ~stale\n```\n");
+    assert.equal(inline?.op === "KILL" ? inline.matcher?.raw : null, "~stale", "a sigil on the heading line is the matcher");
+    assert.equal(inline?.op === "KILL" ? inline.body : "?", null);
+});
+
+test("{§op-shapes} {§log-kill-scope} a bodyless KILL's advisory names only that invocation", () => {
+    for (const heading of ["KILL (sh:///ab3d5678)", "KILL (notes.md)", "KILL (notes.md) <1>"]) {
+        const source = PlurnkParser.frame(heading, "stop it");
+        const [kill] = statements(source);
+        assert.equal(kill?.op === "KILL" ? kill.body : "?", null, heading);
+        assert.deepEqual(advisories(source), ["This KILL takes no body; line 2 was not used."], heading);
+    }
+    for (const heading of ["KILL (log:///1/2/3)", "KILL (log://alice/1/2/3)"]) {
+        const source = PlurnkParser.frame(heading, "Retained information.");
+        const [kill] = statements(source);
+        assert.equal(kill?.op === "KILL" ? kill.body : "?", "Retained information.", heading);
+        assert.deepEqual(advisories(source), [], heading);
+    }
+});
 });

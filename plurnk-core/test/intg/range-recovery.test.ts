@@ -19,7 +19,7 @@ const setup = async () => {
 
 for (const channel of ["content", "reasoning"] as const) {
     for (const [scope, end] of [["<395,12>", 406], ["<395,+12>", 407]] as const) {
-        test(`{§scope-range-recovery} ${channel} READ ${scope} returns the exact lines, preserves source and warns without a strike`, async (t) => {
+        test(`{§matcher-prefix-claims} ${channel} READ ${scope} returns the exact lines, preserves source and warns without a strike`, async (t) => {
             const { db, engine, ...context } = await setup();
             t.after(() => db.close());
             const lines = Array.from({ length: 410 }, (_, i) => `line ${i + 1}`);
@@ -54,7 +54,7 @@ for (const channel of ["content", "reasoning"] as const) {
     }
 }
 
-test("{§scope-range-recovery} FIND selects positions and anchor inversions remain real range errors", async (t) => {
+test("{§matcher-prefix-claims} FIND selects positions and anchor inversions remain real range errors", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const context = await seedEnvelope(db, `range-boundaries-${crypto.randomUUID()}`);
@@ -96,7 +96,7 @@ test("{§scope-range-recovery} FIND selects positions and anchor inversions rema
 });
 
 for (const scope of ["<3,2>", "<3,+1>"]) {
-    test(`{§scope-range-recovery} EDIT, COPY, MOVE and KILL execute ${scope} through the same canonical range`, async (t) => {
+    test(`{§matcher-prefix-claims} EDIT, COPY, MOVE and KILL execute ${scope} through the same canonical range`, async (t) => {
         const { db, engine, ...context } = await setup();
         t.after(() => db.close());
         const seed = (name: string, content = "one\ntwo\nthree\nfour\nfive") => seedEntryWithChannel(db, { workspaceId: context.workspaceId, pathname: `/${name}`, content });

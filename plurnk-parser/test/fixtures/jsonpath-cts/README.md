@@ -7,7 +7,7 @@ The offline integration test enumerates all 706 cases, including invalid selecto
 
 The engine's RFC 9535 compile result and Plurnk's matcher admission are checked
 separately. Plurnk's one-line matcher boundary rejects 87 multiline cases,
-including 76 valid RFC selectors ({§pattern-body-single-line}). The one selector
+including 76 valid RFC selectors ({§matcher-prefix-claims}). The one selector
 beginning with a space does not claim JSONPath ({§matcher-prefix-claims}). Those
 boundaries are asserted, not skipped or counted as RFC conformance passes.
 

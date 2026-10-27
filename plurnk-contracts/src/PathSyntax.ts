@@ -1,7 +1,7 @@
 // Target-slot quoting and pathname-parenthesis aliasing are distinct layers.
-// Neither is general URI encoding or decoding. {§path-parentheses}
+// Neither is general URI encoding or decoding. {§path-syntax}
 export default class PathSyntax {
-    // {§path-glob} The index is shared with consumers that use
+    // {§path-syntax} The index is shared with consumers that use
     // the literal prefix only as a candidate-set optimization.
     static globMagicIndex(value: string): number {
         for (let index = 0; index < value.length; index += 1) {

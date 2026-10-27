@@ -10,7 +10,7 @@ and parser, `AstBuilder`, `PlurnkParser`, `parsePath`, and the CLI.
   regeneration through `npm run build:grammar`.
 - Only service-side consumers (core, acp, execs) import this package. A client or a
   presentation surface that needs the wire imports contracts alone
-  ({§parser-consumers}); do not add a parser dependency to satisfy display.
+  ({§parser-build}); do not add a parser dependency to satisfy display.
 - Parser changes require the grammar and tier tests here, the packed-package
   smoke test, and a compatibility review of the core, acp, and execs consumers.
 - `plurnkLexer.g4`'s `@lexer::members` is TypeScript that antlr-ng scans as an

@@ -17,7 +17,7 @@ test("{§executor-metadata} empty or service-only metadata preserves cwd", async
     assert.deepEqual(InvocationMetadata.parse(request), { options: {} });
 });
 
-// Blocks are the inner text of one `[…]` slot: JSON option objects ({§scheme-metadata-modifier}).
+// Blocks are the inner text of one `[…]` slot: JSON option objects ({§slot-order}).
 for (const [blocks, code] of [
     [['{"flag": "yes"}'], "metadata-unsupported"],
     [['{"lifetime": "5s"}', '{"lifetime": "5s"}'], "metadata-repeated"],

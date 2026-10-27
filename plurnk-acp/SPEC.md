@@ -1,7 +1,7 @@
 # @plurnk/plurnk-acp — ACP v2 Server Module Specification
 
 The module is the daemon's Standard ACP v2 (`@agentclientprotocol/sdk/experimental/v2/unstable`)
-server interface. It consumes the contracts-owned {§application-port} and mounts `/acp` on the
+server interface. It consumes the contracts-owned {§application-session-observation} and mounts `/acp` on the
 daemon's listener via `AcpServer` (`@agentclientprotocol/sdk/experimental/server`), serving
 Streamable HTTP and WebSocket JSON-RPC 2.0 connections alongside HTTP entry and history resources
 under one OAuth 2.1 perimeter. Core's numbers and semantics pass through verbatim; the module
@@ -25,10 +25,10 @@ introduces no parallel lifecycle dialect or custom `sessionUpdate` variants.
   ({§module-lifecycle}); nothing composes it by hand. It claims only `/acp` on the daemon's single
   HTTP/WebSocket listener ({§http-host}, {§module-http-mounts}) and owns no separate socket or
   `stdio` transport. Its `setup` registers the `acp` `MessageScheme`, and its `start` seam is
-  {§application-port}. A daemon without a listener leaves it out.
+  {§application-session-observation}. A daemon without a listener leaves it out.
 - §acp-client-types **A client's contracts are runtime-neutral.** `@plurnk/plurnk-acp/client`
   exports runtime-neutral types for the `_meta.plurnk` state and action outcomes a client consumes.
-  A browser type-checks it with DOM libraries and no Node globals ({§runtime-neutral-root}); lint
+  A browser type-checks it with DOM libraries and no Node globals ({§whitespace-contract}); lint
   checks its whole source graph that way (`tsconfig.browser.json`). The package root is the server
   module.
 - §acp-listener-admission **Bound is not ready.** The socket is core's
@@ -238,7 +238,7 @@ stream from `ApplicationPort.readStreams` ({§methods}) projects as a `terminal_
 
 §acp-status-timing **A loop's timing travels with the loop's identity.**
 `_meta.plurnk.status.claimedAt` and `terminatedAt` carry the latest loop's Unix-millisecond
-timestamps from `ApplicationPort.listSessionLoops` ({§application-loop-observation}), or `null`
+timestamps from `ApplicationPort.listSessionLoops` ({§application-session-observation}), or `null`
 until they occur.
 
 §acp-numbers-passthrough **Gauge numbers pass through verbatim.** `usage_update.used` (`contextTokens`
@@ -259,7 +259,7 @@ through from `ApplicationPort.sessionGauge` without recomputation.
 
 §acp-cost-evidence **Complete provider accounting is preserved.** `usage_update` carries token gauge
 and cost, while `_meta.plurnk.terminal.usage.accounting` on the terminal `state_update` preserves
-the daemon's ordered physical-request accounting records verbatim ({§provider-accounting}).
+the daemon's ordered physical-request accounting records verbatim ({§provider-request-accounting}).
 
 §acp-ambient **Non-conversation rows project as standard `notice` updates.** Rows outside standard
 messages and tool calls (foists, deltas, narrations, rejected emission attempts, and verb-less parse
@@ -505,7 +505,7 @@ durable effort policy via `ApplicationPort.readSessionEffort` and `setSessionEff
 
 §acp-module-action-scope **Extension module actions share the same schema-validated dispatch plane.**
 `ApplicationPort.listModuleActions()` supplies `{ name, scope, inputSchema, outputSchema }`
-descriptors ({§acp-discovery-contract}) for `workspace.mcp.*`, `session.skills.*`,
+descriptors ({§contract-representations}) for `workspace.mcp.*`, `session.skills.*`,
 `session.members.*`, `workspace.env.*`, `session.env.*`, and `session.schedule.*`. Workspace and
 session identities come from the bound session context, never from untrusted client parameters.
 
@@ -513,16 +513,16 @@ session identities come from the bound session context, never from untrusted cli
 statements with `parseStatements` and dispatches all trusted-prefix statements before any
 `unparsedTail` boundary as one client operation ({§acp-client-operation}), returning per-statement
 results in source order and `400 acp/action/parse-failed` (`stage: "parsing"`, `retryable: false`)
-for bounded hard errors or `unparsedTail` ({§unparsed-tail-boundary}).
+for bounded hard errors or `unparsedTail` ({§parse-recovery}).
 
 §acp-module-actions **One public action namespace.** At startup the module rejects any extension
 action colliding with a built-in name and validates all action inputs and outputs against their
-advertised JSON Schemas ({§acp-action-schema-enforcement}). Recognized Problems cross the boundary
+advertised JSON Schemas ({§contract-representations}). Recognized Problems cross the boundary
 unchanged; unexpected handler exceptions map to `500 action-failed`.
 
 §discovery **Discovery contract.** `discover` returns the complete `{ schemaVersion: 1, actions, notifications, display }`
-manifest ({§acp-discovery-contract}), where `display` is `ApplicationPort.listClientDisplayCapabilities()`
-({§client-display-capabilities}).
+manifest ({§contract-representations}), where `display` is `ApplicationPort.listClientDisplayCapabilities()`
+({§mcp-server-definition}).
 
 §acp-stream-producer **Stream updates route to the initiating session.** `stream/event` and
 `stream/concluded` notifications route to sessions observing `sessionId` as `terminal_update` and

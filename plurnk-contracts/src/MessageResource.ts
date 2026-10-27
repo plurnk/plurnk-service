@@ -41,6 +41,6 @@ export interface ApplicationInboxMessage {
     readonly source: string | null;
     readonly body: string;
     readonly loopId: number;
-    /** The lifecycle of the loop holding it ({§loop-lifecycle-vocabulary}): a terminal one will never observe it. */
+    /** The lifecycle of the loop holding it ({§application-session-observation}): a terminal one will never observe it. */
     readonly lifecycle: LoopLifecycle;
 }

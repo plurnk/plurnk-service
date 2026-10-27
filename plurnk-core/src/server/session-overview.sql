@@ -1,7 +1,7 @@
 -- ApplicationPort readSessionOverview queries. SPEC {§methods-workspace-create}.
 
 -- PREP: overview_places
--- {§application-session-overview}: the places in scope, each with its loops' observations for its lifecycle
+-- {§application-session-observation}: the places in scope, each with its loops' observations for its lifecycle
 -- ({§application-session-observation}) and its latest finished reply ({§message-completion}), without the reply's words.
 -- {§machine-processes} A hidden session is out of scope, and in the daemon's scope so is every session of a hidden workspace.
 SELECT w.id, w.workspace_id AS workspaceId, w.name, w.parent_session_id AS parentSessionId,
@@ -40,7 +40,7 @@ WHERE w.origin = 'model'
        OR ($workspace_id IS NULL AND (SELECT ws.hidden_at FROM workspaces ws WHERE ws.id = w.workspace_id) IS NULL));
 
 -- PREP: overview_reply_words
--- {§list-excerpt}: the words of the replies the overview holds, $ids a JSON array of their log rows.
+-- {§application-session-observation}: the words of the replies the overview holds, $ids a JSON array of their log rows.
 SELECT le.id,
        CASE WHEN json_valid(le.tx) THEN
             COALESCE(json_extract(le.tx, '$.body.raw'),
@@ -50,7 +50,7 @@ FROM log_entries le
 WHERE le.id IN (SELECT value FROM json_each($ids));
 
 -- PREP: overview_workspaces
--- {§application-session-overview}: the workspaces the held places belong to, $ids a JSON array of their ids.
+-- {§application-session-observation}: the workspaces the held places belong to, $ids a JSON array of their ids.
 SELECT id, name, project_root AS projectRoot
 FROM workspaces
 WHERE id IN (SELECT value FROM json_each($ids))

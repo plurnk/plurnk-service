@@ -12,7 +12,7 @@ import { insertLoop, insertSession, insertWorkspace, openMigrated } from "./_db.
 import { requestBody } from "../../../scripts/lib/test-fetch.ts";
 
 for (const capture of [false, true]) {
-    test(`{§provider-request-evidence} recovery and digest retain failed output without executing or merging it; capture=${capture}`, async () => {
+    test(`{§provider-request-accounting} recovery and digest retain failed output without executing or merging it; capture=${capture}`, async () => {
         const dir = await mkdtemp(join(await testArtifactDirectory("core"), "failed-request-"));
         const dbPath = join(dir, "plurnk.db");
         const digestDir = join(dir, "digest");

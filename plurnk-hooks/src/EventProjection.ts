@@ -41,7 +41,7 @@ export default class EventProjection {
             result: isRecord(event.result) ? event.result : undefined,
             cwd: typeof event.projectRoot === "string" ? event.projectRoot : undefined,
             toolUseId: [event.turnId, event.sequence].map((n) => isSafeInteger(n) ? String(n) : "").join("/"),
-            // The heading as written: an execution's runtime, otherwise the op ({§executor-heading}).
+            // The heading as written: an execution's runtime, otherwise the op ({§fence-pairing}).
             toolName: typeof statement.runtime === "string" ? statement.runtime : typeof statement.op === "string" ? statement.op : "",
             statement: event.statement,
         };

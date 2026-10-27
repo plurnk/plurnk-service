@@ -577,7 +577,7 @@ back to the resource's origin; where neither publishes metadata, a sign-in fails
 `502 oauth-metadata-unavailable` and its recovery names the issuer field. `authorization.authorizationParams`
 join every authorization request the definition makes, such as `access_type=offline` for a server
 that issues a refresh token only when asked; the parameters the flow sets itself cannot be named
-({§mcp-oauth}).
+({§mcp-server-definition}).
 
 §oauth-begin-unchallenged **A sign-in starts where no connection is challenged.** A server may answer
 its catalog to anyone and refuse only requests ({§mcp-request-unauthorized}), so the connection
@@ -831,7 +831,7 @@ tolerance (#758).
 The default output channel carries the tool's result, not its transport envelope:
 text parts are written as text with their own newlines
 — whitespace-formatted `application/json` when the text is a complete JSON document,
-else unchanged `text/plain` ({§json-document-presentation});
+else unchanged `text/plain` ({§contract-representations});
 several text parts join with newlines; an empty content with
 `structuredContent` writes it pretty-printed — so the page rule and a scoped
 READ mean what they say and nothing reaches the model double-escaped. The

@@ -1,14 +1,14 @@
 // {§fence-pairing} — which fence line opens a block, which one closes it, and where a missing
 // closer is supplied, decided once for the whole input before the lexer reads it. The ANTLR
 // grammar cannot make this decision efficiently: it depends on the rest of the input, and ALL(*)
-// full-context predictions are uncached ({§parser-architecture}). The specification of the search
+// full-context predictions are uncached ({§whitespace-contract}). The specification of the search
 // below — its alphabet, its preference order and its repair cost — is {§fence-pairing}.
 
 import HeadingReader from "./HeadingReader.ts";
 
 export type FenceCharacter = "`" | "~";
 
-// {§forgotten-tag}: an operation heading on the line under a bare fence, as the heading it would be.
+// {§fence-pairing}: an operation heading on the line under a bare fence, as the heading it would be.
 type Split = { readonly selfClosed: boolean; readonly bodiless: boolean; readonly prose: boolean; readonly mutation: boolean; readonly runtime: string | null };
 
 type Line =
@@ -32,7 +32,7 @@ export type Pairing = {
     readonly surplus: ReadonlySet<number>;
     /** Code-point offsets of top-level fence lines that open a quotation. */
     readonly quotations: ReadonlySet<number>;
-    /** Code-point offsets of top-level bare fences whose next line is the operation they open ({§forgotten-tag}). */
+    /** Code-point offsets of top-level bare fences whose next line is the operation they open ({§fence-pairing}). */
     readonly splits: ReadonlySet<number>;
     /** Missing closers supplied, as line indexes they precede (the input length for the end). */
     readonly repairs: readonly number[];
@@ -50,18 +50,18 @@ export type Pairing = {
 type PairingOptions = {
     readonly operations: ReadonlySet<string>;
     readonly executors: ReadonlySet<string>;
-    /** {§reasoning-operations} — other operations quote rather than execute. */
+    /** {§op-shapes} — other operations quote rather than execute. */
     readonly reasoning: boolean;
     /** The grammar and AST builder own slot binding, body shape and inline closure. */
     readonly heading: (heading: string, name: string) => Omit<Split, "runtime">;
-    /** {§pairing-objective}: whether a body is well-formed in its runtime's declared media type; absent, or
+    /** {§fence-pairing}: whether a body is well-formed in its runtime's declared media type; absent, or
      * true for a runtime with none, is no opinion. */
     readonly wellFormed?: (runtime: string, body: string) => boolean;
 };
 
 const NAME = /^[A-Za-z0-9_.+-]+/u;
 
-// Decided ahead of the grammar because a fence's role depends on every fence after it ({§pairing-need}).
+// Decided ahead of the grammar because a fence's role depends on every fence after it ({§fence-pairing}).
 export default class FencePairing {
     static pair(input: string, options: PairingOptions): Pairing {
         const { lines, lineStarts } = FencePairing.#classify(input, options);
@@ -90,8 +90,8 @@ export default class FencePairing {
     }
 
     // Line classification mirrors the lexer's line-start rules: at most three spaces of indentation
-    // and no tab ({§indented-fences}); a backtick fence whose info string holds a backtick is not a
-    // fence (CommonMark 0.31.2 §4.5); heading recognition is shared with the lexer ({§executor-heading}).
+    // and no tab ({§fence-pairing}); a backtick fence whose info string holds a backtick is not a
+    // fence (CommonMark 0.31.2 §4.5); heading recognition is shared with the lexer ({§fence-pairing}).
     static #classify(input: string, options: PairingOptions): { lines: Line[]; lineStarts: number[] } {
         const raw = input.split("\n");
         const lines: Line[] = [];
@@ -102,7 +102,7 @@ export default class FencePairing {
             lineStarts.push(start);
             start += Array.from(text).length + 1;
             const line = FencePairing.#line(text.replace(/\r$/u, ""), options);
-            // {§quotation}: the orphan is the closer of a heading written mid-line, in prose, that opened nothing —
+            // {§fence-pairing}: the orphan is the closer of a heading written mid-line, in prose, that opened nothing —
             // a fence run on the line above that does not start it. A fence under a real closer is a surplus fence.
             lines.push(line.kind === "text" ? { kind: "text", blank: text.trim() === "" } : line.kind === "bare" ? { ...line, underFence: /\S\s*`{3}/u.test(previous) && !/^ {0,3}`{3,}/u.test(previous) } : line);
             previous = text;
@@ -115,7 +115,7 @@ export default class FencePairing {
         return { lines, lineStarts };
     }
 
-    // {§forgotten-tag}: the line under a bare fence is an operation heading when it names a native operation
+    // {§fence-pairing}: the line under a bare fence is an operation heading when it names a native operation
     // alone or with a slot, or an executor with its operand (sh and env are words); reasoning opens none.
     static #split(fence: string, next: string, options: PairingOptions): Split | null {
         if (options.reasoning) return null;
@@ -139,14 +139,14 @@ export default class FencePairing {
         const tail = match[3];
         if (tail.trim() === "" || /^[ \t]*<!--.*-->[ \t]*$/u.test(tail)) return { kind: "bare", character, width, underFence: false };
         if (character === "`") {
-            // A closer glued to the next opener ({§inline-chain}): six backticks then READ is a close
+            // A closer glued to the next opener ({§fence-pairing}): six backticks then READ is a close
             // then a heading when the run splits into a closer and a known opener.
             const glued = /^[ \t]*(`{3,})([A-Za-z0-9_.+-]+)(.*)$/u.exec(tail);
             if (glued !== null && HeadingReader.opens(glued[2], glued[3], options.executors, options.reasoning)) {
                 const headingWidth = glued[1].length;
                 return { kind: "closeThenHeading", width, headingWidth, ...options.heading(tail.trimStart(), glued[2]) };
             }
-            // {§executor-heading}: recognition must agree with OPEN in the lexer, including unknown
+            // {§fence-pairing}: recognition must agree with OPEN in the lexer, including unknown
             // names with explicit slots; availability never changes their syntactic shape.
             const name = NAME.exec(tail)?.[0];
             if (name !== undefined && HeadingReader.opens(name, tail.slice(name.length), options.executors, options.reasoning)) {
@@ -162,7 +162,7 @@ export default class FencePairing {
 type End = { kind: "closer"; line: number } | { kind: "before"; line: number } | { kind: "end" };
 type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[]; splits: number[]; repairs: number[] };
 
-// The objective ({§pairing-objective}): a complete reading, one with no repair, wins over any repaired one —
+// The objective ({§fence-pairing}): a complete reading, one with no repair, wins over any repaired one —
 // a complete nested interpretation takes precedence. Within a class readings compare lexicographically: operation
 // headings written at their block's width that will not run; repairs (supplied closers, surplus fences, undersized
 // closers accepted); declared code blocks discarded as text, counted — among repaired readings only — with headings
@@ -170,12 +170,12 @@ type Result = { ends: Map<number, End>; surplus: number[]; quotations: number[];
 // other fence lines read as text. A heading the author enclosed in a wider or labeled fence is the example it was
 // written as: no departure in a complete reading. Equal cost goes to the reading whose first differing choice comes
 // earlier in the preference order, which is how a repair lands at the earliest viable position and a body nests
-// before it closes ({§balanced-fences}).
+// before it closes ({§operation-fences}).
 type Cost = readonly [hidden: number, repairs: number, discarded: number, supplied: number, demoted: number, runOn: number, swallowed: number, literal: number];
 const ZERO: Cost = [0, 0, 0, 0, 0, 0, 0, 0];
 const add = (a: Cost, b: Cost): Cost => [a[0] + b[0], a[1] + b[1], a[2] + b[2], a[3] + b[3], a[4] + b[4], a[5] + b[5], a[6] + b[6], a[7] + b[7]];
 // Repaired readings: [hidden, repairs, discarded with literal, supplied, demoted, runOn], in that order.
-// {§unclosed-mutation-yields}: a native heading swallowed by a mutation body outranks any number of repairs.
+// {§fence-pairing}: a native heading swallowed by a mutation body outranks any number of repairs.
 const less = (a: Cost, b: Cost): boolean => {
     if (a[6] !== b[6]) return a[6] < b[6];
     if (a[0] !== b[0]) return a[0] < b[0];
@@ -192,13 +192,13 @@ const HIDE: Cost = [1, 0, 0, 0, 0, 0, 0, 0];
 const REPAIR: Cost = [0, 1, 0, 0, 0, 0, 0, 0];
 const SUPPLY: Cost = [0, 1, 0, 1, 0, 0, 0, 0];
 const DISCARDED: Cost = [0, 0, 1, 0, 0, 0, 0, 0];
-// A heading held literal by the author's own enclosure ({§pairing-objective}): the example it was written as.
+// A heading held literal by the author's own enclosure ({§fence-pairing}): the example it was written as.
 const LITERAL: Cost = [0, 0, 0, 0, 0, 0, 0, 1];
-// {§message-run-on}: a message, prompt or deliverable that runs to the end of the turn is supplied its closer there
+// {§fence-pairing}: a message, prompt or deliverable that runs to the end of the turn is supplied its closer there
 // without a repair — the text after its last inner block is still the message — and the run is counted apart.
 const RUN_ON: Cost = [0, 0, 0, 1, 0, 1, 0, 0];
 const DEMOTE: Cost = [0, 0, 0, 0, 1, 0, 0, 0];
-// {§unclosed-mutation-yields}: a same-width native heading held as an example by a mutation body (EDIT) is a
+// {§fence-pairing}: a same-width native heading held as an example by a mutation body (EDIT) is a
 // swallowed operation; such a reading is never complete, and loses to any repaired reading that runs it.
 const SWALLOW: Cost = [1, 0, 0, 0, 0, 0, 1, 0];
 const repaired = (cost: Cost): boolean => cost[1] > 0 || cost[6] > 0;
@@ -214,16 +214,16 @@ type Context = {
     readonly top: boolean;
     readonly quoted: boolean;
     readonly bodiless?: boolean;
-    // {§prose-code-blocks}: inside a SEND, WORK, FORK or BARE body, at any depth, an executor heading is shown.
+    // {§fence-pairing}: inside a SEND, WORK, FORK or BARE body, at any depth, an executor heading is shown.
     readonly prose?: boolean;
-    // {§unclosed-mutation-yields}: a mutation body (EDIT) never hides a same-width native heading.
+    // {§fence-pairing}: a mutation body (EDIT) never hides a same-width native heading.
     readonly mutation?: boolean;
     // An executor block whose body its runtime may judge, and the line it opened on.
     readonly runtime?: string;
     readonly opener?: number;
 };
 // What the contents read so far say about their block: whether it holds any line, and whether it holds a
-// heading as an example ({§fence-heading-in-body}: such a block ends only at a real closer).
+// heading as an example ({§operation-fences}: such a block ends only at a real closer).
 // `written`: it holds a line other than a blank one.
 type Flags = { readonly empty: boolean; readonly holds: boolean; readonly written: boolean };
 const FRESH: Flags = { empty: true, holds: false, written: false };
@@ -247,7 +247,7 @@ type Summary = readonly Entry[];
 type Frame = { readonly key: string; readonly position: number; readonly context: Context | null; readonly flags: Flags; moves: Move[] | null; move: number; entry: number };
 
 // The pairing is a least-cost parse of the fence lines as a bracket language (Aho and Peterson's least-errors
-// parse; {§pairing-algorithm}). A block's contents read the same whatever lies beneath it on the stack, so each
+// parse; {§fence-pairing}). A block's contents read the same whatever lies beneath it on the stack, so each
 // (position, block context, flags) is summarized once — for each place the block could end, the cheapest reading
 // up to there — and parents compose their children's summaries. The work is polynomial in the fence lines.
 // Candidates are considered in preference order and replace one another only by costing strictly less, so each
@@ -280,7 +280,7 @@ class Search {
         const complete = root.filter((entry) => !repaired(entry.cost));
         const bestRepaired = root.filter((entry) => repaired(entry.cost)).reduce<Entry | null>((a, b) => a === null || less(b.cost, a.cost) ? b : a, null);
         let chosen = complete.length === 0 ? bestRepaired! : complete.reduce((a, b) => lessComplete(b.cost, a.cost) ? b : a);
-        // {§message-run-on}: a message's run to the end of the input never costs an operation the author wrote.
+        // {§fence-pairing}: a message's run to the end of the input never costs an operation the author wrote.
         if (chosen.cost[5] > 0 && bestRepaired !== null && bestRepaired.cost[0] < chosen.cost[0]) chosen = bestRepaired;
         const result: Result = { ends: new Map(), surplus: [], quotations: [], splits: [], repairs: [] };
         this.#replay(chosen, null, -1, result);
@@ -366,7 +366,7 @@ class Search {
     #compose(frame: Frame): Summary {
         const { context } = frame;
         const known = (position: number, within: Context | null, flags: Flags): Summary => this.#memo.get(this.#key(position, within, flags))!;
-        // For every place the block could end ({§pairing-objective}): the best complete reading by the complete
+        // For every place the block could end ({§fence-pairing}): the best complete reading by the complete
         // order, which composes only from complete parts; and the best complete and best repaired readings by the
         // repaired order, from which any repaired reading composes.
         const best = new Map<string, Entry>();
@@ -396,7 +396,7 @@ class Search {
         });
     }
 
-    // A body under an operation that takes none is ignored with an advisory ({§matcher-body-redirect}); reading
+    // A body under an operation that takes none is ignored with an advisory ({§parse-recovery}); reading
     // one there costs a repair, so the fence the author wrote is that operation's closer where it can be.
     // A top-level block opens and ends within the root frame: the root needs only the cost to the end of the
     // input, so the frame of an open top-level block has one entry, not one per place the block could end.
@@ -428,7 +428,7 @@ class Search {
         return line;
     }
 
-    // A body that is not well-formed in its runtime's media type costs a repair ({§pairing-objective}); the
+    // A body that is not well-formed in its runtime's media type costs a repair ({§fence-pairing}); the
     // trailing aside is the writer's, not the body's ({§mcp-trailing-aside}).
     #wellFormed(context: Context, record: End | undefined): boolean {
         if (context.runtime === undefined || context.opener === undefined || record === undefined) return true;
@@ -500,24 +500,24 @@ class Search {
             ? { kind: "stay", cost, effects: [], next, flags: { ...held, empty: false, written: true } }
             : { kind: "child", cost, effects: [], child: { kind: "nested", character: "`", width, bareOpened: false, name: "", top: false, quoted: context.quoted, prose: context.prose }, line: i, flags: { ...held, empty: false, written: true } };
         const holding: Flags = { empty: false, holds: true, written: true };
-        // {§prose-code-blocks}: a message or a prompt shows code; a block labeled with an executor's name is part of it.
+        // {§fence-pairing}: a message or a prompt shows code; a block labeled with an executor's name is part of it.
         if (context.prose && this.#runtime(i) !== null) {
             yield example(ZERO, { ...flags, empty: false, written: true });
             yield { kind: "stay", cost: DISCARDED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             return;
         }
-        // {§quotation}: inside a quotation an operation is shown, never run — text, or a complete literal
-        // example ({§balanced-fences}). Text first on a tie (CommonMark); the objective decides otherwise.
+        // {§fence-pairing}: inside a quotation an operation is shown, never run — text, or a complete literal
+        // example ({§operation-fences}). Text first on a tie (CommonMark); the objective decides otherwise.
         if (context.quoted) {
             yield { kind: "stay", cost: DISCARDED, effects: [], next, flags: { ...flags, empty: false, written: true } };
             yield example(ZERO, flags);
             return;
         }
-        // {§fence-heading-in-body}: in an operation's body a heading is a literal example only while the blocks
+        // {§operation-fences}: in an operation's body a heading is a literal example only while the blocks
         // holding it end at real closers; otherwise it starts the next statement and the interrupted block takes a
         // supplied closer — a repair, placed as early as it applies. A naked block expects no closer: free.
         const interrupt = (cost: Cost): Move => ({ kind: "end", cost, effects: cost[1] > 0 ? [{ kind: "repair", line: i }] : [], end: at(i, true), record: { kind: "before", line: i } });
-        // {§naked-operation}: a naked body runs to the next heading; it expects no closer, so ending there is free.
+        // {§operation-fences}: a naked body runs to the next heading; it expects no closer, so ending there is free.
         if (context.kind === "naked") {
             if (!flags.holds) yield interrupt(ZERO);
             yield example(DISCARDED, holding);
@@ -531,7 +531,7 @@ class Search {
         // cannot be part of that block's content.
         const narrower = context.character === "`" && width < context.width;
         const declared = narrower || context.kind === "nested" && !context.bareOpened && width <= context.width;
-        // {§unclosed-mutation-yields}: an EDIT body reading a same-width native heading as its example swallows it.
+        // {§fence-pairing}: an EDIT body reading a same-width native heading as its example swallows it.
         const native = this.#runtime(i) === null;
         yield example(declared ? LITERAL : context.mutation && native ? SWALLOW : HIDE, holding);
         if (narrower) yield { kind: "stay", cost: LITERAL, effects: [], next, flags: holding };
@@ -542,7 +542,7 @@ class Search {
         const next = at(i + 1);
         const marked: Flags = { ...flags, empty: false, written: true };
         if (context === null && line.split !== undefined) {
-            // {§forgotten-tag}: at the top level the fence and the heading under it are one opener.
+            // {§fence-pairing}: at the top level the fence and the heading under it are one opener.
             const { split } = line;
             const effects: Effect[] = [{ kind: "split", line: i }];
             if (split.selfClosed) yield { kind: "stay", cost: ZERO, effects, next: at(i + 2), flags };
@@ -550,7 +550,7 @@ class Search {
             return;
         }
         if (context === null) {
-            // {§quotation}: the closer of a heading written mid-line in prose, which opened nothing, is an orphan
+            // {§fence-pairing}: the closer of a heading written mid-line in prose, which opened nothing, is an orphan
             // and quotes nothing.
             if (line.underFence && character === "`") { yield { kind: "stay", cost: ZERO, effects: [{ kind: "surplus", line: i }], next, flags }; return; }
             yield { kind: "child", cost: ZERO, effects: [{ kind: "quotation", line: i }], child: { kind: "quotation", character, width, bareOpened: true, name: "", top: true, quoted: true }, line: i, flags };
@@ -568,12 +568,12 @@ class Search {
             yield { kind: "stay", cost: DEMOTE, effects: [], next, flags: marked };
             return;
         }
-        // {§closer-fallback} as a repair: a same-character fence narrower than the top-level block it ends is the
+        // {§operation-fences} as a repair: a same-character fence narrower than the top-level block it ends is the
         // closer the author meant, at a cost of one.
         if (context.top && context.kind !== "naked" && context.character === character && width < context.width && !(context.bareOpened && flags.empty)) {
             yield { kind: "end", cost: REPAIR, effects: [{ kind: "repair", line: i }], end: next, record: { kind: "closer", line: i } };
         }
-        // {§balanced-fences}: nest, then close — the nesting preference that keeps a body whole.
+        // {§operation-fences}: nest, then close — the nesting preference that keeps a body whole.
         yield nest;
         if (close !== null) yield close;
         // A narrower or other fence is content (CommonMark); a closable one read as text is a surplus fence.

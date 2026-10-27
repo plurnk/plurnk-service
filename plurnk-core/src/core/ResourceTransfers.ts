@@ -550,7 +550,7 @@ export default class ResourceTransfers {
         return expectedMimetype;
     }
 
-    // {§fs-write-surface} {§empty-mutation-scope} A scoped transfer into a channel that does not exist yet: the
+    // {§fs-write-surface} {§op-shapes} A scoped transfer into a channel that does not exist yet: the
     // authored scope applied to an ordinary empty pre-mutation value.
     #scopedCreation(
         statement: CopyStatement | MoveStatement,
@@ -561,7 +561,7 @@ export default class ResourceTransfers {
             const marker = ByteView.marker(destination.lineMarker);
             if ("result" in marker) return marker.result;
         }
-        // {§fs-write-surface} {§empty-mutation-scope} — creation has an
+        // {§fs-write-surface} {§op-shapes} — creation has an
         // ordinary empty pre-mutation value. Resolve and apply the authored
         // destination scope to that value; no source-length allowlist exists.
         const resolvedMarker = this.#selection.resolveResourceLineMarker(

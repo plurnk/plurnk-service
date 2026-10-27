@@ -71,7 +71,7 @@ test("{§scheme-address} renderAddress renders only the durable entry coordinate
     assert.equal(renderAddress({ scheme: "https", authority: "example.org:8443", pathname: "/a(b)?x=1" }), "https://example.org:8443/a%28b%29?x=1");
 });
 
-test("{§path-parentheses} renderAddress preserves literal and percent-encoded network query parentheses", () => {
+test("{§path-syntax} renderAddress preserves literal and percent-encoded network query parentheses", () => {
     assert.equal(
         renderAddress({
             scheme: "https",
@@ -90,7 +90,7 @@ test("{§scheme-address}: http routes through https and ws routes through wss", 
     assert.equal(schemeNameOf(parsePath("notes:///fact")), "notes");
 });
 
-test("{§path-parentheses} renderTarget is the non-secret inverse for decomposed operation targets", () => {
+test("{§path-syntax} renderTarget is the non-secret inverse for decomposed operation targets", () => {
     assert.equal(renderTarget({
         scheme: "https",
         hostname: "example.org",
@@ -113,7 +113,7 @@ test("{§path-parentheses} renderTarget is the non-secret inverse for decomposed
     }), "docs/a%28b%29.md");
 });
 
-test("{§path-parentheses} renderTarget round-trips exact URI query and fragment spelling through the target lexer", () => {
+test("{§path-syntax} renderTarget round-trips exact URI query and fragment spelling through the target lexer", () => {
     const rendered = renderTarget({
         scheme: "https",
         hostname: "example.org",

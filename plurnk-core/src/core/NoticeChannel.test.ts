@@ -130,7 +130,7 @@ test("{§result-shape-guards} shape guards are mutually exclusive and optional o
     assert.equal(Results.isPassthroughResult(results[3]), false);
 });
 
-test("{§operation-result} isErrorStatus marks 4xx/5xx and only those", () => {
+test("{§diagnostic-observation} isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(200), false);
     assert.equal(Results.isErrorStatus(201), false);
     assert.equal(Results.isErrorStatus(304), false);
@@ -141,7 +141,7 @@ test("{§operation-result} isErrorStatus marks 4xx/5xx and only those", () => {
     assert.equal(Results.isErrorStatus(500), true);
 });
 
-test("{§problem-details} failure delegates to the shared RFC 9457 contract", () => {
+test("{§diagnostic-observation} failure delegates to the shared RFC 9457 contract", () => {
     const result = Results.failure(
         "scheme:session",
         "entry-not-found",

@@ -1,9 +1,9 @@
-// {§scheme-metadata-modifier}
+// {§slot-order}
 import test from "node:test";
 import assert from "node:assert/strict";
 import MetadataOptions from "./MetadataOptions.ts";
 
-test("{§scheme-metadata-modifier} MetadataOptions.read retains ordered scalars and objects for their owning contract", () => {
+test("{§slot-order} MetadataOptions.read retains ordered scalars and objects for their owning contract", () => {
     assert.deepEqual(MetadataOptions.read(null, "message:reply"), { elements: [] });
     assert.deepEqual(MetadataOptions.read(['200,{"attachments":["workspace:///report.txt"]}'], "message:reply"),
         { elements: [200, { attachments: ["workspace:///report.txt"] }] });
@@ -12,7 +12,7 @@ test("{§scheme-metadata-modifier} MetadataOptions.read retains ordered scalars 
     assert.equal(refused.failure.problem?.type, "https://problems.plurnk.xyz/scheme/test/metadata-invalid");
 });
 
-test("{§scheme-metadata-modifier} MetadataOptions.parse merges option objects left to right", () => {
+test("{§slot-order} MetadataOptions.parse merges option objects left to right", () => {
     const read = MetadataOptions.parse(['{"a": 1}, {"b": 2, "a": 3}'], "scheme:test");
     assert.deepEqual(read, { options: { a: 3, b: 2 } });
 });

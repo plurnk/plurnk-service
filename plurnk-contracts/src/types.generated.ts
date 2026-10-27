@@ -169,7 +169,7 @@ export type PlurnkStatement = (FindStatement | ReadStatement | EditStatement | C
 
 export type ParsedPath = (LocalPath | UrlPath)
 /**
- * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-refusal}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-prefix-claims}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
 export type MatcherBody = (XPathBody | RegexBody | JsonPathBody | FtsBody | GraphBody | GlobBody | UnreadableBody)
@@ -208,11 +208,11 @@ metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (LineMarker | null)
 /**
- * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 /**
- * Retrieval bodies normalize to separate NOTE statements; selection belongs to the header ({§retrieval-annotation}).
+ * Retrieval bodies normalize to separate NOTE statements; selection belongs to the header ({§op-shapes}).
  */
 body: null
 position: Position
@@ -306,7 +306,7 @@ dialect: "glob"
 raw: string
 }
 /**
- * A matcher the parser could not read in the dialect its prefix claims ({§matcher-refusal}): the authored text, the diagnostic, and the working form. The statement is admitted and the operation refuses with that message and recovery; it is never a contract strike.
+ * A matcher the parser could not read in the dialect its prefix claims ({§matcher-prefix-claims}): the authored text, the diagnostic, and the working form. The statement is admitted and the operation refuses with that message and recovery; it is never a contract strike.
  */
 
 export interface UnreadableBody {
@@ -334,7 +334,7 @@ metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
 /**
- * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 body: null
@@ -361,7 +361,7 @@ metadata: (string[] | null)
 target: (ParsedPath | null)
 lineMarker: (TextLineMarker | null)
 /**
- * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 body: (string | null)
@@ -489,15 +489,15 @@ aside: (string | null)
 metadata: (string[] | null)
 target: (ParsedPath | null)
 /**
- * Scope of the kill: lines of a log body or of an entry ({§kill-scope}); null kills the whole target.
+ * Scope of the kill: lines of a log body or of an entry ({§op-shapes}); null kills the whole target.
  */
 lineMarker: (TextLineMarker | null)
 /**
- * The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none.
+ * The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none.
  */
 matcher: (MatcherBody | null)
 /**
- * A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-scope}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern}).
+ * A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-scope}). Other KILLs take no body; their matcher rides on the heading line ({§parse-recovery}).
  */
 body: (string | null)
 position: Position
@@ -1090,7 +1090,7 @@ export type PathOrNull = (ParsedPath | null)
 
 export type LineMarkerOrNull = (LineMarker | null)
 /**
- * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-refusal}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
+ * Parsed single-line body of a matcher-bearing statement, discriminated on `dialect`. The dialect is determined by the body's leading characters (`//` xpath, `/` regex, `$` jsonpath, `~` full-text, `&` graph, else glob); a body the parser could not read in its claimed dialect is `unreadable` ({§matcher-prefix-claims}). The regex variant carries pattern and flags split out of the `/pattern/flags` literal; every variant remains JSON-serializable.
  */
 
 export type TextLineMarkerOrNull = (TextLineMarker | null)

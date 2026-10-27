@@ -85,7 +85,7 @@
   retains reads at the address that minted it. Only core's own acquisition runs:
   another scheme's entry reads as stored, never prepared, so a client read never
   fetches ({§scheme-address}). A channel name may be empty, a log row's
-  unnamed default ({§entry-read-result}).
+  unnamed default ({§text-region}).
 - 0cee49c: Workspaces and workers hide and show by a durable mark ({§machine-processes}):
   `setWorkspaceHidden`, `setWorkerHidden` ({§methods-workspace-create},
   {§methods-workspace-create}). A worker's hide covers its subtree as one group;
@@ -98,7 +98,7 @@
 - c3922c2: A loop stopped without failing (499) has the lifecycle `cancelled`, in the
   status gauge, the worker directory, `status.descendants` and the inbox; any
   other status of 400 or more stays `failed`. `LoopLifecycle` gains the word
-  ({§loop-lifecycle-vocabulary}).
+  ({§application-session-observation}).
 - 92270b9: The project's root `AGENTS.local.md` is projected as
   `worker:///_plurnk/AGENTS.local.md`, read from disk whatever its git status and
   hidden only by an exclusion, and read at turn 0 after `AGENTS.md`
@@ -152,8 +152,8 @@
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
   finished first and bounded ({§methods-workspace-create}, {§message-completion},
-  {§application-session-overview}); `excerptOf` is the one list excerpt rule
-  ({§list-excerpt}). `workspace/renamed` announces a rename
+  {§application-session-observation}); `excerptOf` is the one list excerpt rule
+  ({§application-session-observation}). `workspace/renamed` announces a rename
   ({§notifications}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
@@ -211,7 +211,7 @@
   READ reaches those members by either spelling. An absolute glob used to list
   matches that no READ could reach ({§tools-resource-materialization}).
 - 22ec9ca: A result range of neither one nor two positions is refused naming
-  `requestedPositions` as written and no extent ({§range-extent}).
+  `requestedPositions` as written and no extent ({§text-region}).
 - 68e8d53: A mounted route's failure ends its own request, never the daemon: its request
   answers `500 route-failed`, or is cut where its response had begun, and the
   failure is reported. A request target the listener cannot parse answers

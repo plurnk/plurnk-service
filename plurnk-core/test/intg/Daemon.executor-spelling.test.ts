@@ -12,7 +12,7 @@ import { makeRawMockResponse } from "./_mock.ts";
 import { namedModelSession } from "./_sessions.ts";
 
 for (const alias of ["ts", "javascript", "typescript", "node"] as const) {
-    test(`{§executor-js-spelling}: the daemon routes ${alias} through js`, async (t) => {
+    test(`{§fence-pairing}: the daemon routes ${alias} through js`, async (t) => {
         serverProposals(t, "accept");
         const directory = await mkdtemp(join(tmpdir(), `plurnk-js-spelling-${alias}-`));
         t.after(() => rm(directory, { recursive: true, force: true }));

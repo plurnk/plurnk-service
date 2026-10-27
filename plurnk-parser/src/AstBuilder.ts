@@ -72,7 +72,7 @@ type Slots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: 
 type TextSlots = { target: ParsedPath | null; metadata: SchemeMetadata; lineMarker: TextLineMarker | null };
 
 export default class AstBuilder {
-    // {§error-shape}: advisories belong only to the statement that was built successfully.
+    // {§parse-recovery}: advisories belong only to the statement that was built successfully.
     static #advisories: PlurnkParseError[] = [];
 
     static collectAdvisories<T>(build: () => T): { value: T; advisories: PlurnkParseError[] } {
@@ -86,17 +86,17 @@ export default class AstBuilder {
         }
     }
 
-    // {§retrieval-annotation}: lower once at the language boundary, before dispatch or replay.
+    // {§op-shapes}: lower once at the language boundary, before dispatch or replay.
     static #annotation(body: string | null, position: Position): NoteStatement[] {
         return body === null || body.trim() === "" ? [] : [{
             op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body, position,
         }];
     }
 
-    // {§naked-pattern} — one line of matcher text, its trailing aside split back out. A sigil
+    // {§parse-recovery} — one line of matcher text, its trailing aside split back out. A sigil
     // (`/`, `//`, `$`, `~`, `&`, `^`) claims its dialect; a sigil-less glob or literal
     // is one only on the heading line of FIND, READ or KILL, where the text can mean nothing else.
-    // {§trailing-slots} — the slots after the matcher peel off the right end of the heading text,
+    // {§parse-recovery} — the slots after the matcher peel off the right end of the heading text,
     // aside, scope and option block in any order, until what remains is the matcher.
     static #bareMatcher(raw: string | null, op: string, position?: Position, carried: { scope: boolean; metadata: boolean } = { scope: false, metadata: false }): { text: string; aside: string | null; scope: string | null; metadata: string | null } | null {
         if (raw === null) return null;
@@ -110,7 +110,7 @@ export default class AstBuilder {
         let metadataFree = !carried.metadata;
         const scopeTail = op === "FIND" ? AstBuilder.#TAIL_POSITIONS : AstBuilder.#TAIL_TEXT_SCOPE;
         for (;;) {
-            // {§log-heading-notation} — a trailing ` · N` is the log's token charge, never part of the matcher.
+            // {§parse-recovery} — a trailing ` · N` is the log's token charge, never part of the matcher.
             const charge = /\s+(\u00B7[ \t]*(?:[0-9]+(?:[ \t]+tokens)?)?)\s*$/u.exec(text);
             if (charge !== null && charge.index > 0) {
                 text = text.slice(0, charge.index).trim();
@@ -149,12 +149,12 @@ export default class AstBuilder {
             break;
         }
         if (text === "") return null;
-        // {§heading-slot-order} — a sigil pattern quoted in single backticks is that pattern (#758).
+        // {§fence-pairing} — a sigil pattern quoted in single backticks is that pattern (#758).
         const ticked = /^`([^`]+)`$/u.exec(text);
         if (ticked !== null && AstBuilder.#SIGIL.test(ticked[1])) text = ticked[1]!;
         if (AstBuilder.#SIGIL.test(text)) return { text, aside, scope, metadata };
         if (op !== "FIND" && op !== "READ" && op !== "KILL") return null;
-        // {§bare-option-object} — here the same text is the matcher, and one advisory says so.
+        // {§slot-order} — here the same text is the matcher, and one advisory says so.
         if (metadataFree && text.startsWith("{") && AstBuilder.isJsonObject(text)) AstBuilder.#adviseTrailing(position, "`{…}` was read as the matcher.");
         return { text, aside, scope, metadata };
     }
@@ -164,14 +164,14 @@ export default class AstBuilder {
         AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser", message, "warning"));
     }
 
-    // {§log-heading-notation} — the receipts that name the log's heading notation where a model wrote it.
+    // {§parse-recovery} — the receipts that name the log's heading notation where a model wrote it.
     static chargeAdvisory(written: string): string {
         return written.trim() === "\u00B7"
             ? "`\u00B7` is how the log separates a heading from its token charge; it is not part of an operation and was ignored."
             : `\`${written.trim()}\` is the token charge the log shows on a heading; it is not part of an operation and was ignored.`;
     }
 
-    // {§log-heading-notation} — a middle-dot note before a comment: the comment is the aside, the note is named (#1005).
+    // {§parse-recovery} — a middle-dot note before a comment: the comment is the aside, the note is named (#1005).
     static strayDotAdvisory(written: string, aside: string | null): string {
         return `\`${written}\` was ignored; the aside is \`<!-- ${aside ?? ""} -->\`.`;
     }
@@ -202,7 +202,7 @@ export default class AstBuilder {
         return -1;
     }
 
-    // {§bare-target} — a heading with no target whose text opens with a word, `READ a.py <1,4>`: the word
+    // {§parse-recovery} — a heading with no target whose text opens with a word, `READ a.py <1,4>`: the word
     // stands where the target goes. FIND, READ and EDIT cannot run without one; the refusal says so.
     static #bareTarget(op: string, target: ParsedPath | null, inline: string | null, position: Position): void {
         if (target !== null || inline === null) return;
@@ -217,7 +217,7 @@ export default class AstBuilder {
         return AstBuilder.metadataOptions([inner]) !== null;
     }
 
-    // {§bare-option-object} — shared by reading and rendering: a matcher that parses as one is written as its option.
+    // {§slot-order} — shared by reading and rendering: a matcher that parses as one is written as its option.
     static isJsonObject(text: string): boolean {
         let parsed: unknown;
         try { parsed = JSON.parse(text); }
@@ -228,9 +228,9 @@ export default class AstBuilder {
         return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
     }
 
-    // {§bare-option-object} — one JSON object where the option block goes, on an operation that takes
+    // {§slot-order} — one JSON object where the option block goes, on an operation that takes
     // options and no bare matcher: read as `[{…}]`, so every consumer sees the taught shape. The receipt
-    // names the indulgence once, in place of the {§heading-inline-body} advisory. `placed` says the heading
+    // names the indulgence once, in place of the {§slot-order} advisory. `placed` says the heading
     // admits a block there: BARE, WORK and FORK take one only after their target.
     static #liftBareOptionObject(tag: string, metadata: SchemeMetadata, split: { inline: string | null; below: string | null }, position: Position, placed = true): { metadata: SchemeMetadata; lifted: boolean } {
         if (!placed || metadata !== null || split.inline === null || !AstBuilder.isJsonObject(split.inline.trim())) return { metadata, lifted: false };
@@ -238,7 +238,7 @@ export default class AstBuilder {
         return { metadata: [split.inline.trim()], lifted: true };
     }
 
-    // {§trailing-slots} — shared by trailing-block recognition; invalid blocks remain owner input.
+    // {§parse-recovery} — shared by trailing-block recognition; invalid blocks remain owner input.
     static metadataOptions(metadata: readonly string[] | null | undefined): Record<string, unknown> | null {
         if (metadata?.length !== 1) return null;
         let parsed: unknown;
@@ -277,7 +277,7 @@ export default class AstBuilder {
 
     static #liftBareMatcher(bare: { text: string; aside: string | null; scope: string | null; metadata: string | null } | null, metadata: SchemeMetadata, position: Position, target: ParsedPath | null) {
         if (bare === null) return { matcher: null, metadata, aside: null, scope: null, consumed: false };
-        // {§local-path-fragment}: a bare channel suffix belongs to each selected target.
+        // {§op-shapes}: a bare channel suffix belongs to each selected target.
         const channel = target === null ? null : /^#([A-Za-z][A-Za-z0-9_-]*)$/u.exec(bare.text);
         const attaches = channel !== null && target!.fragment == null;
         if (attaches) {
@@ -291,7 +291,7 @@ export default class AstBuilder {
         };
     }
 
-    // {§matcher-body-redirect} {§transfer-resource-selections} — an operation that takes no body does not use the
+    // {§parse-recovery} {§op-shapes} — an operation that takes no body does not use the
     // text its matcher did not read, on the heading line or beneath it; one advisory names where that text
     // stands, and the operation still runs: warn, never strike.
     static #ignoreUnread(name: string, unread: { readonly inline: string | null; readonly below: string | null }, position: Position): void {
@@ -311,7 +311,7 @@ export default class AstBuilder {
         return { inline: null, below: inline === null ? null : below };
     }
 
-    // {§heading-inline-body} — the body an operation takes, its heading-line text included. Each builder decides
+    // {§slot-order} — the body an operation takes, its heading-line text included. Each builder decides
     // what that text is; taking it as the body is named once, here, where the reading is made.
     static #headingBody(name: string, ctx: ParserRuleContext, inline: string | null, position: Position): string | null {
         if (inline !== null) {
@@ -329,7 +329,7 @@ export default class AstBuilder {
     static build(ctx: StatementContext | MidStatementContext | DispositionStatementContext | SendStatementContext): PlurnkStatement[] {
         const built = AstBuilder.#buildAny(ctx);
         const statements = Array.isArray(built) ? built : [built];
-        // {§naked-operation} — the name alone opened it; the receipt names the taught form, once.
+        // {§operation-fences} — the name alone opened it; the receipt names the taught form, once.
         const opener = ctx.start?.text ?? "";
         if (opener.length > 0 && !opener.startsWith("`")) {
             AstBuilder.#advisories.push(new PlurnkParseError(ctx.start!.line, ctx.start!.column, "parser", `\`${opener}\` opened with no fence; the taught form is three backticks.`, "warning"));
@@ -338,7 +338,7 @@ export default class AstBuilder {
         return statements;
     }
 
-    // {§naked-operation} — a naked block expects no closer, so a closer the author wrote anyway is still its last
+    // {§operation-fences} — a naked block expects no closer, so a closer the author wrote anyway is still its last
     // line: a final bare fence that no fence in the body opened is that closer, not part of the body.
     static #withoutNakedCloser(statement: PlurnkStatement): PlurnkStatement {
         if (!("body" in statement) || statement.body === null) return statement;
@@ -407,7 +407,7 @@ export default class AstBuilder {
         const lifted = AstBuilder.#liftSelections("READ", slots, position, split.inline);
         AstBuilder.#ignoreUnread("READ", AstBuilder.#unread(lifted.consumed, split.inline, null), position);
         const aside = AstBuilder.#asideOf(ctx) ?? lifted.aside;
-        // {§read-find-normalization} — a READ is never rewritten: a glob target is the runtime's
+        // {§op-shapes} — a READ is never rewritten: a glob target is the runtime's
         // fan-out over every matching path, with or without a matcher (core {§read}).
         return [...AstBuilder.#annotation(split.below, position), ...lifted.selections.flatMap(AstBuilder.#selectionTargets).map((selection): ReadStatement => ({
             op: "READ",
@@ -430,7 +430,7 @@ export default class AstBuilder {
             : targetMembers(selection.target, AstBuilder.parsePath).map((target) => ({ ...selection, target }));
     }
 
-    // {§target-group} {§trailing-slots}: recover only when ownership is unique, before admitting any member.
+    // {§slot-order} {§parse-recovery}: recover only when ownership is unique, before admitting any member.
     static #liftSelections(op: string, slots: TextSlots[], position: Position, raw: string | null): {
         selections: (TextSlots & { matcher: MatcherBody | null })[];
         aside: string | null;
@@ -461,7 +461,7 @@ export default class AstBuilder {
     static #buildEdit(ctx: EditStatementContext): EditStatement {
         const position = AstBuilder.#positionOf(ctx);
         const slots = AstBuilder.#extractTextSlots(ctx.slotModifiers(), position);
-        // {§naked-pattern} — a sigil on the heading line is the matcher; the lines beneath are the
+        // {§parse-recovery} — a sigil on the heading line is the matcher; the lines beneath are the
         // replacement (none deletes each match). Any other heading-line text is the first line of the body.
         const split = AstBuilder.#splitInlineBody(ctx, position);
         AstBuilder.#bareTarget("EDIT", slots.target, split.inline, position);
@@ -523,7 +523,7 @@ export default class AstBuilder {
             aside: AstBuilder.#asideOf(ctx),
             target,
             metadata: null,
-            // {§send-wait-scope} Repeated duration bounds compose as their earliest wake.
+            // {§op-shapes} Repeated duration bounds compose as their earliest wake.
             lineMarker: null,
             seconds: durations.length === 0 ? null : Math.min(...durations),
             body: AstBuilder.#headingBody(op, ctx, AstBuilder.#splitInlineBody(ctx, position).inline, position),
@@ -570,7 +570,7 @@ export default class AstBuilder {
         };
     }
 
-    // {§executor-case} — known spellings are canonicalized; unknown tags use lowercase.
+    // {§fence-pairing} — known spellings are canonicalized; unknown tags use lowercase.
     static executorSpellings: ReadonlyMap<string, string> = new Map();
 
     static #executorOf(ctx: ExecStatementContext): RuntimeTag {
@@ -597,7 +597,7 @@ export default class AstBuilder {
 
     static #buildKill(ctx: KillStatementContext): KillStatement[] {
         const position = AstBuilder.#positionOf(ctx);
-        // {§kill-scope} — the scope names lines of a log body or of an entry; null kills the whole target.
+        // {§op-shapes} — the scope names lines of a log body or of an entry; null kills the whole target.
         const slots = AstBuilder.#targetSelections(ctx.targetGroup(), position);
         const first = slots[0];
         if (first.target === null) throw new PlurnkParseError(position.line, position.column, "parser", "KILL requires a target.");
@@ -704,7 +704,7 @@ export default class AstBuilder {
     }
 
     static #extractExecSlots(modCtx: ExecModifiersContext | null, pos: Position, executor: string): Slots {
-        // {§exec-executor-slot} — every slot at most once; the grammar admits any order.
+        // {§op-shapes} — every slot at most once; the grammar admits any order.
         const once = <T extends ParserRuleContext>(type: Ctor<T>, slot: string): T | null => {
             const found = AstBuilder.#findAll(modCtx, type);
             if (found.length > 1) {
@@ -753,7 +753,7 @@ export default class AstBuilder {
                 "warning",
             ));
         }
-        // {§log-heading-notation} — `→ path` names the target as the log's heading shows it.
+        // {§parse-recovery} — `→ path` names the target as the log's heading shows it.
         const arrow = ctx.ARROW_TARGET();
         const text = arrow !== null ? arrow.getText().replace(/^\u2192[ \t]*/u, "") : ctx.TARGET_TEXT().map((token) => token.getText()).join("");
         return AstBuilder.parsePath(text, pos);
@@ -790,7 +790,7 @@ export default class AstBuilder {
     }
 
     static #parseTextLineMarker(marker: string, position?: Position): TextLineMarker {
-        // {§combined-anchor-tolerance} — `42<@abcde>` is the displayed row prefix copied whole: the
+        // {§parse-recovery} — `42<@abcde>` is the displayed row prefix copied whole: the
         // scope is the anchor, the digits are dropped, and one advisory names the anchor-only form.
         const prefixed = /^([1-9][0-9]*)(<[\s\S]*)$/u.exec(marker);
         const text = prefixed === null ? marker : prefixed[2];
@@ -802,7 +802,7 @@ export default class AstBuilder {
             return AstBuilder.#parseRangeMarker(text, position);
         }
         const marks = text.slice(1, -1).split(/, ?/).map((component) => {
-            // {§anchor-digits} — `@210` is the line number 210 with the anchor's sigil, not a hash.
+            // {§fence-pairing} — `@210` is the line number 210 with the anchor's sigil, not a hash.
             if (/^@[0-9]{1,4}$/u.test(component)) {
                 if (position !== undefined) {
                     AstBuilder.#advisories.push(new PlurnkParseError(position.line, position.column, "parser",
@@ -828,7 +828,7 @@ export default class AstBuilder {
         return { marks };
     }
 
-    // {§scope-range-recovery}: normalize authored numeric ranges before anchors resolve.
+    // {§matcher-prefix-claims}: normalize authored numeric ranges before anchors resolve.
     static #parseRangeMarker(text: string, position: Position = { line: 0, column: 0 }): LineMarker {
         const relative = /^<([0-9]+), ?\+([0-9]+)>$/u.exec(text);
         if (relative === null && text.includes("+")) {
@@ -862,7 +862,7 @@ export default class AstBuilder {
     static #asideOf(ctx: ParserRuleContext): string | null {
         const token = AstBuilder.#findToken(ctx, plurnkParser.ASIDE);
         if (token === null) return null;
-        // {§log-heading-notation} — ` · words` after the slots is the aside.
+        // {§parse-recovery} — ` · words` after the slots is the aside.
         if (token.startsWith("\u00B7")) return token.slice(1).trim();
         const inner = token.endsWith("-->") ? token.slice("<!--".length, -"-->".length) : token.slice("<!--".length);
         return inner.trim();
@@ -892,7 +892,7 @@ export default class AstBuilder {
 
     // Scans `<scope>` into ordered numeric components. Separators are `,`
     // (with an optional space) or `-`; a `-` immediately starting a component is its
-    // sign, not a separator. The operation owner assigns roles. {§scope-marker-forms}
+    // sign, not a separator. The operation owner assigns roles. {§matcher-prefix-claims}
     static #parseLineMarker(text: string): LineMarker {
         const inner = text.slice(1, -1);
         const marks: number[] = [];
@@ -930,7 +930,7 @@ export default class AstBuilder {
         if (raw.length === 0) return null;
         const target = PathSyntax.unescapeTarget(raw);
         if (!AstBuilder.#SCHEME_PATTERN.test(target)) {
-            // {§local-path-fragment} — `#channel` after a bare path is the channel, exactly as on a
+            // {§op-shapes} — `#channel` after a bare path is the channel, exactly as on a
             // URL; a spelling that opens with `#` names no path, so it stays whole.
             const hash = target.indexOf("#");
             if (hash < 1) return { kind: "local", raw: target };
@@ -1008,14 +1008,14 @@ export default class AstBuilder {
     // {§parse-recovery} — the working form for a refused regex: the dialect's own, never a reading of the input.
     static readonly #REGEX_FORM = "A pattern is a regex written `/pattern/flags`, such as `/timeout/i`.";
 
-    // {§matcher-refusal} — a matcher the parser cannot read is the operation's own refusal, never a parse
+    // {§matcher-prefix-claims} — a matcher the parser cannot read is the operation's own refusal, never a parse
     // error: the statement is admitted with the diagnostic and its working form, and the operation lands
     // as a 400 row carrying that recovery, soft on the rail.
     static #unreadable(raw: string, message: string, recovery: string): MatcherBody {
         return { dialect: "unreadable", raw, message, recovery };
     }
 
-    // {§regex-dialect-readings} — grep's `\|` is alternation in this dialect's terms; a literal pipe is `[|]`.
+    // {§matcher-prefix-claims} — grep's `\|` is alternation in this dialect's terms; a literal pipe is `[|]`.
     static #readAlternation(pattern: string, pos: Position): string {
         let out = ""; let read = false;
         for (let i = 0; i < pattern.length; i += 1) {
@@ -1033,7 +1033,7 @@ export default class AstBuilder {
         return out;
     }
 
-    // {§regex-dialect-readings} — a `/pattern/` that fails to compile on a leading or doubled `*` or `?` and
+    // {§matcher-prefix-claims} — a `/pattern/` that fails to compile on a leading or doubled `*` or `?` and
     // is otherwise glob-shaped is read as that glob over each line: `*` is `.*`, `?` is `.`.
     static #readGlobRegex(inner: string, flags: string, raw: string, pos: Position): { pattern: string; flags: string } | null {
         if (!/^[\w*?./ -]+$/u.test(inner) || !/[*?]/u.test(inner)) return null;
@@ -1062,7 +1062,7 @@ export default class AstBuilder {
             }
             return { dialect: "xpath", raw };
         }
-        // {§naked-pattern} — a matcher opening with `^` is a regex written without slashes or flags.
+        // {§parse-recovery} — a matcher opening with `^` is a regex written without slashes or flags.
         if (raw.startsWith("^")) {
             const inline = AstBuilder.#liftInlineFlags(AstBuilder.#readAlternation(raw.slice(1), pos), "", pos);
             const pattern = `^${inline.pattern}`;
@@ -1127,7 +1127,7 @@ export default class AstBuilder {
     // Splits an ECMAScript `/pattern/flags` literal. Backslash escapes and character
     // classes keep a slash inside the pattern; the first unescaped slash outside a
     // class closes it. The native constructor owns pattern and flag validity.
-    // {§inline-flag-tolerance} — a leading PCRE inline modifier such as `(?i)` is the pretrained
+    // {§parse-recovery} — a leading PCRE inline modifier such as `(?i)` is the pretrained
     // spelling of a flag; ECMAScript refuses the group, so it is lifted into the flags with one
     // advisory rather than refused.
     static #liftInlineFlags(pattern: string, flags: string, pos: Position): { pattern: string; flags: string } {
@@ -1139,7 +1139,7 @@ export default class AstBuilder {
         return { pattern: pattern.slice(inline[0].length), flags: lifted };
     }
 
-    // {§regex-sed-range}
+    // {§parse-recovery}
     static #isSedRange(raw: string): boolean {
         return /^\/(?:\\.|[^\\/])+\/\s*,\s*(?:\/(?:\\.|[^\\/])+\/|\+\d+)?\s*$/u.test(raw);
     }
@@ -1167,7 +1167,7 @@ export default class AstBuilder {
             i++;
         }
         if (i >= raw.length) {
-            // {§unclosed-regex} — the heading's own boundaries make the rest the whole pattern.
+            // {§parse-recovery} — the heading's own boundaries make the rest the whole pattern.
             if (raw.length === 1) return { ok: false, reason: "empty" };
             const inline = AstBuilder.#liftInlineFlags(AstBuilder.#readAlternation(raw.slice(1), pos), "", pos);
             try { new RegExp(inline.pattern, inline.flags); }
@@ -1178,7 +1178,7 @@ export default class AstBuilder {
             return { ok: true, pattern: inline.pattern, flags: inline.flags };
         }
         const authored = raw.slice(i + 1);
-        // {§regex-dialect-readings} — `-i` after the closing slash is the flag `i`, as a shell would take it.
+        // {§matcher-prefix-claims} — `-i` after the closing slash is the flag `i`, as a shell would take it.
         const shell = /^[\t ]*-([A-Za-z]+)[\t ]*$/u.exec(authored);
         if (shell !== null) {
             AstBuilder.#advisories.push(new PlurnkParseError(pos.line, pos.column, "parser",

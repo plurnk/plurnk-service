@@ -1,34 +1,14 @@
-import test from "node:test";
+import test, { describe } from "node:test";
 import assert from "node:assert/strict";
-import { PROPOSAL_POLICIES, UNKNOWN_POSITION } from "./types.ts";
-import Validator, {
-    InvalidClientInteractionProjectionError,
-    InvalidClientInteractionRequestError,
-    InvalidClientInteractionResolutionError,
-    InvalidClientDisplayCapabilitiesError,
-    InvalidCapabilityDescriptorError,
-    InvalidCapabilityPolicyError,
-    InvalidFunctionalityListResultError,
-    InvalidSessionOwnerError,
-    InvalidPlurnkStatementError,
-    InvalidMcpServerDefinitionError,
-    InvalidMcpOAuthError,
-    InvalidModelCatalogPageError,
-    InvalidModelCatalogQueryError,
-    InvalidModelReadinessError,
-    InvalidModelRouteError,
-    InvalidNoticeError,
-    InvalidOperationResultError,
-    InvalidProblemDetailsError,
-    InvalidProposalProjectionError,
-    InvalidRangeExtentError,
-    InvalidEffortError,
-    InvalidSkillDefinitionError,
-    InvalidTextRegionError,
-} from "./Validator.ts";
+import Validator, { InvalidClientInteractionProjectionError, InvalidClientInteractionRequestError, InvalidClientInteractionResolutionError, InvalidClientDisplayCapabilitiesError, InvalidCapabilityDescriptorError, InvalidCapabilityPolicyError, InvalidFunctionalityListResultError, InvalidSessionOwnerError, InvalidPlurnkStatementError, InvalidMcpServerDefinitionError, InvalidMcpOAuthError, InvalidModelCatalogPageError, InvalidModelCatalogQueryError, InvalidModelReadinessError, InvalidModelRouteError, InvalidNoticeError, InvalidOperationResultError, InvalidProblemDetailsError, InvalidProposalProjectionError, InvalidRangeExtentError, InvalidEffortError, InvalidSkillDefinitionError, InvalidTextRegionError } from "./Validator.ts";
 import Problems from "./Problems.ts";
-import type { CapabilityPolicy, ClientDisplayCapabilities, McpOAuth, McpServerDefinition, ModelCatalogPage, RangeExtent } from "./types.generated.ts";
+import CapabilityAdmission from "./CapabilityAdmission.ts";
+import PlurnkParseError from "./PlurnkParseError.ts";
+import { PROPOSAL_POLICIES, UNKNOWN_POSITION, SESSION_NAME } from "./types.ts";
+import { type CapabilityPolicy, type ClientDisplayCapabilities, type McpOAuth, type McpServerDefinition, type ModelCatalogPage, type RangeExtent, type CapabilityDescriptor } from "./types.generated.ts";
+import { errnoCode, isRecord, isSafeInteger } from "./guards.ts";
 
+describe("Validator", () => {
 test("{§configuration-repair-path} lifecycle and discovery share source identifiers independently of ownership and readiness", () => {
     const provenance = { kind: "environment", source: "PLURNK_MCP_code_search" };
     for (const state of ["active", "dormant", "disabled", "unavailable", "authorization-required"]) {
@@ -94,7 +74,7 @@ test("{§oauth-continuation}: beginning sign-in distinguishes consent, pending p
     ]) assert.equal(Validator.validateJsonSchemaInstance(schema, invalid).valid, false, JSON.stringify(invalid));
 });
 
-test("{§model-catalog-wire}: model routes and bounded catalog pages preserve readiness evidence", () => {
+test("{§capability-policy-cascade}: model routes and bounded catalog pages preserve readiness evidence", () => {
     const directRoute: unknown = { provider: "google", model: "gemini-3-flash" };
     assert.deepEqual(
         Validator.assertModelRoute(directRoute),
@@ -207,7 +187,7 @@ test("{§model-catalog-wire}: model routes and bounded catalog pages preserve re
     );
 });
 
-test("{§effort-wire}: effort is the exact shared portable vocabulary", () => {
+test("{§capability-policy-cascade}: effort is the exact shared portable vocabulary", () => {
     for (const policy of ["off", "adaptive", "low", "medium", "high", "xhigh", "max"] as const) {
         assert.equal(Validator.assertEffort(policy), policy);
     }
@@ -216,7 +196,7 @@ test("{§effort-wire}: effort is the exact shared portable vocabulary", () => {
     }
 });
 
-test("{§client-interaction-wire} client interactions carry one generic tool contract without owner-private continuation state", () => {
+test("{§provider-request-accounting} client interactions carry one generic tool contract without owner-private continuation state", () => {
     const formRequest = {
         toolName: "question",
         mode: "form" as const,
@@ -299,7 +279,7 @@ test("{§mcp-server-definition}: MCP definitions contain transport and authoriza
     }
 });
 
-test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret is a symbolic reference", () => {
+test("{§mcp-server-definition}: MCP OAuth takes exactly one identity mode, and every secret is a symbolic reference", () => {
     const settings: McpOAuth[] = [
         { type: "oauth" },
         { type: "oauth", scope: "read" },
@@ -321,7 +301,7 @@ test("{§mcp-oauth}: MCP OAuth takes exactly one identity mode, and every secret
     }
 });
 
-test("{§mcp-oauth}: an interactive sign-in may bind its issuer and add authorization parameters, never the flow's own", () => {
+test("{§mcp-server-definition}: an interactive sign-in may bind its issuer and add authorization parameters, never the flow's own", () => {
     const additions = { issuer: "https://accounts.example.com", authorizationParams: { access_type: "offline", prompt: "consent" } };
     for (const mode of [{}, { clientMetadataUrl: "https://plurnk.example/oauth/client.json" }, { clientId: "plurnk", clientSecret: "${GITEA_SECRET}" }]) {
         const setting = { type: "oauth" as const, ...mode, ...additions };
@@ -339,7 +319,7 @@ test("{§mcp-oauth}: an interactive sign-in may bind its issuer and add authoriz
     }
 });
 
-test("{§client-display-capabilities} ClientDisplayCapabilities admits only discriminated client display metadata", () => {
+test("{§mcp-server-definition} ClientDisplayCapabilities admits only discriminated client display metadata", () => {
     const capabilities: ClientDisplayCapabilities = [
         { kind: "scheme", scheme: "http", display: { glyph: "🌐" } },
         { kind: "scheme", scheme: "session", display: {} },
@@ -382,7 +362,7 @@ test("{§text-region} TextRegion requires complete ordered Unicode text coordina
     }
 });
 
-test("{§range-extent}: RangeExtent has one compact, bounded selection shape", () => {
+test("{§text-region}: RangeExtent has one compact, bounded selection shape", () => {
     const extent: RangeExtent = {
         unit: "resource",
         total: 20,
@@ -411,7 +391,7 @@ test("{§range-extent}: RangeExtent has one compact, bounded selection shape", (
     }
 });
 
-test("{§notice} Notice accepts open producer observations and typed positions", () => {
+test("{§diagnostic-observation} Notice accepts open producer observations and typed positions", () => {
     for (const notice of [
         {
             source: "provider:local",
@@ -445,7 +425,7 @@ test("{§notice} Notice accepts open producer observations and typed positions",
     }
 });
 
-test("{§notice} Notice rejects missing and malformed contract fields", () => {
+test("{§diagnostic-observation} Notice rejects missing and malformed contract fields", () => {
     for (const notice of [
         { kind: "parse_error", level: "error" },
         { source: "grammar", level: "error" },
@@ -473,7 +453,7 @@ test("{§notice} Notice rejects missing and malformed contract fields", () => {
     );
 });
 
-test("{§problem-details} ProblemDetails accepts an RFC 9457 occurrence with factual extensions", () => {
+test("{§diagnostic-observation} ProblemDetails accepts an RFC 9457 occurrence with factual extensions", () => {
     const problem = {
         type: "https://problems.plurnk.xyz/scheme/file/result-range-unavailable",
         title: "Result range unavailable",
@@ -490,7 +470,7 @@ test("{§problem-details} ProblemDetails accepts an RFC 9457 occurrence with fac
     assert.equal(Validator.assertProblemDetails(problem), problem);
 });
 
-test("{§problem-details} Problems creates canonical typed occurrences", () => {
+test("{§diagnostic-observation} Problems creates canonical typed occurrences", () => {
     assert.deepEqual(
         Problems.create("scheme:file", "not-found", 404, "Missing.", { pathname: "missing.txt" }),
         {
@@ -518,7 +498,7 @@ test("{§problem-details} Problems creates canonical typed occurrences", () => {
     );
 });
 
-test("{§problem-error-carrier} Problems recognizes validated failures without depending on producer exception classes", () => {
+test("{§diagnostic-observation} Problems recognizes validated failures without depending on producer exception classes", () => {
     const problem = Problems.create("fixture", "unavailable", 502, "The fixture is unavailable.", { retryable: false });
     const result = { status: 502, problem };
     for (const error of [Object.assign(new Error(problem.detail), { problem }), Object.assign(new Error(problem.detail), { result })]) {
@@ -537,7 +517,7 @@ test("{§problem-error-carrier} Problems recognizes validated failures without d
     assert.throws(() => Problems.fromError({ get problem() { throw unexpected; } }), (error) => error === unexpected);
 });
 
-test("{§problem-projection} Problems projects one exact Problem without row-owned or duplicate facts", () => {
+test("{§diagnostic-observation} Problems projects one exact Problem without row-owned or duplicate facts", () => {
     const problem = Problems.create(
         "scheme:file",
         "range-not-satisfiable",
@@ -579,7 +559,7 @@ test("{§problem-projection} Problems projects one exact Problem without row-own
     }).valid, false);
 });
 
-test("{§problem-projection} Problems rejects a status contradiction and leaves exact instance identity outside the projection", () => {
+test("{§diagnostic-observation} Problems rejects a status contradiction and leaves exact instance identity outside the projection", () => {
     const problem = Problems.create("scheme:file", "not-found", 404, "The resource does not exist.", {
         instance: "log:///1/2/3/READ",
     });
@@ -594,7 +574,7 @@ test("{§problem-projection} Problems rejects a status contradiction and leaves 
     });
 });
 
-test("{§problem-details} ProblemDetails rejects missing fields and non-absolute type URIs", () => {
+test("{§diagnostic-observation} ProblemDetails rejects missing fields and non-absolute type URIs", () => {
     assert.equal(Validator.validateProblemDetails({ status: 404 }).valid, false);
     assert.equal(Validator.validateProblemDetails({
         type: "not-an-absolute-uri",
@@ -615,7 +595,7 @@ test("{§problem-details} ProblemDetails rejects missing fields and non-absolute
     }).valid, false);
 });
 
-test("{§operation-result} OperationResult discriminates successes and RFC 9457 failures", () => {
+test("{§diagnostic-observation} OperationResult discriminates successes and RFC 9457 failures", () => {
     const success = { status: 200, content: "ok" };
     const failure = {
         status: 404,
@@ -646,7 +626,7 @@ test("{§operation-result} OperationResult discriminates successes and RFC 9457 
     }
 });
 
-test("{§operation-result} OperationResult rejects mismatched envelope and Problem statuses", () => {
+test("{§diagnostic-observation} OperationResult rejects mismatched envelope and Problem statuses", () => {
     const mismatch = {
         status: 404,
         problem: {
@@ -670,7 +650,7 @@ test("{§operation-result} OperationResult rejects mismatched envelope and Probl
     );
 });
 
-test("{§contract-proposal-projection} CapabilityPolicy accepts only its canonical wire shape", () => {
+test("{§capability-policy-cascade} CapabilityPolicy accepts only its canonical wire shape", () => {
     const descriptor = {
         operation: "sh" as const,
         scheme: "exec",
@@ -713,7 +693,7 @@ test("{§session-ownership}: owner declarations require an address, explicit sup
     assert.deepEqual(PROPOSAL_POLICIES, ["review", "accept", "reject"]);
 });
 
-test("{§contract-proposal-projection} ProposalProjection validates one complete disposition-bearing client view", () => {
+test("{§capability-policy-cascade} ProposalProjection validates one complete disposition-bearing client view", () => {
     const proposal = {
         logEntryId: 1,
         sessionId: 2,
@@ -768,7 +748,7 @@ test("{§contract-proposal-projection} ProposalProjection validates one complete
     }
 });
 
-test("{§entry-read-result} EntryReadResult validates one exact client entry projection", () => {
+test("{§text-region} EntryReadResult validates one exact client entry projection", () => {
     const result = {
         status: 200 as const,
         entry: {
@@ -827,8 +807,174 @@ test("{§entry-read-result} EntryReadResult validates one exact client entry pro
     }
 });
 
-test("{§wire-entrypoint} assertPlurnkStatement returns the statement its schema accepts and refuses the rest", () => {
+test("{§text-region} assertPlurnkStatement returns the statement its schema accepts and refuses the rest", () => {
     const note = { op: "NOTE", aside: null, metadata: null, target: null, lineMarker: null, body: "kept", position: UNKNOWN_POSITION };
     assert.equal(Validator.assertPlurnkStatement(note), note);
     assert.throws(() => Validator.assertPlurnkStatement({ op: "NOTE" }), InvalidPlurnkStatementError);
+});
+});
+
+describe("CapabilityAdmission", () => {
+const readFile: CapabilityDescriptor = {
+    operation: "READ",
+    scheme: "file",
+    access: "observe",
+    traits: [],
+};
+
+const editFile: CapabilityDescriptor = {
+    operation: "EDIT",
+    scheme: "file",
+    access: "mutate",
+    traits: [],
+};
+
+const search: CapabilityDescriptor = {
+    operation: "sh",
+    scheme: "exec",
+    runtime: "brave",
+    tool: "brave_web_search",
+    access: "execute",
+    traits: ["web"],
+};
+
+test("{§capability-policy-cascade} capability selectors match every declared field and treat omissions as wildcards", () => {
+    assert.equal(CapabilityAdmission.matches({ operation: "READ" }, readFile), true);
+    assert.equal(CapabilityAdmission.matches({ operation: "READ", scheme: "file" }, readFile), true);
+    assert.equal(CapabilityAdmission.matches({ operation: "READ", scheme: "https" }, readFile), false);
+    assert.equal(CapabilityAdmission.matches({ traits: ["web"] }, search), true);
+    assert.equal(CapabilityAdmission.matches({ runtime: "brave", tool: "issue_read" }, search), false);
+});
+
+test("{§capability-policy-cascade} deny wins over only within one policy layer", () => {
+    const policy: CapabilityPolicy = {
+        only: [{ access: "observe" }, { runtime: "brave" }],
+        deny: [{ tool: "brave_web_search" }],
+    };
+    assert.equal(CapabilityAdmission.allows(policy, readFile), true);
+    assert.equal(CapabilityAdmission.allows(policy, editFile), false);
+    assert.equal(CapabilityAdmission.allows(policy, search), false);
+});
+
+test("{§capability-policy-cascade} an empty only list denies every capability", () => {
+    assert.equal(CapabilityAdmission.allows({ only: [] }, readFile), false);
+});
+
+test("{§capability-policy-cascade} layers intersect and no narrower layer can restore an upstream denial", () => {
+    const service: CapabilityPolicy = { deny: [{ traits: ["web"] }] };
+    const session: CapabilityPolicy = { only: [{ runtime: "brave" }] };
+    assert.equal(CapabilityAdmission.allowsAcross([service, session], search), false);
+    assert.equal(CapabilityAdmission.allowsAcross([{}, { deny: [{ operation: "EDIT" }] }], editFile), false);
+    assert.equal(CapabilityAdmission.allowsAcross([{}, {}], readFile), true);
+});
+
+test("{§capability-policy-cascade} policy intersection preserves conjunctive only semantics without a policy stack", () => {
+    const normalized = CapabilityAdmission.intersect([
+        { only: [{ operation: "READ" }, { runtime: "brave", traits: ["web"] }] },
+        { only: [{ scheme: "file" }, { tool: "brave_web_search", traits: ["web"] }] },
+        { deny: [{ access: "mutate" }] },
+    ]);
+    assert.deepEqual(normalized, {
+        only: [
+            { operation: "READ", scheme: "file" },
+            { operation: "READ", tool: "brave_web_search", traits: ["web"] },
+            { runtime: "brave", tool: "brave_web_search", traits: ["web"] },
+            { runtime: "brave", scheme: "file", traits: ["web"] },
+        ],
+        deny: [{ access: "mutate" }],
+    });
+    for (const descriptor of [readFile, editFile, search]) {
+        assert.equal(
+            CapabilityAdmission.allows(normalized, descriptor),
+            CapabilityAdmission.allowsAcross([
+                { only: [{ operation: "READ" }, { runtime: "brave", traits: ["web"] }] },
+                { only: [{ scheme: "file" }, { tool: "brave_web_search", traits: ["web"] }] },
+                { deny: [{ access: "mutate" }] },
+            ], descriptor),
+        );
+    }
+});
+
+test("{§capability-policy-cascade} {§capability-policy-cascade} allow pre-approves admitted demands and never overrides service deny or only ceilings", () => {
+    const service: CapabilityPolicy = {
+        only: [{ scheme: "file" }, { runtime: "brave" }],
+        deny: [{ tool: "brave_web_search" }],
+    };
+    const workspace: CapabilityPolicy = {
+        allow: [{ operation: "EDIT", scheme: "file" }, { runtime: "brave" }],
+    };
+    const effective = CapabilityAdmission.intersect([service, workspace]);
+
+    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], editFile), true);
+    assert.equal(CapabilityAdmission.preapproves(effective, editFile), true);
+
+    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], readFile), false);
+    assert.equal(CapabilityAdmission.preapproves(effective, readFile), false);
+
+    assert.equal(CapabilityAdmission.preapprovesAcross([service, workspace], search), false);
+    assert.equal(CapabilityAdmission.preapproves(effective, search), false);
+});
+});
+
+describe("PlurnkParseError", () => {
+test("{§parse-recovery}: a warning preserves whether an attempted operation was omitted", () => {
+    const omitted = new PlurnkParseError(1, 2, "parser", "Operation omitted.", "warning", undefined, true);
+    assert.equal(omitted.operationOmitted, true);
+    assert.deepEqual(omitted.toJSON(), {
+        line: 1, column: 2, source: "parser", severity: "warning", message: "Operation omitted.", operationOmitted: true,
+    });
+    const recovered = new PlurnkParseError(1, 2, "parser", "Operation recovered.", "warning");
+    assert.equal(recovered.operationOmitted, false);
+    assert.deepEqual(recovered.toJSON(), {
+        line: 1, column: 2, source: "parser", severity: "warning", message: "Operation recovered.",
+    });
+});
+});
+
+describe("guards", () => {
+test("{§text-region} isRecord admits exactly a non-null, non-array object", () => {
+    assert.equal(isRecord({}), true);
+    assert.equal(isRecord({ a: 1 }), true);
+    assert.equal(isRecord(Object.create(null)), true);
+    for (const other of [null, undefined, [], [1], "x", 1, true, () => {}]) assert.equal(isRecord(other), false, String(other));
+});
+
+test("{§text-region} isSafeInteger admits exactly a safe integer", () => {
+    assert.equal(isSafeInteger(0), true);
+    assert.equal(isSafeInteger(-3), true);
+    assert.equal(isSafeInteger(Number.MAX_SAFE_INTEGER), true);
+    for (const other of [1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53, "1", null, undefined, true]) {
+        assert.equal(isSafeInteger(other), false, String(other));
+    }
+});
+
+test("{§text-region} errnoCode reads the string code an error or object carries, and nothing else", () => {
+    assert.equal(errnoCode(Object.assign(new Error("gone"), { code: "ENOENT" })), "ENOENT");
+    assert.equal(errnoCode({ code: "ABORT_ERR" }), "ABORT_ERR");
+    for (const [index, other] of [new Error("plain"), { code: 2 }, "ENOENT", null, undefined, 3].entries()) {
+        assert.equal(errnoCode(other), undefined, `case ${index}`);
+    }
+});
+});
+
+describe("types", () => {
+test("{§path-syntax}: accepts exact ASCII session identifiers, hashes, and UUIDs", () => {
+    for (const name of [
+        "a", "A", "0", "approach_a", "Approach_A", "brisk-otter", "3com",
+        "trail-", "trail_", "self", "plurnk", "PLURNK", "01abcdef",
+        "0f25c39a-a85d-46c8-b073-7f61a477e807", "A".repeat(63), `0${"_".repeat(62)}`,
+    ]) {
+        assert.equal(SESSION_NAME.test(name), true, JSON.stringify(name));
+    }
+});
+
+test("{§path-syntax}: rejects reserved-leading, oversized, and non-identifier spellings", () => {
+    for (const name of [
+        "", "_plurnk", "_a", "-a", "a".repeat(64), "dot.name", "~",
+        "sp ace", " leading", "trailing ", "é", "a/b", "a:b", "a@b", "a%62",
+        "a?b", "a#b", "a\n", "a\r", "a\t", "a\0",
+    ]) {
+        assert.equal(SESSION_NAME.test(name), false, JSON.stringify(name));
+    }
+});
 });

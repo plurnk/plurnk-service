@@ -191,7 +191,7 @@ export default class ClientInput {
         return ClientInput.assertSelector(context, "childSelector", value);
     }
 
-    // {§entry-read-result} The empty name selects an unnamed default channel, a log row's.
+    // {§text-region} The empty name selects an unnamed default channel, a log row's.
     static assertOptionalChannel(context: string, channel: unknown): string | undefined {
         if (channel === undefined) return undefined;
         if (typeof channel !== "string") {

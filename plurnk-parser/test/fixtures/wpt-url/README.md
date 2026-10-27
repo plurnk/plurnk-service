@@ -9,7 +9,7 @@ Its BSD-3-Clause license is included. This is test data, not a runtime input.
 | Cases | Treatment |
 |---:|---|
 | 344 | Relative and non-`scheme://` spellings remain local paths; Plurnk has no base-URL resolution. |
-| 21 | Explicit skips: raw newlines or `<` cannot inhabit a target header ({§path-parentheses}). |
+| 21 | Explicit skips: raw newlines or `<` cannot inhabit a target header ({§path-syntax}). |
 | 528 | Decomposed through the public helper and a framed READ heading. 239 are expected failures. |
 
 Within the 528 URI cases, one literal-brace pathname deliberately remains a glob

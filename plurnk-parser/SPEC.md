@@ -1,51 +1,9 @@
 # @plurnk/plurnk-parser — SPEC
 
-## 1. What this package is
+## §parser-build Package boundary, build, and grammar artifacts
 
-`@plurnk/plurnk-parser` implements the PLURNK language that
-`@plurnk/plurnk-contracts` specifies. It owns the ANTLR grammars
-(`plurnkLexer.g4`, `plurnkParser.g4`), the generated lexer, parser and visitor,
-`AstBuilder`, the error strategy and the recording listener, the `PlurnkParser`
-tier entry points, `parsePath`, and the `plurnk-parser` command line. It depends
-on contracts for the AST and wire types, the schemas, `PathSyntax`,
-`PlurnkParseError`, `TurnDisposition`, and the constants. Contracts
-depends on nothing here.
+`@plurnk/plurnk-parser` implements the PLURNK language specified by `@plurnk/plurnk-contracts`. It owns the ANTLR grammars (`plurnkLexer.g4`, `plurnkParser.g4`), the generated lexer/parser/visitor, `FencePairing`, `HeadingReader`, `StatementShape`, `AstBuilder`, `PlurnkErrorStrategy`, `RecordingListener`, the `PlurnkParser` tier entry points (`parse`, `parseStatements`, `parseReasoningOperations`, `stringify`), `parsePath`, and the `plurnk-parser` CLI.
 
-§parser-consumers **Who imports the parser.** The service's execution path (core,
-acp, execs) imports its parser surfaces from this package.
-`@plurnk/plurnk-contracts` exports neither and declares no parser dependency, so a
-client that installs contracts installs no `antlr4ng`, `xpath`, or `json-p3`.
-
-`PlurnkParser.parseReasoningOperations` implements {§reasoning-operations}
-using the same lexer, quotation pairing and AST admission. Nothing executes
-in this package. Its optional advisory callback reports normalization warnings
-only for the operations it admits.
-
-`HeadingReader` supplies the lexer and fence pairing with one heading-recognition
-rule ({§executor-heading}); explicit invocation slots do not depend on the runtime registry.
-The heading-only lexer feeds it through the same token normalization,
-grammar and AST builder without fence pairing. `FencePairing` consumes its shape, not a second slot
-grammar. `StatementShape` owns the body-role classification shared by recovery,
-KILL construction and diagnostics; native-call recovery uses the same heading
-reader to recognize operands ({§fence-pairing}, {§native-tool-calls}). The full parse
-remains the sole publisher of admission errors and advisories.
-
-## §parser-build 2. Build and artifacts
-
-`npm run build:grammar` regenerates `src/generated` from the grammars with
-antlr-ng; generated files are artifacts, never edited, and are not tracked. The
-build fails on any antlr error, since antlr-ng itself exits 0 over them, and it
-replaces the generated tree whole or not at all, so a bad grammar edit can never
-drill green over the previous lexer (#821).
-`npm run build` emits `dist`. `npm run test:installation` packs the built parser
-and contracts candidates, installs both into a clean consumer, verifies their
-installed versions, and exercises every tier entry point, `parsePath`, the CLI,
-and a browser-Session bundle. Prepublication checks must not resolve the candidate
-contracts version from the registry.
-
-§pinned-wording-parser **Pinned wording.** Verbatim sentences tests pin: each is contract, and a change here is a change of contract.
-
-| sentence | arises when |
-|---|---|
-| `/*url*/` was read as the glob `*url*` over each line, the regex `/.*url.*/`; a pattern is a regex, and `*` repeats what precedes it. | a glob written where a regex is required: read, with this advisory ({§regex-dialect-readings}) |
-| A pattern is a regex written `/pattern/flags`; escape a literal `*`, `+`, `?`, `(`, `[` or `.` with `\`. | the working form a broken regex's refusal carries ({§matcher-refusal}, {§parse-recovery}) |
+- **Consumer boundary**: Only the service's execution path (`plurnk-core`, `plurnk-acp`, `plurnk-execs`) imports `@plurnk/plurnk-parser`. `@plurnk/plurnk-contracts` declares no dependency on `@plurnk/plurnk-parser`, `antlr4ng`, `xpath`, or `json-p3`.
+- **Shared heading and shape analysis**: `HeadingReader` and `StatementShape` supply one heading-recognition and body-role rule across `FencePairing`, normal admission, native tool-call recovery, and diagnostics.
+- **Grammar build and installation gate**: `npm run build:grammar` regenerates `src/generated` from the `.g4` grammars via `antlr-ng`, failing the build on any ANTLR error and replacing the generated tree atomically. `npm run test:installation` packs both `@plurnk/plurnk-contracts` and `@plurnk/plurnk-parser` tarballs, installs them into a clean consumer, and verifies all entry points, `parsePath`, the CLI, and browser-bundle compatibility.

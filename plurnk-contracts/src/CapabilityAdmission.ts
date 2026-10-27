@@ -4,7 +4,7 @@ import type {
     CapabilitySelector,
 } from "./types.generated.ts";
 
-// {§capability-policy-matching} — selectors are exact conjunctions. Policy
+// {§capability-policy-cascade} — selectors are exact conjunctions. Policy
 // layers remain data; this class is the one deterministic evaluator shared by
 // every consumer.
 export default class CapabilityAdmission {

@@ -1,7 +1,7 @@
 import type { Token } from "antlr4ng";
 import { plurnkParser } from "./generated/plurnkParser.ts";
 
-// {§heading-slot-order} — a heading near-miss with exactly one reading is read, never refused and
+// {§fence-pairing} — a heading near-miss with exactly one reading is read, never refused and
 // never taught (#758). Tokens keep their source positions; only their order in the stream changes.
 // An aside written before the heading's remaining scope or JSON option block
 // (`READ (a.md) <!-- why --> <1,-1>`) is moved after them, where the grammar reads it. An aside

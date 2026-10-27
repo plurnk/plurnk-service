@@ -71,25 +71,25 @@ export const EFFORTS = Object.freeze(
 );
 
 // Schema-owned server disposition vocabulary. {§proposal-disposition}
-// {§proposal-policy}
+// {§capability-policy-cascade}
 export const PROPOSAL_POLICIES = Object.freeze(
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the enum and the type are generated from the same schema
     proposalPolicySchema.enum as ProposalPolicy[],
 );
 
-// Minting predicate only; URL ingestion deliberately remains permissive. {§session-name}
+// Minting predicate only; URL ingestion deliberately remains permissive. {§path-syntax}
 export const SESSION_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,62}$/;
 
 // {§agent-skills-name} Discovery and registration share the wire schema's grammar.
 export const SKILL_NAME = new RegExp(skillDefinitionSchema.properties.name.pattern, "u");
 
-// Structurally synthesized statements have no parsed source point. {§parser-position}
+// Structurally synthesized statements have no parsed source point. {§parse-recovery}
 export const UNKNOWN_POSITION: Readonly<Position> = Object.freeze({ line: 0, column: 0 });
 
 // The platform's setTimeout ceiling (2^31-1 ms): the bound on any delay a knob may name.
 export const MAX_TIMER_MS = 2_147_483_647;
 
-// {§parse-attempt} The statement a hard fact refused, as the session wrote it.
+// {§parse-recovery} The statement a hard fact refused, as the session wrote it.
 export interface ParseAttempt {
     readonly verb: string;
     readonly text: string;

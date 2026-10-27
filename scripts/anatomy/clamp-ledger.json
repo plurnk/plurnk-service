@@ -1044,9 +1044,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for contract representations, ACP discovery, and JSON formatting"
         },
         "acp-discovery-contract": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1056,9 +1056,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "contract-representations",
+          "reason": "Fold acp-discovery-contract sub-invariant into contract-representations heading section"
         },
         "acp-action-schema-enforcement": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1068,9 +1068,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "contract-representations",
+          "reason": "Fold acp-action-schema-enforcement sub-invariant into contract-representations heading section"
         },
         "acp-client-conformance": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1080,9 +1080,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "contract-representations",
+          "reason": "Fold acp-client-conformance sub-invariant into contract-representations heading section"
         },
         "acp-conformance-kit": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1092,9 +1092,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "contract-representations",
+          "reason": "Fold acp-conformance-kit sub-invariant into contract-representations heading section"
         },
         "json-result-rendering": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1104,9 +1104,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "contract-representations",
+          "reason": "Fold json-result-rendering sub-invariant into contract-representations heading section"
         },
         "json-document-presentation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1116,9 +1116,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "contract-representations",
+          "reason": "Fold json-document-presentation sub-invariant into contract-representations heading section"
         },
         "contract-proposal-projection": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1128,9 +1128,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-policy-cascade",
+          "reason": "Fold contract-proposal-projection sub-invariant into capability-policy-cascade heading section"
         },
         "capability-policy-matching": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1140,9 +1140,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-policy-cascade",
+          "reason": "Fold capability-policy-matching sub-invariant into capability-policy-cascade heading section"
         },
         "capability-policy-cascade": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1152,9 +1152,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H3 section tag for capability policy cascade, proposals, and model catalog wire"
         },
         "capability-policy-projection": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1164,9 +1164,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-policy-cascade",
+          "reason": "Fold capability-policy-projection sub-invariant into capability-policy-cascade heading section"
         },
         "proposal-policy": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1176,9 +1176,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-policy-cascade",
+          "reason": "Fold proposal-policy sub-invariant into capability-policy-cascade heading section"
         },
         "effort-wire": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1188,9 +1188,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-policy-cascade",
+          "reason": "Fold effort-wire sub-invariant into capability-policy-cascade heading section"
         },
         "model-catalog-wire": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1200,9 +1200,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "capability-policy-cascade",
+          "reason": "Fold model-catalog-wire sub-invariant into capability-policy-cascade heading section"
         },
         "client-interaction-wire": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1212,9 +1212,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-accounting",
+          "reason": "Fold client-interaction-wire sub-invariant into provider-request-accounting heading section"
         },
         "provider-usage": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1224,9 +1224,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-accounting",
+          "reason": "Fold provider-usage sub-invariant into provider-request-accounting heading section"
         },
         "provider-cost": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1236,9 +1236,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-accounting",
+          "reason": "Fold provider-cost sub-invariant into provider-request-accounting heading section"
         },
         "provider-request-accounting": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1248,9 +1248,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H3 section tag for client interactions and provider request accounting"
         },
         "provider-request-evidence": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1260,9 +1260,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-accounting",
+          "reason": "Fold provider-request-evidence sub-invariant into provider-request-accounting heading section"
         },
         "provider-accounting": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1272,9 +1272,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "provider-request-accounting",
+          "reason": "Fold provider-accounting sub-invariant into provider-request-accounting heading section"
         },
         "canonical-statement": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1284,9 +1284,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold canonical-statement sub-invariant into operation-fences heading section"
         },
         "section-boundary": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1296,9 +1296,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold section-boundary sub-invariant into operation-fences heading section"
         },
         "fence-closer": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1308,9 +1308,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold fence-closer sub-invariant into operation-fences heading section"
         },
         "balanced-fences": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1320,9 +1320,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 11,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold balanced-fences sub-invariant into operation-fences heading section"
         },
         "operation-fences": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1332,9 +1332,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 8,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for canonical statement form and backtick operation fences"
         },
         "naked-operation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1344,9 +1344,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold naked-operation sub-invariant into operation-fences heading section"
         },
         "fence-heading-in-body": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1356,9 +1356,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold fence-heading-in-body sub-invariant into operation-fences heading section"
         },
         "closer-fallback": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1368,9 +1368,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold closer-fallback sub-invariant into operation-fences heading section"
         },
         "fence-boundary": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1380,9 +1380,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 9,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "operation-fences",
+          "reason": "Fold fence-boundary sub-invariant into operation-fences heading section"
         },
         "fence-pairing": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1392,9 +1392,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 6,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H3 section tag for least-cost fence pairing, quotations, and native tool calls"
         },
         "pairing-need": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1404,9 +1404,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold pairing-need sub-invariant into fence-pairing heading section"
         },
         "pairing-algorithm": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1416,9 +1416,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold pairing-algorithm sub-invariant into fence-pairing heading section"
         },
         "pairing-objective": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1428,9 +1428,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold pairing-objective sub-invariant into fence-pairing heading section"
         },
         "unclosed-mutation-yields": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1440,9 +1440,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold unclosed-mutation-yields sub-invariant into fence-pairing heading section"
         },
         "prose-code-blocks": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1452,9 +1452,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold prose-code-blocks sub-invariant into fence-pairing heading section"
         },
         "message-run-on": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1464,9 +1464,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold message-run-on sub-invariant into fence-pairing heading section"
         },
         "pairing-witness": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1476,9 +1476,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold pairing-witness sub-invariant into fence-pairing heading section"
         },
         "indented-fences": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1488,9 +1488,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold indented-fences sub-invariant into fence-pairing heading section"
         },
         "inline-chain": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1500,9 +1500,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold inline-chain sub-invariant into fence-pairing heading section"
         },
         "transparent-inline-closer": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1512,9 +1512,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold transparent-inline-closer sub-invariant into fence-pairing heading section"
         },
         "executor-case": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1524,9 +1524,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold executor-case sub-invariant into fence-pairing heading section"
         },
         "executor-js-spelling": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1536,9 +1536,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold executor-js-spelling sub-invariant into fence-pairing heading section"
         },
         "one-line-turn": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1548,9 +1548,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold one-line-turn sub-invariant into fence-pairing heading section"
         },
         "anchor-digits": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1560,9 +1560,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold anchor-digits sub-invariant into fence-pairing heading section"
         },
         "unclosed-aside": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1572,9 +1572,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold unclosed-aside sub-invariant into fence-pairing heading section"
         },
         "quotation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1584,9 +1584,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 13,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold quotation sub-invariant into fence-pairing heading section"
         },
         "forgotten-tag": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1596,9 +1596,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold forgotten-tag sub-invariant into fence-pairing heading section"
         },
         "executor-heading": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1608,9 +1608,9 @@
           "liveShape": "paragraph",
           "codeCitations": 7,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold executor-heading sub-invariant into fence-pairing heading section"
         },
         "interstitial-fence": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1620,9 +1620,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold interstitial-fence sub-invariant into fence-pairing heading section"
         },
         "closer-aside": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1632,9 +1632,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold closer-aside sub-invariant into fence-pairing heading section"
         },
         "heading-slot-order": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1644,9 +1644,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold heading-slot-order sub-invariant into fence-pairing heading section"
         },
         "native-tool-calls": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1656,9 +1656,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold native-tool-calls sub-invariant into fence-pairing heading section"
         },
         "native-tool-call-receipt": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1668,9 +1668,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold native-tool-call-receipt sub-invariant into fence-pairing heading section"
         },
         "empty-section": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1680,9 +1680,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold empty-section sub-invariant into fence-pairing heading section"
         },
         "statement-rendering": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1692,9 +1692,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "fence-pairing",
+          "reason": "Fold statement-rendering sub-invariant into fence-pairing heading section"
         },
         "slot-order": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1704,9 +1704,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 6,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H3 section tag for heading slot order, target groups, and metadata modifiers"
         },
         "lifecycle-slots": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1716,9 +1716,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold lifecycle-slots sub-invariant into slot-order heading section"
         },
         "target-group": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1728,9 +1728,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold target-group sub-invariant into slot-order heading section"
         },
         "safe-uri-target-groups": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1740,9 +1740,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold safe-uri-target-groups sub-invariant into slot-order heading section"
         },
         "scope-on-scopeless": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1752,9 +1752,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold scope-on-scopeless sub-invariant into slot-order heading section"
         },
         "heading-inline-body": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1764,9 +1764,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold heading-inline-body sub-invariant into slot-order heading section"
         },
         "bare-option-object": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1776,9 +1776,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold bare-option-object sub-invariant into slot-order heading section"
         },
         "operation-aside": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1788,9 +1788,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold operation-aside sub-invariant into slot-order heading section"
         },
         "scheme-metadata-modifier": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1800,9 +1800,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "slot-order",
+          "reason": "Fold scheme-metadata-modifier sub-invariant into slot-order heading section"
         },
         "op-shapes": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1812,9 +1812,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for per-operation semantics, text scopes, and turn dispositions"
         },
         "retrieval-annotation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1824,9 +1824,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold retrieval-annotation sub-invariant into op-shapes heading section"
         },
         "note-value": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1836,9 +1836,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold note-value sub-invariant into op-shapes heading section"
         },
         "reasoning-operations": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1848,9 +1848,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 11,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold reasoning-operations sub-invariant into op-shapes heading section"
         },
         "exec-executor-slot": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1860,9 +1860,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 7,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold exec-executor-slot sub-invariant into op-shapes heading section"
         },
         "turn-disposition": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1872,9 +1872,9 @@
           "liveShape": "paragraph",
           "codeCitations": 6,
           "testCitations": 8,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold turn-disposition sub-invariant into op-shapes heading section"
         },
         "send-wait-scope": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1884,9 +1884,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold send-wait-scope sub-invariant into op-shapes heading section"
         },
         "send-directed-scope": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1896,9 +1896,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold send-directed-scope sub-invariant into op-shapes heading section"
         },
         "kill-scope": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1908,9 +1908,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold kill-scope sub-invariant into op-shapes heading section"
         },
         "bracket-metadata-slot": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1920,9 +1920,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold bracket-metadata-slot sub-invariant into op-shapes heading section"
         },
         "text-scope-semantics": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1932,9 +1932,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold text-scope-semantics sub-invariant into op-shapes heading section"
         },
         "bare-statement": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1944,9 +1944,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold bare-statement sub-invariant into op-shapes heading section"
         },
         "read-find-normalization": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1956,9 +1956,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold read-find-normalization sub-invariant into op-shapes heading section"
         },
         "local-path-fragment": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1968,9 +1968,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold local-path-fragment sub-invariant into op-shapes heading section"
         },
         "read-exact-target": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1980,9 +1980,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold read-exact-target sub-invariant into op-shapes heading section"
         },
         "unscoped-edit-create-only": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -1992,9 +1992,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold unscoped-edit-create-only sub-invariant into op-shapes heading section"
         },
         "empty-mutation-scope": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2004,9 +2004,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold empty-mutation-scope sub-invariant into op-shapes heading section"
         },
         "transfer-resource-selections": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2016,9 +2016,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold transfer-resource-selections sub-invariant into op-shapes heading section"
         },
         "find-result-unit": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2028,9 +2028,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold find-result-unit sub-invariant into op-shapes heading section"
         },
         "copy-move-observation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2040,9 +2040,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold copy-move-observation sub-invariant into op-shapes heading section"
         },
         "path-syntax": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2052,9 +2052,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for URL and local path grammar, escaping, and glob classification"
         },
         "path-query": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2064,9 +2064,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "path-syntax",
+          "reason": "Fold path-query sub-invariant into path-syntax heading section"
         },
         "path-parentheses": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2076,9 +2076,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "path-syntax",
+          "reason": "Fold path-parentheses sub-invariant into path-syntax heading section"
         },
         "path-glob": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2088,9 +2088,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "path-syntax",
+          "reason": "Fold path-glob sub-invariant into path-syntax heading section"
         },
         "session-name": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2100,9 +2100,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "path-syntax",
+          "reason": "Fold session-name sub-invariant into path-syntax heading section"
         },
         "matcher-prefix-claims": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2112,9 +2112,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for bulk pattern matching dialects and scope markers"
         },
         "heading-boundary-recovery": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2124,9 +2124,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold heading-boundary-recovery sub-invariant into matcher-prefix-claims heading section"
         },
         "scope-slot-tolerance": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2136,9 +2136,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold scope-slot-tolerance sub-invariant into matcher-prefix-claims heading section"
         },
         "extra-path-slot": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2148,9 +2148,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 8,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold extra-path-slot sub-invariant into matcher-prefix-claims heading section"
         },
         "matcher-refusal": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2160,9 +2160,9 @@
           "liveShape": "list",
           "codeCitations": 5,
           "testCitations": 16,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold matcher-refusal sub-invariant into matcher-prefix-claims heading section"
         },
         "regex-dialect-readings": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2172,9 +2172,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold regex-dialect-readings sub-invariant into matcher-prefix-claims heading section"
         },
         "pattern-body-single-line": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2184,9 +2184,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold pattern-body-single-line sub-invariant into matcher-prefix-claims heading section"
         },
         "scope-slot": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2196,9 +2196,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold scope-slot sub-invariant into matcher-prefix-claims heading section"
         },
         "text-line-anchor-syntax": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2208,9 +2208,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold text-line-anchor-syntax sub-invariant into matcher-prefix-claims heading section"
         },
         "scope-marker-forms": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2220,9 +2220,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold scope-marker-forms sub-invariant into matcher-prefix-claims heading section"
         },
         "scope-range-recovery": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2232,9 +2232,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "matcher-prefix-claims",
+          "reason": "Fold scope-range-recovery sub-invariant into matcher-prefix-claims heading section"
         },
         "send-mid-reservation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2244,9 +2244,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold send-mid-reservation sub-invariant into op-shapes heading section"
         },
         "disposition-anywhere": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2256,9 +2256,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold disposition-anywhere sub-invariant into op-shapes heading section"
         },
         "park-202-only": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2268,9 +2268,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold park-202-only sub-invariant into op-shapes heading section"
         },
         "lifecycle-only-turn": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2280,9 +2280,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold lifecycle-only-turn sub-invariant into op-shapes heading section"
         },
         "send-body": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2292,9 +2292,9 @@
           "liveShape": "heading",
           "codeCitations": 0,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "op-shapes",
+          "reason": "Fold send-body sub-invariant into op-shapes heading section"
         },
         "parser-architecture": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2304,9 +2304,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold parser-architecture sub-invariant into whitespace-contract heading section"
         },
         "whitespace-contract": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2316,9 +2316,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for parser architecture, outside text, and public API entry points"
         },
         "response-text": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2328,9 +2328,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold response-text sub-invariant into whitespace-contract heading section"
         },
         "unfenced-operation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2340,9 +2340,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold unfenced-operation sub-invariant into whitespace-contract heading section"
         },
         "recorded-emissions": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2352,9 +2352,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold recorded-emissions sub-invariant into whitespace-contract heading section"
         },
         "turn-shape": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2364,9 +2364,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold turn-shape sub-invariant into whitespace-contract heading section"
         },
         "tier-entrypoints": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2376,9 +2376,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold tier-entrypoints sub-invariant into whitespace-contract heading section"
         },
         "runtime-neutral-root": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2388,9 +2388,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold runtime-neutral-root sub-invariant into whitespace-contract heading section"
         },
         "root-value-api": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2400,9 +2400,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold root-value-api sub-invariant into whitespace-contract heading section"
         },
         "parser-construction-boundary": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2412,9 +2412,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "whitespace-contract",
+          "reason": "Fold parser-construction-boundary sub-invariant into whitespace-contract heading section"
         },
         "wire-entrypoint": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2424,9 +2424,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "text-region",
+          "reason": "Fold wire-entrypoint sub-invariant into text-region heading section"
         },
         "text-region": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2436,9 +2436,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for runtime-neutral wire contracts, text regions, and entry reads"
         },
         "range-extent": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2448,9 +2448,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "text-region",
+          "reason": "Fold range-extent sub-invariant into text-region heading section"
         },
         "entry-read-result": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2460,9 +2460,9 @@
           "liveShape": "heading",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "text-region",
+          "reason": "Fold entry-read-result sub-invariant into text-region heading section"
         },
         "operation-result": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2472,9 +2472,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "diagnostic-observation",
+          "reason": "Fold operation-result sub-invariant into diagnostic-observation heading section"
         },
         "diagnostic-observation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2484,9 +2484,9 @@
           "liveShape": "paragraph",
           "codeCitations": 11,
           "testCitations": 23,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H3 section tag for operation results, RFC 9457 Problem Details, and Notices"
         },
         "problem-details": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2496,9 +2496,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "diagnostic-observation",
+          "reason": "Fold problem-details sub-invariant into diagnostic-observation heading section"
         },
         "problem-error-carrier": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2508,9 +2508,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "diagnostic-observation",
+          "reason": "Fold problem-error-carrier sub-invariant into diagnostic-observation heading section"
         },
         "problem-projection": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2520,9 +2520,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "diagnostic-observation",
+          "reason": "Fold problem-projection sub-invariant into diagnostic-observation heading section"
         },
         "notice": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2532,9 +2532,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "diagnostic-observation",
+          "reason": "Fold notice sub-invariant into diagnostic-observation heading section"
         },
         "notice-directive": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2544,9 +2544,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "diagnostic-observation",
+          "reason": "Fold notice-directive sub-invariant into diagnostic-observation heading section"
         },
         "client-display-capabilities": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2556,9 +2556,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "mcp-server-definition",
+          "reason": "Fold client-display-capabilities sub-invariant into mcp-server-definition heading section"
         },
         "mcp-server-definition": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2568,9 +2568,9 @@
           "liveShape": "heading",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H3 section tag for client display capabilities, MCP server definitions, and skills"
         },
         "mcp-oauth": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2580,9 +2580,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "mcp-server-definition",
+          "reason": "Fold mcp-oauth sub-invariant into mcp-server-definition heading section"
         },
         "application-port": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2592,9 +2592,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 0,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "application-session-observation",
+          "reason": "Fold application-port sub-invariant into application-session-observation heading section"
         },
         "application-session-observation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2604,9 +2604,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 4,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H3 section tag for exterior application port and session/loop observation"
         },
         "loop-lifecycle-vocabulary": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2616,9 +2616,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "application-session-observation",
+          "reason": "Fold loop-lifecycle-vocabulary sub-invariant into application-session-observation heading section"
         },
         "list-excerpt": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2628,9 +2628,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "application-session-observation",
+          "reason": "Fold list-excerpt sub-invariant into application-session-observation heading section"
         },
         "application-session-overview": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2640,9 +2640,9 @@
           "liveShape": "paragraph",
           "codeCitations": 3,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "application-session-observation",
+          "reason": "Fold application-session-overview sub-invariant into application-session-observation heading section"
         },
         "application-loop-observation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2652,9 +2652,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "application-session-observation",
+          "reason": "Fold application-loop-observation sub-invariant into application-session-observation heading section"
         },
         "parse-diagnostics": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2664,9 +2664,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold parse-diagnostics sub-invariant into parse-recovery heading section"
         },
         "parse-admission": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2676,9 +2676,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold parse-admission sub-invariant into parse-recovery heading section"
         },
         "parse-recovery": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2688,9 +2688,9 @@
           "liveShape": "paragraph",
           "codeCitations": 5,
           "testCitations": 5,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for parse diagnostics, tolerances, and working-form recovery"
         },
         "parser-position": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2700,9 +2700,9 @@
           "liveShape": "paragraph",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold parser-position sub-invariant into parse-recovery heading section"
         },
         "inline-flag-tolerance": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2712,9 +2712,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold inline-flag-tolerance sub-invariant into parse-recovery heading section"
         },
         "regex-trailing-text": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2724,9 +2724,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold regex-trailing-text sub-invariant into parse-recovery heading section"
         },
         "regex-sed-range": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2736,9 +2736,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold regex-sed-range sub-invariant into parse-recovery heading section"
         },
         "unclosed-regex": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2748,9 +2748,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold unclosed-regex sub-invariant into parse-recovery heading section"
         },
         "naked-pattern": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2760,9 +2760,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 6,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold naked-pattern sub-invariant into parse-recovery heading section"
         },
         "trailing-slots": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2772,9 +2772,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 5,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold trailing-slots sub-invariant into parse-recovery heading section"
         },
         "log-heading-notation": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2784,9 +2784,9 @@
           "liveShape": "list",
           "codeCitations": 4,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold log-heading-notation sub-invariant into parse-recovery heading section"
         },
         "bare-target": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2796,9 +2796,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold bare-target sub-invariant into parse-recovery heading section"
         },
         "bare-anchor-scope": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2808,9 +2808,9 @@
           "liveShape": "list",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold bare-anchor-scope sub-invariant into parse-recovery heading section"
         },
         "matcher-body-redirect": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2820,9 +2820,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold matcher-body-redirect sub-invariant into parse-recovery heading section"
         },
         "combined-anchor-tolerance": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2832,9 +2832,9 @@
           "liveShape": "list",
           "codeCitations": 2,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold combined-anchor-tolerance sub-invariant into parse-recovery heading section"
         },
         "invalid-scope-diagnostic": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2844,9 +2844,9 @@
           "liveShape": "list",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold invalid-scope-diagnostic sub-invariant into parse-recovery heading section"
         },
         "error-shape": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2856,9 +2856,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 4,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold error-shape sub-invariant into parse-recovery heading section"
         },
         "parse-attempt": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2868,9 +2868,9 @@
           "liveShape": "paragraph",
           "codeCitations": 4,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold parse-attempt sub-invariant into parse-recovery heading section"
         },
         "unparsed-tail-boundary": {
           "spec": "plurnk-contracts/SPEC.md",
@@ -2880,9 +2880,9 @@
           "liveShape": "paragraph",
           "codeCitations": 2,
           "testCitations": 3,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parse-recovery",
+          "reason": "Fold unparsed-tail-boundary sub-invariant into parse-recovery heading section"
         },
         "parser-consumers": {
           "spec": "plurnk-parser/SPEC.md",
@@ -2892,9 +2892,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 2,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parser-build",
+          "reason": "Fold parser-consumers sub-invariant into parser-build heading section"
         },
         "parser-build": {
           "spec": "plurnk-parser/SPEC.md",
@@ -2904,9 +2904,9 @@
           "liveShape": "heading",
           "codeCitations": 1,
           "testCitations": 1,
-          "disposition": "pending",
+          "disposition": "keep-heading",
           "target": null,
-          "reason": null
+          "reason": "Retain H2 chapter tag for plurnk-parser package boundary, grammar build, and artifacts"
         },
         "pinned-wording-parser": {
           "spec": "plurnk-parser/SPEC.md",
@@ -2916,9 +2916,9 @@
           "liveShape": "paragraph",
           "codeCitations": 0,
           "testCitations": 1,
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "fold-into",
+          "target": "parser-build",
+          "reason": "Fold pinned-wording-parser sub-invariant into parser-build heading section"
         }
       },
       "tests": {
@@ -2934,9 +2934,9 @@
             "matcher-refusal",
             "parse-recovery"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/matcher.xpath-jsonpath.test.ts",
+          "reason": "Merge matcher-refusal.test.ts into matcher.xpath-jsonpath.test.ts"
         },
         "plurnk-core/test/intg/mcp-json-body.test.ts": {
           "tier": "intg",
@@ -2950,9 +2950,9 @@
             "bare-option-object",
             "pairing-objective"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/matcher.xpath-jsonpath.test.ts",
+          "reason": "Merge mcp-json-body.test.ts into matcher.xpath-jsonpath.test.ts"
         },
         "plurnk-core/test/intg/nested-program-bodies.test.ts": {
           "tier": "intg",
@@ -2965,9 +2965,9 @@
           "citedTags": [
             "statement-rendering"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/matcher.xpath-jsonpath.test.ts",
+          "reason": "Merge nested-program-bodies.test.ts into matcher.xpath-jsonpath.test.ts"
         },
         "plurnk-core/test/intg/path-decode.test.ts": {
           "tier": "intg",
@@ -2980,9 +2980,9 @@
           "citedTags": [
             "path-parentheses"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-core/test/intg/matcher.xpath-jsonpath.test.ts",
+          "reason": "Merge path-decode.test.ts into matcher.xpath-jsonpath.test.ts"
         },
         "plurnk-contracts/src/AcpConformance.test.ts": {
           "tier": "unit",
@@ -2997,9 +2997,9 @@
             "acp-client-conformance",
             "acp-conformance-kit"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical unit suite for ACP conformance, excerpts, origins, and loop lifecycle"
         },
         "plurnk-contracts/src/ApplicationOperationEvent.test.ts": {
           "tier": "unit",
@@ -3012,9 +3012,9 @@
           "citedTags": [
             "notifications-operation-event"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/AcpConformance.test.ts",
+          "reason": "Merge ApplicationOperationEvent.test.ts into AcpConformance.test.ts"
         },
         "plurnk-contracts/src/CapabilityAdmission.test.ts": {
           "tier": "unit",
@@ -3029,9 +3029,9 @@
             "capability-policy-matching",
             "capability-policy-projection"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/Validator.test.ts",
+          "reason": "Merge CapabilityAdmission.test.ts into Validator.test.ts"
         },
         "plurnk-contracts/src/Excerpt.test.ts": {
           "tier": "unit",
@@ -3044,9 +3044,9 @@
           "citedTags": [
             "list-excerpt"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/AcpConformance.test.ts",
+          "reason": "Merge Excerpt.test.ts into AcpConformance.test.ts"
         },
         "plurnk-contracts/src/HttpOrigin.test.ts": {
           "tier": "unit",
@@ -3059,9 +3059,9 @@
           "citedTags": [
             "http-request-origin"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/AcpConformance.test.ts",
+          "reason": "Merge HttpOrigin.test.ts into AcpConformance.test.ts"
         },
         "plurnk-contracts/src/JsonDocument.test.ts": {
           "tier": "unit",
@@ -3074,9 +3074,9 @@
           "citedTags": [
             "json-document-presentation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/JsonResult.test.ts",
+          "reason": "Merge JsonDocument.test.ts into JsonResult.test.ts"
         },
         "plurnk-contracts/src/JsonResult.test.ts": {
           "tier": "unit",
@@ -3089,9 +3089,9 @@
           "citedTags": [
             "json-result-rendering"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical unit suite for JSON result, JSON document, and log row formatting"
         },
         "plurnk-contracts/src/LogRow.test.ts": {
           "tier": "unit",
@@ -3104,9 +3104,9 @@
           "citedTags": [
             "acp-plurnk-metadata"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/JsonResult.test.ts",
+          "reason": "Merge LogRow.test.ts into JsonResult.test.ts"
         },
         "plurnk-contracts/src/LoopLifecycle.test.ts": {
           "tier": "unit",
@@ -3120,9 +3120,9 @@
             "application-session-observation",
             "loop-lifecycle-vocabulary"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/AcpConformance.test.ts",
+          "reason": "Merge LoopLifecycle.test.ts into AcpConformance.test.ts"
         },
         "plurnk-contracts/src/PathSyntax.test.ts": {
           "tier": "unit",
@@ -3136,9 +3136,9 @@
             "path-glob",
             "path-parentheses"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain unit suite for target-slot parenthesis escaping and glob classification"
         },
         "plurnk-contracts/src/PlurnkParseError.test.ts": {
           "tier": "unit",
@@ -3151,9 +3151,9 @@
           "citedTags": [
             "parse-admission"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/Validator.test.ts",
+          "reason": "Merge PlurnkParseError.test.ts into Validator.test.ts"
         },
         "plurnk-contracts/src/Validator.test.ts": {
           "tier": "unit",
@@ -3185,9 +3185,9 @@
             "text-region",
             "wire-entrypoint"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical unit suite for contract schema validators, capability admission, and guards"
         },
         "plurnk-contracts/src/guards.test.ts": {
           "tier": "unit",
@@ -3200,9 +3200,9 @@
           "citedTags": [
             "wire-entrypoint"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/Validator.test.ts",
+          "reason": "Merge guards.test.ts into Validator.test.ts"
         },
         "plurnk-contracts/src/index.test.ts": {
           "tier": "unit",
@@ -3218,9 +3218,9 @@
             "parser-position",
             "root-value-api"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain unit suite enforcing closed runtime-neutral package root exports"
         },
         "plurnk-contracts/src/types.test.ts": {
           "tier": "unit",
@@ -3233,9 +3233,9 @@
           "citedTags": [
             "session-name"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-contracts/src/Validator.test.ts",
+          "reason": "Merge types.test.ts into Validator.test.ts"
         },
         "plurnk-contracts/test/integration/generate-types.test.ts": {
           "tier": "intg",
@@ -3248,9 +3248,9 @@
           "citedTags": [
             "contract-representations"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain integration suite verifying schema-to-TypeScript code generation"
         },
         "plurnk-parser/src/PlurnkParser.test.ts": {
           "tier": "unit",
@@ -3273,9 +3273,9 @@
             "statement-rendering",
             "unfenced-operation"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical unit suite for PlurnkParser entry points, matchers, metadata, and bindings"
         },
         "plurnk-parser/src/matcher-refusal.test.ts": {
           "tier": "unit",
@@ -3290,9 +3290,9 @@
             "regex-dialect-readings",
             "statement-rendering"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/src/PlurnkParser.test.ts",
+          "reason": "Merge matcher-refusal.test.ts into PlurnkParser.test.ts"
         },
         "plurnk-parser/src/metadata-order.test.ts": {
           "tier": "unit",
@@ -3308,9 +3308,9 @@
             "scheme-metadata-modifier",
             "slot-order"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/src/PlurnkParser.test.ts",
+          "reason": "Merge metadata-order.test.ts into PlurnkParser.test.ts"
         },
         "plurnk-parser/src/selection-binding.test.ts": {
           "tier": "unit",
@@ -3326,9 +3326,9 @@
             "trailing-slots",
             "transfer-resource-selections"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/src/PlurnkParser.test.ts",
+          "reason": "Merge selection-binding.test.ts into PlurnkParser.test.ts"
         },
         "plurnk-parser/src/target-group.test.ts": {
           "tier": "unit",
@@ -3346,9 +3346,9 @@
             "target-group",
             "trailing-slots"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain unit suite for READ and KILL target-group compilation"
         },
         "plurnk-parser/test/demo/plurnk-md-examples.test.ts": {
           "tier": "live",
@@ -3359,9 +3359,9 @@
           "usesOpenMigrated": false,
           "usesLaunch": false,
           "citedTags": [],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain demo suite verifying all plurnk.md teaching examples parse cleanly"
         },
         "plurnk-parser/test/integration/anchor-offset.test.ts": {
           "tier": "intg",
@@ -3374,9 +3374,9 @@
           "citedTags": [
             "anchor-offset"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge anchor-offset.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/balanced-fences.test.ts": {
           "tier": "intg",
@@ -3392,9 +3392,9 @@
             "pairing-objective",
             "prose-code-blocks"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge balanced-fences.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/bare-option-object.test.ts": {
           "tier": "intg",
@@ -3408,9 +3408,9 @@
             "bare-option-object",
             "diagnostic-observation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge bare-option-object.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/closer-aside.test.ts": {
           "tier": "intg",
@@ -3423,9 +3423,9 @@
           "citedTags": [
             "closer-aside"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge closer-aside.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/executor-heading.test.ts": {
           "tier": "intg",
@@ -3440,9 +3440,9 @@
             "heading-inline-body",
             "reasoning-operations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge executor-heading.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/fence-matrix.test.ts": {
           "tier": "intg",
@@ -3457,9 +3457,9 @@
             "fence-pairing",
             "pairing-witness"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge fence-matrix.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/fenced-language.test.ts": {
           "tier": "intg",
@@ -3479,9 +3479,9 @@
             "tier-entrypoints",
             "whitespace-contract"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical integration suite for fence pairing, nested fences, and fence matrix"
         },
         "plurnk-parser/test/integration/grammar.test.ts": {
           "tier": "intg",
@@ -3529,9 +3529,9 @@
             "turn-shape",
             "unclosed-regex"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical integration suite for ANTLR grammar, headings, slots, scopes, and annotations"
         },
         "plurnk-parser/test/integration/heading-inline-body.test.ts": {
           "tier": "intg",
@@ -3545,9 +3545,9 @@
             "diagnostic-observation",
             "heading-inline-body"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge heading-inline-body.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/heading-shape.test.ts": {
           "tier": "intg",
@@ -3565,9 +3565,9 @@
             "parse-recovery",
             "send-directed-scope"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge heading-shape.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/heading-slot-order.test.ts": {
           "tier": "intg",
@@ -3580,9 +3580,9 @@
           "citedTags": [
             "heading-slot-order"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge heading-slot-order.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/interstitial-fence.test.ts": {
           "tier": "intg",
@@ -3603,9 +3603,9 @@
             "response-text",
             "unfenced-operation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge interstitial-fence.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/interstitial-text.test.ts": {
           "tier": "intg",
@@ -3624,9 +3624,9 @@
             "tier-entrypoints",
             "turn-shape"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge interstitial-text.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/jsonpath-cts.test.ts": {
           "tier": "intg",
@@ -3642,9 +3642,9 @@
             "matcher-refusal",
             "pattern-body-single-line"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/parsepath.test.ts",
+          "reason": "Merge jsonpath-cts.test.ts into parsepath.test.ts"
         },
         "plurnk-parser/test/integration/lifecycle-verbs.test.ts": {
           "tier": "intg",
@@ -3659,9 +3659,9 @@
             "lifecycle-only-turn",
             "reasoning-operations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge lifecycle-verbs.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/log-heading-notation.test.ts": {
           "tier": "intg",
@@ -3679,9 +3679,9 @@
             "parse-recovery",
             "slot-order"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge log-heading-notation.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/naked-operation.test.ts": {
           "tier": "intg",
@@ -3696,9 +3696,9 @@
             "quotation",
             "unfenced-operation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge naked-operation.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/naked-patterns.test.ts": {
           "tier": "intg",
@@ -3719,9 +3719,9 @@
             "trailing-slots",
             "transparent-inline-closer"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge naked-patterns.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/native-tool-calls.test.ts": {
           "tier": "intg",
@@ -3735,9 +3735,9 @@
             "native-tool-call-receipt",
             "native-tool-calls"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge native-tool-calls.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/nested-fences.test.ts": {
           "tier": "intg",
@@ -3760,9 +3760,9 @@
             "statement-rendering",
             "unclosed-aside"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge nested-fences.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/operation-fences.test.ts": {
           "tier": "intg",
@@ -3781,9 +3781,9 @@
             "quotation",
             "reasoning-operations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge operation-fences.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/optional-task.test.ts": {
           "tier": "intg",
@@ -3797,9 +3797,9 @@
             "matcher-refusal",
             "turn-shape"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge optional-task.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/parse-recovery.test.ts": {
           "tier": "intg",
@@ -3819,9 +3819,9 @@
             "regex-sed-range",
             "trailing-slots"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge parse-recovery.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/parsepath.test.ts": {
           "tier": "intg",
@@ -3835,9 +3835,9 @@
             "path-syntax",
             "session-name"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical integration suite for path parsing, WHATWG URL WPT, and JSONPath CTS"
         },
         "plurnk-parser/test/integration/prose-code-blocks.test.ts": {
           "tier": "intg",
@@ -3854,9 +3854,9 @@
             "prose-code-blocks",
             "unclosed-mutation-yields"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge prose-code-blocks.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/range-recovery.test.ts": {
           "tier": "intg",
@@ -3869,9 +3869,9 @@
           "citedTags": [
             "scope-range-recovery"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge range-recovery.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/reasoning-operations.test.ts": {
           "tier": "intg",
@@ -3884,9 +3884,9 @@
           "citedTags": [
             "reasoning-operations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge reasoning-operations.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/reasoning-tags.test.ts": {
           "tier": "intg",
@@ -3900,9 +3900,9 @@
             "provider-tagged-reasoning",
             "quotation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge reasoning-tags.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/recorded-emissions.test.ts": {
           "tier": "intg",
@@ -3916,9 +3916,9 @@
             "recorded-emissions",
             "turn-shape"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge recorded-emissions.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/recovery.test.ts": {
           "tier": "intg",
@@ -3940,9 +3940,9 @@
             "target-group",
             "turn-disposition"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical integration suite for parse recovery, recorded emissions, reasoning, and native tool calls"
         },
         "plurnk-parser/test/integration/regex-sed-range.test.ts": {
           "tier": "intg",
@@ -3957,9 +3957,9 @@
             "matcher-refusal",
             "regex-sed-range"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/recovery.test.ts",
+          "reason": "Merge regex-sed-range.test.ts into recovery.test.ts"
         },
         "plurnk-parser/test/integration/reply-framing.test.ts": {
           "tier": "intg",
@@ -3974,9 +3974,9 @@
             "operation-fences",
             "quotation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge reply-framing.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/response-text.test.ts": {
           "tier": "intg",
@@ -3992,9 +3992,9 @@
             "response-text",
             "unfenced-operation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/fenced-language.test.ts",
+          "reason": "Merge response-text.test.ts into fenced-language.test.ts"
         },
         "plurnk-parser/test/integration/retrieval-annotations.test.ts": {
           "tier": "intg",
@@ -4007,9 +4007,9 @@
           "citedTags": [
             "retrieval-annotation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge retrieval-annotations.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/scope-on-scopeless.test.ts": {
           "tier": "intg",
@@ -4023,9 +4023,9 @@
             "scope-on-scopeless",
             "send-directed-scope"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge scope-on-scopeless.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/url-wpt.test.ts": {
           "tier": "intg",
@@ -4040,9 +4040,9 @@
             "path-query",
             "path-syntax"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/parsepath.test.ts",
+          "reason": "Merge url-wpt.test.ts into parsepath.test.ts"
         },
         "plurnk-parser/test/integration/validator-statement.test.ts": {
           "tier": "intg",
@@ -4071,9 +4071,9 @@
             "transfer-resource-selections",
             "turn-disposition"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/validator.test.ts",
+          "reason": "Merge validator-statement.test.ts into validator.test.ts"
         },
         "plurnk-parser/test/integration/validator.test.ts": {
           "tier": "intg",
@@ -4093,9 +4093,9 @@
             "send-body",
             "text-line-anchor-syntax"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical integration suite for statement and contract validation"
         },
         "plurnk-parser/test/integration/well-formed-bodies.test.ts": {
           "tier": "intg",
@@ -4109,9 +4109,9 @@
             "heading-inline-body",
             "pairing-objective"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge well-formed-bodies.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/integration/wrapped-examples.test.ts": {
           "tier": "intg",
@@ -4127,9 +4127,9 @@
             "operation-fences",
             "pairing-objective"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/integration/grammar.test.ts",
+          "reason": "Merge wrapped-examples.test.ts into grammar.test.ts"
         },
         "plurnk-parser/test/unit/boundary.test.ts": {
           "tier": "unit",
@@ -4143,9 +4143,9 @@
             "parser-construction-boundary",
             "parser-consumers"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/unit/fenced-operations.test.ts",
+          "reason": "Merge boundary.test.ts into fenced-operations.test.ts"
         },
         "plurnk-parser/test/unit/fenced-operations.test.ts": {
           "tier": "unit",
@@ -4160,9 +4160,9 @@
             "quotation",
             "scheme-metadata-modifier"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain canonical unit suite for fenced operations, boundaries, heading tails, and KILL distillation"
         },
         "plurnk-parser/test/unit/generate-grammar.test.ts": {
           "tier": "unit",
@@ -4175,9 +4175,9 @@
           "citedTags": [
             "parser-build"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain unit suite for grammar generation script verification"
         },
         "plurnk-parser/test/unit/heading-tail.test.ts": {
           "tier": "unit",
@@ -4192,9 +4192,9 @@
             "operation-fences",
             "reasoning-operations"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/unit/fenced-operations.test.ts",
+          "reason": "Merge heading-tail.test.ts into fenced-operations.test.ts"
         },
         "plurnk-parser/test/unit/kill-distillation.test.ts": {
           "tier": "unit",
@@ -4208,9 +4208,9 @@
             "kill-scope",
             "log-kill-distillation"
           ],
-          "disposition": "pending",
-          "target": null,
-          "reason": null
+          "disposition": "merge-into",
+          "target": "plurnk-parser/test/unit/fenced-operations.test.ts",
+          "reason": "Merge kill-distillation.test.ts into fenced-operations.test.ts"
         },
         "plurnk-parser/test/unit/turn-dispositions.test.ts": {
           "tier": "unit",
@@ -4226,9 +4226,9 @@
             "turn-disposition",
             "turn-shape"
           ],
-          "disposition": "pending",
+          "disposition": "keep-suite",
           "target": null,
-          "reason": null
+          "reason": "Retain unit suite for WAIT and SEND turn disposition parsing"
         }
       }
     },

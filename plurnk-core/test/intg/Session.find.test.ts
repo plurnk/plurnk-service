@@ -653,7 +653,7 @@ test("{§find}: a log FIND anchors each line of the row it searches", async (t) 
 });
 
 describe("find-read-orthogonal", () => {
-// {§read-exact-target} and {§find-result-projection}: broad FIND locates
+// {§op-shapes} and {§find-result-projection}: broad FIND locates
 // resources; READ retrieves one exact target.
 
 
@@ -705,7 +705,7 @@ const setup = async () => {
     return { db, workspaceId, sessionId, loopId, turnId, mimetypes, schemes, engine };
 };
 
-test("{§read-exact-target} FIND locates resources by glob matcher", async () => {
+test("{§op-shapes} FIND locates resources by glob matcher", async () => {
     const { db, workspaceId, sessionId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         await seed(db, workspaceId, sessionId, mimetypes, "/a", "intro\nfrance alpha\ntail");
@@ -723,7 +723,7 @@ test("{§read-exact-target} FIND locates resources by glob matcher", async () =>
     } finally { await db.close(); }
 });
 
-test("{§read-exact-target} FIND with zero matches returns 204", async () => {
+test("{§op-shapes} FIND with zero matches returns 204", async () => {
     const { db, workspaceId, sessionId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         await seed(db, workspaceId, sessionId, mimetypes, "/a", "italy");
@@ -736,7 +736,7 @@ test("{§read-exact-target} FIND with zero matches returns 204", async () => {
     } finally { await db.close(); }
 });
 
-test("{§read-exact-target} exact READ returns target content", async () => {
+test("{§op-shapes} exact READ returns target content", async () => {
     const { db, workspaceId, sessionId, loopId, turnId, mimetypes, engine } = await setup();
     try {
         await seed(db, workspaceId, sessionId, mimetypes, "/a", "france one");
@@ -749,7 +749,7 @@ test("{§read-exact-target} exact READ returns target content", async () => {
     } finally { await db.close(); }
 });
 
-test("{§read-exact-target} trailing slash is ordinary resource syntax unless the scheme declares folder scopes", async () => {
+test("{§op-shapes} trailing slash is ordinary resource syntax unless the scheme declares folder scopes", async () => {
     class OpaqueResource {
         static manifest = {
             name: "opaque", channels: { body: "text/markdown" }, defaultChannel: "body",
@@ -784,7 +784,7 @@ test("{§read-exact-target} trailing slash is ordinary resource syntax unless th
 });
 
 describe("find-read-uniform", () => {
-// {§find-result-projection}, {§read-exact-target}. Broad FIND selects resources;
+// {§find-result-projection}, {§op-shapes}. Broad FIND selects resources;
 // exact-target matcher FIND reports flat match locations. Exact READ projects
 // text from one selected resource. These exercise the real dispatch path, not scheme methods
 // in isolation. Real Mimetypes so
@@ -1051,7 +1051,7 @@ test("{§find-result-projection} broad matcher FIND promotes a resource's locato
     } finally { await db.close(); }
 });
 
-test("{§find-result-unit} a glob remains resource mode when it resolves to one matching path", async () => {
+test("{§op-shapes} a glob remains resource mode when it resolves to one matching path", async () => {
     const { db, workspaceId, sessionId, ctx } = await setup();
     try {
         await seedRaw(ctx, "only.md", "first target\nsecond target");
@@ -1109,7 +1109,7 @@ test("{§find-result-projection} FIND on an exact target with a result-position 
     } finally { await db.close(); }
 });
 
-test("{§find-result-unit} FIND on an exact target with a content matcher pages flat match locations", async () => {
+test("{§op-shapes} FIND on an exact target with a content matcher pages flat match locations", async () => {
     const { db, workspaceId, sessionId, ctx } = await setup();
     try {
         await seedRaw(ctx, "doc.md", "hello world hello again");
@@ -1129,7 +1129,7 @@ test("{§find-result-unit} FIND on an exact target with a content matcher pages 
     } finally { await db.close(); }
 });
 
-test("{§read-find-normalization}: a glob survey is an authored FIND; a pattern on an exact READ stays a READ", async () => {
+test("{§op-shapes}: a glob survey is an authored FIND; a pattern on an exact READ stays a READ", async () => {
     const { db, workspaceId, sessionId, ctx } = await setup();
     try {
         await seedRaw(ctx, "a.md", "target one\ntarget two");
@@ -1315,7 +1315,7 @@ test("{§find-result-projection}: explicit later and all-results pages use the s
     }
 });
 
-test("{§find-result-projection} {§range-extent}: a FIND range of three or four positions is refused, naming them as written and no extent", async () => {
+test("{§find-result-projection} {§text-region}: a FIND range of three or four positions is refused, naming them as written and no extent", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `find-arity-${crypto.randomUUID()}`);
@@ -1676,7 +1676,7 @@ test("{§find}: FIND regex body matches entry content, not pathname", async () =
     } finally { db.close(); }
 });
 
-test("{§scope-slot}: READ <L> slices by line via the marker slot, not the body", async () => {
+test("{§matcher-prefix-claims}: READ <L> slices by line via the marker slot, not the body", async () => {
     const { db, workspaceId, sessionId } = await setup();
     try {
         await seed(db, workspaceId, sessionId, [["lines", "alpha\nbeta\ngamma"]]);

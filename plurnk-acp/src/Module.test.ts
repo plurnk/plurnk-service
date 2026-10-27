@@ -1520,7 +1520,7 @@ test("{§acp-replay} {§acp-sync} {§acp-snapshot} {§acp-history-window} {§acp
     }
 });
 
-test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overview-updates} {§acp-management-plane} {§acp-session-loops} {§acp-client-operation} {§acp-op-parse} {§acp-module-action-scope} {§acp-module-actions} {§discovery} {§acp-discovery-contract} {§acp-broadcast-fan} {§pinned-wording-acp}: session/list directory, slash commands, _plurnk/action, op.parse, and discovery contract", async () => {
+test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overview-updates} {§acp-management-plane} {§acp-session-loops} {§acp-client-operation} {§acp-op-parse} {§acp-module-action-scope} {§acp-module-actions} {§discovery} {§contract-representations} {§acp-broadcast-fan} {§pinned-wording-acp}: session/list directory, slash commands, _plurnk/action, op.parse, and discovery contract", async () => {
     const h = await createHarness();
     try {
         const updates: SessionUpdate[] = [];
@@ -1537,7 +1537,7 @@ test("{§acp-overview} {§acp-overview-run} {§acp-overview-state} {§acp-overvi
                 | undefined;
             assert.ok(firstMeta?.plurnk?.reply?.body?.url);
 
-            // 2. discover action returns valid AcpDiscovery manifest ({§discovery}, {§acp-discovery-contract})
+            // 2. discover action returns valid AcpDiscovery manifest ({§discovery}, {§contract-representations})
             const discovered = await ctx.request<AcpDiscovery>("_plurnk/action", {
                 kind: "discover",
                 params: {},

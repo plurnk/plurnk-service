@@ -466,7 +466,7 @@ export default class Ws implements SchemeHandler {
         return Ws.#propose("EDIT", statement.target, statement.body ?? "");
     }
 
-    // {§turn-disposition} — SEND is messaging; a KILL closes the owner.
+    // {§op-shapes} — SEND is messaging; a KILL closes the owner.
     async send(statement: SendStatement, ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.metadata !== null) return Ws.#metadataUnsupported();
         if (statement.target === null || statement.target.kind !== "url") {

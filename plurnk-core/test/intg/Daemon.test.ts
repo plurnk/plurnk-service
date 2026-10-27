@@ -2290,7 +2290,7 @@ test("{§credential-authority} a listening daemon under PLURNK_AUTH=1 refuses to
 });
 
 describe("ApplicationPort.topology", () => {
-test("{§notifications} {§application-loop-observation} {§methods-workspace-create}{§methods-workspace-create}{§methods-workspace-create}: exterior adapters observe exact topology and durable loop state", async () => {
+test("{§notifications} {§application-session-observation} {§methods-workspace-create}{§methods-workspace-create}{§methods-workspace-create}: exterior adapters observe exact topology and durable loop state", async () => {
     const provider = new Mock({
         contextWindow: 16_384,
         responses: [makeMockResponse("````SEND [200]\ncomposed result\n````", 10)],

@@ -265,7 +265,7 @@ export default class Exec extends CoreSchemeAdapterBase implements Pick<SchemeHa
         const body = statement.body ?? "";
         const { executors } = core;
         if (executors === undefined) throw new Error("exec dispatched without an executor registry");
-        // {§exec-executor-slot}: the fence names the executor; the path is its program.
+        // {§op-shapes}: the fence names the executor; the path is its program.
         const route = execRouteOf(statement);
         const runtime = route.runtime;
         const resolved = Exec.#admitRuntime(executors, core.workspaceId, runtime);

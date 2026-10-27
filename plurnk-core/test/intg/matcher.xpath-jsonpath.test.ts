@@ -8,7 +8,10 @@ import File from "../../src/schemes/File.ts";
 import EntryCrud from "../../src/schemes/_entry-crud.ts";
 import SearchIndex from "../../src/schemes/_search-index.ts";
 import Http from "@plurnk/plurnk-schemes-http";
-import { type FindStatement, type MatcherBody, type ParsedPath, type ReadStatement, type UrlPath, type KillStatement, type SendStatement, type LocalPath, type LineMarker } from "@plurnk/plurnk-contracts";
+import StrikeRail from "../../src/core/StrikeRail.ts";
+import Daemon from "../../src/server/Daemon.ts";
+import StreamMock from "./_stream-mock.ts";
+import { type FindStatement, type MatcherBody, type ParsedPath, type ReadStatement, type UrlPath, type KillStatement, type SendStatement, type LocalPath, type LineMarker, PathSyntax } from "@plurnk/plurnk-contracts";
 import { Mimetypes } from "@plurnk/plurnk-mimetypes";
 import { type Db } from "../../src/core/Db.ts";
 import { openMigrated, insertWorkspace, insertSession, insertLoop, insertTurn, seedEnvelope, seedEntryWithChannel, rootWorkspace } from "./_db.ts";
@@ -19,15 +22,21 @@ import { urlPath, editStmt, killStmt, sendStmt } from "./_dsl.ts";
 import { resourcePaths, resourceGroups } from "./_find.ts";
 import { type ResolvedEditStatement } from "@plurnk/plurnk-schemes";
 import { PlurnkParser } from "@plurnk/plurnk-parser";
-import { fixtureExecutors } from "./_mock.ts";
+import { fixtureExecutors, makeMockResponse, makeRawMockResponse } from "./_mock.ts";
 import { requestUrl } from "../../../scripts/lib/test-fetch.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Mock } from "@plurnk/plurnk-providers";
+import { Mock, type MockResponse } from "@plurnk/plurnk-providers";
 import { hermeticGitEnv } from "../../src/core/git-env.ts";
+import { logEntries, packetSection } from "./_packet.ts";
+import { McpServer, createMcpHandler, fromJsonSchema } from "@modelcontextprotocol/server";
+import { Module as McpModule } from "@plurnk/plurnk-mcp";
+import { serveMcpHttp } from "../../../plurnk-mcp/test/http-fixture.ts";
+import { connect, rpcCall, runLoopToTerminal } from "./_rpc.ts";
+import { httpEntry, mcpFixture } from "./_mcp-config.ts";
 
 describe("matcher.xpath-jsonpath", () => {
 const readStmt = (target: ParsedPath | null): ReadStatement => ({
@@ -775,7 +784,7 @@ test("{§matcher-dispatch} &foo selects definitions, not callers or dependencies
     } finally { db.close(); }
 });
 
-test("{§range-extent}: a graph matcher selecting no resources returns 204 with its empty extent", async () => {
+test("{§text-region}: a graph matcher selecting no resources returns 204 with its empty extent", async () => {
     const { db, workspaceId, sessionId } = await seed();
     try {
         const r = await find(db, workspaceId, sessionId, "&<nope");
@@ -947,5 +956,172 @@ test("{§read} a full-text KILL removes the highlighted source token rather than
     assert.equal(result.matched, 1);
     const body = await db.test_get_channel_by_pathname.get<{ content: string }>({ pathname: "/resolvers.py", name: "body" });
     assert.equal(body?.content, RESOLVERS.replace("LocaleRegexDescriptor", ""));
+});
+});
+
+describe("matcher-refusal", () => {
+const messages = [{ role: "system" as const, content: "An agent." }, { role: "user" as const, content: "Inspect the notes." }];
+const response = (content: string): MockResponse => ({ assistant: { content, reasoning: null } });
+
+test("{§matcher-prefix-claims}: a fumbled pattern is the operation's own 400 with the parser's working form, never an error row and never a strike", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `matcher-refusal-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const loopId = await insertLoop(db, sessionId, 1, "Inspect the notes.");
+        const engine = new Engine({ db, schemes: new SchemeRegistry() });
+        await seedEntryWithChannel(db, { workspaceId, pathname: "/notes.md", content: "Enum one\nEnum two\n" });
+        const provider = new Mock({ contextWindow: 100_000, responses: [
+            response("````FIND (workspace:///notes.md) /Enum/{5,40} <!-- enum regions -->````"),
+            response("````FIND (workspace:///notes.md) /Enum/{5,40}````"),
+            response("````NOTE\nstill looking\n````"),
+        ] });
+        const first = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider });
+        assert.equal(first.status, 102, "the turn stands");
+        const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; status_rx: number; rx: string }>({ turn_id: first.turnId });
+        assert.deepEqual(rows.filter(({ origin }) => origin === "model").map(({ op, status_rx }) => [op, status_rx]), [["FIND", 400]], "one row: the FIND's own refusal");
+        assert.ok(rows.every(({ op }) => op !== "error"), "no grammar error row is minted");
+        const problem = (JSON.parse(rows.find(({ op }) => op === "FIND")!.rx) as { problem: { type: string; detail: string; recovery: string; stage: string } }).problem;
+        assert.equal(problem.type, "https://problems.plurnk.xyz/grammar/matcher/unreadable-pattern");
+        assert.match(problem.detail, /not a valid `\/pattern\/flags` regex/u);
+        assert.match(problem.recovery, /^A pattern is a regex written/u, "{§parse-recovery}: the working form rides the Problem");
+        assert.equal(problem.stage, "matcher");
+        assert.equal(await new StrikeRail(db).streak(loopId), 0, "a turn of nothing but a fumbled pattern earns no strike");
+        const second = await engine.runTurn({ workspaceId, sessionId, loopId, messages, provider });
+        assert.equal(await new StrikeRail(db).streak(loopId), 0, "nor does repeating it");
+        const packet = JSON.parse((await db.test_get_packet.get<{ packet: string }>({ id: second.turnId }))!.packet);
+        assert.match(packetSection(packet, "errors"), /"status":400,"path":"log:\/\/\/[^"]*\/FIND"/u, "the refusal is the FIND row in the Errors index");
+        const row = logEntries(packet).find((entry) => entry.status === 400 && entry.logPath.endsWith("/FIND"))!;
+        assert.match(String((row.problem as { detail?: string }).detail), /not a valid/u, "the next packet carries the diagnostic on the row");
+        assert.match(String((row.problem as { recovery?: string }).recovery), /A pattern is a regex/u);
+    } finally { await db.close(); }
+});
+});
+
+describe("mcp-json-body", () => {
+for (const [name, source] of [
+    ["the prose after it does not extend its JSON body", ["So I can invoke:", "", "```fixture (inspect)", "{\"query\":\"fixture\"}", "```", "", "Then I will check the remote:", "", "```", "git remote -v", "```", "", "Done."].join("\n")],
+    ["arguments on its heading line are its body ({§slot-order})", "```fixture (inspect) {\"query\":\"fixture\"}\n```"],
+] as const) test(`{§fence-pairing}: an MCP call receives exactly the object the model wrote: ${name}`, { timeout: 30_000 }, async (t) => {
+    serverProposals(t, "accept");
+    const received: unknown[] = [];
+    const served = await serveMcpHttp(t, createMcpHandler(() => {
+        const server = new McpServer({ name: "json-body-fixture", version: "1.0.0" });
+        server.registerTool("inspect", {
+            description: "Echo the query.",
+            inputSchema: fromJsonSchema({ type: "object", properties: { query: { type: "string" } }, additionalProperties: false }),
+        }, async (args) => {
+            received.push(args);
+            return { content: [{ type: "text", text: "ok" }] };
+        });
+        return server;
+    }, { legacy: "reject", responseMode: "auto", keepAliveMs: 0 }));
+    const { hostPaths, env: mcpEnv } = await mcpFixture(t, { fixture: httpEntry(served.url) });
+    const provider = new StreamMock({ contextWindow: 100_000, responses: [
+        makeRawMockResponse(source, 10),
+        makeMockResponse(PlurnkParser.frame("SEND [200]", "Checked.")),
+    ] });
+    const db = await openMigrated();
+    const daemon = new Daemon({ db, provider, hostPaths });
+    daemon.registerModule(McpModule.init({ env: { ...mcpEnv,
+        PLURNK_MCP_CONNECT_TIMEOUT: "5000", PLURNK_MCP_REQUEST_TIMEOUT: "10000", PLURNK_MCP_RETRY_FLOOR_MS: "250", PLURNK_MCP_RETRY_CEILING_MS: "5000",
+    } }), "@plurnk/plurnk-mcp");
+    t.after(async () => { await daemon.stop(); await db.close(); });
+    await daemon.start();
+    const ws = await connect({ daemon });
+    t.after(() => ws.close());
+    await rpcCall(ws, 1, "workspace.create", { name: "mcp-json-body" });
+    const result = await runLoopToTerminal(ws, 2, { prompt: "Inspect." });
+    assert.equal(result.finalStatus, 200);
+    assert.deepEqual(received, [{ query: "fixture" }], "the tool receives the one object the model wrote");
+});
+});
+
+describe("nested-program-bodies", () => {
+for (const header of ["SEND", "EDIT (workspace:///example.md)"]) {
+    test(`{§fence-pairing}: a framed ${header} preserves quoted examples, original source, and the real task disposition`, async () => {
+        const db = await openMigrated();
+        try {
+            const workspaceId = await insertWorkspace(db, `nested-${crypto.randomUUID()}`);
+            const sessionId = await insertSession(db, workspaceId);
+            const loopId = await insertLoop(db, sessionId, 1, "Preserve the examples.");
+            await seedEntryWithChannel(db, { workspaceId, pathname: "/victim.md", content: "unchanged" });
+            const body = [
+                "These are examples, not instructions to execute:",
+                "````sh", "printf example", "````",
+                "````EDIT (workspace:///victim.md) <1,-1>", "must not replace the original", "````",
+                "````WAIT", "Not a real wait.", "````",
+                "Report ends here.",
+            ].join("\n");
+            const disposition = header === "SEND" ? "NOTE" : "WAIT";
+            // The body quotes four-backtick headings, so the block is framed one wider to hold them.
+            const source = `${PlurnkParser.frame(header, body)}\n\n${PlurnkParser.frame(disposition, "")}`;
+            assert.match(source, /^`````[A-Z]/u, "frame chose a fence wider than the quoted headings");
+            const provider = new Mock({
+                contextWindow: 100_000,
+                responses: [{ assistant: { content: source, reasoning: null }, usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 } }],
+            });
+            const engine = new Engine({ db, schemes: new SchemeRegistry() });
+            const result = await engine.runTurn({ provider, workspaceId, sessionId, loopId, messages: [{ role: "user", content: "Preserve the examples." }] });
+            assert.equal(result.status, 102, "the quoted body stays literal, and a sibling operation prevents conclusion");
+            assert.equal(result.emissionAttempts, 1);
+            assert.deepEqual(result.outcomes.map(({ op, status }) => ({ op, status })), [
+                { op: header === "SEND" ? "SEND" : "EDIT", status: header === "SEND" ? 200 : 201 },
+                { op: disposition, status: header === "SEND" ? 200 : 102 },
+            ]);
+            const rows = await db.test_log_entries_by_turn.all<{ op: string | null; origin: string; tx: string; rx: string }>({ turn_id: result.turnId });
+            const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string; content: string }>({ session_id: sessionId });
+            assert.equal(sources.find(({ turn_id, kind }) => turn_id === result.turnId && kind === "ops")?.content, source);
+            const emitted = JSON.parse(rows.find(({ op, origin }) => origin === "model" && op === (header === "SEND" ? "SEND" : "EDIT"))!.tx);
+            assert.equal(header === "SEND" ? emitted.body.raw : emitted.body, body);
+            assert.equal(JSON.parse(rows.find(({ op }) => op === disposition)!.tx).body, null);
+            const saved = (pathname: string) => db.test_get_channel_by_pathname_scheme.get<{ content: string }>({ pathname, scheme: "workspace", name: "body" });
+            assert.equal((await saved("/victim.md"))?.content, "unchanged");
+            if (header !== "SEND") assert.equal((await saved("/example.md"))?.content, body);
+        } finally { await db.close(); }
+    });
+}
+});
+
+describe("path-decode", () => {
+test("{§path-syntax} decodePathParens decodes only %28/%29 — other percent-sequences + literal % pass through", () => {
+    assert.equal(PathSyntax.decodeParens("/dir/file%28v1%29.txt"), "/dir/file(v1).txt");
+    assert.equal(PathSyntax.decodeParens("/a%28b%29c%28d%29"), "/a(b)c(d)");
+    assert.equal(PathSyntax.decodeParens("/50%off %20literal.txt"), "/50%off %20literal.txt", "%20 + a literal % are untouched — only parens are grammar-encoded");
+});
+
+test("{§path-syntax} encodePathParens produces the model-facing inverse without touching existing escapes", () => {
+    assert.equal(PathSyntax.encodeParens("/wiki/Igor_(politician)"), "/wiki/Igor_%28politician%29");
+    assert.equal(PathSyntax.encodeParens("/wiki/Igor_%28politician%29"), "/wiki/Igor_%28politician%29");
+});
+
+const enc = (pathname: string): UrlPath => ({
+    kind: "url", raw: `workspace:///${pathname}`, scheme: "workspace",
+    username: null, password: null, hostname: null, port: null,
+    pathname: `/${pathname}`, query: null, fragment: null,
+});
+const decodeEditStmt = (target: UrlPath, body: string): ResolvedEditStatement => ({ metadata: null, op: "EDIT", aside: null, target, lineMarker: null, body, matcher: null, position: { line: 1, column: 1 } });
+const readStmt = (target: UrlPath): ReadStatement => ({ metadata: null, op: "READ", aside: null, target, lineMarker: null, matcher: null, body: null, position: { line: 1, column: 1 } });
+
+test("{§path-syntax} a percent-encoded pathname alias resolves to literal parentheses", async () => {
+    const db = await openMigrated();
+    try {
+        const workspaceId = await insertWorkspace(db, `paren-${crypto.randomUUID()}`);
+        const sessionId = await insertSession(db, workspaceId);
+        const ctx = makeSchemeCtx({ db, workspaceId, sessionId });
+
+        const w = await new Workspace().edit(decodeEditStmt(enc("doc%28v1%29.md"), "paren body"), ctx);
+        assert.ok(w.status === 200 || w.status === 201, "the encoded-paren EDIT lands");
+
+        // READ of the encoded form resolves the entry the EDIT created.
+        const r = await readThroughScheme("workspace", null, readStmt(enc("doc%28v1%29.md")), ctx);
+        assert.equal(r.status, 200, "READ of the encoded form resolves the entry");
+        assert.match(r.content ?? "", /paren body/, "and returns its content");
+
+        // The decisive check: the EDIT stored at the DECODED path, so the LITERAL-paren form
+        // addresses the same entry. Without decode-at-resolve it would 404 here.
+        const literal = await readThroughScheme("workspace", null, readStmt(enc("doc(v1).md")), ctx);
+        assert.equal(literal.status, 200, "the literal-paren form hits the same entry — proof the EDIT resolved decoded");
+    } finally { await db.close(); }
 });
 });

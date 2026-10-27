@@ -85,7 +85,7 @@ const summaryWitness = (
 
 const authoredSummary = (source: ToolSource, summary: string): string => {
     if (!summary.startsWith("```") || summary.includes("\\n")) return summary;
-    // {§fence-heading-in-body} — the source's own runtime is the known executor for its summary.
+    // {§operation-fences} — the source's own runtime is the known executor for its summary.
     const { items } = PlurnkParser.parseStatements(summary, { executors: [source.runtime] });
     const item = items[0];
     if (items.length !== 1 || item?.kind !== "statement" || !isExecution(item.statement)) return summary;

@@ -812,7 +812,7 @@ export default class PacketWire {
         }
     }
 
-        // {§problem-projection} — the exact durable Problem remains the
+        // {§diagnostic-observation} — the exact durable Problem remains the
         // failure authority; the packet carries only facts not already
         // owned by its enclosing row. Errors remains only an index.
     // The success-side sibling (#342): a sub-problem receipt may carry one

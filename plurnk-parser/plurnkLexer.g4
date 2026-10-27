@@ -36,7 +36,7 @@ private fencePairing(): Pairing {
     return this.pairingCache;
 }
 // The heading lexer decides whether a heading line closes its block on that line: targets, metadata
-// strings and asides may hold backticks that close nothing ({§one-line-turn}, {§transparent-inline-closer}).
+// strings and asides may hold backticks that close nothing ({§fence-pairing}, {§fence-pairing}).
 private closedOnLine(tokens: readonly Token[]): boolean {
     return this.mode === plurnkLexer.DEFAULT_MODE && (this.inlineCloserSeen
         || tokens.some((token) => token.type === plurnkLexer.SECTION_END && token.text?.includes("\x60")));
@@ -65,7 +65,7 @@ private blockEnd(required: boolean): BlockEnd | undefined {
     if (end === undefined && required) throw new Error(`fence pairing has no end for the block opened at ${this.openFenceStart}`);
     return end;
 }
-// {§reasoning-operations}: only authored closures, never repaired/incomplete blocks.
+// {§op-shapes}: only authored closures, never repaired/incomplete blocks.
 public hasClosedBlock(line: number): boolean {
     const pairing = this.fencePairing();
     const start = pairing.lineStarts[line - 1];
@@ -83,12 +83,12 @@ private openHeadingColumn: number = 0;
 private fenceLength: number = 0;
 private fenceCharacter: number = 0x60;
 private openFenceStart: number = 0;
-// {§reasoning-operations} — quotations are opaque; no program-boundary recovery.
+// {§op-shapes} — quotations are opaque; no program-boundary recovery.
 public reasoning: boolean = false;
 private started: boolean = false;
-// {§inline-chain} — a closer on the heading line may be followed by the next opener on the same line.
+// {§fence-pairing} — a closer on the heading line may be followed by the next opener on the same line.
 private inlineChain: boolean = false;
-// {§transparent-inline-closer} — a closer already consumed mid-heading, so the line's end closes.
+// {§fence-pairing} — a closer already consumed mid-heading, so the line's end closes.
 private inlineCloserSeen: boolean = false;
 private unclosedAsides: Array<{ line: number; column: number }> = [];
 
@@ -129,7 +129,7 @@ private asideClosesOnLine(): boolean {
         cursor++;
     }
 }
-// {§log-heading-notation} - the log's receipt heading copied as syntax: the arrow target, the token charge, a
+// {§parse-recovery} - the log's receipt heading copied as syntax: the arrow target, the token charge, a
 // middle-dot note, and an EDIT's anchor written without its angle brackets. Each is read, and noted once.
 private headingNotations: Array<{ line: number; column: number; kind: string; text: string }> = [];
 private noteNotation(kind: string): void {
@@ -140,7 +140,7 @@ public takeHeadingNotations(): Array<{ line: number; column: number; kind: strin
     this.headingNotations = [];
     return taken;
 }
-// {§log-heading-notation} - a comment later on the line, before its end or a fence: the comment is the aside,
+// {§parse-recovery} - a comment later on the line, before its end or a fence: the comment is the aside,
 // and a middle-dot note before it is stray text.
 private asideCommentLater(): boolean {
     let cursor = 1;
@@ -177,10 +177,10 @@ private bareAnchorAhead(): boolean {
     if (c <= 0 || c === 0x0A || c === 0x0D || c === 0x60) return true;
     return c === 0x3C && this.inputStream.LA(cursor + 1) === 0x21 && this.inputStream.LA(cursor + 2) === 0x2D && this.inputStream.LA(cursor + 3) === 0x2D;
 }
-// {§fence-heading-in-body} - tags that end an open block from inside it; the host adds executors.
+// {§operation-fences} - tags that end an open block from inside it; the host adds executors.
 public knownExecutors: Set<string> = new Set(["sh"]);
 public wellFormed: ((runtime: string, body: string) => boolean) | undefined = undefined;
-// {§executor-heading}: one recognition rule for OPEN, inline chains, recovery and fence pairing.
+// {§fence-pairing}: one recognition rule for OPEN, inline chains, recovery and fence pairing.
 private headingName(name: string, offset: number): boolean {
     const at = this.skipHorizontal(offset);
     let suffix = "";
@@ -188,7 +188,7 @@ private headingName(name: string, offset: number): boolean {
     return HeadingReader.opens(name, suffix, this.knownExecutors, this.reasoning);
 }
 private slotReady: boolean = false;
-// {§scope-on-scopeless}: whether this heading has taken its target; a SEND without one takes no scope.
+// {§slot-order}: whether this heading has taken its target; a SEND without one takes no scope.
 private headingTarget: boolean = false;
 private targetClosed(): void {
     this.slotReady = true;
@@ -207,25 +207,25 @@ private quotedSpans: Array<{ start: number; end: number }> = [];
 private quoteLabeled = false;
 private quoteStart: number = -1;
 
-// {§executor-heading} - explicit slots do not require a registered runtime.
+// {§fence-pairing} - explicit slots do not require a registered runtime.
 private operationHeading(): boolean {
     const name = this.text.replace(/^\x60+/, "");
     return this.headingName(name, 1);
 }
 
-// {§quotation} - a fence that opened no operation quotes. Its tag draws nothing: an unknown name
+// {§fence-pairing} - a fence that opened no operation quotes. Its tag draws nothing: an unknown name
 // without invocation slots is a code block at any width, and one indented further than three spaces is the taught
-// offset ({§indented-fences}). Reasoning quotes freely.
+// offset ({§fence-pairing}). Reasoning quotes freely.
 private quote(): void {
     this.quoteStart = this.tokenStartCharIndex;
     // A labeled code block (a plurnk or md tag) is an example by declaration; only an unlabeled
-    // wrapper around an operation is the mis-fence that earns a receipt ({§quotation}).
+    // wrapper around an operation is the mis-fence that earns a receipt ({§fence-pairing}).
     // No literal backtick in this block: the action scanner reads one as a string delimiter.
     this.quoteLabeled = /[A-Za-z]/.test(this.text.replace(/^[\x60~]+/, ""));
     this.open();
 }
 
-// {§forgotten-tag} - at the top level, a bare fence and the operation heading on the line under it are one
+// {§fence-pairing} - at the top level, a bare fence and the operation heading on the line under it are one
 // opener: the line break is dropped from the token, so the operation opens exactly as if written on one line.
 private splitOpen(): void {
     this.forgottenTags.push({ line: (this as any).currentTokenStartLine, column: 0, tag: this.text.replace(/^\x60+[ \t]*\r?\n/, "") });
@@ -239,7 +239,7 @@ public takeForgottenTags(): Array<{ line: number; column: number; tag: string }>
     return taken;
 }
 
-// {§quotation} - an operation inside an unlabeled code block is shown, never run: the model that
+// {§fence-pairing} - an operation inside an unlabeled code block is shown, never run: the model that
 // wrapped it is told so once. Labeled blocks draw nothing here.
 private noteQuoted(): void {
     if (this.reasoning || this.quoteLabeled) return;
@@ -276,7 +276,7 @@ private static readonly OPERATIONS: Readonly<Record<string, number>> = {
     WORK: plurnkLexer.OPEN_WORK, FORK: plurnkLexer.OPEN_FORK, KILL: plurnkLexer.OPEN_KILL,
 };
 
-// {§naked-operation} — a native name and optional complete aside, outside reasoning.
+// {§operation-fences} — a native name and optional complete aside, outside reasoning.
 private nakedHeadingHere(): boolean {
     if (!this.atColumnZero() || this.reasoning) return false;
     let name = "";
@@ -297,7 +297,7 @@ private openNaked(): void {
     this.naked = true;
 }
 
-// {§naked-operation} - the name alone again, on its own line outside any nested block, closes the
+// {§operation-fences} - the name alone again, on its own line outside any nested block, closes the
 // naked block it opened.
 private nakedCloserAfterEol(): boolean {
     const after = this.offsetAfterEol(1);
@@ -335,7 +335,7 @@ private open(implicitName?: string): void {
     this.inlineBody = false;
 }
 
-// {§quotation} CommonMark: a backtick fence's info string cannot contain a backtick, so a line
+// {§fence-pairing} CommonMark: a backtick fence's info string cannot contain a backtick, so a line
 // like ```KILL (x)``` is inline code, not an opener, and quotes nothing after it.
 private fenceOpens(): boolean {
     let cursor = 1;
@@ -354,13 +354,13 @@ private orphanAtLineEnd(): boolean {
     return c <= 0 || c === 0x0A || c === 0x0D;
 }
 
-// {§naked-operation} - the name follows a newline directly, or begins the input.
+// {§operation-fences} - the name follows a newline directly, or begins the input.
 private atColumnZero(): boolean {
     const c = this.inputStream.LA(-1);
     return c <= 0 || c === 0x0A || c === 0x0D;
 }
 
-// {§indented-fences} - a fence line may follow at most three spaces (CommonMark); four or more,
+// {§fence-pairing} - a fence line may follow at most three spaces (CommonMark); four or more,
 // or a tab, make it indented code: neither an opener, a closer nor a heading.
 private atLineStart(): boolean {
     let spaces = 0;
@@ -372,7 +372,7 @@ private atLineStart(): boolean {
     }
 }
 
-// {§indented-fences} - the offset of the fence run at or after this offset when its line indents it
+// {§fence-pairing} - the offset of the fence run at or after this offset when its line indents it
 // by at most three spaces; null when four or more, or a tab, make the line indented code. Off the
 // line start (a closer on the heading line) indentation is not in question.
 private fenceIndent(offset: number): number | null {
@@ -401,8 +401,8 @@ private offsetAfterEol(offset: number): number | null {
     return this.inputStream.LA(offset) === 0x0A ? offset + 1 : null;
 }
 
-// {§fence-closer} - a closer is a line of at least the opener's backticks and nothing else, within
-// three spaces of the line start ({§indented-fences}); {§balanced-fences} claims nested closers first.
+// {§operation-fences} - a closer is a line of at least the opener's backticks and nothing else, within
+// three spaces of the line start ({§fence-pairing}); {§operation-fences} claims nested closers first.
 private closingAt(offset: number): boolean {
     if (this.naked || this.inputStream.LA(offset === 1 ? -1 : offset - 1) === this.fenceCharacter) return false;
     const fence = this.fenceIndent(offset);
@@ -423,10 +423,10 @@ private closingAt(offset: number): boolean {
     while (this.inputStream.LA(cursor) === 0x20 || this.inputStream.LA(cursor) === 0x09) cursor++;
     if (this.inputStream.LA(cursor) <= 0 || this.offsetAfterEol(cursor) !== null) return true;
     if (this.reasoning) return false;
-    // {§closer-aside} — a closer followed on its line by one aside and nothing else still closes;
+    // {§fence-pairing} — a closer followed on its line by one aside and nothing else still closes;
     // read as body, that line would be written into the edited resource (#758, dogfood item 17).
     if (this.asideToLineEnd(cursor)) return true;
-    // {§inline-chain} — a closer followed on its line by the next opener still closes.
+    // {§fence-pairing} — a closer followed on its line by the next opener still closes.
     let ticks = 0;
     while (this.inputStream.LA(cursor + ticks) === 0x60) ticks++;
     if (ticks < 3) return false;
@@ -442,8 +442,8 @@ private closingAt(offset: number): boolean {
     return name !== "" && this.headingName(name, at);
 }
 
-// {§fence-heading-in-body} — an operation heading of the taught width recovers an unclosed block only
-// after {§balanced-fences} has ruled out complete nesting: a wider block holds narrower headings
+// {§operation-fences} — an operation heading of the taught width recovers an unclosed block only
+// after {§operation-fences} has ruled out complete nesting: a wider block holds narrower headings
 // only while it closes, so no unclosed block swallows the operations after it.
 private headingAt(offset: number): boolean {
     if (this.reasoning) return false;
@@ -491,7 +491,7 @@ private closingAfterEol(): boolean {
     return after !== null && this.closingAt(after);
 }
 
-// {§transparent-inline-closer} — true when the run here closes the open block but more of the
+// {§fence-pairing} — true when the run here closes the open block but more of the
 // heading follows on the line and it is not the next opener. Slots, matchers, asides and option
 // blocks all still belong to this heading, so the closer is skipped and reading continues.
 private closerWithHeadingAhead(): boolean {
@@ -504,7 +504,7 @@ private closerWithHeadingAhead(): boolean {
     while (this.inputStream.LA(at) === 0x20 || this.inputStream.LA(at) === 0x09) at++;
     // End of line or input: the ordinary closer owns it.
     if (this.inputStream.LA(at) <= 0 || this.offsetAfterEol(at) !== null) return false;
-    // The next opener on the line: {§inline-chain} owns it.
+    // The next opener on the line: {§fence-pairing} owns it.
     return !this.openerFollowsAt(at);
 }
 
@@ -555,7 +555,7 @@ fragment NAME : [A-Za-z0-9_.+-]+ ;
 fragment NUM : '-'? [0-9]+ ('.' [0-9]+)? ;
 fragment L_PATTERN : '<' NUM (('-' | ',' ' '?) NUM)* '>' ;
 fragment LINE_ANCHOR : '@' [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] [0-9A-Za-z] ;
-// {§anchor-digits} — `@` with one to four digits cannot be a hash: it is read as that line.
+// {§fence-pairing} — `@` with one to four digits cannot be a hash: it is read as that line.
 fragment DIGIT_ANCHOR : '@' [0-9] [0-9]? [0-9]? [0-9]? ;
 // {§op-methods-op-dispatch} — `@abcde+1` and a bare `+1` after an anchor are tolerated, never taught (#749).
 fragment ANCHOR_OFFSET : LINE_ANCHOR [+-] [0-9]+ ;
@@ -565,21 +565,21 @@ fragment TEXT_COORD : NUM | ANCHOR_OFFSET | LINE_ANCHOR | DIGIT_ANCHOR | RELATIV
 fragment TEXT_L_PATTERN : '<' TEXT_COORD (',' ' '? TEXT_COORD)* '>' ;
 fragment EOL : '\r'? '\n' ;
 
-// {§fence-boundary} - only top-level fences can open statements. The first
+// {§operation-fences} - only top-level fences can open statements. The first
 // block may terminate a provider preamble without an intervening newline.
 OPEN : { this.atLineStart() || !this.reasoning && this.inlineChain }? FENCE NAME { this.operationHeading() }? { this.open(); } -> mode(SLOTS) ;
-// {§naked-operation} — the name opens; the ordinary heading lexer reads its aside.
+// {§operation-fences} — the name opens; the ordinary heading lexer reads its aside.
 NAKED_OPEN : { this.nakedHeadingHere() }? [A-Z]+ { this.openNaked(); } -> mode(SLOTS) ;
-// {§reasoning-operations} — an enclosing code fence is quotation, including unknown tags and tildes.
-// {§quotation} - a bare fence directly under a fence line is that block's orphaned closer: it
+// {§op-shapes} — an enclosing code fence is quotation, including unknown tags and tildes.
+// {§fence-pairing} - a bare fence directly under a fence line is that block's orphaned closer: it
 // closes nothing and quotes nothing (a malformed heading's block ends at its own line).
 ORPHAN_CLOSER : { this.atLineStart() && this.surplusHere() }? FENCE [ \t]* { this.orphanAtLineEnd() }? -> channel(HIDDEN) ;
-// {§quotation} - every other fence at a line start quotes to its closer or the end of the input.
+// {§fence-pairing} - every other fence at a line start quotes to its closer or the end of the input.
 // A line-start fence whose line carries more backticks is inline code: it quotes nothing.
 INLINE_TAG : { this.atLineStart() && !this.fenceOpens() }? FENCE NAME -> type(TEXT), channel(HIDDEN) ;
 SPLIT_OPEN : { this.atLineStart() && this.splitHere() }? FENCE [ \t]* EOL NAME { this.splitOpen(); } -> mode(SLOTS) ;
 QUOTE : { this.atLineStart() && this.quotationHere() }? (FENCE NAME? | '~~~' '~'* NAME?) { this.quote(); } -> type(TEXT), channel(HIDDEN), mode(QUOTATION) ;
-// {§interstitial-fence} - a fence opening no operation is prose outside a block.
+// {§fence-pairing} - a fence opening no operation is prose outside a block.
 WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 // {§whitespace-contract} - outside text has no AST or execution semantics.
 // {§provider-tagged-reasoning} - a route that delivers reasoning inline declares it, and the
@@ -588,7 +588,7 @@ WS : [ \t\r\n]+ -> channel(HIDDEN) ;
 TEXT_RUN : { !this.nakedHeadingHere() }? ~[ \t\r\n`]+ { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 TEXT_TICK : '`' { this.inlineChain = false; } -> type(TEXT), channel(HIDDEN) ;
 
-// {§parser-architecture} - the modes below are that chapter's state diagram: DEFAULT, QUOTATION,
+// {§whitespace-contract} - the modes below are that chapter's state diagram: DEFAULT, QUOTATION,
 // SLOTS, TARGET, METADATA and BODY, and each `mode(...)` action is one of its edges.
 mode QUOTATION;
 Q_END : { this.closingAfterEol() }? EOL [ \t]* ('```' '`'* | '~~~' '~'*) [ \t]* { this.endQuote(); } -> type(TEXT), channel(HIDDEN), mode(DEFAULT_MODE) ;
@@ -598,45 +598,45 @@ Q_RUN : ~[\r\n`~]+ -> type(TEXT), channel(HIDDEN) ;
 Q_CHAR : . -> type(TEXT), channel(HIDDEN) ;
 
 mode SLOTS;
-// {§one-line-turn} - the next opener on a heading's own line ends this bodyless block and opens.
+// {§fence-pairing} - the next opener on a heading's own line ends this bodyless block and opens.
 SLOTS_NEXT_OPENER : { this.slotReady && this.openerFollows() }? [ \t]+ { this.inlineChain = true; } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_WS : [ \t]+ { this.slotReady = true; } -> skip ;
-// {§heading-slot-order} — zero-width characters on a heading line are invisible to the writer too (#758).
+// {§fence-pairing} — zero-width characters on a heading line are invisible to the writer too (#758).
 SLOTS_INVISIBLE : [\u200B-\u200D\u2060\uFEFF]+ -> skip ;
 SLOTS_LPAREN : { this.slotReady }? '(' { this.targetDepth = 0; } -> type(LPAREN), mode(TARGET) ;
 SLOTS_LBRACKET : { this.slotReady }? '[' { this.metadataDepth = 0; } -> type(LBRACKET), mode(METADATA) ;
-// {§send-wait-scope} — retain each duration for validation and its possible advisory.
+// {§op-shapes} — retain each duration for validation and its possible advisory.
 SLOTS_WAIT_SCOPE : { this.slotReady && this.openOp === "WAIT" }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' -> type(L_MARKER) ;
-// {§scope-on-scopeless} - a scope on an operation that takes none is skipped, and named once. An aside (`<!--`) is not a scope.
+// {§slot-order} - a scope on an operation that takes none is skipped, and named once. An aside (`<!--`) is not a scope.
 SLOTS_NO_SCOPE : { this.slotReady && this.scopeless() }? '<' (~[!\r\n>] ~[\r\n>]*)? '>' { this.noteNotation("scope"); } -> skip ;
 SLOTS_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_FIND_RELATIVE_L : { this.slotReady && this.openOp === "FIND" }? RELATIVE_L_PATTERN -> type(L_MARKER) ;
-// {§combined-anchor-tolerance} — `42<@abcde>` is the displayed row prefix copied whole; the builder drops the digits.
+// {§parse-recovery} — `42<@abcde>` is the displayed row prefix copied whole; the builder drops the digits.
 SLOTS_PREFIXED_TEXT_L : { this.slotReady && this.isTextCoordinateOp() }? [1-9] [0-9]* TEXT_L_PATTERN -> type(L_MARKER) ;
 SLOTS_L : { this.slotReady }? L_PATTERN -> type(L_MARKER) ;
 SLOTS_ASIDE : { this.slotReady }? '<!--' ~[\r\n]*? '-->' -> type(ASIDE) ;
-// {§unclosed-aside} — an aside that never closes on its line is the aside to the end of the line.
+// {§fence-pairing} — an aside that never closes on its line is the aside to the end of the line.
 SLOTS_ASIDE_OPEN : { this.slotReady && !this.asideClosesOnLine() }? '<!--' ~[\r\n]* { this.noteUnclosedAside(); } -> type(ASIDE) ;
-// {§transparent-inline-closer} — a closing fence with more heading on its line reads as if it
+// {§fence-pairing} — a closing fence with more heading on its line reads as if it
 // were not written: the slots after it still belong to this operation (operator, 2026-09-13:
 // "If there's no risk of ambiguity, then we add tolerance").
 SLOTS_INLINE_CLOSER : { this.slotReady && this.closerWithHeadingAhead() }? FENCE [ \t]* { this.inlineCloserSeen = true; } -> skip ;
 SLOTS_END : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
-// {§log-heading-notation} - `→ path`, an address as the log's receipt heading shows it, is the target slot.
+// {§parse-recovery} - `→ path`, an address as the log's receipt heading shows it, is the target slot.
 SLOTS_ARROW_TARGET : { this.slotReady && this.openOp !== "NOTE" }? '\u2192' [ \t]* ~[ \t\r\n<[(`\u00B7] ~[ \t\r\n<[`]* { this.targetClosed(); this.noteNotation("arrow"); } -> type(ARROW_TARGET) ;
-// {§log-heading-notation} - ` · N`, the token charge the log's heading shows, is no slot: skipped.
+// {§parse-recovery} - ` · N`, the token charge the log's heading shows, is no slot: skipped.
 SLOTS_CHARGE : { this.slotReady && this.chargeAhead() }? '\u00B7' [ \t]* ([0-9]+ ([ \t]+ 'tokens')?)? { this.noteNotation("charge"); } -> skip ;
-// {§log-heading-notation} - ` · words` before a comment on the same line is stray text, skipped and named: the
+// {§parse-recovery} - ` · words` before a comment on the same line is stray text, skipped and named: the
 // comment is the aside (#1005).
 SLOTS_DOT_BEFORE_ASIDE : { this.slotReady && !this.chargeAhead() && this.asideCommentLater() }? '\u00B7' ( ~[\r\n`<] | '<' ~[!\r\n`] )* { this.noteNotation("stray"); } -> skip ;
-// {§log-heading-notation} - ` · words` after the slots is a note on the operation: the aside.
+// {§parse-recovery} - ` · words` after the slots is a note on the operation: the aside.
 SLOTS_DOT_ASIDE : { this.slotReady && !this.chargeAhead() && !this.asideCommentLater() }? '\u00B7' [ \t]* ~[ \t\r\n`] ~[\r\n`]* { this.noteNotation("aside"); } -> type(ASIDE) ;
-// {§bare-anchor-scope} - an EDIT's `@abcde` (or `@abcde,@fghij`) alone where the scope goes is that scope.
+// {§parse-recovery} - an EDIT's `@abcde` (or `@abcde,@fghij`) alone where the scope goes is that scope.
 SLOTS_BARE_ANCHOR : { this.slotReady && this.openOp === "EDIT" && this.bareAnchorAhead() }? LINE_ANCHOR (',' ' '? LINE_ANCHOR)? { this.noteNotation("anchor"); this.text = "<" + this.text + ">"; } -> type(L_MARKER) ;
 SLOTS_INLINE_BODY : { this.slotReady && this.inlineBodyAhead() }? ~[ \t\r\n[(<`] { this.inlineBody = true; } -> type(BODY_TEXT), mode(BODY) ;
-// {§heading-slot-order} — a single backtick before a matcher sigil quotes that matcher, never a fence (#758).
+// {§fence-pairing} — a single backtick before a matcher sigil quotes that matcher, never a fence (#758).
 SLOTS_TICK_TEXT : { this.slotReady && this.inlineBodyAhead() && [0x2F, 0x24, 0x7E, 0x26, 0x5E].includes(this.inputStream.LA(2)) }? '`' { this.inlineBody = true; } -> type(BODY_TEXT), mode(BODY) ;
-// {§transparent-inline-closer} — the block already met its closer, so its line ending ends it.
+// {§fence-pairing} — the block already met its closer, so its line ending ends it.
 SLOTS_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_NEXT_HEADING : { this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 SLOTS_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;
@@ -644,7 +644,7 @@ SLOTS_BODY_OPEN : EOL -> type(BODY_OPEN), mode(BODY) ;
 mode TARGET;
 TARGET_FENCE : { this.closingAt(1) }? FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 // An unclosed slot ends with its heading line: the statement is one bounded error and the next
-// line lexes fresh, so siblings survive ({§closer-fallback}); only EOF inside the slot is a tail.
+// line lexes fresh, so siblings survive ({§operation-fences}); only EOF inside the slot is a tail.
 TARGET_BODY_OPEN : EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 TARGET_ESCAPE : '\\' ('\\' | '(' | ')') -> type(TARGET_TEXT) ;
 TARGET_INNER : ~[\\()<`\r\n]+ -> type(TARGET_TEXT) ;
@@ -653,7 +653,7 @@ TARGET_NEST_OPEN : '(' { this.targetDepth++; } -> type(TARGET_TEXT) ;
 TARGET_NEST_END : { this.targetDepth > 0 }? ')' { this.targetDepth--; } -> type(TARGET_TEXT) ;
 TARGET_TEXT_SCOPE : { this.isTextCoordinateOp() }? TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_FIND_RELATIVE_SCOPE : { this.openOp === "FIND" }? RELATIVE_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
-// {§combined-anchor-tolerance} — the displayed row prefix copied whole after an operand path.
+// {§parse-recovery} — the displayed row prefix copied whole after an operand path.
 TARGET_PREFIXED_TEXT_SCOPE : { this.isTextCoordinateOp() }? [1-9] [0-9]* TEXT_L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_SCOPE : { this.openOp === "FIND" || this.execFence || this.openOp === "SEND" }? L_PATTERN { this.targetScopeEnd() }? -> type(L_MARKER) ;
 TARGET_TICK : '`' -> type(TARGET_TEXT) ;
@@ -671,14 +671,14 @@ METADATA_NEST_END : { this.metadataDepth > 0 }? ']' { this.metadataDepth--; } ->
 METADATA_END : ']' { this.slotReady = true; } -> type(RBRACKET), mode(SLOTS) ;
 
 mode BODY;
-// {§fence-closer} the block's own closer; {§fence-heading-in-body} a heading ends it instead, and
-// the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§closer-fallback}).
+// {§operation-fences} the block's own closer; {§operation-fences} a heading ends it instead, and
+// the EOL becomes a synthetic SECTION_END whose text carries no backtick ({§operation-fences}).
 B_END : { this.closingAfterEol() }? EOL [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_EMPTY_END : { (this.atLineStart() || this.inlineBody) && this.closingAt(1) }? [ \t]* FENCE [ \t]* { this.inlineChain = this.openerFollows(); } -> type(SECTION_END), mode(DEFAULT_MODE) ;
-// {§transparent-inline-closer} — the heading already carried its closer, so the matcher or inline
+// {§fence-pairing} — the heading already carried its closer, so the matcher or inline
 // body after it ends with that line and the block never reaches for the next operation.
 B_CLOSED_EOL : { this.inlineCloserSeen }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
-// {§naked-operation} - a naked block also closes at its own name alone on a line.
+// {§operation-fences} - a naked block also closes at its own name alone on a line.
 B_NAKED_END : { this.naked && this.nakedCloserAfterEol() }? EOL [ \t]* [A-Z]+ [ \t]* -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_NEXT_HEADING : { this.headingAfterEol() }? EOL -> type(SECTION_END), mode(DEFAULT_MODE) ;
 B_RUN : ~[\r\n`]+ -> type(BODY_TEXT) ;

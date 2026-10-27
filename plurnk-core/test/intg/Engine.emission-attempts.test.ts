@@ -469,7 +469,7 @@ test("{§provider-generation-completion} repeated reasoning and its final answer
     }
 });
 
-test("{§turn-shape} a valid operation without a lifecycle verb is admitted once without an omission receipt", async () => {
+test("{§whitespace-contract} a valid operation without a lifecycle verb is admitted once without an omission receipt", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -519,7 +519,7 @@ test("{§turn-shape} a valid operation without a lifecycle verb is admitted once
     }
 });
 
-// {§turn-shape} {§parse-diagnostics}
+// {§whitespace-contract} {§parse-recovery}
 test("{§fence-pairing} a literal nested NOTE remains data in the complete operation replay and its landed edit window", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
@@ -651,7 +651,7 @@ test("{§emission-admission} finish=length is forensic evidence: a frame that lo
     }
 });
 
-test("{§lifecycle-slots}: a malformed continuation heading preserves siblings without authorizing completion", async () => {
+test("{§slot-order}: a malformed continuation heading preserves siblings without authorizing completion", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const rejected = "````EDIT (workspace:///proof.md)\nthe valid sibling is written\n````\n````NOTE [{\"content\":\"keep\nthis\",\"status\":\"pending\"}]\n````";
@@ -695,7 +695,7 @@ test("{§lifecycle-slots}: a malformed continuation heading preserves siblings w
     }
 });
 
-test("{§operation-results} {§matcher-refusal} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
+test("{§operation-results} {§matcher-prefix-claims} a syntactically legal $fC matcher failure is the operation's own refusal, admitted once, and made model-visible (#12/#16)", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const malformed = "\n````FIND (workspace:///x) $fC````\n\n````NOTE\ninspect the results next\n````";
@@ -776,7 +776,7 @@ test("{§operation-results} {§matcher-refusal} a syntactically legal $fC matche
     }
 });
 
-test("{§retrieval-annotation}: a READ carrying pasted lines keeps them as a NOTE without treating them as selection", async () => {
+test("{§op-shapes}: a READ carrying pasted lines keeps them as a NOTE without treating them as selection", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const renderedRead = [
@@ -851,7 +851,7 @@ ${renderedRead}
     }
 });
 
-test("{§matcher-refusal} a bounded malformed operation defers same-turn completion until the model observes it", async () => {
+test("{§matcher-prefix-claims} a bounded malformed operation defers same-turn completion until the model observes it", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -899,7 +899,7 @@ test("{§matcher-refusal} a bounded malformed operation defers same-turn complet
     }
 });
 
-test("{§extra-path-slot}: a third COPY operand preserves siblings, source evidence, and the actual parser diagnostic", async () => {
+test("{§matcher-prefix-claims}: a third COPY operand preserves siblings, source evidence, and the actual parser diagnostic", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, {
@@ -940,7 +940,7 @@ test("{§extra-path-slot}: a third COPY operand preserves siblings, source evide
         assert.equal(problem.siblingsRetained, true);
         assert.equal(problem.line, 6);
         assert.equal(problem.column, 41);
-        // {§parse-attempt} The row records the statement the parser refused, as written; the packet shows the model nothing new.
+        // {§parse-recovery} The row records the statement the parser refused, as written; the packet shows the model nothing new.
         const [refused] = await db.test_log_entries_by_session_op_full.all<{ attrs: string }>({ session_id: sessionId, op: "error" });
         const attempt = (JSON.parse(refused.attrs) as { attempt?: { verb: string; text: string } }).attempt;
         assert.equal(attempt?.verb, "COPY");
@@ -984,7 +984,7 @@ for (const heading of ["KILL <1> (workspace:///trim.md)", "KILL → workspace://
     });
 }
 
-test("{§transfer-resource-selections} a malformed COPY destination cannot dispatch or materialize", async () => {
+test("{§op-shapes} a malformed COPY destination cannot dispatch or materialize", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, {
@@ -1037,7 +1037,7 @@ test("{§transfer-resource-selections} a malformed COPY destination cannot dispa
     }
 });
 
-test("{§turn-disposition} two WAITs keep the single-turn boundary: the program is admitted whole", async () => {
+test("{§op-shapes} two WAITs keep the single-turn boundary: the program is admitted whole", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const provider = new AttemptWitness({
@@ -1069,12 +1069,12 @@ test("{§turn-disposition} two WAITs keep the single-turn boundary: the program 
     }
 });
 
-test("{§error-shape} {§unparsed-tail-boundary}: a boundary lost after a statement is a row, not a resample: the prefix runs and the next packet carries the lexer's reason", async () => {
+test("{§parse-recovery} {§parse-recovery}: a boundary lost after a statement is a row, not a resample: the prefix runs and the next packet carries the lexer's reason", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const body = "The example:\n```ts\nconst value = 42;\n```\nVerified.";
         // An unfinished target slot at the end of the input is the one boundary loss left; a missing
-        // or mismatched closer never is ({§closer-fallback}).
+        // or mismatched closer never is ({§operation-fences}).
         const lost = [
             PlurnkParser.frame("EDIT (workspace:///before-loss.md)", "kept"),
             "````SEND (session://reviewer",
@@ -1302,7 +1302,7 @@ test("{§engine-rails} Contract Strikes: three consecutive invalid provider resp
 test("{§engine-rails} Contract Strikes: consecutive emission exhaustions strike out at three; a clean turn clears", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        // {§unparsed-tail-boundary} — an unfinished target at the end of the input is the exhaustion shape.
+        // {§parse-recovery} — an unfinished target at the end of the input is the exhaustion shape.
         const cut = { assistant: { content: "````READ (workspace:///no-ops-here", reasoning: null } };
         const good = (body: string) => ({ assistant: { content: `
 \`\`\`\`FIND (log:///**) <1,1>\`\`\`\`
@@ -1337,13 +1337,13 @@ ${body}
 test("{§emission-admission} a frame exhaustion shares prior contract strikes and retains evidence without another request", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
-        // {§unparsed-tail-boundary} — only an unfinished heading slot at the end of the input rejects.
+        // {§parse-recovery} — only an unfinished heading slot at the end of the input rejects.
         const rejected = "````READ (workspace:///unfinished";
         const provider = new AttemptWitness({
             contextWindow: 100_000,
             responses: [
                 // Two admitted turns each struck by a bounded heading failure, a third COPY operand
-                // ({§extra-path-slot}); a fumbled matcher would not strike ({§matcher-refusal}).
+                // ({§matcher-prefix-claims}); a fumbled matcher would not strike ({§matcher-prefix-claims}).
                 invalid("````READ (workspace:///absent)````\n````COPY (workspace:///a) (workspace:///b) (workspace:///c)````"),
                 invalid("````READ (workspace:///absent)````\n````COPY (workspace:///a) (workspace:///b) (workspace:///c)````"),
                 invalid(rejected), invalid(rejected), invalid(rejected),
@@ -2530,7 +2530,7 @@ test("{§op-methods-op-dispatch} a same-turn BARE response is unseen retrieval w
 });
 
 for (const state of ["WAIT", "SEND"] as const) {
-    test(`{§op-methods-op-dispatch} {§disposition-anywhere}: BARE after ${state} preserves the operation's scheduling contract`, async () => {
+    test(`{§op-methods-op-dispatch} {§op-shapes}: BARE after ${state} preserves the operation's scheduling contract`, async () => {
         const { db, workspaceId, sessionId, loopId, engine } = await setup();
         try {
             const child = new BareWitness(1);
@@ -3776,7 +3776,7 @@ test("{§provider-request-accounting} loop accounting adds decimal strings exact
     }
 });
 
-test("{§provider-accounting} one unknown request makes the total unknown without erasing its known subtotal", async () => {
+test("{§provider-request-accounting} one unknown request makes the total unknown without erasing its known subtotal", async () => {
     const { db, loopId } = await fixture();
     try {
         await openRequest(db, loopId, 1, {

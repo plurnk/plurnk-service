@@ -464,7 +464,7 @@ test("{§message-completion}: a provider output cutoff cannot certify a final re
     } finally { await db.close(); }
 });
 
-for (const preview of ["0", "1"]) test(`{§outside-text} {§reasoning-operations}: a reasoning NOTE is the turn's work; no content program is not empty (preview=${preview})`, async (t) => {
+for (const preview of ["0", "1"]) test(`{§outside-text} {§op-shapes}: a reasoning NOTE is the turn's work; no content program is not empty (preview=${preview})`, async (t) => {
     const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
     process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
     t.after(() => { if (previous === undefined) delete process.env.PLURNK_SERVICE_REASONING_ROWS; else process.env.PLURNK_SERVICE_REASONING_ROWS = previous; });
@@ -538,7 +538,7 @@ for (const [name, first, detail] of [
     ["scoped wait", frame("WAIT [60]", ""), "Nothing is in flight. Continuing."],
     ["decorated wait", frame("WAIT (sh:///missing) <60,60> [{\"timeout\":42}]", ""), "Nothing is in flight. Continuing."],
 ] as const) {
-    test(`{§lifecycle-only-turn} {§loop-completion} ${name} continues without losing its operations`, async (t) => {
+    test(`{§op-shapes} {§loop-completion} ${name} continues without losing its operations`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "explicit-lifecycle");
@@ -711,7 +711,7 @@ test("{§message-completion} an empty SEND leaves an open message unanswered", a
     assert.deepEqual(history.map(({ direction }) => direction), ["inbound"]);
 });
 
-test("{§note-value} writing about failure in NOTE does not declare failure", async (t) => {
+test("{§op-shapes} writing about failure in NOTE does not declare failure", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "notes-not-control");
@@ -738,7 +738,7 @@ const setup = async () => {
 };
 
 for (const stmt of [sendStmt(parsePath("message://request/reply"), "An answer."), noteStmt("A determination.")]) {
-    test(`{§turn-disposition} dispatching ${stmt.op} alone does not settle the enclosing program`, async () => {
+    test(`{§op-shapes} dispatching ${stmt.op} alone does not settle the enclosing program`, async () => {
         const { db, env, engine, lifecycle } = await setup();
         try {
             await engine.injectIntoLoop(env.loopId, "Reply.", [], undefined, {}, "message://request/reply");
@@ -1371,7 +1371,7 @@ test("{§loop-completion}: an admitted syntax recovery does not withhold complet
 describe("native-tool-calls", () => {
 for (const transport of ["text", "wire"] as const) {
     for (const withOperation of [false, true]) {
-        test(`{§native-tool-call-receipt} {§provider-native-tool-calls}: ${transport} calls withOperation=${withOperation} retain valid work and use ordinary strikes`, async () => {
+        test(`{§fence-pairing} {§provider-native-tool-calls}: ${transport} calls withOperation=${withOperation} retain valid work and use ordinary strikes`, async () => {
             const db = await openMigrated();
             try {
                 const workspaceId = await insertWorkspace(db, "native-calls");
@@ -1597,7 +1597,7 @@ test("{§loop-completion}: READ + completed inventory in the same turn is deferr
     } finally { await db.close(); }
 });
 
-test("{§send-wait-scope} WAIT ignores a non-duration decoration and continues without live work", async () => {
+test("{§op-shapes} WAIT ignores a non-duration decoration and continues without live work", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `park-${crypto.randomUUID()}`);
@@ -1620,7 +1620,7 @@ test("{§send-wait-scope} WAIT ignores a non-duration decoration and continues w
     } finally { await db.close(); }
 });
 
-test("{§send-wait-scope} a decorated WAIT keeps its sibling, source evidence, and ordinary result", async () => {
+test("{§op-shapes} a decorated WAIT keeps its sibling, source evidence, and ordinary result", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `next-scope-${crypto.randomUUID()}`);
@@ -1869,7 +1869,7 @@ test("{§operation-fences}: ordinary EDIT, progress SEND and final SEND execute 
 });
 
 for (const shape of ["nested", "indented"] as const) {
-    test(`{§quotation}: a ${shape} deletion example is not executed`, async (t) => {
+    test(`{§fence-pairing}: a ${shape} deletion example is not executed`, async (t) => {
         const example = frame("KILL (workspace:///kept.md)");
         const answer = `Example only:\n${example}\nNothing was deleted.`;
         const content = shape === "nested" ? frame("SEND [200]", answer)
@@ -2174,7 +2174,7 @@ const MISFENCED = [
     "````\nWAIT\nResearch positioning.\n````",
 ].join("\n\n");
 
-test("{§balanced-fences}: a complete nested reply reaches the client without executing its examples", async (approvalContext) => {
+test("{§operation-fences}: a complete nested reply reaches the client without executing its examples", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const body = [
         "The syntax and command are examples:",
@@ -2205,7 +2205,7 @@ test("{§balanced-fences}: a complete nested reply reaches the client without ex
     });
 });
 
-test("{§forgotten-tag} {§retrieval-annotation}: recovered READ preserves nested prose; a bare executor name stays quoted text", async (approvalContext) => {
+test("{§fence-pairing} {§op-shapes}: recovered READ preserves nested prose; a bare executor name stays quoted text", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeRawMockResponse(MISFENCED, 10),
@@ -2234,7 +2234,7 @@ test("{§forgotten-tag} {§retrieval-annotation}: recovered READ preserves neste
     });
 });
 
-test("{§send-body}: messages that start with operation names remain literal replies", async (approvalContext) => {
+test("{§op-shapes}: messages that start with operation names remain literal replies", async (approvalContext) => {
     serverProposals(approvalContext, "accept");
     const mock = new Mock({ contextWindow: 16384, responses: [
         makeMockResponse("````SEND\nREAD (belfry.md) returned nothing because the file is empty.\n````\n\n````SEND\nDone\n````\n\n````SEND\nsh is the default shell here.\n````", 10),
@@ -2574,7 +2574,7 @@ const said = (...statements: string[]): MockResponse => ({ assistant: { content:
 
 // {§message-completion}: the matrix of replies that finish and replies that do not, across one session's loops, its
 // child, its fork, a bookkeeping session and a same-named session in another workspace.
-test("{§message-completion} {§application-session-overview} a session's latest finished reply is its newest delivered completion", async (t) => {
+test("{§message-completion} {§application-session-observation} a session's latest finished reply is its newest delivered completion", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, `overview-${crypto.randomUUID()}`);

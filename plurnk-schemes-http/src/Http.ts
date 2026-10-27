@@ -362,7 +362,7 @@ export default class Http implements SchemeHandler {
         return this.#requester.request(url, metadata, ctx, method, body);
     }
 
-    // {§turn-disposition} — SEND is messaging; lifecycle operations never reach a scheme.
+    // {§op-shapes} — SEND is messaging; lifecycle operations never reach a scheme.
     async send(statement: SendStatement, _ctx: SchemeCtx): Promise<PassthroughResult | ProposalResult> {
         if (statement.target === null || statement.target.kind !== "url") {
             return Http.#bad(400, "http", "bad-target", "SEND requires an http(s):// URL target.", {
@@ -558,7 +558,7 @@ export default class Http implements SchemeHandler {
         return address;
     }
 
-    // {§scheme-metadata-modifier} The request's [metadata] object is its header map:
+    // {§slot-order} The request's [metadata] object is its header map:
     // every key is a header name and every value a header string. `remote` on KILL
     // is the one non-header key, consumed before the headers are read.
     static #requestHeaders(

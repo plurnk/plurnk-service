@@ -1,4 +1,4 @@
-// {§methods-workspace-create} {§application-session-overview} The places in scope with what waits there: their lifecycle, the
+// {§methods-workspace-create} {§application-session-observation} The places in scope with what waits there: their lifecycle, the
 // gates they wait on and their latest finished replies ({§message-completion}), most recently finished first.
 import { excerptOf, type ApplicationOverviewSession, type ApplicationSessionOverview } from "@plurnk/plurnk-contracts";
 import type { Db } from "../core/Db.ts";

@@ -836,7 +836,7 @@ for (const preview of ["0", "1"]) for (const operation of [
     { name: "NOTE", source: frame("NOTE", "Retain this conclusion.") },
     { name: "FIND", source: frame("FIND (workspace:///fact.txt)", null) },
     { name: "READ", source: frame("READ (workspace:///fact.txt)", null) },
-]) test(`{§reasoning-operations} {§turn-source-resources}: reasoning ${operation.name} runs once with previews ${preview}, without an extra turn`, async () => {
+]) test(`{§op-shapes} {§turn-source-resources}: reasoning ${operation.name} runs once with previews ${preview}, without an extra turn`, async () => {
     const previous = process.env.PLURNK_SERVICE_REASONING_ROWS;
     process.env.PLURNK_SERVICE_REASONING_ROWS = preview;
     const db = await openMigrated();
@@ -868,7 +868,7 @@ for (const preview of ["0", "1"]) for (const operation of [
     }
 });
 
-test("{§reasoning-operations}: admission is unconditional and the language definition is the only system teaching", async () => {
+test("{§op-shapes}: admission is unconditional and the language definition is the only system teaching", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-policy");
@@ -912,7 +912,7 @@ test("{§reasoning-operations}: admission is unconditional and the language defi
 });
 
 for (const content of ["", frame("SEND [200]", "The answer must await the facts.")]) {
-    test(`{§reasoning-operations}: a reasoning READ is ordinary continuing work beside ${content === "" ? "empty content" : "completion"}`, async () => {
+    test(`{§op-shapes}: a reasoning READ is ordinary continuing work beside ${content === "" ? "empty content" : "completion"}`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, "reasoning-read");
@@ -947,7 +947,7 @@ for (const content of ["", frame("SEND [200]", "The answer must await the facts.
     });
 }
 
-for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "tagged" : "structured"} HTTP reasoning completes with final usage before operations execute`, async () => {
+for (const tagged of [false, true]) test(`{§op-shapes}: ${tagged ? "tagged" : "structured"} HTTP reasoning completes with final usage before operations execute`, async () => {
     const db = await openMigrated();
     const firstReasoning = frame("READ (workspace:///fact.txt) <1,-1>", null) + "\n\nMore deliberation.\n";
     const laterReasoning = frame("NOTE", "Retain the later thought.") + "\n\n" + frame("FIND (workspace:///fact.txt)", null);
@@ -1049,7 +1049,7 @@ for (const tagged of [false, true]) test(`{§reasoning-operations}: ${tagged ? "
     }
 });
 
-test("{§reasoning-operations}: rejected attempts commit neither reasoning memory nor fact-finding", async () => {
+test("{§op-shapes}: rejected attempts commit neither reasoning memory nor fact-finding", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-work");
@@ -1072,7 +1072,7 @@ test("{§reasoning-operations}: rejected attempts commit neither reasoning memor
     } finally { await db.close(); }
 });
 
-test("{§reasoning-operations}: workspace READ denial is enforced on a reasoning operation", async () => {
+test("{§op-shapes}: workspace READ denial is enforced on a reasoning operation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-permissions");
@@ -1100,7 +1100,7 @@ test("{§reasoning-operations}: workspace READ denial is enforced on a reasoning
     } finally { await db.close(); }
 });
 
-test("{§reasoning-operations}: stream READ occurrences retain liveness, scopes and ordinary log curation", async () => {
+test("{§op-shapes}: stream READ occurrences retain liveness, scopes and ordinary log curation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "reasoning-stream-reads");

@@ -22,7 +22,7 @@ const request = {
     captureRawBody: false,
 };
 
-test("{§provider-usage} implicit caching retains the SDK input partition without inventing missing counters", async (t) => {
+test("{§provider-request-accounting} implicit caching retains the SDK input partition without inventing missing counters", async (t) => {
     for (const streaming of [false, true]) {
         for (const cached of [undefined, 0, 400]) {
             await t.test(`${streaming ? "stream" : "buffered"}, cached=${cached}`, async () => {

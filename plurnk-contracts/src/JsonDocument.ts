@@ -1,6 +1,6 @@
 import { applyEdits, format, parseTree, type ParseError } from "jsonc-parser";
 
-// Opt-in presentation, never a source rewrite. {§json-document-presentation}
+// Opt-in presentation, never a source rewrite. {§contract-representations}
 export const formatJsonDocument = (content: string): string | undefined => {
     const errors: ParseError[] = [];
     const tree = parseTree(content, errors, { disallowComments: true, allowTrailingComma: false });

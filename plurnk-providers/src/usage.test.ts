@@ -48,7 +48,7 @@ test("{§provider-sdk-boundary} normalizeUsage recognizes xAI reasoning as addit
     });
 });
 
-test("{§provider-usage} normalizeUsage maps cache-read spellings without inventing uncached tokens", () => {
+test("{§provider-request-accounting} normalizeUsage maps cache-read spellings without inventing uncached tokens", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 50,
         completion_tokens: 10,
@@ -63,7 +63,7 @@ test("{§provider-usage} normalizeUsage maps cache-read spellings without invent
     })?.inputTokenDetails, { cacheReadTokens: 12 });
 });
 
-test("{§provider-usage} normalizeUsage maps DeepSeek cache hit and miss counts", () => {
+test("{§provider-request-accounting} normalizeUsage maps DeepSeek cache hit and miss counts", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 50,
         prompt_cache_hit_tokens: 30,
@@ -78,7 +78,7 @@ test("{§provider-usage} normalizeUsage maps DeepSeek cache hit and miss counts"
     });
 });
 
-test("{§provider-usage} input partitions derive exactly one missing category, not an unknown split", () => {
+test("{§provider-request-accounting} input partitions derive exactly one missing category, not an unknown split", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 100, prompt_cache_miss_tokens: 20,
         prompt_tokens_details: { cache_write_tokens: 30 },
@@ -113,7 +113,7 @@ test("{§provider-usage-refusal} partition derivation never replaces an invalid 
     });
 });
 
-test("{§provider-usage} normalizeUsage derives only exact totals", () => {
+test("{§provider-request-accounting} normalizeUsage derives only exact totals", () => {
     assert.deepEqual(normalizeUsage({ prompt_tokens: 10, completion_tokens: 20 }), {
         inputTokens: 10,
         outputTokens: 20,
@@ -126,7 +126,7 @@ test("{§provider-usage} normalizeUsage derives only exact totals", () => {
     });
 });
 
-test("{§provider-usage} normalizeUsage preserves unknown usage as absence", () => {
+test("{§provider-request-accounting} normalizeUsage preserves unknown usage as absence", () => {
     assert.equal(normalizeUsage(null), undefined);
     assert.equal(normalizeUsage(undefined), undefined);
 });
@@ -147,7 +147,7 @@ test("{§provider-usage-refusal} rejected details preserve independently valid t
     });
 });
 
-test("{§provider-usage} normalizeUsage never apportions tokens from reasoning or content length", () => {
+test("{§provider-request-accounting} normalizeUsage never apportions tokens from reasoning or content length", () => {
     assert.deepEqual(normalizeUsage({
         prompt_tokens: 100,
         completion_tokens: 1000,
@@ -212,7 +212,7 @@ test("{§provider-monetary-evidence} calculateCostUsdDecimal returns unknown whe
     }, { input: 5, output: 99, cacheRead: 1 }), null);
 });
 
-test("{§provider-cost} calculateCostUsdDecimal preserves Models.dev decimals without floating-point artifacts", () => {
+test("{§provider-request-accounting} calculateCostUsdDecimal preserves Models.dev decimals without floating-point artifacts", () => {
     assert.equal(calculateCostUsdDecimal({
         inputTokens: 1000,
         outputTokens: 150,

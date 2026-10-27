@@ -12,7 +12,7 @@ export interface RecordProblem {
     readonly source: string;
     readonly result: SchemeResult;
     readonly outcome?: string | null;
-    // {§parse-attempt} What the row records beside its Problem, never part of its body or weight.
+    // {§parse-recovery} What the row records beside its Problem, never part of its body or weight.
     readonly attrs?: Readonly<Record<string, unknown>>;
 }
 

@@ -51,7 +51,7 @@ not a Session entrypoint.
 | {§provider-interface} | `Provider` exposes immutable model facts and one generation operation: |
 | {§provider-prompt-measurement} | `PromptTokenMeasurement` is a discriminated request-level result: |
 | {§provider-capacity-admission} | `assessRequestCapacity` intersects every known physical input constraint |
-| {§provider-monetary-evidence} | One precedence path converts each physical provider request into {§provider-cost} evidence before the request… |
+| {§provider-monetary-evidence} | One precedence path converts each physical provider request into {§provider-request-accounting} evidence before the request… |
 | {§provider-cache-identity} | `generate` requires a non-empty, stable, opaque `sessionId`. |
 | {§provider-call-kind} | `callKind` is either `emission` (the response is a PLURNK turn emission) or `bare` (the response is… |
 | {§provider-native-tools-disabled} | Generation requests declare no native tools and select the SDK's portable `none` tool choice, for emissions… |
@@ -140,7 +140,7 @@ endpoint exposes its real vocabulary. Content tokenization does not substitute
 for complete-request measurement.
 
 §provider-monetary-evidence One precedence path converts each physical provider
-request into {§provider-cost} evidence before the request leaves the provider
+request into {§provider-request-accounting} evidence before the request leaves the provider
 boundary:
 
 | Precedence | Evidence | Result |
@@ -239,7 +239,7 @@ observer is a durability sink, not an alternate evidence representation; the
 same ordered records remain on the final generation result or
 error.
 
-The adapter also settles {§provider-request-evidence}. A successful request
+The adapter also settles {§provider-request-accounting}. A successful request
 retains its normalized transport response; a failed request retains received
 SDK raw chunks (or the error response body), partial content and reasoning,
 available response identity/headers, usage/charge evidence, and its error and
@@ -278,7 +278,7 @@ between those physical-request reasoning streams: it preserves the failed
 prefix, gives the retry a distinct presentation identity, and never concatenates
 separate stochastic attempts into one reasoning message.
 
-Usage obeys {§provider-usage}:
+Usage obeys {§provider-request-accounting}:
 
 ```text
 totalTokens = inputTokens + outputTokens
@@ -333,7 +333,7 @@ rail observed.
 | --- | --- |
 | {§provider-sdk-boundary} | Cataloged providers instantiate their Models.dev-declared AI SDK package. |
 | {§operator-cost-override} | Models.dev is the rate starting point; the operator may overlay it. |
-| {§provider-effort} | The portable vocabulary comes from {§effort-wire}. |
+| {§provider-effort} | The portable vocabulary comes from {§capability-policy-cascade}. |
 | {§provider-readable-reasoning} | Route-owned options may request exposed reasoning text. |
 | {§provider-sdk-warning} | AI SDK compatibility, unsupported-feature, deprecation, and other call warnings become source-attributed… |
 | {§provider-cache-affinity} | Cache affinity is route-owned request projection. |
@@ -378,7 +378,7 @@ response cost still outranks any estimate. Unknown keys, repeats, and negative
 or non-numeric rates refuse at construction.
 
 §provider-effort The portable vocabulary comes from
-{§effort-wire}. `adaptive` uses the first applicable projection:
+{§capability-policy-cascade}. `adaptive` uses the first applicable projection:
 
 | Condition | Projection |
 | --- | --- |
@@ -419,7 +419,7 @@ the wire projection:
 | --- | --- | --- |
 | `reasoning: false` | No reasoning request | `off` |
 | `reasoning_options: []` | Provider default | None |
-| `effort.values` | Native dynamic mechanism, otherwise the supported configured fallback or provider default | Transportable fixed members of {§effort-wire}; `off` only when `none` is transportable |
+| `effort.values` | Native dynamic mechanism, otherwise the supported configured fallback or provider default | Transportable fixed members of {§capability-policy-cascade}; `off` only when `none` is transportable |
 | `toggle` | Native or adapter-owned activation, otherwise provider default | `off` only when that transport owns the toggle wire |
 | `budget_tokens` | Does not select policy | None; an adapter uses its bounds when projecting the independent budget |
 | No catalog entry | Explicit adapter projection or operator-declared efforts | Only the declared subset |
@@ -553,7 +553,7 @@ Provider and model facts resolve independently:
 | Maximum output | Catalog `limit.output`; no generic live probe. | None. | Minimum of catalog value and effective context, or `null`. |
 | Total output budget | None. | `PLURNK_PROVIDERS_OUTPUT_BUDGET`. | Curation reservation: percentage of effective context or absolute count, capped by known context/output limits; a call may only tighten it. The response grant flexes under {§provider-flexed-allowance}. |
 | Output floor | None. | `PLURNK_PROVIDERS_OUTPUT_FLOOR`, shipped as `10%`. | The least response room any request keeps: percentage of the effective output ceiling (`min(contextWindow, maxOutputTokens)` when both are known, otherwise `contextWindow`) or absolute count, capped by the output budget; `window − floor` is the input wall ({§provider-output-floor}). |
-| Effort | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_EFFORT`, initially; durable session selection thereafter. | A supported member of {§effort-wire}, projected under {§provider-effort}. The shipped selection is `adaptive`. |
+| Effort | Catalog `reasoning_options` intersected with the installed adapter; explicit adapter declaration for uncataloged routes. | `PLURNK_PROVIDERS_EFFORT`, initially; durable session selection thereafter. | A supported member of {§capability-policy-cascade}, projected under {§provider-effort}. The shipped selection is `adaptive`. |
 | Reasoning budget | None. | Optional `PLURNK_PROVIDERS_REASONING_BUDGET`. | Percentage of effective context or absolute count; valid only as a strict subset of total output and effective unless reasoning is `off`. |
 | Cost override | None. | Optional `PLURNK_PROVIDERS_COST`. | {§operator-cost-override} — comma-separated `key=value` per-1M-token USD rates over `input, output, reasoning, cacheRead, cacheWrite`; merges over the Models.dev catalog block (the catalog is the starting point), alias-scoped like every knob. Without catalog rates the override must declare `input` and `output`. The cost estimate's `source` names the override; a provider-reported response cost still outranks any estimate. |
 | Reasoning capability | Catalog `reasoning` and route-specific `reasoning_options`. | Adapter wire style only where the catalog cannot name the native field. | Catalog controls determine admissible policy; the adapter determines its wire projection. |
@@ -1043,7 +1043,7 @@ inferred from a model name or catalog flag. Hidden or summarized reasoning is no
 a supported substitute, and encrypted or redacted payloads are never reconstructed
 into text. A single response without reasoning does not establish endpoint
 incapability: its `reasoning://` reads empty, while billed reasoning tokens remain
-visible in accounting. Exposed operations follow {§reasoning-operations}; no
+visible in accounting. Exposed operations follow {§op-shapes}; no
 compatibility teaching or alternate admission mode is selected for a route.
 Unrecognized detail shapes are omitted at this normalization boundary. Core
 may preserve normalized items as forensic evidence, but a client protocol must

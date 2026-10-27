@@ -1108,7 +1108,7 @@ test("{§copy} whole-channel MOVE removes the source entry when its final channe
     }
 });
 
-test("{§empty-mutation-scope}: an exact insertion into an absent destination creates it", async () => {
+test("{§op-shapes}: an exact insertion into an absent destination creates it", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -1131,7 +1131,7 @@ test("{§empty-mutation-scope}: an exact insertion into an absent destination cr
     }
 });
 
-test("{§empty-mutation-scope}: an exact region beyond the empty destination leaves the source untouched", async () => {
+test("{§op-shapes}: an exact region beyond the empty destination leaves the source untouched", async () => {
     const { db, seed, read, dispatch } = await setup();
     try {
         await seed("/source", {
@@ -2336,7 +2336,7 @@ test("{§fs-write-surface} KILL of a NON-member file is 404 — the model can't 
     });
 });
 
-// {§fs-write-surface} {§empty-mutation-scope}
+// {§fs-write-surface} {§op-shapes}
 test("{§fs-write-surface}: COPY destination scopes resolve against an empty absent entry", async () => {
     await withWorkspace(async (_root, ctx) => {
         const source = "first prompt\nsecond prompt\nthird prompt\n";

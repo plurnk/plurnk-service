@@ -1,4 +1,4 @@
-// {§scheme-metadata-modifier} The heading's `[metadata]` block, read with its
+// {§slot-order} The heading's `[metadata]` block, read with its
 // brackets, is one JSON array. Object options merge left to right with later
 // keys winning. The language keeps the inner text opaque; this is the one
 // reader every owner uses before interpreting its elements,

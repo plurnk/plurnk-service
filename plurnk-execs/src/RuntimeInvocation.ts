@@ -69,7 +69,7 @@ const exampleLineOf = (
     return value;
 };
 
-// {§fence-heading-in-body} — the runtime's own tag is the known executor while its example parses.
+// {§operation-fences} — the runtime's own tag is the known executor while its example parses.
 const oneExecSection = (source: string, runtime: string, expectedTarget?: string): boolean => {
     const parsed = PlurnkParser.parseStatements(source, { executors: [runtime] });
     const statements = parsed.items.filter((item) => item.kind === "statement");

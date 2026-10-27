@@ -1,4 +1,4 @@
-// {§wire-entrypoint} Guards over a JSON value crossing a boundary: what a parsed document, a stored column or a
+// {§text-region} Guards over a JSON value crossing a boundary: what a parsed document, a stored column or a
 // caller's `unknown` is proved to be before a field is read from it. A guard narrows; no `as` stands in for one.
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>

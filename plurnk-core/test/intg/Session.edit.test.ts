@@ -622,7 +622,7 @@ test("{§edit-result-receipt-projection} Engine.dispatch: the KILL matcher survi
     } finally { await db.close(); }
 });
 
-test("{§operation-aside}: the descriptive aside survives durable dispatch unchanged", async () => {
+test("{§slot-order}: the descriptive aside survives durable dispatch unchanged", async () => {
     const { db, engine, env } = await setup();
     try {
         await engine.dispatch({
@@ -711,7 +711,7 @@ test("{§log-history-projection} model-origin log KILL atomically retires its ta
     } finally { await db.close(); }
 });
 
-test("{§note-value} a NOTE retains its literal text and does not claim a lifecycle outcome", async () => {
+test("{§op-shapes} a NOTE retains its literal text and does not claim a lifecycle outcome", async () => {
     const { db, engine, env } = await setup();
     try {
         const plan = await engine.dispatch({
@@ -737,7 +737,7 @@ const setup = async () => {
 };
 
 for (const op of ["READ", "FIND"] as const) {
-    test(`{§problem-details}: ${op} without a path identifies the missing target, not a missing scheme`, async () => {
+    test(`{§diagnostic-observation}: ${op} without a path identifies the missing target, not a missing scheme`, async () => {
         const { db, engine, env } = await setup();
         try {
             const parsed = PlurnkParser.parse(`\`\`\`\`${op}\n*\n\`\`\`\``);
@@ -2466,7 +2466,7 @@ test("{§membership}: accepted file creation creates missing parent directories"
     });
 });
 
-test("{§unscoped-edit-create-only} {§edit}: markerless EDIT refuses an existing file", async () => {
+test("{§op-shapes} {§edit}: markerless EDIT refuses an existing file", async () => {
     await withWorkspaceRoot(async (root, ctx) => {
         const target = "src/Engine.ts";
         await mkdir(join(root, "src"), { recursive: true });

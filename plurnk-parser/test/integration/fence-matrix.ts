@@ -1,9 +1,9 @@
-// {§balanced-fences} matrix: the cells a model writes, generated, each with the reading the
+// {§operation-fences} matrix: the cells a model writes, generated, each with the reading the
 // metacontract requires (a complete nested interpretation wins; only irreconcilable shapes fall back).
 // {§fence-pairing}: an operation example quoted in a body of its own width reads as the body closing and the
 // example running ({§operation-fences}); wrapped in a wider bare fence it stays the body's example whatever the
-// body's own width ({§pairing-objective}).
-// {§unclosed-mutation-yields}: a native example at an EDIT body's own width runs, closed or not; an example
+// body's own width ({§fence-pairing}).
+// {§fence-pairing}: a native example at an EDIT body's own width runs, closed or not; an example
 // inside an EDIT is written with the wider outer fence ({§operation-fences}).
 export type Cell = {
     readonly name: string;
@@ -25,7 +25,7 @@ type Inner = {
     readonly body: (outer: number) => string | null;
     // The reading at the example's own width: the body before it, then what runs.
     readonly sameWidth?: { readonly body: string; readonly following: readonly string[] };
-    // The reading at the example's own width inside an EDIT ({§unclosed-mutation-yields}).
+    // The reading at the example's own width inside an EDIT ({§fence-pairing}).
     readonly mutationSameWidth?: { readonly body: string; readonly following: readonly string[] };
 };
 const INNERS: readonly Inner[] = [
@@ -62,7 +62,7 @@ export const cells = (): Cell[] => {
         const text = `${fence(width)}${head}\n${body}\n${fence(width)}${tail.text}`;
         const runs = width === 3 && op === "EDIT" && inner.mutationSameWidth !== undefined ? inner.mutationSameWidth
             : inner.sameWidth !== undefined && width === 3 ? inner.sameWidth : null;
-        // {§unclosed-mutation-yields} then {§quotation}: once the example runs, the EDIT's written closer is a stray
+        // {§fence-pairing} then {§fence-pairing}: once the example runs, the EDIT's written closer is a stray
         // top-level fence that quotes the operation after it (shown, not run, with its advisory).
         const quoted = runs !== null && runs === inner.mutationSameWidth && tail.name === "next operation";
         out.push({ name: `${head} · outer ${width} · ${inner.name} · ${tail.name}`, text, op, body: runs?.body ?? body, following: [...runs?.following ?? [], ...(quoted ? [] : tail.following)], ...(tail.ambiguous ? { ambiguous: tail.ambiguous } : {}) });

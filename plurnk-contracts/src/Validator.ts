@@ -235,7 +235,7 @@ export default class Validator {
         return schema === undefined ? null : schema;
     }
 
-    // {§wire-entrypoint} A schema document is an object, naming its dialect in `$schema` or taking the validator's
+    // {§text-region} A schema document is an object, naming its dialect in `$schema` or taking the validator's
     // default; every validator compiles one, the checked-in documents and the dynamic ones callers own alike. What
     // the document then means is the validator's to read, its declared dialect included.
     static #schemaDocument(value: unknown): value is Schema {
@@ -269,7 +269,7 @@ export default class Validator {
         return validator;
     }
 
-    // {§wire-entrypoint} The schema's acceptance is the proof a value has its wire type: a guard over the result of
+    // {§text-region} The schema's acceptance is the proof a value has its wire type: a guard over the result of
     // validating that value, the one place a validated `unknown` takes its type. The caller names the type the
     // schema it validated against generates; the predicate is where it appears.
     // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- a type predicate's parameter appears once by nature

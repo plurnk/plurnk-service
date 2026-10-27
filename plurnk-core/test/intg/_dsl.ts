@@ -49,8 +49,8 @@ export const noteStmt = (body: string | null = null): NoteStatement => ({
     op: "NOTE", body, aside: null, metadata: null, target: null, lineMarker: null, position: { line: 1, column: 1 },
 });
 
-// {§kill-scope} — a scoped KILL suppresses one log body interval or deletes an entry span; a
-// matcher ({§naked-pattern}) selects the rows or lines.
+// {§op-shapes} — a scoped KILL suppresses one log body interval or deletes an entry span; a
+// matcher ({§parse-recovery}) selects the rows or lines.
 export const killStmt = (target: ParsedPath | null, lineMarker: TextLineMarker | null = null, matcher: MatcherBody | null = null): KillStatement => ({
     metadata: null,
     op: "KILL", aside: null, target, lineMarker, matcher, body: null,
@@ -89,9 +89,9 @@ export const moveStmt = (
     position: { line: 1, column: 1 },
 });
 
-// {§exec-executor-slot} — execution names its runtime as the first path segment and the
+// {§op-shapes} — execution names its runtime as the first path segment and the
 // runtime's target (tool, program, cwd, or resource) after it; a bare execution is the shell.
-// {§exec-executor-slot} — the executor is the bracket slot; null spells the default shell.
+// {§op-shapes} — the executor is the bracket slot; null spells the default shell.
 export const execStmt = (runtime: string | null, body: string | null = null, target: ParsedPath | null = null, metadata: string[] | null = null): ExecStatement => ({
     metadata,
     // The default shell is explicit: a caller passing no runtime means `sh` (plurnk-service #659).

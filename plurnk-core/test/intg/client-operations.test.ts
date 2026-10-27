@@ -502,7 +502,7 @@ test("{§capability-admission}: client actions inspect and replace policy withou
     });
 });
 
-test("{§operator-config-workspace-settings} {§capability-policy-projection}: service ceilings remain effective and workspace replacement preserves other settings", async () => {
+test("{§operator-config-workspace-settings} {§capability-policy-cascade}: service ceilings remain effective and workspace replacement preserves other settings", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db, provider: null });
     const previous = process.env.PLURNK_SERVICE_CAPABILITIES;

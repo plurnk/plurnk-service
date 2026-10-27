@@ -2048,8 +2048,8 @@ for (const body of ["Inspect this.", ""]) test(`{§op-methods-op-dispatch}: ${bo
 describe("disposition-order", () => {
 const response = (content: string) => ({ assistant: { content, reasoning: null } });
 
-// {§disposition-anywhere} {§emission-admission}
-test("{§disposition-anywhere} a KILL after SEND executes: curation and the reply persist before a later conclusion", async () => {
+// {§op-shapes} {§emission-admission}
+test("{§op-shapes} a KILL after SEND executes: curation and the reply persist before a later conclusion", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "disposition-order");
@@ -2092,7 +2092,7 @@ Answer.
     } finally { await db.close(); }
 });
 
-test("{§matcher-refusal} SEND authored first: later operations run in authored order and completion waits for their results", async () => {
+test("{§matcher-prefix-claims} SEND authored first: later operations run in authored order and completion waits for their results", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "next-order");
@@ -2103,7 +2103,7 @@ test("{§matcher-refusal} SEND authored first: later operations run in authored 
         const result = await engine.runTurn({ provider: new Mock({ contextWindow: 100_000, responses: [response(source)] }), workspaceId, sessionId, loopId, messages: [] });
         assert.equal(result.status, 102);
         assert.deepEqual(result.outcomes.map(({ op, status }) => [op, status]), [["SEND", 200], ["EDIT", 201], ["READ", 200], ["FIND", 400]],
-            "the reply, mutations, retrieval, and the refused matcher ({§matcher-refusal}) retain authored order");
+            "the reply, mutations, retrieval, and the refused matcher ({§matcher-prefix-claims}) retain authored order");
         const rows = await db.test_log_entries_by_turn.all<{ op: string | null; rx: string; attrs: string }>({ turn_id: result.turnId });
         const read = rows.find((row) => row.op === "READ" && !LogEntryProjection.isEmission(row));
         assert.ok(read);
@@ -2111,7 +2111,7 @@ test("{§matcher-refusal} SEND authored first: later operations run in authored 
     } finally { await db.close(); }
 });
 
-test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: the statements before it run, the loss is a row", async () => {
+test("{§parse-recovery} a lost boundary refuses only what follows it: the statements before it run, the loss is a row", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "admit-before-loss");
@@ -2139,12 +2139,12 @@ test("{§unparsed-tail-boundary} a lost boundary refuses only what follows it: t
     } finally { await db.close(); }
 });
 
-test("{§disposition-anywhere} internal turn programs admit a disposition anywhere like model turns", () => {
+test("{§op-shapes} internal turn programs admit a disposition anywhere like model turns", () => {
     const source = "```KILL (log:///1/1/*)\n```\n\n```WAIT\nContinue.\n```";
     const statements = TurnOps.parseInternal(source);
     assert.deepEqual(statements.map(({ op }) => op), ["KILL", "WAIT"]);
     assert.equal(TurnOps.renderInternal(statements), source);
-    // {§disposition-anywhere} — a program that authors an operation after its disposition is valid turnOps.
+    // {§op-shapes} — a program that authors an operation after its disposition is valid turnOps.
     const first = TurnOps.parseInternal("```WAIT\nContinue.\n```\n```KILL (log:///1/1/*)```");
     assert.deepEqual(first.map(({ op }) => op), ["WAIT", "KILL"]);
 });
@@ -2462,7 +2462,7 @@ test("{§loop-completion} empty WAIT falls through and SEND plus a retrieval obs
     } finally { await db.close(); }
 });
 
-test("{§reasoning-operations} {§unparsed-tail-boundary}: a lost boundary admits the reasoning NOTE beside it and records the loss", async () => {
+test("{§op-shapes} {§parse-recovery}: a lost boundary admits the reasoning NOTE beside it and records the loss", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "lost-boundary-reasoning-note");
@@ -2486,7 +2486,7 @@ test("{§reasoning-operations} {§unparsed-tail-boundary}: a lost boundary admit
     } finally { await db.close(); }
 });
 
-test("{§reasoning-operations} {§emission-admission}: a rejected emission cannot commit its reasoning NOTE", async () => {
+test("{§op-shapes} {§emission-admission}: a rejected emission cannot commit its reasoning NOTE", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "rejected-reasoning-note");
@@ -2517,7 +2517,7 @@ test("{§reasoning-operations} {§emission-admission}: a rejected emission canno
 
 describe("mcp-ordered-admission", () => {
 for (const scenario of ["add", "inline", "accept", "reject", "cancel", "invalid", "enable", "disable", "remove", "deny", "quoted"] as const) {
-    test(`{§executor-heading} {§op-methods-op-dispatch}: ${scenario} resolves a new MCP invocation at its execution point`, { timeout: 30_000 }, async (t) => {
+    test(`{§fence-pairing} {§op-methods-op-dispatch}: ${scenario} resolves a new MCP invocation at its execution point`, { timeout: 30_000 }, async (t) => {
         const manual = scenario === "accept" || scenario === "reject" || scenario === "cancel";
         serverProposals(t, manual ? "review" : "accept");
         const received: unknown[] = [];
@@ -2838,8 +2838,8 @@ test("{§execution-output-identity} parser roundtrip: EDIT writes the resource",
     } finally { await db.close(); }
 });
 
-// {§empty-section} {§text-scope-semantics}
-test("{§empty-section} parser roundtrip: an empty EDIT section performs a scoped deletion", async () => {
+// {§fence-pairing} {§op-shapes}
+test("{§fence-pairing} parser roundtrip: an empty EDIT section performs a scoped deletion", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-empty-edit");
@@ -2924,7 +2924,7 @@ test("{§scheme-address} parser roundtrip: HTTP-shape path still decomposes auth
     } finally { await db.close(); }
 });
 
-test("{§fence-boundary} parser roundtrip: real DSL preserves serialized query + fragment on opaque scheme", async () => {
+test("{§operation-fences} parser roundtrip: real DSL preserves serialized query + fragment on opaque scheme", async () => {
     const db = await openMigrated();
     try {
         const env = await seedEnvelope(db, "ws-roundtrip-params");
@@ -2945,7 +2945,7 @@ test("{§fence-boundary} parser roundtrip: real DSL preserves serialized query +
     } finally { await db.close(); }
 });
 
-// {§fence-boundary}
+// {§operation-fences}
 const stripVolatile = (stmt: PlurnkStatement): object => {
     const { position: _position, ...rest } = stmt;
     return rest;
@@ -2957,7 +2957,7 @@ for (const [header, body] of [
     ["SEND (workspace:///result)", "Paris"],
     ["sh", "uname -r"],
 ]) {
-    test(`{§fence-boundary} parser: fence length does not change the AST (${header})`, () => {
+    test(`{§operation-fences} parser: fence length does not change the AST (${header})`, () => {
         const lines = body === "" ? "" : `${body}\n`;
         const short = parseOne(`\`\`\`\`${header}\n${lines}\`\`\`\``);
         const long = parseOne(`\`\`\`\`\`${header}\n${lines}\`\`\`\`\``);
@@ -2965,7 +2965,7 @@ for (const [header, body] of [
     });
 }
 
-test("{§fence-closer} parser: a 3-backtick block stays literal in a 4-backtick body", () => {
+test("{§operation-fences} parser: a 3-backtick block stays literal in a 4-backtick body", () => {
     const body = "quoted section:\n```EDIT (workspace:///inner)\nhello\n```";
     const stmts = parseAll(`\`\`\`\`EDIT (workspace:///demo)\n${body}\n\`\`\`\``);
     assert.equal(stmts.length, 1, "a shorter inner fence never closes the body");
@@ -2973,9 +2973,9 @@ test("{§fence-closer} parser: a 3-backtick block stays literal in a 4-backtick 
     assert.equal((stmts[0]).body, body);
 });
 
-// {§unclosed-mutation-yields}: an example inside an EDIT is written with a wider fence; at the
+// {§fence-pairing}: an example inside an EDIT is written with a wider fence; at the
 // EDIT's own width a native heading is an operation, closed or not.
-test("{§unclosed-mutation-yields} parser: an equal-width EDIT heading inside an EDIT body runs; a wider fence holds it as body", () => {
+test("{§fence-pairing} parser: an equal-width EDIT heading inside an EDIT body runs; a wider fence holds it as body", () => {
     const body = "quoted section:\n````EDIT (workspace:///inner)\nhello\n````";
     const bare = parseAll("````EDIT (workspace:///demo)\n" + body + "\n````");
     assert.deepEqual(bare.map(({ op }) => op), ["EDIT", "EDIT"], "at equal width the inner heading is a second mutation");

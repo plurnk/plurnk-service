@@ -5,7 +5,7 @@ type Options = Record<string, never>;
 type Parsed = { options: Options } | { failure: SchemeResult };
 
 // {§executor-metadata} The executor framework READS the heading's `[metadata]` as a JSON array
-// of option objects — house policy, not a language rule ({§scheme-metadata-modifier}); the
+// of option objects — house policy, not a language rule ({§slot-order}); the
 // default executor contract owns no metadata keys beyond the service's ({§service-metadata-keys}).
 export default class InvocationMetadata {
     static parse(input: ExecInput): Parsed {

@@ -2469,7 +2469,7 @@ test("{§subscriptions} a failed executor close retains a callable owner for its
     }
 });
 
-test("{§send-wait-scope} a decorated WAIT parks on its actual live stream; the decoration is a label, never a join", async () => {
+test("{§op-shapes} a decorated WAIT parks on its actual live stream; the decoration is a label, never a join", async () => {
     const previous = process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS;
     process.env.PLURNK_SERVICE_OPTIMISTIC_WAIT_MS = "1";
     const completion = Promise.withResolvers<{ status: number }>();

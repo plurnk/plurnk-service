@@ -34,42 +34,42 @@ const CONTAINER_RULES = new Set<number>([
 ]);
 
 export interface ParseOptions {
-    // {§executor-heading}: the host's vocabulary also permits slotless headings and canonicalizes spelling.
+    // {§fence-pairing}: the host's vocabulary also permits slotless headings and canonicalizes spelling.
     readonly executors?: readonly string[];
-    // {§pairing-objective}: whether a runtime's body is well-formed in the media type it declares.
+    // {§fence-pairing}: whether a runtime's body is well-formed in the media type it declares.
     readonly wellFormed?: (runtime: string, body: string) => boolean;
 }
 
 export default class PlurnkParser {
     static readonly NO_VALID_OPERATION = "No valid Operation Syntax OPs detected.";
 
-    // {§statement-rendering} — canonical framing is wider than any backtick run in the body, so an
-    // arbitrary, even unfinished, example survives reparse as body ({§balanced-fences}).
+    // {§fence-pairing} — canonical framing is wider than any backtick run in the body, so an
+    // arbitrary, even unfinished, example survives reparse as body ({§operation-fences}).
     static frame(header: string, body: string | null): string {
         const longest = (body?.match(/`+/g) ?? []).reduce((maximum, ticks) => Math.max(maximum, ticks.length), 0);
         const fence = "`".repeat(Math.max(3, longest + 1));
         return `${fence}${header}\n${body === null ? "" : `${body}\n`}${fence}`;
     }
 
-    // {§statement-rendering} — one statement's heading in canonical slot order, without a fence.
+    // {§fence-pairing} — one statement's heading in canonical slot order, without a fence.
     static heading(statement: PlurnkStatement): string {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the statement without its body is the same op; the union's spread cannot say so
         const [first] = PlurnkParser.stringify([{ ...statement, body: null } as PlurnkStatement]).split("\n");
         return (first ?? "").replace(/^`+/u, "");
     }
 
-    // {§statement-rendering} — framing is syntax, never persisted AST state.
+    // {§fence-pairing} — framing is syntax, never persisted AST state.
     static stringify(statements: readonly PlurnkStatement[]): string {
         return statements.map((statement) => {
             const name = writtenOp(statement);
             const modifiers: string[] = [];
-            // {§naked-pattern} — a lifted matcher is written back bare on the heading line.
+            // {§parse-recovery} — a lifted matcher is written back bare on the heading line.
             const metadataOf = (metadata: readonly string[] | null | undefined, matcher: { raw: string } | null | undefined, bare: boolean): string[] => {
                 const blocks = metadata?.map((block) => `[${block}]`) ?? [];
                 if (!bare || matcher === null || matcher === undefined) return blocks;
                 return [...blocks, matcher.raw];
             };
-            // {§local-path-fragment} — a bare path renders its channel back as `#channel`.
+            // {§op-shapes} — a bare path renders its channel back as `#channel`.
             const spelled = (target: { kind: string; raw: string; fragment?: string | null }): string =>
                 target.kind === "local" && target.fragment !== undefined && target.fragment !== null ? `${target.raw}#${target.fragment}` : target.raw;
             const selection = (resource: ResourceSelection): void => {
@@ -96,7 +96,7 @@ export default class PlurnkParser {
         }).join("\n\n");
     }
 
-    // {§quotation} {§native-tool-calls} the markup lines that sit inside a Markdown quotation:
+    // {§fence-pairing} {§fence-pairing} the markup lines that sit inside a Markdown quotation:
     // quotation is judged with the markup itself blanked, so its own fence lines quote nothing.
     static #quotedMarkup(input: string, executors: readonly string[]): Set<number> {
         const markup = NativeToolCalls.markupLines(input);
@@ -116,11 +116,11 @@ export default class PlurnkParser {
         return quoted;
     }
 
-    // Parse one model turn. WAIT may sit anywhere ({§disposition-anywhere}); the runtime settles it last.
-    // Outside text is returned separately from executable operations. {§response-text}
+    // Parse one model turn. WAIT may sit anywhere ({§op-shapes}); the runtime settles it last.
+    // Outside text is returned separately from executable operations. {§whitespace-contract}
     static parse(input: string, options: ParseOptions = {}): ParseResult {
         const direct = PlurnkParser.#parseTurn(input, options);
-        // {§native-tool-calls} — an emission with no operation may be native tool-call markup that
+        // {§fence-pairing} — an emission with no operation may be native tool-call markup that
         // names plurnk operations; read it as those operations, silently (#760).
         const executors = options.executors ?? [];
         const rewritten = direct.items.some((item) => item.kind === "statement") ? null
@@ -129,7 +129,7 @@ export default class PlurnkParser {
             const native = PlurnkParser.#parseTurn(rewritten, options);
             if (native.items.some((item) => item.kind === "statement") && !native.items.some((item) => item.kind === "error" && item.error.severity === "error")) return native;
         }
-        // {§native-tool-call-receipt} — markup that could not be read is named, with the form that runs.
+        // {§fence-pairing} — markup that could not be read is named, with the form that runs.
         const unread = direct.items.flatMap((item) => {
             if (item.kind !== "text") return [];
             const found = NativeToolCalls.unread(item.content, executors, PlurnkParser.#quotedMarkup(item.content, executors));
@@ -156,7 +156,7 @@ export default class PlurnkParser {
         return result;
     }
 
-    // {§reasoning-operations} — only closed top-level operations cross this boundary.
+    // {§op-shapes} — only closed top-level operations cross this boundary.
     static parseReasoningOperations(input: string, onAdvisory?: (advisory: PlurnkParseError) => void): ReasoningOperation[] {
         const warnings = new Map<PlurnkStatement, PlurnkParseError[]>();
         const { result, lexer } = PlurnkParser.#run(input, (parser) => parser.statementSeq(), (ctx) => {
@@ -175,7 +175,7 @@ export default class PlurnkParser {
         return operations;
     }
 
-    // {§turn-shape} — no source operation is reported as its own fact, beside every diagnostic
+    // {§whitespace-contract} — no source operation is reported as its own fact, beside every diagnostic
     // that explains it: a host admits a turn whose only diagnostic is this one as an empty turn
     // ({§outside-text}) and rejects one that also carries a malformed heading.
     static #requireSourceOperation(items: ParseItem[]): void {
@@ -243,7 +243,7 @@ export default class PlurnkParser {
         const spellings = new Map([...lexer.knownExecutors].map((name) => [name.toLowerCase(), name]));
         const js = spellings.get("js");
         if (js !== undefined) {
-            // {§executor-js-spelling}: canonicalize before runtime admission, without another registration.
+            // {§fence-pairing}: canonicalize before runtime admission, without another registration.
             for (const alias of ["ts", "javascript", "typescript", "node"]) {
                 if (!spellings.has(alias)) {
                     lexer.knownExecutors.add(alias);
@@ -256,7 +256,7 @@ export default class PlurnkParser {
         lexer.removeErrorListeners();
         lexer.addErrorListener(new RecordingListener("lexer", errors));
 
-        // {§heading-slot-order} — lex eagerly so heading near-misses can be put in canonical order.
+        // {§fence-pairing} — lex eagerly so heading near-misses can be put in canonical order.
         const tokens = lexer.getAllTokens();
         const tokenStream = new CommonTokenStream(new ListTokenSource(HeadingTokens.normalize(tokens)));
         const parser = new plurnkParser(tokenStream);
@@ -271,7 +271,7 @@ export default class PlurnkParser {
         const items: ParseItem[] = [];
         const consumedErrors = new Set<PlurnkParseError>();
         PlurnkParser.#collect(tree, errors, consumedErrors, items, buildFn, unparsedTail?.from);
-        // {§log-heading-notation} — the log's heading notation was read as the slot it stands for; each reading is
+        // {§parse-recovery} — the log's heading notation was read as the slot it stands for; each reading is
         // named once, right after its statement, with the form to write. A statement that was not built draws none.
         const named = new Set<string>();
         for (const note of lexer.takeHeadingNotations()) {
@@ -300,7 +300,7 @@ export default class PlurnkParser {
                 items.push({ kind: "error", error: err });
             }
         }
-        // {§unclosed-aside} — the aside ran to the end of the line; say so once.
+        // {§fence-pairing} — the aside ran to the end of the line; say so once.
         for (const note of lexer.takeUnclosedAsides()) {
             items.push({
                 kind: "error",
@@ -308,17 +308,17 @@ export default class PlurnkParser {
                     "The aside was not closed with `-->`; it was read to the end of the line.", "warning"),
             });
         }
-        // {§quotation} — an operation inside an unlabeled code block was shown, never run; say so once.
+        // {§fence-pairing} — an operation inside an unlabeled code block was shown, never run; say so once.
         for (const note of lexer.takeQuotedTags()) {
             items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` inside a code block was shown, not run.`, "warning") });
         }
-        // {§forgotten-tag} — the operation ran; its opener spanned two lines, so say how it is written once.
+        // {§fence-pairing} — the operation ran; its opener spanned two lines, so say how it is written once.
         for (const note of lexer.takeForgottenTags()) {
             items.push({ kind: "error", error: new PlurnkParseError(note.line, note.column, "parser", `\`${note.tag}\` ran, though its fence was malformed: the opening fence, OP, parameters, and aside share one line.`, "warning") });
         }
 
         if (tier === "model") {
-            // {§unfenced-operation}: the line that wrote an operation without its fence is a broken
+            // {§whitespace-contract}: the line that wrote an operation without its fence is a broken
             // program, not response text — it draws its warning and never becomes narration.
             const unfenced = PlurnkParser.#unfencedOperations(tokens, lexer.takeQuotedSpans(lexer.inputStream.size), lexer.knownExecutors, unparsedTail?.from);
             items.push(...PlurnkParser.#responseText(tokens, new Set(unfenced.map(({ line }) => line)), unparsedTail?.from));
@@ -330,7 +330,7 @@ export default class PlurnkParser {
         return { result: { items, unparsedTail }, lexer };
     }
 
-    // {§scope-on-scopeless} — the operation ran without the scope it cannot take; say which slots it has.
+    // {§slot-order} — the operation ran without the scope it cannot take; say which slots it has.
     static #scopelessAdvisory(statement: PlurnkStatement, scope: string): string {
         const op = writtenOp(statement);
         const slots = op === "NOTE" ? "`NOTE` takes no target or scope"
@@ -339,9 +339,9 @@ export default class PlurnkParser {
         return `${slots}; the scope \`${scope}\` was ignored.`;
     }
 
-    // {§response-text}: only the lexer's outside-text channel is recoverable; a malformed
+    // {§whitespace-contract}: only the lexer's outside-text channel is recoverable; a malformed
     // operation remains an operation region even when it produces no AST statement.
-    // `excludedLines` are the unfenced operation lines ({§unfenced-operation}): the whole line, operand included.
+    // `excludedLines` are the unfenced operation lines ({§whitespace-contract}): the whole line, operand included.
     static #responseText(tokens: readonly Token[], excludedLines: ReadonlySet<number>, boundary?: Position): Extract<ParseItem, { kind: "text" }>[] {
         const items: Extract<ParseItem, { kind: "text" }>[] = [];
         let content = "";
@@ -368,9 +368,9 @@ export default class PlurnkParser {
         return items;
     }
 
-    // {§unfenced-operation}: name the ignored fragment, not the outcome of fenced operations
+    // {§whitespace-contract}: name the ignored fragment, not the outcome of fenced operations
     // elsewhere in the turn. A name with only an optional aside is opened by the lexer
-    // ({§naked-operation}); executor names require an operand slot, since `sh`, `env` and
+    // ({§operation-fences}); executor names require an operand slot, since `sh`, `env` and
     // `members` can also be ordinary words.
     static #unfencedOperations(tokens: readonly Token[], quoted: ReadonlyArray<{ start: number; end: number }>, executors: ReadonlySet<string>, boundary?: Position): Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> {
         const items: Array<{ line: number; item: Extract<ParseItem, { kind: "error" }> }> = [];
@@ -405,10 +405,10 @@ export default class PlurnkParser {
 
     // Determine the public trust boundary before visiting recovered contexts. The parser may
     // synthesize tree nodes after an unfinished lexer mode, but those nodes have no public AST
-    // meaning and can violate AstBuilder's complete-statement precondition. {§unparsed-tail-boundary}
+    // meaning and can violate AstBuilder's complete-statement precondition. {§parse-recovery}
     static #unparsedTail(lexer: plurnkLexer): ParseResult["unparsedTail"] {
         const modeName = lexer.modeNames[lexer.mode] ?? "";
-        // {§closer-fallback} — a block still open at the end of the input ended there; only an
+        // {§operation-fences} — a block still open at the end of the input ended there; only an
         // unfinished target or metadata slot loses the boundary.
         if (modeName !== "TARGET" && modeName !== "METADATA") return undefined;
         const openTag = lexer.getOpenTag();
@@ -446,7 +446,7 @@ export default class PlurnkParser {
                 );
                 const errForStatement = errorsForStatement[0];
                 if (errForStatement) {
-                    // One malformed statement projects one hard diagnostic. {§error-shape}
+                    // One malformed statement projects one hard diagnostic. {§parse-recovery}
                     for (const error of errorsForStatement) consumedErrors.add(error);
                     items.push({ kind: "error", error: errForStatement, ...PlurnkParser.#attempt(start, stop) });
                 } else if (rule.getChildCount() === 0 || ("exception" in rule && rule.exception !== null && rule.exception !== undefined) || rule.start?.type === Token.EOF) {
@@ -464,7 +464,7 @@ export default class PlurnkParser {
                         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a context whose rule is a statement rule is one of the build contexts
                         const { value: statements, advisories } = AstBuilder.collectAdvisories(() => buildFn(rule as BuildContext));
                         for (const statement of statements) items.push({ kind: "statement", statement });
-                        // {§error-shape} — the builder's advisories follow their statement.
+                        // {§parse-recovery} — the builder's advisories follow their statement.
                         for (const advisory of advisories) items.push({ kind: "error", error: advisory });
                     } catch (e) {
                         // A genuine visitor contract violation (e.g. a malformed URI) is a
@@ -481,7 +481,7 @@ export default class PlurnkParser {
         }
     }
 
-    // {§parse-attempt} The statement a hard fact refused: its text as written, and the verb its opening fence names.
+    // {§parse-recovery} The statement a hard fact refused: its text as written, and the verb its opening fence names.
     static #attempt(start: Token, stop: Token | null | undefined): { attempt: ParseAttempt } | Record<string, never> {
         const verb = (start.text ?? "").replace(/^`+[0-9]*/u, "").trim();
         const text = start.inputStream?.getTextFromRange(start.start, (stop ?? start).stop);

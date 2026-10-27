@@ -16,11 +16,11 @@
   retains reads at the address that minted it. Only core's own acquisition runs:
   another scheme's entry reads as stored, never prepared, so a client read never
   fetches ({§scheme-address}). A channel name may be empty, a log row's
-  unnamed default ({§entry-read-result}).
+  unnamed default ({§text-region}).
 - c3922c2: A loop stopped without failing (499) has the lifecycle `cancelled`, in the
   status gauge, the worker directory, `status.descendants` and the inbox; any
   other status of 400 or more stays `failed`. `LoopLifecycle` gains the word
-  ({§loop-lifecycle-vocabulary}).
+  ({§application-session-observation}).
 
 ### Minor Changes
 
@@ -47,7 +47,7 @@
   ({§acp-place-hiding}). Migration 33.
 - 878d630: The package root exports the value guards `isRecord`, `isSafeInteger` and
   `errnoCode`
-  ({§wire-entrypoint}); `Validator`'s asserts take `unknown` and return the wire
+  ({§text-region}); `Validator`'s asserts take `unknown` and return the wire
   type their schema proves; `Validator.assertPlurnkStatement` joins them.
   `isPlurnkOp` tests membership in the operation alphabet beside `PLURNK_OPS`.
 - dd52a9b: `loop/packet`, `loop/terminated` and the `loop_status` notice carry `loopSeq`,
@@ -58,7 +58,7 @@
   conformance kit's gauge carries it.
 - 50fbe81: An interactive `McpOAuth` definition may name the `issuer` its sign-in binds
   to, where discovery starts, and `authorizationParams` added to the
-  authorization request, such as `access_type=offline` ({§mcp-oauth},
+  authorization request, such as `access_type=offline` ({§mcp-server-definition},
   {§oauth-issuer}). `oauth.begin` for an alias awaiting a sign-in after a refused
   request starts the authorization on a connection its server never challenges
   ({§oauth-begin-unchallenged}).
@@ -89,8 +89,8 @@
 - 4a048a8: `readWorkerOverview` reads the places of the daemon or of one workspace with their
   lifecycle, the gates they wait on and their latest finished reply, most recently
   finished first and bounded ({§methods-workspace-create}, {§message-completion},
-  {§application-session-overview}); `excerptOf` is the one list excerpt rule
-  ({§list-excerpt}). `workspace/renamed` announces a rename
+  {§application-session-observation}); `excerptOf` is the one list excerpt rule
+  ({§application-session-observation}). `workspace/renamed` announces a rename
   ({§notifications}). AG-UI: a Run carrying
   `forwardedProps.plurnk.overview` observes the overview as state, binding
   nothing: a snapshot on `/agui`, patches until the client leaves on
@@ -160,7 +160,7 @@
   example it was written as, at no cost to a complete reading; only a declared
   code block discarded as text still counts with a hidden operation. A message
   whose own fence is narrower than the fences wrapping its examples now holds them
-  instead of running them ({§pairing-objective}, {§balanced-fences}; #1147).
+  instead of running them ({§fence-pairing}, {§operation-fences}; #1147).
 
 ### Patch Changes
 

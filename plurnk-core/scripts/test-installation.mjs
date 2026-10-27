@@ -566,7 +566,7 @@ ok(
     skillBoot.listening === true && skillBoot.probeError === undefined,
     "the packed ACP workspace bootstrap accepts a conventional project skill without a provider",
 );
-// {§read-find-normalization}: an authored READ is never rewritten into a FIND — a matcher
+// {§op-shapes}: an authored READ is never rewritten into a FIND — a matcher
 // selects the region and the READ renders it. The survey of paths is FIND, and only FIND.
 const packedSourceWorks = skillBoot.probeResult?.sourceLookup?.status === 200
         && skillBoot.probeResult?.sourceLookup?.content === "def target():\n    return 1"

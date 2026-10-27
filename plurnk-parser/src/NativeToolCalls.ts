@@ -1,4 +1,4 @@
-// {§native-tool-calls} — a model's native tool-call markup that names a plurnk operation is read
+// {§fence-pairing} — a model's native tool-call markup that names a plurnk operation is read
 // as that operation (#760). The popular families are all read the same way: DeepSeek's DSML and
 // Anthropic-style `<function_calls>` (invoke/parameter elements), the `<tool_call>` family in its
 // XML-function, JSON and key/value shapes, Mistral's `[TOOL_CALLS]`, Llama's `<|python_tag|>` and
@@ -57,7 +57,7 @@ export default class NativeToolCalls {
     }
 
     // Returns the rewritten input, or null when there is nothing to rewrite or any call is unmappable.
-    // A block whose first line is quoted ({§quotation}) is an example, never a call.
+    // A block whose first line is quoted ({§fence-pairing}) is an example, never a call.
     static rewrite(input: string, executors: readonly string[], quotedLines: ReadonlySet<number> = new Set()): string | null {
         if (!MARKERS.some((marker) => input.includes(marker))) return null;
         const blocks = NativeToolCalls.#blocks(input, executors).filter((block) => !quotedLines.has(block.startLine));
@@ -86,7 +86,7 @@ export default class NativeToolCalls {
         return out;
     }
 
-    // {§native-tool-call-receipt} — the first block that was not read, for the receipt that names it: its opening markup,
+    // {§fence-pairing} — the first block that was not read, for the receipt that names it: its opening markup,
     // its line and column, and the fenced form of the operation it names where the markup says which.
     static unread(input: string, executors: readonly string[], quotedLines: ReadonlySet<number> = new Set()): { line: number; column: number; markup: string; form: string } | null {
         if (!MARKERS.some((marker) => input.includes(marker))) return null;

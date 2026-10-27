@@ -36,7 +36,7 @@ spawn recipe and availability binary.
 | Tag | Promise |
 | --- | --- |
 | {§executor-sinks} | Inputs and sinks |
-| {§executor-interaction-sink} | `interact(request, signal?)` — Await one contracts-owned client interaction ({§client-interaction-wire}). |
+| {§executor-interaction-sink} | `interact(request, signal?)` — Await one contracts-owned client interaction ({§provider-request-accounting}). |
 | {§executor-metadata} | Invocation metadata ownership |
 | {§executor-argv-tokenizer} | `tokenizeArgv` splits a command line into argv by shell quoting alone. |
 | {§executor-channels} | Channels |
@@ -128,7 +128,7 @@ surface.
 | `write`    | Append to a declared channel. An optional mimetype replaces that channel's per-call output type.        |
 | `setState` | Move a declared channel from `active` to terminal `closed` or `errored`.                                |
 | `emit`     | Publish a transient, nonterminal Notice.                                                                |
-| §executor-interaction-sink `interact(request, signal?)` | Await one contracts-owned client interaction ({§client-interaction-wire}). An optional signal narrows, never replaces, the execution's cancellation scope. Core owns identity, pending-state durability, client presentation, and settlement; the executor owns the request and returned payload's meaning. |
+| §executor-interaction-sink `interact(request, signal?)` | Await one contracts-owned client interaction ({§provider-request-accounting}). An optional signal narrows, never replaces, the execution's cancellation scope. Core owns identity, pending-state durability, client presentation, and settlement; the executor owns the request and returned payload's meaning. |
 | `entry`    | Optionally request consumer-owned entry materialization and receive its canonical model-facing address. |
 
 The executor receives callbacks, never a database, subscription registry,
@@ -167,7 +167,7 @@ type through storage and model observation; the consumer derives incremental
 versus atomic publication from that type under {§exec-stream}.
 
 An executor that produces a generated JSON value uses the contracts-owned
-`renderJsonResult` projection ({§json-result-rendering}). This gives a
+`renderJsonResult` projection ({§contract-representations}). This gives a
 top-level result array one addressable item per physical line without
 reformatting arbitrary source JSON read from an entry.
 
@@ -412,7 +412,7 @@ details; the generated tool document owns the one model-facing H1.
 | ------------------ | --------------------------------------------------------------------------------------------------------- |
 | `body.role`        | One-line model-facing description of the authored body.                                                    |
 | `body.required`    | When true, an empty body is refused before effect admission.                                               |
-| `body.mimetype`    | Optional lowercase media type the body must be well-formed in; the fence pairing counts a body that is not as a repair ({§pairing-objective}). |
+| `body.mimetype`    | Optional lowercase media type the body must be well-formed in; the fence pairing counts a body that is not as a repair ({§fence-pairing}). |
 | `target`           | Omitted when this runtime accepts no target; a present authored target is then refused.                    |
 | `target.role`      | One-line model-facing description of the target.                                                          |
 | `target.required`  | When true, an absent target is refused before effect admission.                                           |
@@ -427,7 +427,7 @@ details; the generated tool document owns the one model-facing H1.
 | `literal`   | Preserve the complete authored target string. It is an executor identifier, never a scheme read or filesystem classification. |
 | `path`      | Accept only a local or `file://` path and pass that path directly.                                                             |
 | `resource`  | Pass a local/file path directly. After acceptance, resolve a non-file data-scheme address through one exact READ; use its owner-supplied native file or a standalone representation under the scratch directory ({§exec-target-routing}, {§exec-target-routing}). |
-| `script`    | As `resource`, and the local path must be an existing file, or an existing directory when an inline body is supplied: a directory with no body or an absent path is refused before anything spawns ({§exec-executor-slot}, {§exec-target-routing}). |
+| `script`    | As `resource`, and the local path must be an existing file, or an existing directory when an inline body is supplied: a directory with no body or an absent path is refused before anything spawns ({§op-shapes}, {§exec-target-routing}). |
 
 Every execution must supply at least a body or target even when neither field is
 independently required. A target's meaning never changes because the body is

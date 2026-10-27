@@ -224,7 +224,7 @@ export const projectFindResult = (
         : results.reduce((sum, item) => sum + (Array.isArray(item) ? findItemWeight(item) : 0), 0);
     return {
         status: 200,
-        content: renderFindContent(results, defaultChannel), // {§find-result-projection} {§json-result-rendering}
+        content: renderFindContent(results, defaultChannel), // {§find-result-projection} {§contract-representations}
         mimetype: "application/json",
         results,
         itemsWeightTotal,

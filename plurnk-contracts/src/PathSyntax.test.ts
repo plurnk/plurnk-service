@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import PathSyntax from "./PathSyntax.ts";
 
-test("{§path-parentheses} decodeParens decodes only the target-slot parenthesis spelling", () => {
+test("{§path-syntax} decodeParens decodes only the target-slot parenthesis spelling", () => {
     assert.equal(PathSyntax.decodeParens("/dir/file%28v1%29.txt"), "/dir/file(v1).txt");
     assert.equal(PathSyntax.decodeParens("/a%28b%29c%28d%29"), "/a(b)c(d)");
     assert.equal(
@@ -11,12 +11,12 @@ test("{§path-parentheses} decodeParens decodes only the target-slot parenthesis
     );
 });
 
-test("{§path-parentheses} encodeParens is the model-facing inverse without general URL encoding", () => {
+test("{§path-syntax} encodeParens is the model-facing inverse without general URL encoding", () => {
     assert.equal(PathSyntax.encodeParens("/wiki/Igor_(politician)"), "/wiki/Igor_%28politician%29");
     assert.equal(PathSyntax.encodeParens("/wiki/Igor_%28politician%29"), "/wiki/Igor_%28politician%29");
 });
 
-test("{§path-parentheses} target-slot escaping round-trips backslashes and parentheses without decoding glob escapes", () => {
+test("{§path-syntax} target-slot escaping round-trips backslashes and parentheses without decoding glob escapes", () => {
     assert.equal(
         PathSyntax.escapeTarget(String.raw`a\(b\)`),
         String.raw`a\\\(b\\\)`,
@@ -38,7 +38,7 @@ test("{§path-parentheses} target-slot escaping round-trips backslashes and pare
     }
 });
 
-test("{§path-glob} path-glob classification recognizes the complete shared syntax", () => {
+test("{§path-syntax} path-glob classification recognizes the complete shared syntax", () => {
     assert.equal(PathSyntax.hasGlob("/docs/exact.md"), false);
     assert.equal(PathSyntax.globMagicIndex("/docs/exact.md"), -1);
     assert.equal(PathSyntax.globMagicIndex("/docs/[ab].md"), 6);

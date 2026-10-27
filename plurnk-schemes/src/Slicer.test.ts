@@ -191,7 +191,7 @@ test("{§slicer-text-algebra} lines tolerates three coordinates and reports the 
     assert.deepEqual(badStart.problem?.requestedCoordinates, [1, 9, 1]);
 });
 
-test("{§text-scope-semantics} -1 as a region line is the final endpoint: <1,1,-1,1> is the whole text, <-1,1,-1,1> appends", () => {
+test("{§op-shapes} -1 as a region line is the final endpoint: <1,1,-1,1> is the whole text, <-1,1,-1,1> appends", () => {
     assert.equal(Slicer.lineMarkerEdit(TEXT, { marks: [1, 1, -1, 1] }, "ALL\n").result, "ALL\n", "the whole text, end column moot at the end");
     assert.equal(Slicer.lineMarkerEdit(TEXT, { marks: [-1, 1, -1, 1] }, "OMEGA\n").result, `${TEXT}OMEGA\n`, "a zero-width region at the end appends");
     assert.equal(Slicer.lines(TEXT, { marks: [2, 1, -1, 7] }).text, "beta\ngamma\ndelta\n", "from line 2 to the end, whatever the end column says");
@@ -359,7 +359,7 @@ test("{§slicer-text-algebra} page rejects fractional result positions instead o
 });
 
 for (const marks of [[2, 1, 4], [1620, 1, 1660, 1]] as Array<[number, ...number[]]>) {
-    test(`{§pinned-wording-schemes} {§range-extent} page rejects ${marks.length} positions, naming them as written and no extent`, () => {
+    test(`{§pinned-wording-schemes} {§text-region} page rejects ${marks.length} positions, naming them as written and no extent`, () => {
         const result = Slicer.page(["a", "b"], { marks });
         assert.equal(result.status, 416);
         assert.match(result.problem?.detail ?? "", /requires one position or an inclusive two-position range/); // {§pinned-wording-schemes}
@@ -631,7 +631,7 @@ test("{§range-starts-at-one} pages and byte windows refuse a zero start in thei
     assert.equal(Slicer.window({ marks: [0] }, 40, "byte").start, null, "the single <0> position stays a sentinel");
 });
 
-// {§text-scope-semantics} {§diagnostic-observation} — a refused scope states what it read, never the input rebuilt.
+// {§op-shapes} {§diagnostic-observation} — a refused scope states what it read, never the input rebuilt.
 test("{§diagnostic-observation} a refused scope states its bound or working form, never a rebuilt scope: result pages, zero coordinates, inverted regions, negative starts", () => {
     const recovery = (result: { problem?: { recovery?: string } }) => result.problem?.recovery;
     // A result position outside the page states the page's bound and names no other operation.

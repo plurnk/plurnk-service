@@ -2804,7 +2804,7 @@ test("{§provider-native-tool-calls}: a tool_calls finish retains its evidence a
     assert.deepEqual(result.notices?.map(({ kind, directive, message }) => ({ kind, directive, message })), [{
         kind: "provider_warning", directive: "YOU MUST NOT emit native tool calls.",
         message: "The response included native tool calls, but no tools were declared.",
-    }], "{§notice-directive}: native tool calls are the model's own output");
+    }], "{§diagnostic-observation}: native tool calls are the model's own output");
 });
 
 for (const streaming of [true, false]) {

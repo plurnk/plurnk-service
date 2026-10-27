@@ -52,11 +52,11 @@ preserved exactly.
 Finite GET uses scope-blind representation preparation; POST, PUT, DELETE,
 and genuinely live GET responses retain the subscription path. Request
 headers are options in one `[{"Key": "value", ...}]` metadata block under
-{§scheme-metadata-modifier}. HTTP interprets the merged options; the resource
+{§slot-order}. HTTP interprets the merged options; the resource
 target remains pure. Remote status and headers are persisted in `header`, not
 interpreted as Plurnk operation or loop lifecycle signals.
 Exact-versus-pattern FIND preparation uses the shared
-`PathSyntax.hasGlob` classifier {§path-glob}; HTTP owns no reduced
+`PathSyntax.hasGlob` classifier {§path-syntax}; HTTP owns no reduced
 path-pattern grammar.
 
 §http-outbound-proposes **A request that changes a remote resource proposes.** POST, PUT, the remote DELETE, and a WebSocket frame (EDIT or SEND on an open `ws(s)://` socket) declare `effect: "host"` and return `202` under {§proposal}; the panel's `PLURNK_SERVICE_EFFECT_HOST` decides whether that settles by consent or runs unattended, exactly as it does for a subprocess ({§exec-lifetime}). This is the same reason a local `EDIT` proposes: Plurnk does not claim containment, so consent — not a boundary — is what stands between the model and the world.
@@ -74,7 +74,7 @@ path-pattern grammar.
 | --- | --- |
 | {§http-text-decoding} | Text response decoding |
 | {§http-binary-source} | Finite binary responses retain bounded original bytes in `body`, with optional derived facts/text in… |
-| {§http-json-presentation} | Finite `application/json` and `+json` responses use {§json-document-presentation} in their canonical body… |
+| {§http-json-presentation} | Finite `application/json` and `+json` responses use {§contract-representations} in their canonical body… |
 | {§html-materialization} | Readable materialization |
 | {§http-materializer-extensions} | Materializer extensions |
 | {§http-channel-outcomes} | Channel outcomes |
@@ -159,7 +159,7 @@ remain byte-readable without invented facts or native parts. Incomplete transfer
 and over-limit input publish no partial binary payload.
 
 §http-json-presentation Finite `application/json` and `+json` responses use
-{§json-document-presentation} in their canonical body channel before indexing,
+{§contract-representations} in their canonical body channel before indexing,
 scope selection, or previews. Both GET and mutation responses follow this rule.
 Malformed JSON remains unchanged; interrupted mutation responses preserve the
 received partial text and the acquisition failure. Request bodies, authored

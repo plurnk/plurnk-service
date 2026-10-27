@@ -53,12 +53,12 @@ test("{§find} generic path bracket segments remain character classes", () => {
     assert.equal(pathScopeMatches(scope, "src/c.ts"), false);
 });
 
-test("{§path-glob} escaped wildcards select the literal name, not a directory neighbor", () => {
+test("{§path-syntax} escaped wildcards select the literal name, not a directory neighbor", () => {
     const scope = pathScope(String.raw`a\*.txt`, true);
     assert.deepEqual(["a*.txt", "abc.txt", "a/b.txt"].filter((pathname) => pathScopeMatches(scope, pathname)), ["a*.txt"]);
 });
 
-test("{§path-glob} an escaped backslash stays inside its filename segment", () => {
+test("{§path-syntax} an escaped backslash stays inside its filename segment", () => {
     const scope = pathScope(String.raw`dir\\name/*.txt`, true);
     const paths = [String.raw`dir\name/a.txt`, "dir/name/a.txt", "dirname/a.txt"];
     assert.deepEqual(paths.filter((pathname) => pathScopeMatches(scope, pathname)), [String.raw`dir\name/a.txt`]);

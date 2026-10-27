@@ -252,7 +252,7 @@ const INITIALIZATION_CLOSING_NOTE: NoteStatement = {
 };
 // {§operation-results} — said once, in the next packet, of a continuing turn that carried no NOTE.
 const CONTINUED_WITHOUT_NOTE = "The turn continued without a NOTE.";
-// {§notice-directive} — what each notice of the model's own output asks of it: MUST where the card says MUST
+// {§diagnostic-observation} — what each notice of the model's own output asks of it: MUST where the card says MUST
 // or the output was refused, SHOULD where a near-miss was accepted.
 const DIRECTIVE = Object.freeze({
     note: "YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn.",
@@ -356,7 +356,7 @@ type ProviderAttempts = {
     split: SplitProviderResponse | undefined;
     railGrammar: string | undefined;
     railEvidence: GrammarEvidence | undefined;
-    // {§pairing-objective}: judges a body in its runtime's declared media type; undefined when none declares one.
+    // {§fence-pairing}: judges a body in its runtime's declared media type; undefined when none declares one.
     wellFormed: BodyCheck | undefined;
     emissionAttempts: number;
     callInFlight: boolean;
@@ -1821,7 +1821,7 @@ export default class TurnRunner {
     // its assistant payload to skip the parse roundtrip. The wire Provider
     // contract has no `ops` field; only Mock exposes one. Real providers
     // always take the parse path because their `assistant.ops` is undefined.
-    // {§pairing-objective}: each runtime that declares its body's media type is judged by that media type's
+    // {§fence-pairing}: each runtime that declares its body's media type is judged by that media type's
     // handler. The parse is synchronous, so the handler must validate synchronously; one that cannot breaks the
     // declaration's contract and fails here.
     async #bodyChecks(workspaceId: number): Promise<BodyCheck | undefined> {
@@ -1869,7 +1869,7 @@ export default class TurnRunner {
             });
         });
         const operationCount = contentStatementCount + reasoningOps.length;
-        // {§reasoning-operations}: an admitted reasoning operation is the turn's work, a NOTE as much as a
+        // {§op-shapes}: an admitted reasoning operation is the turn's work, a NOTE as much as a
         // FIND or READ, with or without a content program.
         if (reasoningOps.length > 0) {
             for (let i = parseErrors.length - 1; i >= 0; i--) {
@@ -1883,7 +1883,7 @@ export default class TurnRunner {
             && parseErrors.every((error) => error.message === PlurnkParser.NO_VALID_OPERATION)
             && !["length", "content_filter", "tool_calls"].includes(assistant.finishReason ?? "");
         const emptyTurn = preParsedOps === undefined && operationCount === 0 && !hasUnparsedTail;
-        // {§unparsed-tail-boundary}: outside text is not operational work.
+        // {§parse-recovery}: outside text is not operational work.
         const emissionValid = fabrications.length === 0 && (preParsedOps !== undefined
             || emptyTurn
             || operationCount > 0);
@@ -1905,7 +1905,7 @@ export default class TurnRunner {
         };
     }
 
-    // {§outside-text} {§emission-admission} {§unparsed-tail-boundary} An emission's content parsed into its
+    // {§outside-text} {§emission-admission} {§parse-recovery} An emission's content parsed into its
     // statements and what sat beside them: outside text as NOTEs or the empty turn's source, a fabricated log
     // heading as the rejection it is, each parse error by its severity, and the lexer's one boundary fact.
     static #parseContent(content: string, executors: readonly string[], wellFormed: BodyCheck | undefined): ParsedContent {
@@ -1920,7 +1920,7 @@ export default class TurnRunner {
         // {§observability-boundary} — the parse is observed without its input;
         // only the resulting statement count is attributable.
         const parsed = observedSync("contracts.parse", {}, (span) => {
-            // {§executor-heading}: explicit invocations parse without registration; available names
+            // {§fence-pairing}: explicit invocations parse without registration; available names
             // also admit slotless headings. Dispatch resolves the then-current workspace registry.
             const result = PlurnkParser.parse(content, { executors, ...(wellFormed === undefined ? {} : { wellFormed }) });
             span.setAttribute("statements", result.items.filter((item) => item.kind === "statement").length);
@@ -1966,7 +1966,7 @@ export default class TurnRunner {
             }
         }
         flushSpan();
-        // {§unparsed-tail-boundary} — the lexer's one boundary fact: from `unparsedTail.from` on,
+        // {§parse-recovery} — the lexer's one boundary fact: from `unparsedTail.from` on,
         // nothing was read. The statements that closed before it are ordinary facts and run; the
         // loss itself is one more hard diagnostic, a failed row the model sees. An emission that
         // lost its boundary before any statement closed has nothing admissible and is resampled.

@@ -199,7 +199,7 @@ export default class InteractiveOAuthProvider implements OAuthClientProvider {
             this.#authorization = {};
             return;
         }
-        // {§mcp-oauth} The definition's parameters join the request; the schema keeps the flow's own out of reach.
+        // {§mcp-server-definition} The definition's parameters join the request; the schema keeps the flow's own out of reach.
         for (const [name, value] of Object.entries(this.#authorizationParams)) authorizationUrl.searchParams.set(name, value);
         this.#awaitingAuthorizationCallback = true;
         this.#authorization = { url: authorizationUrl };

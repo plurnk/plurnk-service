@@ -220,8 +220,8 @@ test("{§engine-rails}: an unsuccessful park does not create a new cycle window"
 });
 
 describe("Daemon.wait-rails", () => {
-// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
-// would not ({§matcher-refusal}).
+// A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
+// would not ({§matcher-prefix-claims}).
 const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
 const response = (dsl: string) => ({
     assistant: { content: dsl, reasoning: null },
@@ -527,8 +527,8 @@ const response = (content: string) => ({
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
 const collect = "````READ (session://child)````\n````WAIT\nCollect the child result.\n````";
-// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
-// would not ({§matcher-refusal}).
+// A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
+// would not ({§matcher-prefix-claims}).
 const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
 
 for (const priorStrike of [false, true]) {
@@ -669,8 +669,8 @@ const response = (operation: string, op: string, timing = "") => ({
     ].join("\n"), reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
-// would not ({§matcher-refusal}).
+// A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
+// would not ({§matcher-prefix-claims}).
 const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
 
 test("{§engine-rails}: a resumed task retains its strike streak across a wait and engine reconstruction", async (t) => {
@@ -1073,8 +1073,8 @@ test("{§operation-results}: a strike-threshold abandonment names itself in its 
         const workspaceId = await insertWorkspace(db, `ws-strike-${crypto.randomUUID()}`);
         const sessionId = await insertSession(db, workspaceId);
         const loopId = await insertLoop(db, sessionId, 1, "strike out");
-        // A bounded heading failure, a third COPY operand, is a hard 400 ({§extra-path-slot}); a fumbled
-        // matcher would not strike ({§matcher-refusal}). Distinct paths keep the failures out of cycle detection.
+        // A bounded heading failure, a third COPY operand, is a hard 400 ({§matcher-prefix-claims}); a fumbled
+        // matcher would not strike ({§matcher-prefix-claims}). Distinct paths keep the failures out of cycle detection.
         const provider = new Mock({ contextWindow: 100000, responses: Array.from({ length: 5 }, (_, i) => contentResponse(
             `\`\`\`\`COPY (workspace:///note-${i}) (workspace:///b) (workspace:///c)\`\`\`\`
 \`\`\`\`NOTE
@@ -1413,8 +1413,8 @@ const response = (content: string) => ({
     assistant: { content, reasoning: null },
     usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
 });
-// A contract violation that strikes: a third COPY operand ({§extra-path-slot}); a fumbled matcher
-// would not ({§matcher-refusal}).
+// A contract violation that strikes: a third COPY operand ({§matcher-prefix-claims}); a fumbled matcher
+// would not ({§matcher-prefix-claims}).
 const extraSlotCopy = "````COPY (workspace:///a) (workspace:///b) (workspace:///c)````";
 const read = "````READ (workspace:///answer) <1,-1>````";
 

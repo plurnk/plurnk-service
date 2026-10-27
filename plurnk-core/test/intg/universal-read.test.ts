@@ -1478,7 +1478,7 @@ const manifest = (name: string, metadataModifier = false) => ({
 
 for (const op of ["FIND", "READ", "EDIT", "KILL"] as const) {
     for (const pattern of ["needle", "absent"]) {
-        test(`{§naked-pattern}: ${op} with owner metadata applies /${pattern}/ without widening selection`, async () => {
+        test(`{§parse-recovery}: ${op} with owner metadata applies /${pattern}/ without widening selection`, async () => {
             const db = await openMigrated();
             const env = await seedEnvelope(db, `metadata-pattern-${crypto.randomUUID()}`);
             const schemes = new SchemeRegistry();
@@ -1613,7 +1613,7 @@ test("{§operation-results} scheme metadata remains outside the target and reach
 });
 
 for (const [op, proposed] of [["COPY", "neither"], ["MOVE", "neither"], ["MOVE", "source"], ["MOVE", "both"]] as const) {
-    test(`{§transfer-resource-selections}: parsed ${op} keeps scope and metadata with each resource (${proposed} proposed)`, async (t) => {
+    test(`{§op-shapes}: parsed ${op} keeps scope and metadata with each resource (${proposed} proposed)`, async (t) => {
         serverProposals(t, "accept");
         const db = await openMigrated();
         const env = await seedEnvelope(db, `transfer-metadata-${crypto.randomUUID()}`);

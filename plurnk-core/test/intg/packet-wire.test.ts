@@ -1009,7 +1009,7 @@ test("{§tokenomics} log render: a scoped READ preserves its complete source Tex
     assert.equal(parseLogRecords(out)[0]?.body, "1:😀\n");
 });
 
-test("{§problem-projection} a failed content-bearing READ renders a compact Problem and diagnostic body", () => {
+test("{§diagnostic-observation} a failed content-bearing READ renders a compact Problem and diagnostic body", () => {
     const out = PacketWire.renderLog([{
         coordinate: "1/2/1",
         origin: "_plurnk",
@@ -3256,7 +3256,7 @@ test("{§log-wire-format}: exact matcher FIND shows flat surgical coordinates wi
     } finally { await db.close(); }
 });
 
-test("{§copy-move-observation} assembled packet: scoped COPY reports both operands and its landed text materialization", async () => {
+test("{§op-shapes} assembled packet: scoped COPY reports both operands and its landed text materialization", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `pkt-copy-${crypto.randomUUID()}`);

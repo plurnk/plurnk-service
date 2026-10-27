@@ -586,7 +586,7 @@ export default class Daemon implements ApplicationPort, HostSetupSeam {
         return this.#sessionModels.listModels(query);
     }
 
-    // {§client-display-capabilities} Core composes the installed family
+    // {§mcp-server-definition} Core composes the installed family
     // declarations; interface modules expose this contracts-owned wire without
     // inventing presentation policy. `exec` is operation machinery, not an
     // addressable URI scheme; its runtime-tag scheme faces remain discoverable.

@@ -9,7 +9,7 @@ const operations = (source: string): PlurnkStatement[] => {
     return parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
 };
 
-test("{§target-group}: READ and KILL compile each path's scope and metadata into ordinary statements", () => {
+test("{§slot-order}: READ and KILL compile each path's scope and metadata into ordinary statements", () => {
     const kill = operations('````KILL (log:///1/1/2/FIND) (log:///1/2/3/READ) <23,-1> (notes.md) [{"keep":1}] <!-- free the room -->````') as KillStatement[];
     assert.deepEqual(kill.map(({ target, lineMarker, metadata }) => [target?.raw, lineMarker?.marks ?? null, metadata]), [
         ["log:///1/1/2/FIND", null, null],
@@ -22,13 +22,13 @@ test("{§target-group}: READ and KILL compile each path's scope and metadata int
     assert.deepEqual(read.map(({ target, lineMarker }) => [target?.raw, lineMarker?.marks ?? null]), [["a.md", [1, 3]], ["b.md", null]]);
 });
 
-test("{§target-group}: an absent default matcher stays absent", () => {
+test("{§slot-order}: an absent default matcher stays absent", () => {
     const own = operations("````READ (a.md) (b.md) (c.md)````") as ReadStatement[];
     assert.deepEqual(own.map(({ matcher }) => matcher?.raw ?? null), [null, null, null]);
     assert.equal("group" in operations("````READ (a.md) <1,3>````")[0], false);
 });
 
-test("{§target-group} {§statement-rendering}: canonical statements reparse with identical selections and bodies", () => {
+test("{§slot-order} {§fence-pairing}: canonical statements reparse with identical selections and bodies", () => {
     const withoutPosition = (ops: PlurnkStatement[]) => ops.map(({ position: _position, ...op }) => op);
     for (const source of [
         "```KILL (log:///1/1/2/FIND) (log:///1/2/3/READ) <23,-1> (notes.md) <!-- free the room -->\n```",
@@ -44,7 +44,7 @@ test("{§target-group} {§statement-rendering}: canonical statements reparse wit
     }
 });
 
-test("{§target-group} {§log-kill-scope}: distillation lands once; other operations keep their arity", () => {
+test("{§slot-order} {§log-kill-scope}: distillation lands once; other operations keep their arity", () => {
     for (const paths of ["(log:///1/2/3/READ) (log:///1/3/2/FIND)", "(log:///1/2/3/READ, log:///1/3/2/FIND)"]) {
         const kills = operations(`\`\`\`KILL ${paths}\nBoth held the same fact.\n\`\`\``) as KillStatement[];
         assert.deepEqual(kills.map(({ body }) => body), ["Both held the same fact.", null]);
@@ -60,7 +60,7 @@ test("{§target-group} {§log-kill-scope}: distillation lands once; other operat
     assert.ok(invalid.items.some((item) => item.kind === "error" && /one scope/u.test(item.error.message)));
 });
 
-test("{§safe-uri-target-groups}: explicit URI lists compile in member order at the parser boundary", () => {
+test("{§slot-order}: explicit URI lists compile in member order at the parser boundary", () => {
     for (const [heading, expected] of [
         ["READ (workspace:///a workspace:///b)", ["workspace:///a", "workspace:///b"]],
         ["KILL (log:///1/1/1/READ, log:///1/1/2/READ)", ["log:///1/1/1/READ", "log:///1/1/2/READ"]],
@@ -80,7 +80,7 @@ test("{§safe-uri-target-groups}: explicit URI lists compile in member order at 
     assert.equal(selections[0]?.aside, "inspect both");
 });
 
-test("{§safe-uri-target-groups}: ambiguous, invalid and ineligible targets stay singular and exact", () => {
+test("{§slot-order}: ambiguous, invalid and ineligible targets stay singular and exact", () => {
     for (const [op, raw] of [
         ["READ", "notes and plans.md"], ["READ", "alpha,beta.md"],
         ["READ", "workspace:///a local.md"], ["READ", "https://example.com/a,b"],
@@ -96,14 +96,14 @@ test("{§safe-uri-target-groups}: ambiguous, invalid and ineligible targets stay
     }
 });
 
-test("{§reasoning-operations} {§target-group}: reasoning and statement tiers receive the same compiled selections", () => {
+test("{§op-shapes} {§slot-order}: reasoning and statement tiers receive the same compiled selections", () => {
     const source = "```READ (a) <1,3> (b) /shared/\n```";
     assert.deepEqual(PlurnkParser.parseReasoningOperations(source), operations(source));
     const statements = PlurnkParser.parseStatements(source);
     assert.deepEqual(statements.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []), operations(source));
 });
 
-test("{§trailing-slots} {§safe-uri-target-groups}: a URI list in one slot retains that slot's unambiguous recovered scope", () => {
+test("{§parse-recovery} {§slot-order}: a URI list in one slot retains that slot's unambiguous recovered scope", () => {
     const parsed = PlurnkParser.parse("```READ (workspace:///a workspace:///b) /pattern/ <1,3>\n```");
     const ops = parsed.items.flatMap((item) => item.kind === "statement" ? [item.statement] : []);
     assert.equal(ops.length, 2);

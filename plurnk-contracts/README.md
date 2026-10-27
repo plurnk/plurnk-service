@@ -2,7 +2,7 @@
 
 The single authority for PLURNK's model-facing language contract, its AST,
 shared schemas and types, runtime-neutral Problems, operation results,
-Notices, and text coordinates. See SPEC {§root-value-api}.
+Notices, and text coordinates. See SPEC {§whitespace-contract}.
 
 ## Install
 
@@ -18,7 +18,7 @@ Requires Node.js 26 or newer.
 |---------------------------------|------------------------------------------------------|
 | Concise model language teaching | [`plurnk.md`](plurnk.md)                             |
 | Stable behavioral contract      | [`SPEC.md`](SPEC.md)                                 |
-| Accepted language syntax        | `SPEC.md` ({§canonical-statement}); implemented by `@plurnk/plurnk-parser` |
+| Accepted language syntax        | `SPEC.md` ({§operation-fences}); implemented by `@plurnk/plurnk-parser` |
 | Shared wire shapes              | `schema/*.json`                                      |
 | JavaScript and TypeScript API   | `@plurnk/plurnk-contracts`                           |
 | Published JSON Schemas          | `@plurnk/plurnk-contracts/schema/*.json`             |
@@ -51,10 +51,10 @@ Validator.assertOperationResult(result);
 ```
 
 Generated wire types, constructors, and validators share the package root entry
-point described by SPEC {§wire-entrypoint}. Owning JSON Schemas use the published
+point described by SPEC {§text-region}. Owning JSON Schemas use the published
 `@plurnk/plurnk-contracts/schema/*.json` subpaths. The root is runtime-neutral, so
 a browser type-checks it without Node; the application port that modules consume,
-which names Node's HTTP types, is `@plurnk/plurnk-contracts/port` ({§runtime-neutral-root}).
+which names Node's HTTP types, is `@plurnk/plurnk-contracts/port` ({§whitespace-contract}).
 
 ## Development
 

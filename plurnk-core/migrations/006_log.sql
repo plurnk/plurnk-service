@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS log_entries (
     hostname        TEXT,
     port            INTEGER                    CHECK (port IS NULL OR (port BETWEEN 0 AND 65535)),
     pathname        TEXT,
-    -- Serialized query without '?'; NULL = absent, '' = explicit empty. {§path-query}
+    -- Serialized query without '?'; NULL = absent, '' = explicit empty. {§path-syntax}
     query           TEXT,
     fragment        TEXT,
 

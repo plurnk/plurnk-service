@@ -1,4 +1,4 @@
-// {§loop-lifecycle-vocabulary} — one projection of a loop's durable status onto the lifecycle
+// {§application-session-observation} — one projection of a loop's durable status onto the lifecycle
 // words every client renders (the status gauge's glyphs and the session directory share it).
 // 100 queued · 102 running · 202 parked; any other status is a concluded loop's: below 400 completed,
 // 499 cancelled, any other ≥400 failed (413 budget, 429 turn ceiling, 500 fail, 504 execution timeout,

@@ -549,7 +549,7 @@ export default class Dispatcher {
         return { ...execution, result };
     }
 
-    // {§matcher-refusal} — a matcher the parser could not read refuses its one operation with the parser's
+    // {§matcher-prefix-claims} — a matcher the parser could not read refuses its one operation with the parser's
     // diagnostic and working form: the operation's own row, soft on the rail, never a contract strike.
     static #unreadableMatcher(statement: PlurnkStatement): DispatchResult | null {
         const matchers = statement.op === "COPY" || statement.op === "MOVE"
@@ -760,7 +760,7 @@ export default class Dispatcher {
                     const distilled = this.#distillations.get(statement);
                     result = { ...(distilled === undefined ? {} : { attrs: { distilled } }), status: 200, resource: renderAddress({ scheme: "note", authority: sessionName, pathname: `/${coordinate.loop_seq}/${coordinate.turn_seq}/${sequence}` }) };
                 } else if (TurnDisposition.is(statement)) {
-                    // {§turn-disposition} — WAIT is the park; whatever it names is its label in the
+                    // {§op-shapes} — WAIT is the park; whatever it names is its label in the
                     // row, never a selected waker; arrivals or its duration end the park.
                     result = await this.#disposition.handle({ sessionId, loopId, turnId, origin }, statement);
                 } else if (
@@ -1767,7 +1767,7 @@ export default class Dispatcher {
     } {
         if (path === null) return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: null, query: null, fragment: null };
         // `local` (bare path) carries no URL parts — store the raw text as the pathname for the log record, scheme=null.
-        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: path.fragment ?? null }; // {§path-parentheses} {§local-path-fragment}
+        if (path.kind === "local") return { scheme: null, username: null, password: null, hostname: null, port: null, pathname: PathSyntax.decodeParens(path.raw), query: null, fragment: path.fragment ?? null }; // {§path-syntax} {§op-shapes}
         if (path.scheme === "file") {
             const pathname = FileAddress.pathname(path);
             // An invalid URL has no resolved identity; retain the refused input alongside its failure.
@@ -1788,7 +1788,7 @@ export default class Dispatcher {
         return {
             scheme, username: path.username, password: path.password,
             hostname: foldNs ? null : path.hostname, port: foldNs ? null : path.port,
-            pathname: PathSyntax.decodeParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // {§path-parentheses}
+            pathname: PathSyntax.decodeParens(foldNs ? foldAuthorityIntoPath(path.hostname, path.pathname) : path.pathname), // {§path-syntax}
             query: path.query, fragment: path.fragment,
         };
     }

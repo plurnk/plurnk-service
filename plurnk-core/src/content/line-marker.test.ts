@@ -46,7 +46,7 @@ test("{§zero-width-column-one-insert} LineMarkerOps applies exact text edits wi
     );
 });
 
-test("{§range-extent} LineMarkerOps pages ordered result catalogs independently of text scope", () => {
+test("{§text-region} LineMarkerOps pages ordered result catalogs independently of text scope", () => {
     assert.deepEqual(
         LineMarkerOps.page(["a", "b", "c"], { marks: [2, 3] }),
         {

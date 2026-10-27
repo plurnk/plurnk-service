@@ -590,7 +590,7 @@ test("{§rpc} entry.read returns the contracts-owned client projection", async (
     });
 });
 
-test("{§entry-read-result}: entry.read channel+offset returns a suffix and full contentLength", async () => {
+test("{§text-region}: entry.read channel+offset returns a suffix and full contentLength", async () => {
     await withDaemon(async (_db, addr) => {
         const ws = await connect(addr);
         try {

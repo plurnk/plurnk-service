@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS provider_requests (
     cost_reason              TEXT,
     started_at               TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
     completed_at             TEXT,
-    -- {§provider-request-evidence}: physical request/response payload evidence.
+    -- {§provider-request-accounting}: physical request/response payload evidence.
     evidence                 TEXT             CHECK (evidence IS NULL OR json_valid(evidence)),
     CHECK (
         (state = 'pending'

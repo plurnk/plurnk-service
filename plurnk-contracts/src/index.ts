@@ -1,4 +1,4 @@
-// {§wire-entrypoint} — the package root: validators, Problems and generated types. The schemas
+// {§text-region} — the package root: validators, Problems and generated types. The schemas
 // themselves are published at `./schema/*.json`, never re-exported here as values.
 export {
     default as Validator,
@@ -66,7 +66,7 @@ export {
     type TerminatedNotification,
 } from "./ApplicationNotifications.ts";
 export type { AcpConformanceRow } from "./AcpConformance.ts";
-// {§runtime-neutral-root} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
+// {§whitespace-contract} The application port is Node-bound and is its own entry, `@plurnk/plurnk-contracts/port`.
 export type * from "./Application.ts";
 export type * from "./Functionality.ts";
 

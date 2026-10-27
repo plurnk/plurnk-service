@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import SessionOverview from "./SessionOverview.ts";
 
-test("{§application-session-overview} places are held most recently finished first, then newest, every gated place past the bound", () => {
+test("{§application-session-observation} places are held most recently finished first, then newest, every gated place past the bound", () => {
     const places = [{ id: 1, replyId: 10 }, { id: 2, replyId: null }, { id: 3, replyId: 30 }, { id: 4, replyId: null }, { id: 5, replyId: 20 }];
     const hold = (limit: number, gates: ReadonlyMap<number, number> = new Map()): [number[], number] => {
         const { held, omitted } = SessionOverview.hold(places, gates, limit);

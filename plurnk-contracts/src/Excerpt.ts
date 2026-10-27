@@ -1,4 +1,4 @@
-// {§list-excerpt} A message as a list shows it: its first line holding anything but blanks, at most `chars` characters
+// {§application-session-observation} A message as a list shows it: its first line holding anything but blanks, at most `chars` characters
 // with blanks trimmed from their end, never a character cut in two; `continued` when anything but blanks follows.
 // Blanks are spaces, tabs and line ends.
 const BLANK = new Set([" ", "\t", "\r", "\n"]);

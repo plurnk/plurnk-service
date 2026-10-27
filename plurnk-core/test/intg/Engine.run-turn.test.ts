@@ -852,7 +852,7 @@ test("{§edit} Engine.runTurn: sequence increments across multiple turn calls in
     } finally { await db.close(); }
 });
 
-test("{§turn-disposition} Engine.runTurn: a trusted batch with two dispositions dispatches both as one park", async () => {
+test("{§op-shapes} Engine.runTurn: a trusted batch with two dispositions dispatches both as one park", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const provider = new Mock({
@@ -1559,7 +1559,7 @@ test("{§packet} a notice broadcasts structured and drains as its terse model-fa
     } finally { await db.close(); }
 });
 
-test("{§fence-boundary}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
+test("{§operation-fences}: literal programs inside a longer fence produce no spurious parse advisory", async () => {
     const { db, engine, workspaceId, sessionId, loopId } = await setup();
     try {
         const emission = "`````EDIT (workspace:///a.md) <!-- first note -->\nalpha\n````EDIT (workspace:///b.md) <!-- literal example -->\nbeta\n````\n````EDIT (workspace:///c.md)\ngamma\n````\n`````\n````NOTE\ncontinue\n````";
@@ -1684,7 +1684,7 @@ class FixtureEngine extends Engine {
     }
 }
 
-test("{§application-loop-observation} {§application-session-observation} maintenance preserves work lifecycle and scheduler history", async () => {
+test("{§application-session-observation} {§application-session-observation} maintenance preserves work lifecycle and scheduler history", async () => {
     const db = await openMigrated();
     const daemon = new Daemon({ db });
     try {
@@ -1804,7 +1804,7 @@ test("{§tools-resource-materialization} session documentation materialization r
     }
 });
 
-for (const runtime of ["sh", "js", "python3"]) test(`{§exec-executor-slot}: installed ${runtime} examples and fenced README programs preserve executor/target ownership`, async (t) => {
+for (const runtime of ["sh", "js", "python3"]) test(`{§op-shapes}: installed ${runtime} examples and fenced README programs preserve executor/target ownership`, async (t) => {
     const executors = await testExecutors();
     if (!executors.availableRuntimes().includes(runtime)) return t.skip(`${runtime} is not installed`);
     const db = await openMigrated();
@@ -1959,7 +1959,7 @@ test("{§emission-history} {§emission-history}: a turn's content operations pre
     assert.equal(source!.content, [edit, read, note].join("\n\n"));
 });
 
-test("{§retrieval-annotation}: failed retrievals retain their annotations independently, without promoting reasoning into content", async (t) => {
+test("{§op-shapes}: failed retrievals retain their annotations independently, without promoting reasoning into content", async (t) => {
     const db = await openMigrated();
     t.after(() => db.close());
     const workspaceId = await insertWorkspace(db, "failed-annotation");

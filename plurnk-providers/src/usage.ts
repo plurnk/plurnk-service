@@ -1,4 +1,4 @@
-// Provider usage normalization. The public shape follows {§provider-usage}:
+// Provider usage normalization. The public shape follows {§provider-request-accounting}:
 // input/output totals own their optional cache/reasoning details, absence is
 // unknown, and no token category is inferred from text length.
 

@@ -34,9 +34,9 @@ const engineRun = async (db: Awaited<ReturnType<typeof openMigrated>>, workspace
         workspaceId, sessionId, loopId, maxTurns: 3, maxStrikes: 3, messages: [{ role: "user", content: prompt }],
     });
 
-// {§quotation} — an unlabeled fence quotes: an operation inside it is shown, never run. A wider
-// SEND holds the same example as body ({§balanced-fences}).
-test("{§quotation}: an operation inside an unlabeled fence never runs, and a wider SEND quotes one", async () => {
+// {§fence-pairing} — an unlabeled fence quotes: an operation inside it is shown, never run. A wider
+// SEND holds the same example as body ({§operation-fences}).
+test("{§fence-pairing}: an operation inside an unlabeled fence never runs, and a wider SEND quotes one", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `interstitial-${crypto.randomUUID()}`);
@@ -80,7 +80,7 @@ test("{§quotation}: an operation inside an unlabeled fence never runs, and a wi
     } finally { await db.close(); }
 });
 
-test("{§outside-text} {§unfenced-operation}: an unfenced heading is never run, never outside text, and the model is told so", async () => {
+test("{§outside-text} {§whitespace-contract}: an unfenced heading is never run, never outside text, and the model is told so", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `bare-heading-${crypto.randomUUID()}`);
@@ -101,7 +101,7 @@ test("{§outside-text} {§unfenced-operation}: an unfenced heading is never run,
         assert.equal(result.result.status, 200);
         const rows = await db.test_log_entries_by_turn.all<{ op: string; origin: string; tx: string }>({ turn_id: result.turnIds.at(-2)! });
         const model = rows.filter(({ origin }) => origin === "model");
-        assert.deepEqual(model.map(({ op }) => op), ["SEND", "NOTE"], "the unfenced heading is not response text: never run ({§unfenced-operation})");
+        assert.deepEqual(model.map(({ op }) => op), ["SEND", "NOTE"], "the unfenced heading is not response text: never run ({§whitespace-contract})");
         const sources = await db.test_turn_sources.all<{ turn_id: number; kind: string }>({ session_id: sessionId });
         assert.equal(sources.some((row) => row.turn_id === result.turnIds.at(-2) && row.kind === "outside"), false, "and it is not outside text either: the turn has no outside source");
         assert.equal(JSON.parse(model[0].tx).body.raw, "Explained.", "only the authored SEND is delivered");
@@ -112,7 +112,7 @@ test("{§outside-text} {§unfenced-operation}: an unfenced heading is never run,
     } finally { await db.close(); }
 });
 
-test("{§unfenced-operation}: an ignored content heading does not deny a successful reasoning operation", async () => {
+test("{§whitespace-contract}: an ignored content heading does not deny a successful reasoning operation", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `reasoning-and-unfenced-${crypto.randomUUID()}`);
@@ -175,7 +175,7 @@ test("{§message-completion}: a final reply, code block and all, answers the ope
     } finally { await db.close(); }
 });
 
-test("{§quotation}: a SEND with nested examples delivers its literal body", async () => {
+test("{§fence-pairing}: a SEND with nested examples delivers its literal body", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `nested-reply-${crypto.randomUUID()}`);
@@ -248,7 +248,7 @@ test("{§outside-text}: prose-only turns store their text outside the turn, verb
         const loopId = await insertLoop(db, sessionId, 1, "Do the thing.");
         const narration = "Let me look at the failing test first.";
         const prose = "The investigation is still in progress.";
-        // {§native-tool-calls} — native markup naming a plurnk operation is that operation, whatever the
+        // {§fence-pairing} — native markup naming a plurnk operation is that operation, whatever the
         // family; a call naming a tool plurnk does not have is read as nothing, so its turn is empty as well as toxic.
         const toxin = '<｜｜DSML｜｜ calls>\n<｜｜DSML｜｜ invoke name="READ">\n<｜｜DSML｜｜ parameter name="path" string="true">sh:///67f57ccd#stdout</｜｜DSML｜｜ parameter>\n</｜｜DSML｜｜ invoke>\n</｜｜DSML｜｜ calls>';
         const untranslated = '<tool_call>\n{"name": "read_file", "arguments": {"path": "workspace:///notes.md"}}\n</tool_call>';
@@ -363,11 +363,11 @@ test("{§outside-text}: metadata on a file READ is ignored with a notice and the
         const notice = notices.find(({ kind }) => kind === "metadata_ignored");
         assert.ok(notice, "one metadata_ignored notice");
         assert.equal(notice.message, "READ on 'workspace' takes no [metadata]; the READ ran without it.");
-        assert.equal(notice.directive, "YOU SHOULD NOT write [metadata] on an operation that takes none.", "{§notice-directive}");
+        assert.equal(notice.directive, "YOU SHOULD NOT write [metadata] on an operation that takes none.", "{§diagnostic-observation}");
     } finally { await db.close(); }
 });
 
-test("{§quotation}: an offset example draws no parser advisory, and does not conclude the loop", async () => {
+test("{§fence-pairing}: an offset example draws no parser advisory, and does not conclude the loop", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `indented-program-${crypto.randomUUID()}`);
@@ -402,9 +402,9 @@ test("{§quotation}: an offset example draws no parser advisory, and does not co
     } finally { await db.close(); }
 });
 
-// {§unfenced-operation} {§outside-text} — an executor called without its fence is a missed operation: the
+// {§whitespace-contract} {§outside-text} — an executor called without its fence is a missed operation: the
 // receipt rides the next packet's notices, and the turn still strikes, so three in a row end the loop (#844).
-test("{§unfenced-operation} {§outside-text}: unfenced executor calls draw their receipt each turn and still strike out", async () => {
+test("{§whitespace-contract} {§outside-text}: unfenced executor calls draw their receipt each turn and still strike out", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, `unfenced-exec-${crypto.randomUUID()}`);
@@ -851,7 +851,7 @@ test("{§digest-programmatic-surface}: selectors prune emitted evidence and each
 describe("note-continuity", () => {
 type Row = { op: string | null; origin: string };
 
-// {§operation-results} {§notice-directive} — the card's command as the notice's directive, in callout form.
+// {§operation-results} {§diagnostic-observation} — the card's command as the notice's directive, in callout form.
 const NOTICE = "> [!WARNING]\n> YOU MUST persist all new facts, ideas, and plans in NOTEs on every turn. The turn continued without a NOTE. [continued_without_note]";
 
 const noticesOf = async (db: Db, turnId: number): Promise<string> =>
@@ -869,7 +869,7 @@ const runLoop = async (db: Db, responses: Array<{ content: string; reasoning: st
 };
 
 for (const parked of [false, true]) for (const location of ["absent", "content", "reasoning", "both"]) {
-    test(`{§operation-results} {§reasoning-operations}: ${parked ? "parked" : "continuing"} work with NOTE ${location}`, async () => {
+    test(`{§operation-results} {§op-shapes}: ${parked ? "parked" : "continuing"} work with NOTE ${location}`, async () => {
         const db = await openMigrated();
         try {
             const workspaceId = await insertWorkspace(db, `optional-note-${parked}-${location}`);

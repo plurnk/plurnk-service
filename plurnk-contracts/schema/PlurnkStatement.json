@@ -149,11 +149,11 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
                 },
                 "body": {
                     "type": "null",
-                    "description": "Retrieval bodies normalize to separate NOTE statements; selection belongs to the header ({§retrieval-annotation})."
+                    "description": "Retrieval bodies normalize to separate NOTE statements; selection belongs to the header ({§op-shapes})."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"
@@ -191,7 +191,7 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
                 },
                 "body": {
                     "type": "null"
@@ -232,7 +232,7 @@
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
                 },
                 "body": {
                     "type": [
@@ -448,15 +448,15 @@
                 },
                 "lineMarker": {
                     "$ref": "#/$defs/TextLineMarkerOrNull",
-                    "description": "Scope of the kill: lines of a log body or of an entry ({§kill-scope}); null kills the whole target."
+                    "description": "Scope of the kill: lines of a log body or of an entry ({§op-shapes}); null kills the whole target."
                 },
                 "matcher": {
                     "$ref": "#/$defs/MatcherBodyOrNull",
-                    "description": "The selection matcher lifted from the heading ({§naked-pattern}); null when the heading carries none."
+                    "description": "The selection matcher lifted from the heading ({§parse-recovery}); null when the heading carries none."
                 },
                 "body": {
                     "type": ["string", "null"],
-                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-scope}). Other KILLs take no body; their matcher rides on the heading line ({§naked-pattern})."
+                    "description": "A `log:///` KILL carries its optional distillation, kept as the model's own NOTE row ({§log-kill-scope}). Other KILLs take no body; their matcher rides on the heading line ({§parse-recovery})."
                 },
                 "position": {
                     "$ref": "#/$defs/PositionRef"

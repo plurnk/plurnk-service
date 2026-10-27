@@ -171,7 +171,7 @@ for (const parse of [PlurnkParser.parse, PlurnkParser.parseStatements]) {
         || statements[1]?.op !== "NOTE") throw new Error("outside text changed the parsed program");
 }
 
-// A quoted example rides a wider fence ({§balanced-fences}): the SEND's body holds the literal
+// A quoted example rides a wider fence ({§operation-fences}): the SEND's body holds the literal
 // heading without executing it, and the disposition still follows.
 const literalExample = PlurnkParser.frame("KILL (workspace:///notes.md)", null);
 const quoted = PlurnkParser.frame("SEND <!-- literal example -->", literalExample) + "\\n" + program;

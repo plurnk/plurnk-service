@@ -1872,7 +1872,7 @@ test("{§env-delta}: delayed observation preserves each completed loop after new
 });
 
 describe("session-send-scope", () => {
-test("{§send-directed-scope}: a scoped session SEND is refused and admits no task", async () => {
+test("{§op-shapes}: a scoped session SEND is refused and admits no task", async () => {
     const provider = new Mock({ contextWindow: 100000, responses: [
         makeMockResponse("````SEND (session://scheduler) <0,60>\nUnadmitted scheduled instruction.\n````\n````NOTE\nInspect the refusal.\n````"),
         makeMockResponse("````SEND [200]\nThe scope was refused.\n````"),
@@ -2045,7 +2045,7 @@ test("{§session-wait-timing} an early wake retires the override; a later bare W
 });
 
 for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]) {
-    test(`{§park-202-only} {§loop-completion} ${header} parks on the actual live child, not the decoration`, async (t) => {
+    test(`{§op-shapes} {§loop-completion} ${header} parks on the actual live child, not the decoration`, async (t) => {
         const db = await openMigrated();
         t.after(() => db.close());
         const workspaceId = await insertWorkspace(db, "wait-obligations");
@@ -2074,7 +2074,7 @@ for (const header of ["WAIT", "WAIT (sh:///missing) <60,60> [{\"timeout\":42}]"]
     });
 }
 
-test("{§park-202-only} {§loop-completion} WAIT retains literal prose without inventing a response", async () => {
+test("{§op-shapes} {§loop-completion} WAIT retains literal prose without inventing a response", async () => {
     const db = await openMigrated();
     try {
         const workspaceId = await insertWorkspace(db, "continuation-inventory");

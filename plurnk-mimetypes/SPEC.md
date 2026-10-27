@@ -196,7 +196,7 @@ The containing `package.json` `name` must be a valid current npm package name.
 |--------------|----------|----------|-----------------------------------------------------------------------------------------------------------------|
 | `name`       | string   | yes      | RFC 6838 restricted type/subtype syntax; registers a local handler, not an IANA registration ({§mimetype-naming}). |
 | `revision`   | string   | yes      | Non-empty handler-owned projection revision ({§mimetype-projection-identity}).                                  |
-| §mimetype-client-display `glyph` | string | no | Opaque client presentation glyph; discovery retains the handler-facing empty-string default, while Core projects that sentinel as absence through {§client-display-capabilities}. |
+| §mimetype-client-display `glyph` | string | no | Opaque client presentation glyph; discovery retains the handler-facing empty-string default, while Core projects that sentinel as absence through {§mcp-server-definition}. |
 | `extensions` | string[] | no       | Dotted entries are case-insensitive extensions; bare entries are case-sensitive filenames such as `Dockerfile`. |
 
 §mimetype-discovery `discover()` uses one scope-agnostic, trust-gated path for
@@ -444,7 +444,7 @@ The exported `ProcessResult` type owns the executable field shape.
 | `parseIssues`                         | Present only as a positive parser-recovery count from requested structural work.                    |
 | `summary`                             | Present only as a nonempty normalized line from requested handler summary inspection.               |
 | `grammarMissing`                     | Present only for non-strict grammar degradation.                                                  |
-| `notices`                            | Present only when a successful result carries one or more non-fatal degradations ({§notice}).      |
+| `notices`                            | Present only when a successful result carries one or more non-fatal degradations ({§diagnostic-observation}).      |
 
 `totalLines` is the editor-convention line count of the source content. Conventions:
 
@@ -776,7 +776,7 @@ precise source evidence while preserving the same result contract.
 ### 11.5 Notices and failures
 
 The runtime-neutral `Notice` shape and transient/nonterminal meaning are owned
-by `@plurnk/plurnk-contracts` ({§notice}). `process()` emits one warning per
+by `@plurnk/plurnk-contracts` ({§diagnostic-observation}). `process()` emits one warning per
 successful non-strict degradation:
 
 | Result signal       | Notice kind           | Required data                                |

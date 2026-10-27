@@ -9,7 +9,7 @@ import { requestBody } from "../../scripts/lib/test-fetch.ts";
 
 for (const native of [false, true]) {
     for (const capture of [false, true]) {
-        test(`{§provider-request-evidence} retained request equals dispatched bytes; native=${native}, capture=${capture}`, async (t) => {
+        test(`{§provider-request-accounting} retained request equals dispatched bytes; native=${native}, capture=${capture}`, async (t) => {
             const received = new Map<string, string>();
             const secondArrived = Promise.withResolvers<void>();
             const server = createServer(async (request, response) => {
@@ -107,7 +107,7 @@ for (const protocol of ["google", "anthropic", "openrouter", "amazon-bedrock"] a
     });
 }
 
-test("{§provider-request-evidence} native Messages failures retain SDK reasoning and uninterpreted chunks", async () => {
+test("{§provider-request-accounting} native Messages failures retain SDK reasoning and uninterpreted chunks", async () => {
     const chunks = [
         { type: "message_start", message: { id: "native-failed", type: "message", role: "assistant", model: "fixture",
             content: [], stop_reason: null, stop_sequence: null,
@@ -138,7 +138,7 @@ test("{§provider-request-evidence} native Messages failures retain SDK reasonin
 });
 
 for (const reported of [false, true]) {
-    test(`{§provider-request-evidence} missing finish preserves partial output and raw evidence; usage=${reported}`, async () => {
+    test(`{§provider-request-accounting} missing finish preserves partial output and raw evidence; usage=${reported}`, async () => {
         const chunk = {
             id: "failed-request", model: "fixture",
             choices: [{ index: 0, delta: { content: "unfinished", reasoning_content: "before EOF" }, finish_reason: null }],
@@ -176,7 +176,7 @@ for (const reported of [false, true]) {
 }
 
 for (const capture of [false, true]) {
-    test(`{§provider-request-evidence} a directed HTTP retry preserves the error body before a successful response; capture=${capture}`, async () => {
+    test(`{§provider-request-accounting} a directed HTTP retry preserves the error body before a successful response; capture=${capture}`, async () => {
         const records: Array<{ accounting: ProviderRequestAccounting; evidence: unknown }> = [];
         const bodies: string[] = [];
         let calls = 0;

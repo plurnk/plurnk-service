@@ -56,7 +56,7 @@ test("{§result-error-status} isErrorStatus marks 4xx/5xx and only those", () =>
     assert.equal(Results.isErrorStatus(500), true);
 });
 
-test("{§problem-details} problem mints a stable RFC 9457 type and title", () => {
+test("{§diagnostic-observation} problem mints a stable RFC 9457 type and title", () => {
     const problem = Results.problem("scheme:notes", "entry-not-found", 404, "No entry exists at notes:///missing.");
     assert.equal(problem.type, "https://problems.plurnk.xyz/scheme/notes/entry-not-found");
     assert.equal(problem.title, "Entry not found");
@@ -64,7 +64,7 @@ test("{§problem-details} problem mints a stable RFC 9457 type and title", () =>
     assert.equal(problem.detail, "No entry exists at notes:///missing.");
 });
 
-test("{§problem-details} failure carries extension metadata beside one problem", () => {
+test("{§diagnostic-observation} failure carries extension metadata beside one problem", () => {
     const result = Results.failure(
         "scheme:notes",
         "entry-not-found",
@@ -79,7 +79,7 @@ test("{§problem-details} failure carries extension metadata beside one problem"
     assert.equal("error" in result, false);
 });
 
-test("{§problem-details} assert rejects a bare failure and a mismatched problem status", () => {
+test("{§diagnostic-observation} assert rejects a bare failure and a mismatched problem status", () => {
     assert.throws(
         () => Results.assert({ status: 404 }),
         /invalid operation result/,
@@ -190,13 +190,13 @@ test("{§read-zero-start}: normalization evidence admits only an exact recoverab
     }
 });
 
-test("{§problem-details} attachInstance adds the durable operation coordinate", () => {
+test("{§diagnostic-observation} attachInstance adds the durable operation coordinate", () => {
     const result = Results.failure("scheme:file", "entry-not-found", 404, "Missing.");
     Results.attachInstance(result, "log:///5/2/1/READ");
     assert.equal(result.problem?.instance, "log:///5/2/1/READ");
 });
 
-test("{§problem-details} problem identifiers fail hard instead of minting ambiguous types", () => {
+test("{§diagnostic-observation} problem identifiers fail hard instead of minting ambiguous types", () => {
     assert.throws(() => Results.problem("Scheme:Notes", "entry-not-found", 404, "Missing."), /problem owner/);
     assert.throws(() => Results.problem("scheme:notes", "Entry_Not_Found", 404, "Missing."), /problem code/);
 });

@@ -755,7 +755,7 @@ const seedLogRead = async (
     return row.id;
 };
 
-test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit URI member", async () => {
+test("{§slot-order}: one admitted READ dispatches every explicit URI member", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, {
@@ -801,7 +801,7 @@ test("{§safe-uri-target-groups}: one admitted READ dispatches every explicit UR
     }
 });
 
-test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explicit URI member", async () => {
+test("{§slot-order}: one admitted scoped KILL curates every explicit URI member", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
@@ -835,7 +835,7 @@ test("{§safe-uri-target-groups}: one admitted scoped KILL curates every explici
     }
 });
 
-test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit URI member independently", async () => {
+test("{§slot-order}: one admitted KILL dispatches every explicit URI member independently", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
@@ -913,7 +913,7 @@ test("{§safe-uri-target-groups}: one admitted KILL dispatches every explicit UR
     }
 });
 
-test("{§target-group} {§safe-uri-target-groups}: a KILL written one path per slot curates every member, the scope binding to its slot; the program stays as authored", async () => {
+test("{§slot-order} {§slot-order}: a KILL written one path per slot curates every member, the scope binding to its slot; the program stays as authored", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
@@ -939,7 +939,7 @@ test("{§target-group} {§safe-uri-target-groups}: a KILL written one path per s
     }
 });
 
-test("{§target-group} {§safe-uri-target-groups}: a READ written one path per slot lands one row per member", async () => {
+test("{§slot-order} {§slot-order}: a READ written one path per slot lands one row per member", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         await seedEntryWithChannel(db, { workspaceId, pathname: "/alpha.md", content: "alpha" });
@@ -959,7 +959,7 @@ test("{§target-group} {§safe-uri-target-groups}: a READ written one path per s
     }
 });
 
-test("{§target-group}: READ keeps each scope while applying the heading matcher to every member", async () => {
+test("{§slot-order}: READ keeps each scope while applying the heading matcher to every member", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const content = "outside\nlocal\nshared\nlocal\nshared\noutside";
@@ -976,7 +976,7 @@ test("{§target-group}: READ keeps each scope while applying the heading matcher
     } finally { await db.close(); }
 });
 
-test("{§trailing-slots}: an ambiguous grouped KILL changes no member, while its sibling NOTE still executes", async () => {
+test("{§parse-recovery}: an ambiguous grouped KILL changes no member, while its sibling NOTE still executes", async () => {
     const { db, workspaceId, sessionId, loopId, engine } = await setup();
     try {
         const sourceTurnId = await insertTurn(db, loopId, 1);
@@ -995,7 +995,7 @@ test("{§trailing-slots}: an ambiguous grouped KILL changes no member, while its
 });
 
 for (const limit of [0, 1, 2]) {
-    test(`{§operator-config-workspace-settings} {§target-group}: limit ${limit} counts compiled targets, not headings`, async () => {
+    test(`{§operator-config-workspace-settings} {§slot-order}: limit ${limit} counts compiled targets, not headings`, async () => {
         const original = process.env.PLURNK_SERVICE_MAX_COMMANDS;
         process.env.PLURNK_SERVICE_MAX_COMMANDS = limit === 0 ? "-1" : String(limit);
         const { db, workspaceId, sessionId, loopId, engine } = await setup();

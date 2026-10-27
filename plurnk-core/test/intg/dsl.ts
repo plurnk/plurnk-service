@@ -1,6 +1,6 @@
 import { fixtureExecutors } from "./_mock.ts";
 // Test fixture builders route clean parameters through the contracts-owned
-// statement parser so Core receives production AST shapes. {§tier-entrypoints}
+// statement parser so Core receives production AST shapes. {§whitespace-contract}
 // {§methods}
 
 import { PlurnkParser } from "@plurnk/plurnk-parser";
@@ -25,13 +25,13 @@ interface OpCopyMoveParams {
     destinationRange?: LineMarker;
 }
 
-// {§turn-disposition} — SEND is messaging, never a disposition.
+// {§op-shapes} — SEND is messaging, never a disposition.
 interface OpSendParams {
     recipient?: string;
     body?: string;
 }
 
-// {§exec-executor-slot} — the fence name selects the executor; `[{"cwd": "…"}]` names the directory; the body is the program.
+// {§op-shapes} — the fence name selects the executor; `[{"cwd": "…"}]` names the directory; the body is the program.
 interface OpExecParams {
     cwd?: string;
     runtime?: string;

@@ -842,7 +842,7 @@ function handlerSurfaceFailure(candidate: unknown, metadata: HandlerMetadata): T
 }
 
 // Derive successful-degradation Notices from the result signals
-// ({§mimetype-error-policy}, {§notice}).
+// ({§mimetype-error-policy}, {§diagnostic-observation}).
 function attachNotices(result: ProcessResult): ProcessResult {
     const notices: Notice[] = [];
     if (typeof result.grammarMissing === "string") {
